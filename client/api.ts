@@ -48,6 +48,8 @@ export interface Landing {
   analyses: AnalysisRow[];
   models: OfferedModel[];
   stages: readonly string[];
+  /** True when the server refuses every mutation. See src/lib/server/read-only.ts. */
+  readOnly: boolean;
 }
 
 class ApiError extends Error {}

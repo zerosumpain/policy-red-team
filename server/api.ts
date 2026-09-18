@@ -15,6 +15,7 @@
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { HttpError, readJson, readMultipart, sendJson } from './http';
 import { getOwnerEmails } from '$lib/server/access';
+import { isReadOnly, READ_ONLY_MESSAGE } from '$lib/server/read-only';
 import { offeredModels } from '$lib/server/models/catalogue';
 import { readSubmission, readMaterial } from '$lib/policy-analysis/server/ingest';
 import {
@@ -84,6 +85,13 @@ export async function handleApi(
   const segments = url.pathname.replace(/^\/api\/policy-analysis\/?/, '').split('/').filter(Boolean);
   const method = req.method ?? 'GET';
 
+  // One gate for every mutation, rather than a check per handler. A route added
+  // later is covered without anyone remembering to cover it — which is the only
+  // version of this that stays true.
+  if (isReadOnly() && method !== 'GET' && method !== 'HEAD') {
+    throw new HttpError(403, READ_ONLY_MESSAGE);
+  }
+
   // GET /api/policy-analysis — the history list, plus what the submit form needs
   // to render. One request rather than two, because the landing page needs both
   // and a second round trip buys nothing.
@@ -92,6 +100,7 @@ export async function handleApi(
       analyses: await listAnalyses(owner()),
       models: offeredModels(),
       stages: STAGES,
+      readOnly: isReadOnly(),
     });
     return true;
   }
