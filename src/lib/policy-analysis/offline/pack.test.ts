@@ -69,13 +69,13 @@ when(built ? 'the pack a reader receives' : 'the pack a reader receives — SKIP
 
     // The compiled shell, not an empty string that would render a blank page.
     expect(shell.js.length).toBeGreaterThan(50_000);
-    expect(shell.css).toContain('--font-display');
-    // Every face the dashboard sets text in, carried rather than linked. Without
-    // these, `--font-display` falls through to Impact.
-    for (const family of ['Archivo Black', 'DM Sans', 'JetBrains Mono']) {
-      expect(shell.fontCss).toContain(`font-family:'${family}'`);
-    }
-    expect(shell.fontCss.match(/url\(data:font\/woff2;base64,/g)).toHaveLength(3);
+    // DIVERGENCE: upstream embeds three faces because its headlines fall back
+    // to Impact without them. This build sets text in Helvetica Neue and Arial,
+    // which the reader already has, and may not ship GDS Transport — so the
+    // assertion is the opposite one, and it is a licensing guarantee as much as
+    // a rendering one.
+    expect(shell.fontCss).toBe('');
+    expect(shell.css).not.toContain('GDS Transport');
 
     // The assessment is in the file, not fetched into it.
     expect(html).toContain('"scope":"owner"');

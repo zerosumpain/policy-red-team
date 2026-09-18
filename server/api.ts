@@ -25,10 +25,33 @@ import { buildReceipt } from '$lib/policy-analysis/receipt';
 import { createShare, listShares, revokeShare } from '$lib/policy-analysis/server/shares';
 import { keyDir } from '$lib/policy-analysis/server/seal';
 import { PolicyError } from '$lib/policy-analysis/validation';
+import { assessmentDocument, isDownloadFormat, isExportFormat } from '$lib/policy-analysis/server/export';
+import { assessmentBundle } from '$lib/policy-analysis/server/bundle';
+import { ownerPayload } from '$lib/policy-analysis/offline/payload';
 import { STAGES } from '$lib/policy-analysis/contracts';
 import { analysisStatus } from '$lib/worker';
 
 const owner = () => getOwnerEmails()[0];
+
+/**
+ * The copied export layer returns a web `Response`; this server speaks
+ * `node:http`. Rather than rewrite `assessmentDocument` and `assessmentBundle` —
+ * both verbatim copies, and both carrying content-disposition headers that took
+ * real care to get right — the two are bridged here, once.
+ */
+async function pipeResponse(response: Response, res: ServerResponse): Promise<void> {
+  const headers: Record<string, string> = {};
+  response.headers.forEach((value, key) => { headers[key] = value; });
+  res.writeHead(response.status, headers);
+  if (!response.body) { res.end(); return; }
+  const reader = response.body.getReader();
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    res.write(Buffer.from(value));
+  }
+  res.end();
+}
 
 /**
  * A `PolicyError` is the pipeline telling the reader something they can act on —
@@ -164,6 +187,42 @@ export async function handleApi(
       return true;
     }
     return false;
+  }
+
+  // GET /api/policy-analysis/:id/export?format=docx|md|bundle
+  //
+  // A GET rather than a POST because it is a download of something that already
+  // exists: it changes nothing, so the browser's own save dialog does the rest
+  // and the link can be right-clicked like any other.
+  if (segments.length === 2 && segments[1] === 'export' && method === 'GET') {
+    const format = url.searchParams.get('format') ?? 'docx';
+    if (!isDownloadFormat(format)) throw new HttpError(400, 'Ask for docx, md or bundle.');
+    const result = await detail(owner(), id);
+    if (!result) throw new HttpError(404, 'No such assessment.');
+
+    const meta = {
+      title: result.analysis.title,
+      jurisdiction: result.analysis.jurisdiction,
+      policyArea: result.analysis.policyArea,
+      status: result.analysis.status,
+      completedAt: result.analysis.completedAt,
+    };
+
+    const response = isExportFormat(format)
+      ? await assessmentDocument(result.artefacts, meta, format)
+      : await assessmentBundle({
+          payload: ownerPayload({
+            ...meta,
+            sealed: result.analysis.sealed,
+            documentSha256: result.documents?.[0]?.sha256 ?? null,
+            artefacts: result.artefacts,
+            stages: result.stages,
+          }),
+          meta,
+        });
+
+    await pipeResponse(response, res);
+    return true;
   }
 
   if (segments.length === 2 && segments[1] === 'shares' && method === 'GET') {

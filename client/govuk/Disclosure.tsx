@@ -1,5 +1,12 @@
 import type { ReactNode } from 'react';
 import { useEffect, useRef } from 'react';
+// STATIC, not dynamic. A `void import('govuk-frontend')` here pulled in Vite's
+// __vitePreload helper, whose whole job is to build a <link rel="stylesheet">
+// and fetch it — which is fine on the web and fatal in the offline pack, where
+// there is no network and no sibling file to fetch. The pack test caught it.
+// govuk-frontend is a direct dependency and already in the bundle; importing it
+// statically costs a few kilobytes and removes the helper entirely.
+import { Accordion as GovukAccordion } from 'govuk-frontend';
 
 /**
  * Progressive disclosure, for one thing.
@@ -34,16 +41,14 @@ export function Accordion({ id, sections }: {
 }) {
   const ref = useRef<HTMLDivElement>(null);
   useEffect(() => {
-    let instance: { init?: () => void } | undefined;
-    let cancelled = false;
-    void import('govuk-frontend').then(({ Accordion: GovukAccordion }) => {
-      if (cancelled || !ref.current) return;
-      instance = new GovukAccordion(ref.current) as unknown as { init?: () => void };
-    });
-    return () => {
-      cancelled = true;
-      instance = undefined;
-    };
+    if (!ref.current) return;
+    // It throws if the browser is not supported, which is a reason to leave the
+    // sections open rather than a reason to break the page.
+    try {
+      new GovukAccordion(ref.current);
+    } catch {
+      /* the markup is complete without it */
+    }
   }, []);
 
   return (

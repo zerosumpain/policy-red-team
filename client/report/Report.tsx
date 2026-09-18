@@ -51,7 +51,15 @@ function Contents({ sections }: { sections: Section[] }) {
   );
 }
 
-export function Report({ detail }: { detail: Detail }) {
+/**
+ * `offline` suppresses the download section.
+ *
+ * Its links point at `/api/policy-analysis/:id/export`, which in a pack opened
+ * from `file://` is a server that is not there — three dead links offering the
+ * reader the very file they are already reading. Found by looking at a real pack
+ * rather than by any test, which is the argument for looking at real output.
+ */
+export function Report({ detail, offline }: { detail: Detail; offline?: boolean }) {
   const { artefacts, analysis, stages } = detail;
   const list = plays(artefacts);
   const board = actorBoard(artefacts, list);
@@ -178,6 +186,43 @@ export function Report({ detail }: { detail: Detail }) {
       {warnings.map((warning, i) => <li key={i}>{warning}</li>)}
     </ul>
   ) : null);
+
+  section('take', 'Take it away', offline ? null : (
+    <>
+      <p className="govuk-body">
+        Three copies, and they are not the same thing. The Word file is the one
+        somebody marks up. The markdown is the same text, for pasting into your own
+        template. The pack is this page — everything on it — in a folder that needs
+        no network at all.
+      </p>
+      <ul className="govuk-list govuk-list--spaced">
+        <li>
+          <a className="govuk-link" href={`/api/policy-analysis/${analysis.id}/export?format=docx`} download>
+            Download the report as Word
+          </a>{' '}
+          <span className="prt-meta">.docx</span>
+        </li>
+        <li>
+          <a className="govuk-link" href={`/api/policy-analysis/${analysis.id}/export?format=md`} download>
+            Download the report as markdown
+          </a>{' '}
+          <span className="prt-meta">.md</span>
+        </li>
+        <li>
+          <a className="govuk-link" href={`/api/policy-analysis/${analysis.id}/export?format=bundle`} download>
+            Download the offline pack
+          </a>{' '}
+          <span className="prt-meta">.zip — open index.html by double-clicking it</span>
+        </li>
+      </ul>
+      {analysis.sealed ? (
+        <InsetText>
+          This assessment is sealed. A pack made from it is the paper in the clear, in your
+          Downloads folder — handle it like the document it came from.
+        </InsetText>
+      ) : null}
+    </>
+  ));
 
   section('provenance', 'How this was produced',
     <SummaryList

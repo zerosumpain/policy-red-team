@@ -70,17 +70,17 @@ export function escapeHtml(value: string): string {
 export function offlineHtml(payload: OfflinePayload, shell: OfflineShell): string {
   const title = `${payload.title} — policy assessment`;
   return `<!doctype html>
-<html lang="en">
+<html lang="en-GB" class="govuk-template">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="robots" content="noindex,nofollow">
-<meta name="generator" content="strangeramblings.com policy assessment — offline pack v${payload.version}">
+<meta name="generator" content="Policy Red Team — offline pack v${payload.version}">
 <title>${escapeHtml(title)}</title>
 <style>${shell.fontCss}</style>
 <style>${shell.css}</style>
 </head>
-<body>
+<body class="govuk-template__body">
 <div id="${ROOT_ELEMENT_ID}" class="policy-page"></div>
 <script type="application/json" id="${PAYLOAD_ELEMENT_ID}">${embedJson(payload)}</script>
 <script>${shell.js}</script>

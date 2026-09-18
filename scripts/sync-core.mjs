@@ -73,6 +73,62 @@ async function resolveAll(manifest) {
  * instead of passing quietly.
  */
 const DIVERGENCES = {
+  // ── The offline pack ─────────────────────────────────────────────────────
+  //
+  // The pack embeds the fonts the SITE's design system sets text in — Archivo
+  // Black, DM Sans, JetBrains Mono — because without them its headlines fall
+  // back to Impact. This build sets text in Helvetica Neue and Arial, which are
+  // on the reader's machine already, and it is not licensed to ship GDS
+  // Transport. So the pack carries NO font files at all, which is both correct
+  // and the same promise `scripts/a11y.mjs` enforces on the web build.
+  'src/lib/policy-analysis/server/bundle.ts': (s) => {
+    const from = s.match(/const FACES: \{ file: string; family: string; weight: string \}\[\] = \[[\s\S]*?\n\];/);
+    if (!from) throw new Error('bundle.ts: the FACES list moved');
+    return s.replace(
+      from[0],
+      `// DIVERGENCE: no embedded faces. This build sets text in the stack GOV.UK
+// itself specifies off GOV.UK — Helvetica Neue and Arial — which every reader
+// already has, and it may not ship GDS Transport. An empty list means the pack
+// carries no font bytes and renders identically offline.
+const FACES: { file: string; family: string; weight: string }[] = [];`
+    );
+  },
+
+  // The pack's page needs GOV.UK's shell classes or it renders on the wrong
+  // background with the wrong scroll behaviour — version 6 emits no bare `body`
+  // rule at all (phase 0). And the generator string named the site.
+  'src/lib/policy-analysis/offline/html.ts': (s) => {
+    let out = s.replace(
+      '<html lang="en">',
+      '<html lang="en-GB" class="govuk-template">'
+    );
+    out = out.replace('<body>', '<body class="govuk-template__body">');
+    out = out.replace(
+      'strangeramblings.com policy assessment — offline pack v',
+      'Policy Red Team — offline pack v'
+    );
+    if (out === s) throw new Error('html.ts: the shell moved');
+    return out;
+  },
+
+  // Its test asserted three embedded faces and a --font-display token, both of
+  // which belong to the site's design system. The equivalent assertion here is
+  // the stronger one: that NO font travels in the pack.
+  'src/lib/policy-analysis/offline/pack.test.ts': (s) => {
+    const from = s.match(/    expect\(shell\.css\)\.toContain\('--font-display'\);[\s\S]*?expect\(shell\.fontCss\.match\(\/url\\\(data:font\\\/woff2;base64,\/g\)\)\.toHaveLength\(3\);/);
+    if (!from) throw new Error('pack.test.ts: the font assertions moved');
+    return s.replace(
+      from[0],
+      `    // DIVERGENCE: upstream embeds three faces because its headlines fall back
+    // to Impact without them. This build sets text in Helvetica Neue and Arial,
+    // which the reader already has, and may not ship GDS Transport — so the
+    // assertion is the opposite one, and it is a licensing guarantee as much as
+    // a rendering one.
+    expect(shell.fontCss).toBe('');
+    expect(shell.css).not.toContain('GDS Transport');`
+    );
+  },
+
   // ── The integration suite ────────────────────────────────────────────────
   //
   // Upstream guards these destructive tests with a regex over DATABASE_URL,

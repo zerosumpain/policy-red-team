@@ -41,11 +41,11 @@ import type { Artefact } from '../contracts';
  * pack three times. `--font-brand` (DM Mono) and `--font-read` (Selawik) are not
  * used on this page and are not carried.
  */
-const FACES: { file: string; family: string; weight: string }[] = [
-  { file: 'archivo-black-400.woff2', family: 'Archivo Black', weight: '400' },
-  { file: 'dm-sans-var.woff2', family: 'DM Sans', weight: '100 1000' },
-  { file: 'jetbrains-mono-var.woff2', family: 'JetBrains Mono', weight: '100 800' },
-];
+// DIVERGENCE: no embedded faces. This build sets text in the stack GOV.UK
+// itself specifies off GOV.UK — Helvetica Neue and Arial — which every reader
+// already has, and it may not ship GDS Transport. An empty list means the pack
+// carries no font bytes and renders identically offline.
+const FACES: { file: string; family: string; weight: string }[] = [];
 
 const SHELL_FILES = { js: 'policy-offline/app.js', css: 'policy-offline/app.css' };
 

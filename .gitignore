@@ -4,3 +4,4 @@ dist/
 .env
 dist/
 shots/
+static/policy-offline/
