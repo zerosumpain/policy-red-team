@@ -21,7 +21,13 @@ export function ErrorSummary({ title = 'There is a problem', errors }: {
 
   if (!errors.length) return null;
   return (
-    <div className="govuk-error-summary" data-module="govuk-error-summary" ref={ref} tabIndex={-1} role="alert">
+    <div className="govuk-error-summary" data-module="govuk-error-summary" ref={ref} tabIndex={-1}>
+      {/* role="alert" belongs on this INNER container and not on the one that
+          takes focus. govuk-frontend's own template says why: putting both on one
+          element races the focus against the announcement, and the screen reader
+          drops what it was about to read. Having it on both — which is what this
+          component did until a browser walk found two elements where it expected
+          one — reintroduces exactly the bug the child container exists to avoid. */}
       <div role="alert">
         <h2 className="govuk-error-summary__title">{title}</h2>
         <div className="govuk-error-summary__body">

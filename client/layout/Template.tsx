@@ -96,6 +96,12 @@ function Footer() {
               <li className="govuk-footer__inline-list-item">
                 <a className="govuk-footer__link" href="/about">About this tool</a>
               </li>
+              <li className="govuk-footer__inline-list-item">
+                <a className="govuk-footer__link" href="/personas">Persona library</a>
+              </li>
+              <li className="govuk-footer__inline-list-item">
+                <a className="govuk-footer__link" href="/design">Design system</a>
+              </li>
             </ul>
             <p className="govuk-footer__meta-custom">
               Built with the{' '}

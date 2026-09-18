@@ -16,17 +16,21 @@
     "cli": "node dist/cli.js",
     "dev": "vite",
     "migrate": "node scripts/migrate.mjs",
+    "serve": "node dist/server.js",
     "spike": "node spike/pglite.mjs && node spike/drizzle.mjs && node spike/govuk/build.mjs",
+    "start": "node build.mjs && npm run build:client && node dist/server.js",
     "sync": "node scripts/sync-core.mjs",
     "sync:check": "node scripts/sync-core.mjs --check",
     "test": "vitest run",
-    "test:all": "npm run typecheck && npm test && npm run test:integration && npm run a11y",
+    "test:all": "npm run typecheck && npm test && npm run test:integration && npm run a11y && npm run walk",
     "test:integration": "vitest run --config vitest.integration.config.ts",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "walk": "node build.mjs && npm run build:client && node scripts/walk.mjs"
   },
   "dependencies": {
     "@electric-sql/pglite": "^0.5.8",
     "archiver": "^5.3.2",
+    "busboy": "^1.6.0",
     "docx": "^9.6.1",
     "drizzle-orm": "^0.45.2",
     "govuk-frontend": "^6.5.1",
@@ -41,6 +45,7 @@
   },
   "devDependencies": {
     "@types/archiver": "^6.0.3",
+    "@types/busboy": "^1.5.4",
     "@types/node": "^26.6.1",
     "@types/pdfkit": "0.17.6",
     "@types/react": "^19.3.0",

@@ -28,30 +28,28 @@ describe('policy ingestion and untrusted contracts', () => {
     form.set('document', new Blob([fixture], { type: 'text/plain' }), '../policy.txt');
     await expect(readSubmission(new Request('http://localhost', { method: 'POST', body: form }))).rejects.toThrow('either');
   });
-  // SKIPPED IN THIS BUILD: server/ingest.ts accepts a commissioned model only
-  // if it is in CODEX_MODELS, and a standalone install has no Codex bridge, so
-  // that catalogue is empty and nothing can be commissioned. The pipeline is
-  // behaving as designed; the per-assessment model picker is inert until phase 4
-  // re-points it at OpenRouter. See docs/phase-1.md.
-  it.skip('takes a commissioned model and thinking level, and degrades rather than refusing', async () => {
+  it('takes a commissioned model and thinking level, and degrades rather than refusing', async () => {
     const base = () => { const f = new FormData(); f.set('title', 'A policy'); f.set('text', fixture.toString()); return f; };
     const read = (f: FormData) => readSubmission(new Request('http://localhost', { method: 'POST', body: f }));
 
-    const asked = base(); asked.set('model', 'codex/gpt-5.6-luna'); asked.set('thinkingLevel', 'high');
-    expect(await read(asked)).toMatchObject({ model: 'codex/gpt-5.6-luna', thinkingLevel: 'high' });
+    // DIVERGENCE: OpenRouter ids, because this build has no Codex bridge and
+    // its catalogue is src/lib/server/models/catalogue.ts. Same assertions.
+    const asked = base(); asked.set('model', 'anthropic/claude-sonnet-4.5'); asked.set('thinkingLevel', 'high');
+    expect(await read(asked)).toMatchObject({ model: 'anthropic/claude-sonnet-4.5', thinkingLevel: 'high' });
 
     // Nothing chosen means the research-deep workload decides, as it always did.
     expect(await read(base())).toMatchObject({ model: null, thinkingLevel: null });
 
     // A model nobody catalogues is a request the run cannot honour. Falling back
     // beats failing a submission on a field the reader cannot debug.
-    const unknown = base(); unknown.set('model', 'codex/gpt-9-nonesuch');
+    const unknown = base(); unknown.set('model', 'openai/gpt-9-nonesuch');
     expect(await read(unknown)).toMatchObject({ model: null });
 
-    // `max` is per-model on Codex: gpt-5.5 answers it with a 400 rather than
-    // with less thinking, so it must never reach the bridge.
-    const tooDeep = base(); tooDeep.set('model', 'codex/gpt-5.5'); tooDeep.set('thinkingLevel', 'max');
-    expect(await read(tooDeep)).toMatchObject({ model: 'codex/gpt-5.5', thinkingLevel: null });
+    // `max` and `xhigh` are Codex-only levels; OpenRouter offers off/low/medium/high.
+    // So this is still the same case: a real model, an effort it will not take,
+    // and the model kept while the effort falls back rather than the submission failing.
+    const tooDeep = base(); tooDeep.set('model', 'deepseek/deepseek-v4-flash'); tooDeep.set('thinkingLevel', 'max');
+    expect(await read(tooDeep)).toMatchObject({ model: 'deepseek/deepseek-v4-flash', thinkingLevel: null });
 
     const gibberish = base(); gibberish.set('thinkingLevel', 'ludicrous');
     expect(await read(gibberish)).toMatchObject({ thinkingLevel: null });

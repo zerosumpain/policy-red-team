@@ -34,7 +34,7 @@ const lib = path.join(root, 'src', 'lib');
  * and is erased before this runs. The importer is checked so a future `./provider`
  * somewhere else cannot be silently swapped too.
  */
-function fixtureProviderPlugin(target) {
+function fixtureProviderPlugin(target, clientTarget) {
   return {
     name: 'fixture-provider',
     setup(b) {
@@ -43,13 +43,19 @@ function fixtureProviderPlugin(target) {
         if (!from.endsWith('/policy-analysis/server/worker.ts')) return null;
         return { path: target };
       });
+      // AND the gateway itself. Replacing the provider covers the pipeline, but
+      // `server/personas.ts` calls getLLMClient directly to research a dossier —
+      // which the openrouter.ai check below caught, after the provider swap had
+      // already been declared a success. Redirecting the client closes every
+      // path rather than every path anyone remembered.
+      b.onResolve({ filter: /^\$lib\/llm\/client$/ }, () => ({ path: clientTarget }));
     },
   };
 }
 
-async function bundle({ outfile, plugins = [] }) {
+async function bundle({ outfile, plugins = [], entry = 'cli.ts' }) {
   await build({
-    entryPoints: [path.join(root, 'cli.ts')],
+    entryPoints: [path.join(root, entry)],
     outfile,
     bundle: true,
     platform: 'node',
@@ -74,19 +80,37 @@ async function bundle({ outfile, plugins = [] }) {
 }
 
 await bundle({ outfile: path.join(root, 'dist', 'cli.js') });
+await bundle({ entry: 'server/index.ts', outfile: path.join(root, 'dist', 'server.js') });
+
+const fixtureProvider = () => [
+  fixtureProviderPlugin(
+    path.join(lib, 'policy-analysis', 'server', 'provider.fixture.ts'),
+    path.join(lib, 'llm', 'client.fixture.ts')
+  ),
+];
 
 const fixture = await bundle({
   outfile: path.join(root, 'dist', 'cli-fixture.js'),
-  plugins: [
-    fixtureProviderPlugin(path.join(lib, 'policy-analysis', 'server', 'provider.fixture.ts')),
-  ],
+  plugins: fixtureProvider(),
+});
+
+// A fixture SERVER as well as a fixture CLI, so the browser walk in
+// `scripts/walk.mjs` can go from submit to report without a key and without a
+// bill — and so that walk is a real exercise of the HTTP layer rather than a
+// mock of it.
+const fixtureServer = await bundle({
+  entry: 'server/index.ts',
+  outfile: path.join(root, 'dist', 'server-fixture.js'),
+  plugins: fixtureProvider(),
 });
 
 // The guarantee the fixture build exists to make. `openrouter.ai` reaches the
 // bundle only through the real provider's client; if it is still in there, the
 // alias did not take and the "cannot spend money" claim is false.
-if (fixture.includes('openrouter.ai')) {
-  throw new Error('dist/cli-fixture.js still reaches a provider — the fixture plugin did not apply.');
+for (const [name, source] of [['cli-fixture.js', fixture], ['server-fixture.js', fixtureServer]]) {
+  if (source.includes('openrouter.ai')) {
+    throw new Error(`dist/${name} still reaches a provider — the fixture plugin did not apply.`);
+  }
 }
 
-console.log('built dist/cli.js and dist/cli-fixture.js');
+console.log('built cli.js, cli-fixture.js, server.js and server-fixture.js in dist/');

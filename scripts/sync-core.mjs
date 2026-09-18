@@ -126,6 +126,28 @@ const preview = Boolean(process.env.POLICY_PREVIEW_ORIGIN);`
     out = out.replace(block[0], `    if (preview) {\n${indented}\n    }`);
     return out;
   },
+  // THE MODEL PICKER. Upstream validates a commissioned model against
+  // CODEX_MODELS, because on the site the picker offers subscription-funded
+  // Codex models. This build reaches OpenRouter and nothing else, so it checks
+  // the OpenRouter catalogue instead and asks for that provider's effort levels.
+  // Without this the picker is inert: every submission degrades to null. Two
+  // lines, and the reason is in docs/phase-1.md.
+  'src/lib/policy-analysis/server/ingest.ts': (s) => {
+    let out = s.replace(
+      "import { CODEX_MODELS, toCodexModelId } from '$lib/server/models/codex-catalogue';",
+      "import { isOfferedModel } from '$lib/server/models/catalogue';"
+    );
+    out = out.replace(
+      "  const model = CODEX_MODELS.some((m) => toCodexModelId(m.slug) === askedModel) ? askedModel : null;",
+      "  const model = isOfferedModel(askedModel) ? askedModel : null;"
+    );
+    out = out.replace(
+      "  const offered = thinkingLevelsFor('codex', model);",
+      "  const offered = thinkingLevelsFor('openrouter', model);"
+    );
+    if (out === s) throw new Error('ingest.ts: the commission block moved');
+    return out;
+  },
   'src/lib/policy-analysis/dashboard-shaping.test.ts': (s) =>
     s.replace("from './peek.svelte'", "from './peek'"),
   // The commissioned-model case asserts against CODEX_MODELS, which is empty
@@ -143,16 +165,44 @@ const preview = Boolean(process.env.POLICY_PREVIEW_ORIGIN);`
       )
       .replace("purges to eleven zeroes", "purges to twelve zeroes")
       .replace("expect(probes).toHaveLength(11);", "expect(probes).toHaveLength(12);"),
-  'src/lib/policy-analysis/pipeline.test.ts': (s) =>
-    s.replace(
-      "  it('takes a commissioned model and thinking level, and degrades rather than refusing'",
-      `  // SKIPPED IN THIS BUILD: server/ingest.ts accepts a commissioned model only
-  // if it is in CODEX_MODELS, and a standalone install has no Codex bridge, so
-  // that catalogue is empty and nothing can be commissioned. The pipeline is
-  // behaving as designed; the per-assessment model picker is inert until phase 4
-  // re-points it at OpenRouter. See docs/phase-1.md.
-  it.skip('takes a commissioned model and thinking level, and degrades rather than refusing'`
-    ),
+  // The commissioned-model case, translated rather than skipped. Phase 1 could
+  // not: the catalogue was empty and every assertion was about Codex. Now that
+  // ingest.ts checks the OpenRouter catalogue, each case has a direct equivalent
+  // — including the last one, because `max` is a Codex-only effort level and so
+  // is still "an effort this model will not take".
+  'src/lib/policy-analysis/pipeline.test.ts': (s) => {
+    const replacements = [
+      [
+        "    const asked = base(); asked.set('model', 'codex/gpt-5.6-luna'); asked.set('thinkingLevel', 'high');\n" +
+        "    expect(await read(asked)).toMatchObject({ model: 'codex/gpt-5.6-luna', thinkingLevel: 'high' });",
+        "    // DIVERGENCE: OpenRouter ids, because this build has no Codex bridge and\n" +
+        "    // its catalogue is src/lib/server/models/catalogue.ts. Same assertions.\n" +
+        "    const asked = base(); asked.set('model', 'anthropic/claude-sonnet-4.5'); asked.set('thinkingLevel', 'high');\n" +
+        "    expect(await read(asked)).toMatchObject({ model: 'anthropic/claude-sonnet-4.5', thinkingLevel: 'high' });",
+      ],
+      [
+        "    const unknown = base(); unknown.set('model', 'codex/gpt-9-nonesuch');",
+        "    const unknown = base(); unknown.set('model', 'openai/gpt-9-nonesuch');",
+      ],
+      [
+        "    // `max` is per-model on Codex: gpt-5.5 answers it with a 400 rather than\n" +
+        "    // with less thinking, so it must never reach the bridge.\n" +
+        "    const tooDeep = base(); tooDeep.set('model', 'codex/gpt-5.5'); tooDeep.set('thinkingLevel', 'max');\n" +
+        "    expect(await read(tooDeep)).toMatchObject({ model: 'codex/gpt-5.5', thinkingLevel: null });",
+        "    // `max` and `xhigh` are Codex-only levels; OpenRouter offers off/low/medium/high.\n" +
+        "    // So this is still the same case: a real model, an effort it will not take,\n" +
+        "    // and the model kept while the effort falls back rather than the submission failing.\n" +
+        "    const tooDeep = base(); tooDeep.set('model', 'deepseek/deepseek-v4-flash'); tooDeep.set('thinkingLevel', 'max');\n" +
+        "    expect(await read(tooDeep)).toMatchObject({ model: 'deepseek/deepseek-v4-flash', thinkingLevel: null });",
+      ],
+    ];
+    let out = s;
+    for (const [from, to] of replacements) {
+      if (!out.includes(from)) throw new Error('pipeline.test.ts: the commission case moved');
+      out = out.replace(from, to);
+    }
+    return out;
+  },
 };
 
 const manifest = JSON.parse(await readFile(MANIFEST, 'utf8'));

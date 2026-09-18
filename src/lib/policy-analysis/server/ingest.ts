@@ -3,7 +3,7 @@ import { extractPdf } from '$lib/jkai/extract/pdf';
 import { extractDocx } from '$lib/jkai/extract/docx';
 import type { DocxBlock } from '$lib/jkai/extract/types';
 import { artefact, CONCURRENCY_OPTIONS, DEPTHS, EXTRACTIONS, MATERIAL_ROLES, MAX_BYTES, MAX_CHARACTERS, MAX_PAGES, type Artefact, type Concurrency, type Depth, type Extraction, type MaterialRole, type StageOutput } from '../contracts';
-import { CODEX_MODELS, toCodexModelId } from '$lib/server/models/codex-catalogue';
+import { isOfferedModel } from '$lib/server/models/catalogue';
 import { isThinkingLevel, thinkingLevelsFor, type ThinkingLevel } from '$lib/models/thinking';
 import { PolicyError } from '../validation';
 
@@ -75,9 +75,9 @@ export async function readSubmission(request: Request): Promise<Submission> {
   // run records what it actually called, so the page never claims a model that
   // never answered.
   const askedModel = str('model', 120);
-  const model = CODEX_MODELS.some((m) => toCodexModelId(m.slug) === askedModel) ? askedModel : null;
+  const model = isOfferedModel(askedModel) ? askedModel : null;
   const askedEffort = str('thinkingLevel', 20);
-  const offered = thinkingLevelsFor('codex', model);
+  const offered = thinkingLevelsFor('openrouter', model);
   const thinkingLevel = isThinkingLevel(askedEffort) && offered.includes(askedEffort) ? askedEffort : null;
   // How many units of a fan-out run at once. Same rule as the two above: an
   // unoffered number is a request the run cannot honour, and taking the default

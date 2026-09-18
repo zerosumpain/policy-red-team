@@ -131,11 +131,12 @@
   },
   "divergences": {
     "src/lib/policy-analysis/dashboard-shaping.test.ts": "one import line: './peek.svelte' → './peek'. The 782-line test needs only parseSubject, which is pure; the rest of peek.svelte.ts is a Svelte rune store. Re-point rather than lose the test.",
-    "src/lib/policy-analysis/pipeline.test.ts": "one `it(` → `it.skip(` on the commissioned-model case: it asserts against a Codex catalogue that is empty in this build. Restored in phase 4 against OpenRouter ids.",
+    "src/lib/policy-analysis/pipeline.test.ts": "the commissioned-model case uses OpenRouter ids instead of Codex ones, matching the catalogue this build actually offers. Same assertions; `max` remains an effort the model will not take, because it is a Codex-only level.",
     "src/lib/policy-analysis/persistence.integration.test.ts": "the DATABASE_URL guard becomes a temp-directory guard, and the two browser-driven sections are gated on POLICY_PREVIEW_ORIGIN until phase 4 has a UI to point at.",
     "src/lib/policy-analysis/personas.integration.test.ts": "the DATABASE_URL guard becomes a temp-directory guard.",
     "src/lib/policy-analysis/provider.integration.test.ts": "the DATABASE_URL guard becomes a temp-directory guard.",
-    "src/lib/policy-analysis/sealed.integration.test.ts": "the DATABASE_URL guard becomes a temp-directory guard, AND an upstream bug is fixed: census.ts has twelve probes, the assertion said eleven."
+    "src/lib/policy-analysis/sealed.integration.test.ts": "the DATABASE_URL guard becomes a temp-directory guard, AND an upstream bug is fixed: census.ts has twelve probes, the assertion said eleven.",
+    "src/lib/policy-analysis/server/ingest.ts": "the commissioned model is validated against the OpenRouter catalogue (src/lib/server/models/catalogue.ts) rather than CODEX_MODELS, and effort levels come from the openrouter provider. Without this the picker is inert in a standalone install."
   },
   "notCopied": {
     "src/lib/server/owner.ts + client-address.ts": "SvelteKit request guards. Phase 4's node:http server does this itself; nothing in the pipeline reads them.",
