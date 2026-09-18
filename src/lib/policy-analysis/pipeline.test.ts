@@ -28,18 +28,11 @@ describe('policy ingestion and untrusted contracts', () => {
     form.set('document', new Blob([fixture], { type: 'text/plain' }), '../policy.txt');
     await expect(readSubmission(new Request('http://localhost', { method: 'POST', body: form }))).rejects.toThrow('either');
   });
-  // SKIPPED IN THIS BUILD, and the reason matters. `server/ingest.ts` accepts a
-  // commissioned model only if it appears in CODEX_MODELS. There is no Codex
-  // bridge in a standalone install, so that catalogue is empty and NOTHING can be
-  // commissioned: every submission degrades to null and the run uses the model
-  // from POLICY_RESEARCH_MODEL. The pipeline is behaving exactly as designed —
-  // "degrades rather than refusing", on an empty catalogue — but every assertion
-  // below is about Codex, and rewriting them all to expect null would leave a
-  // test that asserts nothing.
-  //
-  // The real consequence is that the per-assessment model picker is INERT until
-  // phase 4 re-points it at OpenRouter, at which point this test comes back
-  // rewritten against OpenRouter ids. See docs/phase-1.md.
+  // SKIPPED IN THIS BUILD: server/ingest.ts accepts a commissioned model only
+  // if it is in CODEX_MODELS, and a standalone install has no Codex bridge, so
+  // that catalogue is empty and nothing can be commissioned. The pipeline is
+  // behaving as designed; the per-assessment model picker is inert until phase 4
+  // re-points it at OpenRouter. See docs/phase-1.md.
   it.skip('takes a commissioned model and thinking level, and degrades rather than refusing', async () => {
     const base = () => { const f = new FormData(); f.set('title', 'A policy'); f.set('text', fixture.toString()); return f; };
     const read = (f: FormData) => readSubmission(new Request('http://localhost', { method: 'POST', body: f }));

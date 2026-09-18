@@ -24,7 +24,8 @@ import { createAnalysis, detail, loadArtefacts, neighbourSummaries, persistArtef
 vi.mock('./server/research', () => ({ research: async () => ({ artefacts: [], warnings: [] }) }));
 
 const url = process.env.DATABASE_URL ?? '';
-const local = process.env.POLICY_LOCAL_TESTS === '1' && /^postgres(?:ql)?:\/\/[^@]+@(127\.0\.0\.1|localhost):15435\/jkai_local$/.test(url);
+const local = process.env.POLICY_LOCAL_TESTS === '1'
+  && /policy-test-[^/]+\/db$/.test(process.env.POLICY_DATA_DIR ?? '');
 
 // A FRESH OWNER PER TEST. Intake caps an owner at three active analyses, which
 // is the feature working; sharing one owner across six cases just makes the cap
@@ -132,7 +133,7 @@ describe.skipIf(!local)('a sealed run on isolated Postgres', () => {
     expect(neighbours.map((n) => n.id)).not.toContain(shut.id);
   });
 
-  it('purges to eleven zeroes, with the key destroyed first', async () => {
+  it('purges to twelve zeroes, with the key destroyed first', async () => {
     const owner = nextOwner();
     const a = await create(owner, true);
     expect(await readKey(a.id)).not.toBeNull();
@@ -153,7 +154,7 @@ describe.skipIf(!local)('a sealed run on isolated Postgres', () => {
     expect(await readKey(a.id)).toBeNull();
 
     const probes = await census(a.id);
-    expect(probes).toHaveLength(11);
+    expect(probes).toHaveLength(12);
     expect(probes.filter((p) => p.rows !== 0)).toEqual([]);
 
     // The queue envelope is gone too — `policy_stages.run_id` has no cascade, so

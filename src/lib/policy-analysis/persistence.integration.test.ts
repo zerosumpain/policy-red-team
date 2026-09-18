@@ -18,7 +18,10 @@ vi.mock('./server/provider', () => ({ modelCaller: () => async (stage: number, k
 } }));
 vi.mock('./server/research', () => ({ research: async () => ({ artefacts: [], warnings: ['Synthetic test: external research unavailable.'] }) }));
 const url = process.env.DATABASE_URL ?? '';
-const local = process.env.POLICY_LOCAL_TESTS === '1' && /^postgres(?:ql)?:\/\/[^@]+@(127\.0\.0\.1|localhost):15435\/jkai_local$/.test(url);
+const local = process.env.POLICY_LOCAL_TESTS === '1'
+  && /policy-test-[^/]+\/db$/.test(process.env.POLICY_DATA_DIR ?? '');
+/** Browser cases need a running preview to point at. Phase 4. */
+const preview = Boolean(process.env.POLICY_PREVIEW_ORIGIN);
 const created: string[] = [];
 let retainedFixtureId: string | null = null;
 const owner = 'preview@example.test';
@@ -48,7 +51,7 @@ describe.skipIf(!local)('policy pipeline on isolated Postgres', () => {
       await db.execute(sql`delete from workflow_runs where trigger = ${TRIGGER} and input_data->>'analysisId' = ${id}`);
     }
   });
-  it('creates via browser upload, survives browser closure and returns all persisted stages and traceable results', async () => {
+  it.skipIf(!preview)('creates via browser upload, survives browser closure and returns all persisted stages and traceable results', async () => {
     const browser = await chromium.launch({ headless: true });
     let id = '';
     try {
@@ -110,13 +113,15 @@ describe.skipIf(!local)('policy pipeline on isolated Postgres', () => {
     expect(failed?.stages[1].status).toBe('failed');
     expect(failed?.stages[2].status).toBe('pending');
     expect(failed?.executions.filter((e) => e.status === 'failed')).toHaveLength(3);
-    const browser = await chromium.launch({ headless: true });
-    try {
-      const page = await browser.newPage(); await page.goto(`${base}/policy-analysis/${a.id}`);
-      await page.getByRole('button', { name: 'Resume incomplete stages' }).waitFor();
-      await page.getByText('Synthetic malformed output; stage visibly failed.', { exact: true }).first().waitFor();
-      expect(await page.getByRole('status').innerText()).toBe('failed');
-    } finally { await browser.close(); }
+    if (preview) {
+      const browser = await chromium.launch({ headless: true });
+      try {
+        const page = await browser.newPage(); await page.goto(`${base}/policy-analysis/${a.id}`);
+        await page.getByRole('button', { name: 'Resume incomplete stages' }).waitFor();
+        await page.getByText('Synthetic malformed output; stage visibly failed.', { exact: true }).first().waitFor();
+        expect(await page.getByRole('status').innerText()).toBe('failed');
+      } finally { await browser.close(); }
+    }
 
     expect(await loadArtefacts(a.id)).toEqual(before);
     await control(owner, a.id, 'resume'); await advance(a.id);

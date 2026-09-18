@@ -73,12 +73,76 @@ async function resolveAll(manifest) {
  * instead of passing quietly.
  */
 const DIVERGENCES = {
+  // ── The integration suite ────────────────────────────────────────────────
+  //
+  // Upstream guards these destructive tests with a regex over DATABASE_URL,
+  // refusing to run unless it names its isolated Postgres on port 15435. This
+  // build has no connection string, so the same promise is kept by requiring the
+  // data directory to be one tests/setup-integration.ts made under the system
+  // temp directory. The guard is REPLACED, never removed: these tests purge and
+  // delete, and pointing them at a real install must stay hard.
+  ...Object.fromEntries(
+    [
+      'persistence.integration.test.ts',
+      'personas.integration.test.ts',
+      'provider.integration.test.ts',
+      'sealed.integration.test.ts',
+    ].map((name) => [
+      `src/lib/policy-analysis/${name}`,
+      (s) =>
+        s.replace(
+          /^const local = process\.env\.POLICY_LOCAL_TESTS === '1' && \/\^postgres.*$/m,
+          `// DIVERGENCE: upstream keys this off DATABASE_URL naming its isolated
+// Postgres. Here the throwaway database is a temp directory this suite created.
+const local = process.env.POLICY_LOCAL_TESTS === '1'
+  && /policy-test-[^/]+\\/db$/.test(process.env.POLICY_DATA_DIR ?? '');`
+        ),
+    ])
+  ),
+
   // parseSubject is pure and lives in peek.ts here; the rest of upstream's
   // peek.svelte.ts is a Svelte rune store that phase 4 replaces.
+  // Two of the four persistence cases drive a browser against a running preview,
+  // which phase 4 builds. The first is entirely browser-driven and is skipped;
+  // the second only ENDS in the browser, so its block is wrapped and every
+  // database assertion around it still runs.
+  'src/lib/policy-analysis/persistence.integration.test.ts': (s) => {
+    let out = s.replace(
+      /^const local = process\.env\.POLICY_LOCAL_TESTS === '1' && \/\^postgres.*$/m,
+      `const local = process.env.POLICY_LOCAL_TESTS === '1'
+  && /policy-test-[^/]+\\/db$/.test(process.env.POLICY_DATA_DIR ?? '');
+/** Browser cases need a running preview to point at. Phase 4. */
+const preview = Boolean(process.env.POLICY_PREVIEW_ORIGIN);`
+    );
+    out = out.replace(
+      "  it('creates via browser upload,",
+      "  it.skipIf(!preview)('creates via browser upload,"
+    );
+    const block = out.match(
+      /^    const browser = await chromium\.launch\(\{ headless: true \}\);\n    try \{\n[\s\S]*?\n    \} finally \{ await browser\.close\(\); \}$/m
+    );
+    if (!block) throw new Error('persistence: the second browser block moved');
+    const indented = block[0].split('\n').map((l) => (l ? `  ${l}` : l)).join('\n');
+    out = out.replace(block[0], `    if (preview) {\n${indented}\n    }`);
+    return out;
+  },
   'src/lib/policy-analysis/dashboard-shaping.test.ts': (s) =>
     s.replace("from './peek.svelte'", "from './peek'"),
   // The commissioned-model case asserts against CODEX_MODELS, which is empty
   // here. Skipped with its reasoning, not rewritten. Phase 4 restores it.
+  // UPSTREAM BUG, fixed here. census.ts lists TWELVE probes and says so in its
+  // own header — policy_passes was added in b2e2c06 — but this assertion and the
+  // test's name still say eleven, because upstream's integration suite needs a
+  // Docker Postgres and is not run in CI. Reported in docs/phase-2.md.
+  'src/lib/policy-analysis/sealed.integration.test.ts': (s) =>
+    s
+      .replace(
+        /^const local = process\.env\.POLICY_LOCAL_TESTS === '1' && \/\^postgres.*$/m,
+        `const local = process.env.POLICY_LOCAL_TESTS === '1'
+  && /policy-test-[^/]+\\/db$/.test(process.env.POLICY_DATA_DIR ?? '');`
+      )
+      .replace("purges to eleven zeroes", "purges to twelve zeroes")
+      .replace("expect(probes).toHaveLength(11);", "expect(probes).toHaveLength(12);"),
   'src/lib/policy-analysis/pipeline.test.ts': (s) =>
     s.replace(
       "  it('takes a commissioned model and thinking level, and degrades rather than refusing'",

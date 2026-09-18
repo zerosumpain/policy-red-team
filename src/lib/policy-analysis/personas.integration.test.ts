@@ -32,7 +32,10 @@ vi.mock('./server/provider', () => ({ modelCaller: () => async (stage: number, k
 vi.mock('./server/research', () => ({ research: async () => ({ artefacts: [], warnings: ['Synthetic test: external research unavailable.'] }) }));
 
 const url = process.env.DATABASE_URL ?? '';
-const local = process.env.POLICY_LOCAL_TESTS === '1' && /^postgres(?:ql)?:\/\/[^@]+@(127\.0\.0\.1|localhost):15435\/jkai_local$/.test(url);
+// DIVERGENCE: upstream keys this off DATABASE_URL naming its isolated
+// Postgres. Here the throwaway database is a temp directory this suite created.
+const local = process.env.POLICY_LOCAL_TESTS === '1'
+  && /policy-test-[^/]+\/db$/.test(process.env.POLICY_DATA_DIR ?? '');
 const owner = 'persona-fixture@example.test';
 const created: string[] = [];
 

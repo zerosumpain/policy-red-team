@@ -28,7 +28,10 @@ vi.mock('$lib/llm/client', () => ({ getLLMClient: async () => ({ model: 'synthet
   }
   return { model: 'synthetic/test-model', choices: [{ message: { content: mock.malformed ? '{bad' : JSON.stringify(output) } }] };
 } } } } }) }));
-const local = process.env.POLICY_LOCAL_TESTS === '1' && /^postgres(?:ql)?:\/\/[^@]+@(127\.0\.0\.1|localhost):15435\/jkai_local$/.test(process.env.DATABASE_URL ?? '');
+// DIVERGENCE: upstream keys this off DATABASE_URL naming its isolated
+// Postgres. Here the throwaway database is a temp directory this suite created.
+const local = process.env.POLICY_LOCAL_TESTS === '1'
+  && /policy-test-[^/]+\/db$/.test(process.env.POLICY_DATA_DIR ?? '');
 describe.skipIf(!local)('persisted model audit and stage checkpoints', () => {
   it('records provider metadata and malformed output, and reuses a validated call after an interrupted stage', async () => {
     const bytes = readFileSync('tests/fixtures/policy-analysis/policy.txt');

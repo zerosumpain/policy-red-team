@@ -76,7 +76,18 @@ export async function migrate(db, { log = console.log } = {}) {
   return applied;
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+// RUN AS A SCRIPT ONLY WHEN IT REALLY IS THE SCRIPT.
+//
+// `import.meta.url === \`file://${process.argv[1]}\`` is the usual idiom and it is
+// wrong here: esbuild inlines this module into `dist/cli.js`, where import.meta.url
+// becomes the BUNDLE's url — which is exactly `file://` + argv[1]. The block then
+// fired inside the CLI and read argv[2] as a data directory, so `cli list` tried
+// to migrate a database called "list". Checking the filename as well costs
+// nothing and cannot be true inside a bundle.
+const invokedDirectly =
+  import.meta.url === `file://${process.argv[1]}` && /(^|\/)migrate\.mjs$/.test(process.argv[1] ?? '');
+
+if (invokedDirectly) {
   const dataDir = process.argv[2] ?? path.join(ROOT, '.data', 'db');
   const db = new PGlite(dataDir);
   await db.waitReady;

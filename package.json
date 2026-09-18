@@ -8,8 +8,14 @@
     "node": ">=22.23.2"
   },
   "scripts": {
+    "build": "node build.mjs",
+    "assess": "node build.mjs && node dist/cli.js assess",
+    "assess:fixture": "node build.mjs && node dist/cli-fixture.js assess",
+    "cli": "node dist/cli.js",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
+    "test:integration": "vitest run --config vitest.integration.config.ts",
+    "test:all": "npm run typecheck && npm test && npm run test:integration",
     "migrate": "node scripts/migrate.mjs",
     "sync": "node scripts/sync-core.mjs",
     "sync:check": "node scripts/sync-core.mjs --check",
@@ -31,6 +37,7 @@
     "@types/archiver": "^6.0.3",
     "@types/node": "^26.6.1",
     "@types/pdfkit": "0.17.6",
+    "esbuild": "^0.27.4",
     "jszip": "3.10.1",
     "pdfkit": "0.18.0",
     "playwright": "^1.61.1",
