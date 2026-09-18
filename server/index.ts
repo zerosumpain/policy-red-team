@@ -22,6 +22,7 @@ import { sendJson } from './http';
 import { client } from '$lib/db';
 import { migrate } from '../scripts/migrate.mjs';
 import { drain, runWorker } from '$lib/worker';
+import { modelAccessProblem } from '$lib/llm/client';
 
 const ROOT = path.resolve(fileURLToPath(new URL('..', import.meta.url)));
 const CLIENT = path.join(ROOT, 'dist', 'client');
@@ -121,6 +122,15 @@ worker.start();
 
 server.listen(PORT, HOST, () => {
   console.log(`Policy Red Team on http://${HOST}:${PORT}`);
+  // Said at startup rather than at the first failed assessment. Browsing,
+  // reading old reports and downloading exports all work without a key; only a
+  // new run needs one, and finding that out eighteen stages in is no way to
+  // learn it.
+  const problem = modelAccessProblem();
+  if (problem) {
+    console.warn(`\n  ${problem}`);
+    console.warn(`  Existing assessments still open and export; a new one will not start.\n`);
+  }
   if (HOST !== '127.0.0.1' && HOST !== 'localhost') {
     console.warn(
       `\n  WARNING: bound to ${HOST}, not loopback.\n` +

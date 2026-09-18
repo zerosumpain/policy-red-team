@@ -16,6 +16,11 @@ import type { ModelContext } from '$lib/server/models/types';
 
 export function clearLLMClientCache(): void {}
 
+/** Always usable: the fixture model needs no credentials and costs nothing. */
+export function modelAccessProblem(): string | null {
+  return null;
+}
+
 export async function getLLMClient(ctx: ModelContext): Promise<never> {
   throw new Error(
     `This build cannot reach a model (asked for ${ctx.modelId}). It was compiled with the ` +

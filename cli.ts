@@ -32,6 +32,7 @@ import { migrate } from './scripts/migrate.mjs';
 import { createAnalysis, detail, listAnalyses, loadArtefacts } from '$lib/policy-analysis/server/store';
 import { STAGES } from '$lib/policy-analysis/contracts';
 import { drain, isFinished } from '$lib/worker';
+import { modelAccessProblem } from '$lib/llm/client';
 import { getOwnerEmails } from '$lib/server/access';
 import type { Depth } from '$lib/policy-analysis/contracts';
 
@@ -94,6 +95,14 @@ async function assess(file: string, flags: Flags): Promise<number> {
   const depth = (str(flags, 'depth') ?? 'standard') as Depth;
   const quiet = flags.quiet === true;
 
+  // Before anything is written down. An assessment created without a key is a
+  // row, a queue envelope and eighteen pending stages that exist only to fail.
+  const problem = modelAccessProblem();
+  if (problem) {
+    console.error(problem);
+    return 2;
+  }
+
   await migrate(client, { log: () => {} });
 
   const analysis = await createAnalysis(owner, {
@@ -139,6 +148,14 @@ async function assess(file: string, flags: Flags): Promise<number> {
   // stage always does.
   const note = status === 'completed' ? 'Done' : status === 'completed_with_gaps' ? 'Done, with gaps' : status;
   console.log(`\n${note}. Report: ${out}`);
+  if (!isFinished(status)) {
+    // Say WHY. A bare "failed" sends the reader to the report file to find out,
+    // and the report file is the one place the reason is least readable.
+    const full = await detail(owner, analysis.id);
+    const reason = full?.analysis.error ?? full?.stages.find((s) => s.error)?.error;
+    if (reason) console.error(`\n  ${reason}`);
+    console.error(`  Resume it with: policy cli resume ${analysis.id}`);
+  }
   return isFinished(status) ? 0 : 1;
 }
 

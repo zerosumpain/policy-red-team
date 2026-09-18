@@ -24,6 +24,25 @@ const OPENROUTER_BASE_URL = 'https://openrouter.ai/api/v1';
 
 let cached: OpenAI | undefined;
 
+/**
+ * Can this build reach a model at all? Null when it can, otherwise a sentence to
+ * show the reader.
+ *
+ * It exists so a missing key is caught BEFORE an assessment is created rather
+ * than two stages in. The first run of a fresh clone without a key used to end
+ * in "failed." and a report file full of nothing, with the actual cause —
+ * "OPENROUTER_API_KEY is not set" — buried in a stage's error column where the
+ * command line never showed it.
+ */
+export function modelAccessProblem(): string | null {
+  try {
+    getOpenRouterApiKey();
+    return null;
+  } catch (err) {
+    return err instanceof Error ? err.message : String(err);
+  }
+}
+
 /** Dropped between tests, and after a key change. */
 export function clearLLMClientCache(): void {
   cached = undefined;
