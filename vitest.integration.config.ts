@@ -26,7 +26,6 @@ export default defineConfig({
     // every worker got its own Postgres connection; this one cannot.
     pool: 'threads',
     maxWorkers: 1,
-    minWorkers: 1,
     fileParallelism: false,
     testTimeout: 60000,
     hookTimeout: 60000,

@@ -11,7 +11,8 @@
     "strict": true,
     "noEmit": true,
     "skipLibCheck": true,
-    "types": ["node"],
+    "types": ["node", "vite/client"],
+    "jsx": "react-jsx",
     // The `$lib/*` alias is kept, and the directory layout mirrors upstream.
     // That is deliberate: the copied files stay byte-identical to their
     // originals, so `scripts/sync-core.mjs --check` can tell drift from a local
@@ -19,6 +20,14 @@
     // single import line.
     "paths": { "$lib/*": ["./src/lib/*"] }
   },
-  "include": ["src/**/*.ts", "server/**/*.ts", "scripts/**/*.ts"],
+  "include": [
+    "src/**/*.ts",
+    "server/**/*.ts",
+    "scripts/**/*.ts",
+    "client/**/*.ts",
+    "client/**/*.tsx",
+    "*.ts",
+    "*.mjs"
+  ],
   "exclude": ["node_modules", "dist", ".data"]
 }

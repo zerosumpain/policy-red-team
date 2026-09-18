@@ -8,18 +8,21 @@
     "node": ">=22.23.2"
   },
   "scripts": {
-    "build": "node build.mjs",
+    "a11y": "npm run build:client && node scripts/a11y.mjs",
     "assess": "node build.mjs && node dist/cli.js assess",
     "assess:fixture": "node build.mjs && node dist/cli-fixture.js assess",
+    "build": "node build.mjs",
+    "build:client": "vite build",
     "cli": "node dist/cli.js",
-    "typecheck": "tsc --noEmit",
-    "test": "vitest run",
-    "test:integration": "vitest run --config vitest.integration.config.ts",
-    "test:all": "npm run typecheck && npm test && npm run test:integration",
+    "dev": "vite",
     "migrate": "node scripts/migrate.mjs",
+    "spike": "node spike/pglite.mjs && node spike/drizzle.mjs && node spike/govuk/build.mjs",
     "sync": "node scripts/sync-core.mjs",
     "sync:check": "node scripts/sync-core.mjs --check",
-    "spike": "node spike/pglite.mjs && node spike/drizzle.mjs && node spike/govuk/build.mjs"
+    "test": "vitest run",
+    "test:all": "npm run typecheck && npm test && npm run test:integration && npm run a11y",
+    "test:integration": "vitest run --config vitest.integration.config.ts",
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@electric-sql/pglite": "^0.5.8",
@@ -31,12 +34,19 @@
     "marked": "^17.0.6",
     "openai": "^6.32.0",
     "pdfjs-dist": "^5.4.296",
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0",
+    "react-router": "^7.9.1",
     "zod": "^4.3.6"
   },
   "devDependencies": {
     "@types/archiver": "^6.0.3",
     "@types/node": "^26.6.1",
     "@types/pdfkit": "0.17.6",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "@vitejs/plugin-react": "^6.1.1",
+    "axe-core": "^4.13.0",
     "esbuild": "^0.27.4",
     "jszip": "3.10.1",
     "pdfkit": "0.18.0",

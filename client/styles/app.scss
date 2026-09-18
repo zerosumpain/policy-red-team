@@ -1,0 +1,59 @@
+// GOV.UK Frontend, configured for a service that is NOT on GOV.UK.
+//
+// The three settings below are licensing decisions, not taste. GDS Transport is
+// Crown copyright and licensed only to services on GOV.UK, so the font face is
+// never emitted and the family falls back to the stack GOV.UK itself uses off
+// GOV.UK. The crown and the royal arms are never shipped: the only rules that
+// name them belong to the GOV.UK header and footer, which this service does not
+// use. `scripts/a11y.mjs` asserts all of that rather than trusting it.
+//
+// Copied from local-plan-navigator/src/styles/app.scss, which already makes this
+// argument in production. The image and font paths are root-relative here because
+// this app is served from the root and compiled through Vite, which tries to
+// resolve a relative url() at build time and warns when the file is not there.
+@use "govuk-frontend/dist/govuk/index" as govuk with (
+  $govuk-global-styles: true,
+  $govuk-font-family: ("Helvetica Neue", arial, sans-serif),
+  $govuk-include-default-font-face: false,
+  $govuk-images-path: "/assets/govuk/images/",
+  $govuk-fonts-path: "/assets/govuk/fonts/"
+);
+
+// ── The service's own layer ────────────────────────────────────────────────
+//
+// Deliberately thin. Everything GOV.UK has a pattern for uses that pattern; this
+// is only for the handful of things it does not.
+
+.prt-logotype {
+  @include govuk.govuk-font($size: 24, $weight: bold);
+  display: inline-block;
+  vertical-align: middle;
+}
+
+.prt-logotype-tag {
+  margin-left: govuk.govuk-spacing(2);
+  vertical-align: middle;
+}
+
+// A stage row's elapsed time and call count, set beside the status tag. Tabular
+// figures so the column does not jitter as a run advances.
+.prt-meta {
+  @include govuk.govuk-font($size: 16, $tabular: true);
+  color: govuk.govuk-colour("dark-grey");
+}
+
+// The one thing GOV.UK has no pattern for and this product cannot do without: a
+// wide table that must scroll inside its own box rather than push the page
+// sideways. `tabindex` and the label are what make it reachable from a keyboard;
+// axe checks for them.
+.prt-scroll {
+  overflow-x: auto;
+  // A scroll container clips BOTH axes, so anything that needs to overhang —
+  // a focus ring on an edge cell — needs room inside, not outside.
+  padding-bottom: govuk.govuk-spacing(2);
+
+  &:focus-visible {
+    outline: 3px solid govuk.govuk-colour("yellow");
+    outline-offset: 0;
+  }
+}

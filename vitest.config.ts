@@ -19,7 +19,6 @@ export default defineConfig({
     // top-level now, and the old spelling was silently ignored.
     pool: 'threads',
     maxWorkers: 2,
-    minWorkers: 1,
     // Upstream's figure, for upstream's reason: the differential budget test
     // brute-forces bisection against a linear scan across four seeds and takes
     // over five seconds under load, so the 5s default fails it on a busy box

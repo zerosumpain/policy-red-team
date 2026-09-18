@@ -1,0 +1,28 @@
+<!doctype html>
+<!--
+  The classes on <html> and <body> are not decoration.
+
+  GOV.UK Frontend 6 emits NO bare `body` rule: the page shell is `.govuk-template`
+  and `.govuk-template__body`, so an app mounted into an unstyled document renders
+  on the wrong background with the wrong scroll behaviour. Phase 0 found this by
+  grepping the compiled stylesheet for a `body {` that is not there.
+
+  `govuk-template__body` also gets `js-enabled` and `govuk-frontend-supported`
+  added by main.tsx once the script runs, which is what GOV.UK's own template does.
+-->
+<html lang="en-GB" class="govuk-template">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#0b0c0c" />
+    <title>Policy Red Team</title>
+    <meta
+      name="description"
+      content="Reads a policy paper as an adversary would: who gains from it failing, and what they can do about it while staying compliant."
+    />
+  </head>
+  <body class="govuk-template__body">
+    <div id="root"></div>
+    <script type="module" src="./main.tsx"></script>
+  </body>
+</html>
