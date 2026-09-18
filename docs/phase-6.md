@@ -105,3 +105,33 @@ restate. `docs/plan.md` chose full parity, so these are the remainder of it.
 with a real key. Everything in this repository has been verified against a
 deterministic fixture. That proves the machinery and proves nothing whatever
 about the quality of the analysis.
+
+---
+
+## Deployment: policy.strangeramblings.com
+
+18 September 2026. Running on porkserv behind its own cloudflared tunnel.
+
+| | |
+|---|---|
+| Host | porkserv, Node 22.23.2, app on loopback `:5290` |
+| Tunnel | **its own** — `policy-red-team`, `9823a0dc-c408-4e8d-8c06-ed3167228d6b` |
+| Config | `~/porkserv/policy.yml` (box) + `scripts/deploy-porkserv.sh` (tree) |
+| State | `POLICY_READ_ONLY=1`, every mutation a 403 |
+
+**Its own tunnel, not the production one.** The VPS runs one cloudflared serving
+32 hostnames; applying a change means restarting it, which drops all of them at
+once. A demo has no business sharing a lifecycle with the live site.
+
+**`cloudflared tunnel route dns` ignores the tunnel you name it.** It took the
+tunnel from `~/.cloudflared/config.yml` instead — which on homeserv is
+**code-server** — and pointed `policy.strangeramblings.com` at it. The hostname
+404'd because that tunnel's ingress has no rule for it. Pass
+`--config` naming the tunnel you mean, and `--overwrite-dns` to correct a CNAME
+that already went to the wrong place. Nothing broke: code-server has its own auth
+and returned 401 throughout, and production was never touched.
+
+**Still to do, and it is not optional:** a Cloudflare Access policy on the
+hostname. The application has no authentication of any kind. Read-only is the
+second lock, not the first, and anyone with the URL currently reads every
+assessment on the box.
