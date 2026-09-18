@@ -5,3 +5,10 @@ dist/
 dist/
 shots/
 static/policy-offline/
+
+# PGlite writes a directory per database. Four of them were committed by accident
+# in phase 2, when `scripts/migrate.mjs` still had a "run as a script" guard that
+# fired inside the bundled CLI and read argv[2] — a command name — as a data
+# directory. The guard is fixed; this is belt and braces for anything that lands
+# a database at the repo root.
+/*.pglite
