@@ -1,0 +1,18 @@
+-- A sealed run has to be able to record that it made a model call.
+--
+-- `provider.ts` stores `input: null` and `output: null` when the run is sealed:
+-- the prompt carries the paper verbatim and the reply carries the assessment of
+-- it, and the seal exists so that neither is ever written in readable form.
+-- `output` was nullable from the start. `input` was not — so the very first
+-- insert of the very first model call of every sealed assessment violated the
+-- not-null constraint, the fan-out unit died before reaching the provider, three
+-- of those in a row tripped the dead-provider rule, and the stage failed.
+--
+-- Measured 2026-09-18: a sealed deep run failed at stage 1 in 47 seconds having
+-- never reached the model, with fifteen `null value in column "input"` errors in
+-- the Postgres log and not one row in `policy_model_calls`. The sealed feature
+-- shipped 2026-09-11 and no sealed run had ever made a model call.
+--
+-- Idempotent: DROP NOT NULL on a column that is already nullable is a no-op, and
+-- the statement takes no table rewrite.
+ALTER TABLE policy_model_calls ALTER COLUMN input DROP NOT NULL;

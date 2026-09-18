@@ -1,0 +1,30 @@
+// Spike B — GOV.UK Frontend 6 configured for a service that is NOT on GOV.UK.
+//
+// The three settings that matter are licensing, not taste. GDS Transport is
+// Crown copyright and licensed only to services on GOV.UK, so the font face is
+// never emitted and the family falls back to the stack GOV.UK itself uses off
+// GOV.UK. Copied from local-plan-navigator/src/styles/app.scss, which already
+// makes this argument in production.
+@use "govuk-frontend/dist/govuk/index" as govuk with (
+  $govuk-global-styles: true,
+  $govuk-font-family: ("Helvetica Neue", arial, sans-serif),
+  $govuk-include-default-font-face: false,
+  $govuk-images-path: "/assets/govuk/images/",
+  $govuk-fonts-path: "/assets/govuk/fonts/"
+);
+
+// Proof that the Sass API is reachable, not just the compiled classes: the
+// React components will lean on these mixins for anything GOV.UK has no class for.
+//
+// The image and font paths are ROOT-RELATIVE, unlike local-plan-navigator's
+// "./images/". That prototype is served from a subdirectory and compiles with the
+// sass CLI; this one is served from the root and compiles through Vite, which
+// tries to resolve a relative url() at build time and warns when the file is not
+// there. Nothing in this build ships those images, and the only rules that name
+// them are the GOV.UK header and footer crest, which a service off GOV.UK must
+// not use anyway.
+.prt-service-name {
+  @include govuk.govuk-font($size: 24, $weight: bold);
+  color: govuk.govuk-colour("blue");
+  padding: govuk.govuk-spacing(2);
+}

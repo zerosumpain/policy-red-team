@@ -1,0 +1,23 @@
+{
+  "name": "policy-red-team",
+  "private": true,
+  "version": "0.0.0",
+  "description": "Standalone adversarial policy analysis — raw TypeScript, Node and React, GOV.UK Design System, local database.",
+  "type": "module",
+  "engines": {
+    "node": ">=22.22.0"
+  },
+  "scripts": {
+    "migrate": "node scripts/migrate.mjs",
+    "spike": "node spike/pglite.mjs && node spike/drizzle.mjs && node spike/govuk/build.mjs"
+  },
+  "dependencies": {
+    "@electric-sql/pglite": "^0.5.8",
+    "drizzle-orm": "^0.45.2",
+    "govuk-frontend": "^6.5.1"
+  },
+  "devDependencies": {
+    "sass": "^1.104.1",
+    "vite": "^8.3.0"
+  }
+}

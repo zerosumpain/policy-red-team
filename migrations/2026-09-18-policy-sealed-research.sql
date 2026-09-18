@@ -1,0 +1,20 @@
+-- A sealed run the reader has allowed to search externally.
+--
+-- Sealing switches off three things and they are not the same risk. Cross-policy
+-- comparison writes this paper's words into ANOTHER assessment's stored prompt;
+-- the persona library keeps what it learned about a body long after this run is
+-- purged. Both put the document's substance into rows that OUTLIVE it, where
+-- shredding this run's key can never reach, so neither is offered as a choice.
+--
+-- External search is different in kind: nothing of the paper is written down
+-- anywhere this site controls, and the exposure is a search provider's logs.
+-- That is outside the guarantee rather than a hole in it, which is why it can be
+-- offered rather than silently taken — and why the handling note names it in
+-- both states.
+--
+-- NOT NULL DEFAULT false: every sealed run that ran before this did not search,
+-- and false is the value that leaks less. Meaningless on an unsealed run, which
+-- always searches.
+--
+-- Additive and repeatable.
+ALTER TABLE policy_analyses ADD COLUMN IF NOT EXISTS sealed_research boolean NOT NULL DEFAULT false;

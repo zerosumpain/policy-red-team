@@ -1,0 +1,17 @@
+# Apply order. NOT filename order: the two 2026-09-09 files sort the wrong way
+# round, because "depth" precedes "policy" alphabetically while the depth
+# migration alters tables the base migration creates. There is no runner in the
+# source repository — its migrations are applied by hand — so this file is the
+# only record of the order, and a migration copied across the fork must be added
+# to it explicitly.
+0000-local-queue.sql
+2026-09-09-policy-analysis.sql
+2026-09-09-policy-analysis-depth.sql
+2026-09-10-policy-analysis-commission.sql
+2026-09-10-policy-personas.sql
+2026-09-10-policy-shares.sql
+2026-09-11-policy-sealed-runs.sql
+2026-09-12-policy-analysis-concurrency.sql
+2026-09-18-policy-passes.sql
+2026-09-18-policy-sealed-model-calls.sql
+2026-09-18-policy-sealed-research.sql
