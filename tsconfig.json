@@ -1,0 +1,24 @@
+{
+  "compilerOptions": {
+    "target": "ES2023",
+    "lib": ["ES2023", "DOM", "DOM.Iterable"],
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "allowImportingTsExtensions": false,
+    "resolveJsonModule": true,
+    "esModuleInterop": true,
+    "forceConsistentCasingInFileNames": true,
+    "strict": true,
+    "noEmit": true,
+    "skipLibCheck": true,
+    "types": ["node"],
+    // The `$lib/*` alias is kept, and the directory layout mirrors upstream.
+    // That is deliberate: the copied files stay byte-identical to their
+    // originals, so `scripts/sync-core.mjs --check` can tell drift from a local
+    // edit, and a future fix ported across the fork applies without rewriting a
+    // single import line.
+    "paths": { "$lib/*": ["./src/lib/*"] }
+  },
+  "include": ["src/**/*.ts", "server/**/*.ts", "scripts/**/*.ts"],
+  "exclude": ["node_modules", "dist", ".data"]
+}
