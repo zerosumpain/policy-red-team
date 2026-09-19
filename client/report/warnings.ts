@@ -1,5 +1,5 @@
 /**
- * WHAT THE RUN THREW AWAY, read out of its own warnings.
+ * THE REASONS OUTPUT WAS REFUSED — the part `stage-facts.ts` does not do.
  *
  * An assessment is what survived. Nothing in this client rendered stage
  * warnings at all, and on the Post-16 run there were 256 of them holding the
@@ -12,95 +12,43 @@
  * written. A report that says "47 plays" without that number is overclaiming,
  * which is why this is a view rather than a footnote.
  *
- * THIS PARSES PROSE, AND THAT IS A STOPGAP. The warnings are free text written
- * for a human, and four shapes carry counts. The durable version emits these
- * from the stage writer as structured output; this parser exists to prove the
- * view earns that schema change. It is deliberately conservative: anything it
- * does not recognise is kept whole as a note rather than guessed at, because a
- * miscounted discard is worse than an uncounted one — it would understate what
- * the run threw away, in a view whose entire purpose is not to.
+ * COUNTING IS NOT DONE HERE. `$lib/policy-analysis/stage-facts` already parses
+ * this prose, is copied from upstream, and was wired to nothing — so the first
+ * cut of this file grew a second parser of the same sentences and promptly
+ * disagreed with it, recognising four shapes where the copied one recognises
+ * eight. Measured on the Post-16 run, that cost 227 "not covered" and 22
+ * "unavailable" items, filed instead under "notes about what the paper does not
+ * say" — including "176 of 398 source mentions were never resolved into a named
+ * body", which is not a thing the paper failed to say but a thing the run
+ * failed to do, in a view whose whole premise is that distinction.
+ *
+ * So `stageFacts()` counts. What is left here is the roll-up by REASON, which
+ * it does not do: one line saying "26 plays rejected for resting on something
+ * other than an assumption" changes what the report claims about itself, and
+ * forty-one separate warnings saying the same thing do not.
+ *
+ * It parses prose, and that is still a stopgap. The durable version emits these
+ * reasons from the stage writer as structured output.
  */
 
-export type Discard =
-  /** "49 groups of model output were discarded in this stage." */
-  | { kind: 'groups'; count: number; text: string }
-  /** "2 model outputs were discarded … — <reason>. Affected: <ids>" */
-  | { kind: 'artefacts'; count: number; reason: string; affected: string; text: string }
-  /** "4 items referred to something that is not in this assessment…" */
-  | { kind: 'references'; count: number; text: string }
-  /** "4 of 72 pages carry no policy text and were not analysed: …" */
-  | { kind: 'pages'; count: number; total: number; detail: string; text: string }
-  /** Everything else: a note about what the paper does not say. */
-  | { kind: 'note'; text: string };
+/** One discarded group: the count, the reason, and the ids it names. */
+export type Refusal = { count: number; reason: string; affected: string };
 
-export type StageWarnings = { stage: number; label: string; discards: Discard[] };
+const REFUSAL = /^(\d+)\s+model\s+outputs?\s+(?:was|were)\s+discarded[^—-]*[—-]\s*(.*)$/i;
 
-export type DiscardTotals = {
-  groups: number;
-  artefacts: number;
-  references: number;
-  pagesUnread: number;
-  pagesTotal: number;
-  notes: number;
-};
-
-const GROUPS = /^(\d+)\s+groups?\s+of\s+model\s+output\s+(?:was|were)\s+discarded/i;
-const ARTEFACTS = /^(\d+)\s+model\s+outputs?\s+(?:was|were)\s+discarded[^—-]*[—-]\s*(.*)$/i;
-const REFERENCES = /^(\d+)\s+items?\s+referred\s+to\s+something\s+that\s+is\s+not\s+in\s+this\s+assessment/i;
-const PAGES = /^(\d+)\s+of\s+(\d+)\s+pages?\s+carry\s+no\s+policy\s+text[^:]*:?\s*(.*)$/i;
-
-export function parseWarning(text: string): Discard {
-  const trimmed = text.trim();
-
-  const pages = PAGES.exec(trimmed);
-  if (pages) {
-    return { kind: 'pages', count: Number(pages[1]), total: Number(pages[2]), detail: pages[3] ?? '', text: trimmed };
-  }
-
-  const groups = GROUPS.exec(trimmed);
-  if (groups) return { kind: 'groups', count: Number(groups[1]), text: trimmed };
-
-  const artefacts = ARTEFACTS.exec(trimmed);
-  if (artefacts) {
-    // The tail is "<reason>. Affected: <ids>". The reason is what a reader needs;
-    // the ids are what an author needs, so both are kept and shown separately.
-    const tail = artefacts[2] ?? '';
-    const split = tail.search(/\bAffected:/i);
-    return {
-      kind: 'artefacts',
-      count: Number(artefacts[1]),
-      reason: (split >= 0 ? tail.slice(0, split) : tail).trim().replace(/[.\s]+$/, ''),
-      affected: split >= 0 ? tail.slice(split + 'Affected:'.length).trim() : '',
-      text: trimmed,
-    };
-  }
-
-  const references = REFERENCES.exec(trimmed);
-  if (references) return { kind: 'references', count: Number(references[1]), text: trimmed };
-
-  return { kind: 'note', text: trimmed };
-}
-
-export function parseStage(stage: number, label: string, warnings: string[]): StageWarnings {
-  return { stage, label, discards: warnings.map(parseWarning) };
-}
-
-export function totals(stages: StageWarnings[]): DiscardTotals {
-  const out: DiscardTotals = { groups: 0, artefacts: 0, references: 0, pagesUnread: 0, pagesTotal: 0, notes: 0 };
-  for (const stage of stages) {
-    for (const d of stage.discards) {
-      if (d.kind === 'groups') out.groups += d.count;
-      else if (d.kind === 'artefacts') out.artefacts += d.count;
-      else if (d.kind === 'references') out.references += d.count;
-      else if (d.kind === 'pages') {
-        // A page is unread once, whatever how many stages mention it — so the
-        // largest single report wins rather than the sum.
-        out.pagesUnread = Math.max(out.pagesUnread, d.count);
-        out.pagesTotal = Math.max(out.pagesTotal, d.total);
-      } else out.notes += 1;
-    }
-  }
-  return out;
+/** Reads a discard warning, or null when the sentence is a different shape. */
+export function parseRefusal(text: string): Refusal | null {
+  const m = REFUSAL.exec(text.trim());
+  if (!m) return null;
+  const tail = m[2] ?? '';
+  // The tail is "<reason>. Affected: <ids>" — the reason is what a reader needs,
+  // the ids are what an author needs, so both are kept and shown apart.
+  const split = tail.search(/\bAffected:/i);
+  return {
+    count: Number(m[1]),
+    reason: (split >= 0 ? tail.slice(0, split) : tail).trim().replace(/[.\s]+$/, ''),
+    affected: split >= 0 ? tail.slice(split + 'Affected:'.length).trim() : '',
+  };
 }
 
 /**
@@ -113,7 +61,12 @@ export function totals(stages: StageWarnings[]): DiscardTotals {
  * because the exact reason is the only thing that makes a discard checkable.
  */
 export function humaniseReason(reason: string): string {
-  const enumMatch = /^(\w+)\s+data\.(\w+):\s*Invalid option: expected one of (.+)$/i.exec(reason);
+  // NOT ANCHORED. The real sentence is `An artefact did not match its stage
+  // contract (claim data.category: Invalid option: expected one of …)`, so an
+  // anchored pattern matched nothing the pipeline actually writes — 66 of the
+  // Post-16 run's 80 refusals printed their raw zod dump, which is the exact
+  // output this function exists to replace.
+  const enumMatch = /(\w+)\s+data\.(\w+):\s*Invalid option: expected one of ([^)]+)/i.exec(reason);
   if (enumMatch) {
     const [, kind, field, options] = enumMatch;
     const count = options.split('|').length;
@@ -142,18 +95,22 @@ function plural(kind: string): string {
  * something other than an assumption" changes what the report claims about
  * itself; forty-one separate warnings saying the same thing do not.
  */
-export function byReason(stages: StageWarnings[]): { reason: string; human: string; count: number; affected: string[] }[] {
+export function byReason(warnings: string[]): { reason: string; human: string; count: number; affected: string[] }[] {
   const seen = new Map<string, { reason: string; human: string; count: number; affected: string[] }>();
-  for (const stage of stages) {
-    for (const d of stage.discards) {
-      if (d.kind !== 'artefacts') continue;
-      const existing = seen.get(d.reason);
-      if (existing) {
-        existing.count += d.count;
-        if (d.affected) existing.affected.push(d.affected);
-      } else {
-        seen.set(d.reason, { reason: d.reason, human: humaniseReason(d.reason), count: d.count, affected: d.affected ? [d.affected] : [] });
-      }
+  for (const text of warnings) {
+    const refusal = parseRefusal(text);
+    if (!refusal) continue;
+    const existing = seen.get(refusal.reason);
+    if (existing) {
+      existing.count += refusal.count;
+      if (refusal.affected) existing.affected.push(refusal.affected);
+    } else {
+      seen.set(refusal.reason, {
+        reason: refusal.reason,
+        human: humaniseReason(refusal.reason),
+        count: refusal.count,
+        affected: refusal.affected ? [refusal.affected] : [],
+      });
     }
   }
   return [...seen.values()].sort((a, b) => b.count - a.count);

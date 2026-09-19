@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 
 /**
  * SECTIONS OF ONE THING, which is what the framework's Tabs are for.
@@ -21,10 +21,13 @@ import type { ReactNode } from 'react';
  * the key handling are implemented here against the framework's own markup
  * contract, and the class is deliberately not instantiated.
  *
- * THE NO-JAVASCRIPT FALLBACK STILL HOLDS. Without script, `govuk-tabs` renders
- * as a list of links to headed sections and every panel is visible — which is
- * why each panel keeps its heading and none is hidden in the markup this returns
- * until the first render says which is current.
+ * THERE IS NO NO-JAVASCRIPT FALLBACK HERE, and claiming one would be a lie: this
+ * client is a single-page React app, so with script off nothing renders at all.
+ * The framework's fallback exists for a server-rendered page and does not
+ * transfer. What DOES transfer is its narrow-width behaviour, below — the
+ * framework tears the tabs down under `tablet` and shows every panel, and a
+ * component that kept desktop tab semantics on a phone would be showing the
+ * framework's mobile document presentation while hiding five sixths of it.
  */
 export type Tab = {
   id: string;
@@ -35,6 +38,17 @@ export type Tab = {
   panel: ReactNode;
 };
 
+/**
+ * The framework's own breakpoint, in pixels.
+ *
+ * `tabs.mjs` watches `(min-width: tablet)` and calls `teardown()` below it,
+ * stripping every role and un-hiding every panel; the CSS agrees, putting the
+ * whole tab-strip treatment inside the same media query and rendering the list
+ * as em-dash bullets under it. Matching the number here keeps one behaviour
+ * rather than two that disagree about what a phone is.
+ */
+const TABLET = 641;
+
 export function Tabs({ id, label, tabs, current, onSelect }: {
   id: string;
   /** Names the tab list for anyone not looking at it. */
@@ -44,6 +58,22 @@ export function Tabs({ id, label, tabs, current, onSelect }: {
   onSelect: (id: string) => void;
 }) {
   const index = Math.max(0, tabs.findIndex((t) => t.id === current));
+
+  /*
+   * BELOW TABLET THIS IS A DOCUMENT, NOT A TAB STRIP — the same decision the
+   * framework makes, for the same reason: on a phone there is no room for a
+   * strip, so the list becomes an index and every section is simply present.
+   * Keeping the roles and the `hidden` attribute at every width would hide five
+   * sixths of the report behind a control the stylesheet has stopped drawing.
+   */
+  const [stripped, setStripped] = useState(false);
+  useEffect(() => {
+    const query = window.matchMedia(`(min-width: ${TABLET}px)`);
+    const apply = () => setStripped(!query.matches);
+    apply();
+    query.addEventListener('change', apply);
+    return () => query.removeEventListener('change', apply);
+  }, []);
 
   /*
    * ARROW KEYS MOVE, AND MOVING SELECTS. That is the framework's behaviour and
@@ -66,25 +96,35 @@ export function Tabs({ id, label, tabs, current, onSelect }: {
     document.getElementById(`${id}-tab-${tabs[next].id}`)?.focus();
   };
 
+  /*
+   * NO `data-module` ON THE ROOT. That attribute would tell `initAll()` to
+   * instantiate govuk-frontend's Tabs against this markup, and its constructor
+   * requires `a.govuk-tabs__tab` — it throws an ElementError on a button. The
+   * class is deliberately not used, so the hook it looks for is gone too rather
+   * than left as a trap for whoever adds `initAll()` later.
+   */
   return (
-    <div className="govuk-tabs" data-module="govuk-tabs">
+    <div className="govuk-tabs">
       <h2 className="govuk-tabs__title">{label}</h2>
-      <ul className="govuk-tabs__list" role="tablist" aria-label={label} onKeyDown={onKeyDown}>
+      <ul
+        className="govuk-tabs__list"
+        {...(stripped ? {} : { role: 'tablist', 'aria-label': label, onKeyDown })}
+      >
         {tabs.map((tab) => {
           const selected = tab.id === current;
           return (
             <li key={tab.id} className={`govuk-tabs__list-item${selected ? ' govuk-tabs__list-item--selected' : ''}`} role="presentation">
               <button
                 type="button"
-                role="tab"
                 id={`${id}-tab-${tab.id}`}
                 className="govuk-tabs__tab prt-tab"
-                aria-controls={`${id}-panel-${tab.id}`}
-                aria-selected={selected}
+                {...(stripped
+                  ? {}
+                  : { role: 'tab', 'aria-controls': `${id}-panel-${tab.id}`, 'aria-selected': selected })}
                 // ONE STOP FOR THE WHOLE LIST. A tab list is a single tab stop;
                 // the arrow keys move within it. Without this every tab is a
                 // stop and the spine becomes six presses to get past.
-                tabIndex={selected ? 0 : -1}
+                tabIndex={stripped || selected ? 0 : -1}
                 onClick={() => onSelect(tab.id)}
               >
                 {tab.step ? <span className="prt-tab__step">{tab.step}</span> : null}
@@ -97,11 +137,15 @@ export function Tabs({ id, label, tabs, current, onSelect }: {
       {tabs.map((tab) => (
         <section
           key={tab.id}
-          role="tabpanel"
           id={`${id}-panel-${tab.id}`}
-          aria-labelledby={`${id}-tab-${tab.id}`}
           className="govuk-tabs__panel"
-          hidden={tab.id !== current}
+          {...(stripped
+            ? {}
+            : {
+                role: 'tabpanel',
+                'aria-labelledby': `${id}-tab-${tab.id}`,
+                hidden: tab.id !== current,
+              })}
           // Focusable so the panel can take focus when a view is entered from
           // somewhere other than its own tab — following a mechanism from
           // Causality into Threats, for instance.

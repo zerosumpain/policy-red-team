@@ -3,7 +3,7 @@ import { BAND_LABEL, FACTOR_KEYS, type Play } from '$lib/policy-analysis/view';
 import { EXPOSURE_FACTORS } from '$lib/policy-analysis/exposure';
 import type { Artefact } from '$lib/policy-analysis/contracts';
 import { Button } from '../../govuk';
-import { mechanismIdsOf, filterPlays, type Selection } from '../selection';
+import { isEmptyUnder, narrowExcept, type Selection } from '../selection';
 import { EQUAL, isEqual, weightedExposure } from '../weighting';
 
 /**
@@ -21,21 +21,39 @@ import { EQUAL, isEqual, weightedExposure } from '../weighting';
  * proving it reproduces `exposureOf` exactly at equal weights.
  */
 
-export function ThreatsLead({ list, selection, linkTo }: {
+export function ThreatsLead({ list, selection, mechanismIds, linkTo }: {
   list: Play[];
   selection: Selection;
+  /**
+   * Passed in, never rebuilt here.
+   *
+   * This was `mechanismIdsOf([])` — an empty set — so `filterPlays` resolved
+   * every mechanism selection to null and returned NOTHING. Carrying a
+   * mechanism from Causality into this list is the stated reason the spine
+   * exists, and it silently showed "0 plays" instead.
+   */
+  mechanismIds: Set<string>;
   /** Optional, exactly as on `Report`: a report rendered without links still renders. */
   linkTo?: (artefact: Artefact, label?: string) => React.ReactNode;
 }) {
   const [weights, setWeights] = useState<Record<string, number>>(EQUAL);
   const isDefault = isEqual(weights);
-  const mechanismIds = useMemo(() => mechanismIdsOf([]), []);
-  const shown = filterPlays(list, selection, mechanismIds);
+  // The ranked list sets no selection of its own, so it narrows by all three.
+  const shown = narrowExcept(list, selection, mechanismIds, 'band' as never);
+  const empty = isEmptyUnder(list, selection, mechanismIds);
 
-  const ranked = useMemo(() => {
-    if (isDefault) return shown;
-    return [...shown].sort((a, b) => weightedExposure(b, weights) - weightedExposure(a, weights));
-  }, [shown, weights, isDefault]);
+  /*
+   * KEYED ON THE IDS, not on the array. `filterPlays` returns a fresh array
+   * whenever a selection is active, so a dependency on `shown` changed identity
+   * every render and the sort re-ran every time — the memo worked only in the
+   * one case where the sort was already skipped.
+   */
+  const key = shown.map((p) => p.artefact.id).join(',');
+  const ranked = useMemo(
+    () => (isDefault ? shown : [...shown].sort((a, b) => weightedExposure(b, weights) - weightedExposure(a, weights))),
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- `key` stands in for `shown`
+    [key, weights, isDefault],
+  );
 
   if (!list.length) return null;
 
@@ -83,6 +101,7 @@ export function ThreatsLead({ list, selection, linkTo }: {
           ? `${ranked.length} plays, ranked by the assessment’s exposure.`
           : `${ranked.length} plays, re-ranked. The assessment’s own exposure is printed on each one.`}
       </p>
+      {empty ? <p className="govuk-body">Nothing under this selection.</p> : null}
       <ol className="govuk-list govuk-list--spaced" aria-labelledby="ranked">
         {ranked.map((play) => (
           <li key={play.artefact.id}>

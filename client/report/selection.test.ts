@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { artefact } from '$lib/policy-analysis/contracts';
-import { describeSelection, filterPlays, isEmptyUnder, mechanismIdsOf, mechanismOf } from './selection';
+import { describeSelection, filterPlays, isEmptyUnder, mechanismIdsOf, mechanismOf, narrowExcept } from './selection';
 import type { Play } from '$lib/policy-analysis/view';
 
 /**
@@ -75,5 +75,26 @@ describe('saying what is selected, in words', () => {
       .toBe('Showing what follows from “A market monitoring function”.');
     expect(describeSelection({ kind: 'actor', id: 'a1', label: 'Ofsted' })).toContain('Ofsted');
     expect(describeSelection({ kind: 'band', id: 'severe' })).toContain('severe');
+  });
+});
+
+describe('a picker never narrows by its own kind', () => {
+  it('keeps every band visible when a band is selected', () => {
+    // Otherwise picking "severe" leaves no way to pick "moderate" without
+    // clearing first — the interaction the carried selection exists to avoid.
+    const narrowed = narrowExcept(list, { kind: 'band', id: 'severe' }, ids, 'band');
+    expect(narrowed).toBe(list);
+  });
+
+  it('but narrows by the other two kinds', () => {
+    const byActor = narrowExcept(list, { kind: 'actor', id: 'a1', label: 'A' }, ids, 'band');
+    expect(byActor.map((p) => p.artefact.id)).toEqual(['p1', 'p2']);
+  });
+
+  it('counts a mechanism’s plays under a band selection', () => {
+    // "Showing severe exposure only" must not leave a mechanism claiming six
+    // plays when only one of them is severe.
+    const severe = narrowExcept(list, { kind: 'band', id: 'severe' }, ids, 'mechanism');
+    expect(severe.map((p) => p.artefact.id)).toEqual(['p1', 'p3']);
   });
 });

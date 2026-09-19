@@ -1,7 +1,7 @@
 import { useMemo } from 'react';
-import { STAGES } from '$lib/policy-analysis/contracts';
+import { factLabel, stageFacts } from '$lib/policy-analysis/stage-facts';
 import { Details, Table } from '../../govuk';
-import { byReason, parseStage, totals, type StageWarnings } from '../warnings';
+import { byReason } from '../warnings';
 
 /**
  * WHAT THE RUN THREW AWAY, AND WHY.
@@ -17,18 +17,18 @@ import { byReason, parseStage, totals, type StageWarnings } from '../warnings';
  * seventy-three written. A report that says "47 plays" without that is
  * overclaiming, which is why this is a view and not a footnote.
  *
- * It parses prose, and `warnings.ts` says at length why that is a stopgap.
+ * THE COUNTING IS `stage-facts.ts`, which is copied from upstream and had been
+ * wired to nothing. A second parser written here recognised four sentence shapes
+ * where the copied one recognises eight, and undercounted by 227 "not covered"
+ * and 22 "unavailable" items — in the one view whose premise is that an
+ * undercount is the serious direction.
  */
 export function ProvenanceLead({ stages }: { stages: { warnings: string[] }[] }) {
-  const parsed: StageWarnings[] = useMemo(
-    () => stages.map((stage, i) => parseStage(i, STAGES[i] ?? `Stage ${i}`, stage.warnings ?? [])),
-    [stages],
-  );
-  const figures = useMemo(() => totals(parsed), [parsed]);
-  const reasons = useMemo(() => byReason(parsed), [parsed]);
+  const warnings = useMemo(() => stages.flatMap((s) => s.warnings ?? []), [stages]);
+  const facts = useMemo(() => stageFacts(warnings), [warnings]);
+  const reasons = useMemo(() => byReason(warnings), [warnings]);
 
-  const anything = figures.groups + figures.artefacts + figures.references + figures.pagesUnread;
-  if (!anything) return null;
+  if (!facts.length) return null;
 
   return (
     <section aria-labelledby="discarded">
@@ -38,23 +38,15 @@ export function ProvenanceLead({ stages }: { stages: { warnings: string[] }[] })
         refused, every reference it could not resolve, and the reason it gave in each case.
       </p>
 
+      {/* `factLabel` writes each sentence, so the wording is the copied layer's
+          and one change lands everywhere rather than in two vocabularies. */}
       <dl className="prt-figures">
-        <div>
-          <dt>Groups of model output discarded</dt>
-          <dd>{figures.groups}</dd>
-        </div>
-        <div>
-          <dt>Artefacts refused by a stage contract</dt>
-          <dd>{figures.artefacts}</dd>
-        </div>
-        <div>
-          <dt>References dropped as unresolvable</dt>
-          <dd>{figures.references}</dd>
-        </div>
-        <div>
-          <dt>Pages carrying no policy text</dt>
-          <dd>{figures.pagesUnread}{figures.pagesTotal ? ` of ${figures.pagesTotal}` : ''}</dd>
-        </div>
+        {facts.map((fact) => (
+          <div key={fact.kind}>
+            <dt>{factLabel(fact).replace(/^\d[\d,]*\s*(of\s+\d+\s*)?/, '')}</dt>
+            <dd>{fact.count}{fact.of !== null ? ` of ${fact.of}` : ''}</dd>
+          </div>
+        ))}
       </dl>
 
       {reasons.length ? (
@@ -85,13 +77,9 @@ export function ProvenanceLead({ stages }: { stages: { warnings: string[] }[] })
         </>
       ) : null}
 
-      {figures.notes ? (
-        <p className="govuk-body-s prt-meta govuk-!-margin-top-4">
-          A further {figures.notes} warnings are notes about what the paper does not say, rather
-          than output that was discarded. They are why so much of the assessment reads as
-          provisional.
-        </p>
-      ) : null}
+      <p className="govuk-body-s prt-meta govuk-!-margin-top-4">
+        Read from {warnings.length} warnings the run recorded about itself.
+      </p>
     </section>
   );
 }

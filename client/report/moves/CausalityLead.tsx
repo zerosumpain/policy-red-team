@@ -1,7 +1,7 @@
 import { useMemo } from 'react';
 import { BAND_LABEL, type Play } from '$lib/policy-analysis/view';
 import type { Artefact } from '$lib/policy-analysis/contracts';
-import { filterPlays, mechanismIdsOf, mechanismOf, type Selection } from '../selection';
+import { filterPlays, mechanismOf, narrowExcept, type Selection } from '../selection';
 
 /**
  * THE MECHANISMS THAT GENERATE THE MOST PLAYS.
@@ -16,19 +16,31 @@ import { filterPlays, mechanismIdsOf, mechanismOf, type Selection } from '../sel
  * stacked inside the bar rather than averaged into a colour, and the counts are
  * printed.
  */
-export function CausalityLead({ artefacts, list, selection, onSelect, linkTo }: {
+export function CausalityLead({ artefacts, list, selection, onSelect, mechanismIds, linkTo }: {
   artefacts: Artefact[];
   list: Play[];
   selection: Selection;
   onSelect: (selection: Selection) => void;
+  /** Passed in rather than rebuilt, so one definition of "is a mechanism" serves every view. */
+  mechanismIds: Set<string>;
   /** Optional, exactly as on `Report`: a report rendered without links still renders. */
   linkTo?: (artefact: Artefact, label?: string) => React.ReactNode;
 }) {
-  const mechanismIds = useMemo(() => mechanismIdsOf(artefacts), [artefacts]);
+  /*
+   * COUNTED UNDER THE SELECTION, except when a mechanism is the selection — the
+   * bars are how a reader changes it, so they keep every mechanism. Before this
+   * the rows ignored `selection` entirely, and a mechanism with one severe play
+   * and five limited ones still claimed "6 plays" under a banner reading
+   * "Showing severe exposure only".
+   */
+  const counted = useMemo(
+    () => narrowExcept(list, selection, mechanismIds, 'mechanism'),
+    [list, selection, mechanismIds],
+  );
 
   const rows = useMemo(() => {
     const byMechanism = new Map<string, Play[]>();
-    for (const play of list) {
+    for (const play of counted) {
       const id = mechanismOf(play, mechanismIds);
       if (!id) continue;
       byMechanism.set(id, [...(byMechanism.get(id) ?? []), play]);
@@ -38,7 +50,7 @@ export function CausalityLead({ artefacts, list, selection, onSelect, linkTo }: 
       .map(([id, plays]) => ({ mechanism: mechanisms.get(id)!, plays }))
       .filter((row) => row.mechanism)
       .sort((a, b) => b.plays.length - a.plays.length);
-  }, [artefacts, list, mechanismIds]);
+  }, [artefacts, counted, mechanismIds]);
 
   if (!rows.length) return null;
   const widest = rows[0].plays.length;

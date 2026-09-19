@@ -76,3 +76,29 @@ export function mechanismIdsOf(artefacts: Artefact[]): Set<string> {
 export function isEmptyUnder(list: Play[], selection: Selection, mechanismIds: Set<string>): boolean {
   return Boolean(selection) && filterPlays(list, selection, mechanismIds).length === 0;
 }
+
+/**
+ * Narrow a list, EXCEPT by the kind of selection this control itself sets.
+ *
+ * A control that chooses a band must keep showing every band, or the reader who
+ * picked "severe" has no way to pick "moderate" — they would have to clear the
+ * selection first, which is the interaction the carried selection exists to
+ * avoid. The same holds for the mechanism bars and the actor board.
+ *
+ * So each of the three pickers narrows by the OTHER two kinds and never by its
+ * own. Selecting a body and opening Causality shows every mechanism, counted by
+ * the plays that body is positioned to run — which is the question the pairing
+ * actually asks.
+ *
+ * Written down here rather than repeated in three components because it was not
+ * written down at all in the first cut, and all three got it differently.
+ */
+export function narrowExcept(
+  list: Play[],
+  selection: Selection,
+  mechanismIds: Set<string>,
+  own: NonNullable<Selection>['kind'],
+): Play[] {
+  if (selection?.kind === own) return list;
+  return filterPlays(list, selection, mechanismIds);
+}

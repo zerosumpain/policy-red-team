@@ -8,7 +8,7 @@ import { network } from '$lib/policy-analysis/network';
 import { leverage } from '$lib/policy-analysis/stress';
 import type { Detail } from '../api';
 import { Accordion, Details, InsetText, SummaryList, Table, Tabs, Tag, WarningText } from '../govuk';
-import { mechanismIdsOf, type Selection } from './selection';
+import { mechanismIdsOf, narrowExcept, type Selection } from './selection';
 import { SelectionBanner } from './moves/SelectionBanner';
 import { VerdictLead } from './moves/VerdictLead';
 import { CausalityLead } from './moves/CausalityLead';
@@ -121,8 +121,27 @@ export function Report({ detail, offline, linkTo, onChanged }: {
   /** The name of a thing, and — where the caller can offer one — the way into it. */
   const name = (artefact: Artefact): ReactNode => (linkTo ? linkTo(artefact) : artefact.label);
 
+  /*
+   * Declared before the shaping, because the board and the leads all narrow by
+   * them now. Order matters here in a way it did not when the report was one
+   * cascade that honoured no selection at all.
+   */
+  const [move, setMove] = useState<Move>('verdict');
+  const [selection, setSelection] = useState<Selection>(null);
+  const mechanismIds = useMemo(() => mechanismIdsOf(artefacts), [artefacts]);
+
   const list = plays(artefacts);
-  const board = actorBoard(artefacts, list);
+  /*
+   * NARROWED, EXCEPT BY A BODY. The board is how a reader picks a body, so it
+   * keeps every row when a body is selected — but a band or mechanism selection
+   * must change the counts, or twenty rows sit unchanged under a banner saying
+   * the view is filtered. It was built from the raw list and honoured nothing.
+   */
+  const boardPlays = useMemo(
+    () => narrowExcept(list, selection, mechanismIds, 'actor'),
+    [list, selection, mechanismIds],
+  );
+  const board = useMemo(() => actorBoard(artefacts, boardPlays), [artefacts, boardPlays]);
   const warnings = stages.flatMap((s) => s.warnings);
   const figures = ledger(artefacts, list, warnings.length);
   const headline = headlineSentence(artefacts);
@@ -142,9 +161,6 @@ export function Report({ detail, offline, linkTo, onChanged }: {
   /** Run here rather than inside the panel, so the section can decide whether to exist. */
   const levers = useMemo(() => leverage(artefacts), [artefacts]);
 
-  const [move, setMove] = useState<Move>('verdict');
-  const [selection, setSelection] = useState<Selection>(null);
-  const mechanismIds = useMemo(() => mechanismIdsOf(artefacts), [artefacts]);
 
   const sections: Section[] = [];
   const section = (id: string, title: string, move: Move, body: React.ReactNode) => {
@@ -479,15 +495,15 @@ export function Report({ detail, offline, linkTo, onChanged }: {
         tabs={[
           {
             id: 'verdict', step: 'Move 1', label: 'Verdict',
-            panel: panel('verdict', <VerdictLead list={list} bands={bands} selection={selection} onSelect={setSelection} linkTo={linkTo} />),
+            panel: panel('verdict', <VerdictLead list={list} bands={bands} selection={selection} onSelect={setSelection} mechanismIds={mechanismIds} linkTo={linkTo} />),
           },
           {
             id: 'causality', step: 'Move 2', label: 'Causality',
-            panel: panel('causality', <CausalityLead artefacts={artefacts} list={list} selection={selection} onSelect={setSelection} linkTo={linkTo} />),
+            panel: panel('causality', <CausalityLead artefacts={artefacts} list={list} selection={selection} onSelect={setSelection} mechanismIds={mechanismIds} linkTo={linkTo} />),
           },
           {
             id: 'threats', step: 'Move 3', label: 'Threats',
-            panel: panel('threats', <ThreatsLead list={list} selection={selection} linkTo={linkTo} />),
+            panel: panel('threats', <ThreatsLead list={list} selection={selection} mechanismIds={mechanismIds} linkTo={linkTo} />),
           },
           {
             id: 'actors', step: 'Move 4', label: 'Actors',

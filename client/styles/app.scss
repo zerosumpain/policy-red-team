@@ -137,10 +137,38 @@
   &--limited { background: var(--band-limited); color: var(--band-ink-light); }
 }
 
-// The step number above a tab label. The framework has no slot for it, and it is
-// the one addition to its Tabs: it says the first four are an order worth
-// reading in without making them a journey a reader cannot leave.
+// A BUTTON WEARING MARKUP STYLED FOR AN ANCHOR, so it needs what an anchor gets
+// for free.
+//
+// `.govuk-tabs__tab` sets no `font-size` — an anchor inherits 19px from
+// `.govuk-tabs`, a button keeps the user agent's 13.333px Arial, which made the
+// step number render LARGER than the label it sits above. Its colour rules are
+// `:link` and `:visited`, neither of which matches a button, so the tab took no
+// colour from the design system at all. And without a chrome reset the UA's
+// button background paints over `--selected`'s white, which at tablet and up is
+// the only cue for which move you are on.
+//
+// `:focus` and `:hover` are not link-gated, so the yellow focus state survives
+// untouched — which is why this resets the chrome and not those.
 .prt-tab {
+  -webkit-appearance: none;
+  appearance: none;
+  background: none;
+  border: 0;
+  cursor: pointer;
+  font-family: inherit;
+  @include govuk.govuk-font($size: 19);
+  color: govuk.govuk-colour("blue");
+
+  // The framework's own selected treatment, which only lands on an anchor.
+  .govuk-tabs__list-item--selected & {
+    color: govuk.govuk-colour("black");
+    text-decoration: none;
+  }
+
+  // The step number above the label. The framework has no slot for it, and it is
+  // the one addition to its Tabs: it says the first four are an order worth
+  // reading in without making them a journey a reader cannot leave.
   &__step {
     display: block;
     @include govuk.govuk-font($size: 16);

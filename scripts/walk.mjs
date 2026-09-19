@@ -158,8 +158,19 @@ try {
     failures.push('report: no exposure band to select');
   }
 
+  /*
+   * EVERY MOVE IS AUDITED, not just the one that happens to be open.
+   *
+   * `hidden` content is invisible to axe, so a single run with Verdict showing
+   * audited a fifth of the report — the weighting sliders, the mechanism bars
+   * and the provenance table would all have shipped unchecked. Before the moves
+   * this was one visible cascade and one run covered it.
+   */
+  for (const [tab] of MOVES) {
+    await page.getByRole('tab', { name: new RegExp(tab, 'i') }).click();
+    await audit(`/assessments/:id (report — ${tab})`);
+  }
   await page.getByRole('tab', { name: /verdict/i }).click();
-  await audit('/assessments/:id (report)');
   note(`report rendered for ${id}, four moves with a carried selection`);
 
   // 5 — the diagram and its table are both reachable, which the accessibility
@@ -542,11 +553,37 @@ try {
   // phone they have to fit on. `<Table scroll>` is the fix and this is what
   // notices the next one.
   await page.setViewportSize({ width: 320, height: 800 });
-  for (const [label, url] of [['report', `http://127.0.0.1:${PORT}/assessments/${id}`], ['drill', drillUrl]]) {
+  for (const [label, url, ready] of [
+    // WAIT FOR THE CONTENT, NOT THE SHELL. `Template` paints an h1 before the
+    // detail request returns, so waiting on a level-1 heading measured a page
+    // that had not drawn a single table yet — this check has been passing on an
+    // empty page. The second wait names something only the loaded report has.
+    ['report', `http://127.0.0.1:${PORT}/assessments/${id}`, 'What it found'],
+    ['drill', drillUrl, null],
+  ]) {
     await page.goto(url, { waitUntil: 'networkidle' });
     await page.getByRole('heading', { level: 1 }).waitFor({ timeout: 20000 });
+    if (ready) await page.getByRole('heading', { name: ready }).waitFor({ timeout: 30000 });
     const wide = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
     if (wide > 0) failures.push(`${label}: at 320px the page scrolls ${wide}px sideways — a table needs <Table scroll>`);
+  }
+
+  /*
+   * AND THIS CHECK ONLY WORKS BECAUSE EVERY MOVE IS VISIBLE AT 320px.
+   *
+   * `Tabs` tears its own semantics down below the framework's tablet breakpoint
+   * and stops hiding panels, exactly as `tabs.mjs` does — so at this width the
+   * report is one document again and every table is measured. Hide them here and
+   * the check silently narrows to whichever move happens to be open, which is
+   * what it did for one build of the moves. Asserted rather than assumed.
+   */
+  await page.goto(`http://127.0.0.1:${PORT}/assessments/${id}`, { waitUntil: 'networkidle' });
+  await page.getByRole('heading', { name: 'What it found' }).waitFor({ timeout: 30000 });
+  const narrow = await page.locator('#main-content').innerText();
+  for (const heading of ['Ways to beat it', 'Who is involved', 'How they connect']) {
+    if (!narrow.includes(heading)) {
+      failures.push(`report at 320px: "${heading}" is hidden, so the reflow check cannot see its tables`);
+    }
   }
   await page.setViewportSize({ width: 1280, height: 900 });
   note('nothing overflows at 320px');
