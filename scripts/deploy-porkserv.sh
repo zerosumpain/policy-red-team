@@ -30,6 +30,14 @@ for required in dist/server.js dist/client/index.html static/policy-offline/app.
 done
 
 echo "shipping to $HOST:$DEST"
+# `data/` IS THIS MACHINE'S KEYS, and it is excluded for the same reason `.env`
+# is. `keyDir()` falls back to `<cwd>/data/policy-keys` when POLICY_SEAL_KEY_DIR
+# is unset, so the local tree holds the AES key that encrypts THIS machine's
+# settings — the provider secrets among them. porkserv sets the variable and
+# keeps its own keys in /var/lib/policy-red-team/keys, so copying ours over
+# breaks nothing there today; it would simply put a working key to our secrets
+# in a directory on another box, and one env change away from being the key that
+# box reads instead of its own.
 # node_modules goes too: the bundles are built with `packages: 'external'`, so the
 # dependencies are needed at runtime and `npm ci` on the box would be a second
 # resolution that could differ from the one that was tested.
@@ -38,6 +46,7 @@ rsync -a --delete \
   --exclude '.data' \
   --exclude 'shots' \
   --exclude '.env' \
+  --exclude 'data' \
   ./ "$HOST:$DEST/"
 
 echo "restarting"
