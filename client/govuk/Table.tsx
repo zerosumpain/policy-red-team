@@ -30,9 +30,20 @@ export function Table({
       {caption ? <caption className={`govuk-table__caption govuk-table__caption--${captionSize}`}>{caption}</caption> : null}
       <thead className="govuk-table__head">
         <tr className="govuk-table__row">
+          {/*
+            A NUMERIC COLUMN NEVER WRAPS ITS OWN HEADING. The browser sizes a
+            column to its content, and a column of two-digit counts is narrower
+            than the word above it — so "Artefacts" rendered as a vertical stack
+            of four letters beside rows of prose that had taken all the width.
+            `white-space: nowrap` makes the heading the floor for its column.
+          */}
           {columns.map((column, i) => (
             <th key={i} scope="col" style={column.width ? { width: column.width } : undefined}
-                className={cx('govuk-table__header', column.numeric && 'govuk-table__header--numeric')}>
+                className={cx(
+                  'govuk-table__header',
+                  column.numeric && 'govuk-table__header--numeric',
+                  column.numeric && 'prt-nowrap',
+                )}>
               {column.header}
             </th>
           ))}

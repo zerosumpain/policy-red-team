@@ -1,6 +1,7 @@
 import { useMemo } from 'react';
 import { factLabel, stageFacts } from '$lib/policy-analysis/stage-facts';
 import { Details, Table } from '../../govuk';
+import { Metrics } from '../Metrics';
 import { byReason } from '../warnings';
 
 /**
@@ -38,16 +39,25 @@ export function ProvenanceLead({ stages }: { stages: { warnings: string[] }[] })
         refused, every reference it could not resolve, and the reason it gave in each case.
       </p>
 
-      {/* `factLabel` writes each sentence, so the wording is the copied layer's
-          and one change lands everywhere rather than in two vocabularies. */}
-      <dl className="prt-figures">
-        {facts.map((fact) => (
-          <div key={fact.kind}>
-            <dt>{factLabel(fact).replace(/^\d[\d,]*\s*(of\s+\d+\s*)?/, '')}</dt>
-            <dd>{fact.count}{fact.of !== null ? ` of ${fact.of}` : ''}</dd>
-          </div>
-        ))}
-      </dl>
+      {/*
+        `factLabel` writes each sentence, so the wording is the copied layer's
+        and one change lands everywhere. The label is stripped of its leading
+        figure because the figure is the card.
+      */}
+      {/*
+        THREE ACROSS, NOT SIX. Six figures on one row gave each 160px, so every
+        label wrapped to three lines and the cards stood at three different
+        heights — a row of figures that reads as a ragged paragraph is not a row
+        of figures. Two rows of three give each label one line.
+      */}
+      <Metrics
+        columns={3}
+        metrics={facts.map((fact) => ({
+          label: factLabel(fact).replace(/^\d[\d,]*\s*(of\s+[\d,]+\s*)?/, ''),
+          value: fact.count.toLocaleString(),
+          note: fact.of !== null ? `of ${fact.of.toLocaleString()}` : undefined,
+        }))}
+      />
 
       {reasons.length ? (
         <>
@@ -66,7 +76,10 @@ export function ProvenanceLead({ stages }: { stages: { warnings: string[] }[] })
                 {/* The contract's own words are kept, never replaced: the exact
                     reason is the only thing that makes a discard checkable. */}
                 <Details summary="The contract’s own words">
-                  <p className="govuk-body-s"><code>{entry.reason}</code></p>
+                  {/* `<pre>` rather than a paragraph: a zod union lists twenty-six
+                      quoted kinds and reflowing it as prose made a wall nobody
+                      could read a value out of. It scrolls in its own box. */}
+                  <pre className="prt-contract">{entry.reason}</pre>
                   {entry.affected.length ? (
                     <p className="govuk-body-s prt-meta">Affected: {entry.affected.join('; ')}</p>
                   ) : null}

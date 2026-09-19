@@ -197,7 +197,19 @@ export function Addenda({ analysisId, status, artefacts, passes, readOnly, linkT
               <ErrorSummary errors={errors.map((text) => ({ text, href: '#material-role' }))} />
             ) : null}
 
-            <h3 className="govuk-heading-s">Add something to it</h3>
+            {/*
+              THE FORM OPENS ON REQUEST, and that is a measured decision rather
+              than tidiness. Eight radios with hints, a file picker, two
+              textareas and a button ran to about 1,300px — roughly a sixth of
+              the whole report — permanently open at the foot of the page, so a
+              reader who scrolled to the end of the assessment's conclusions
+              arrived at a file picker. Attaching a later draft is a real thing
+              to do and a rare one; the report is what the page is for.
+
+              The error summary stays OUTSIDE it: a validation failure inside a
+              shut disclosure is a page that reports nothing went wrong.
+            */}
+            <Details summary="Add something to it" open={errors.length > 0}>
             <form onSubmit={(e) => void attach(e)} noValidate>
               {/*
                 THE ROLE IS NOT A LABEL, IT IS AN INSTRUCTION TO THE READING.
@@ -249,8 +261,9 @@ export function Addenda({ analysisId, status, artefacts, passes, readOnly, linkT
                 </Button>
               </ButtonGroup>
             </form>
+            </Details>
 
-            <h3 className="govuk-heading-s">Write the report again</h3>
+            <Details summary="Write the report again">
             <p className="govuk-body">
               A restatement rewrites the assured synthesis over everything, including what has been
               added since. The superseded report is kept — it is still stored, still cited by its
@@ -272,6 +285,7 @@ export function Addenda({ analysisId, status, artefacts, passes, readOnly, linkT
                  explain — the argument the landing page has made since phase 4. */
               <InsetText>{restate.because}</InsetText>
             )}
+            </Details>
           </div>
         </div>
       )}

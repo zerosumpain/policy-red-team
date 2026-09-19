@@ -234,7 +234,11 @@
 
 .prt-nodebar {
   display: grid;
-  grid-template-columns: minmax(12em, 2fr) 3fr auto;
+  // The name column was 2fr against the bar's 3fr, so a 350px label wrapped
+  // "Integrated higher education supply-and-demand monitoring" onto two lines
+  // while the bar track beside it stood mostly empty — every bar but the first
+  // is shorter than its track by definition.
+  grid-template-columns: minmax(12em, 24em) minmax(0, 1fr) auto;
   gap: govuk.govuk-spacing(3);
   align-items: center;
   padding: govuk.govuk-spacing(1) 0;
@@ -263,13 +267,22 @@
 }
 
 // The weighting control.
+// FOUR CONTROLS, TWO BY TWO. `auto-fit` at 220px put three on the first row
+// and left "Concealment" alone underneath — and at 300px per column every hint
+// wrapped to a different number of lines, so the four sliders sat at four
+// different heights and the row of them read as a ragged list rather than one
+// control. Two columns give every hint a single line and the sliders line up.
 .prt-weights {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-  gap: govuk.govuk-spacing(4);
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: govuk.govuk-spacing(4) govuk.govuk-spacing(6);
   border: 1px solid govuk.govuk-colour("mid-grey");
   padding: govuk.govuk-spacing(4);
   margin-bottom: govuk.govuk-spacing(4);
+
+  @include govuk.govuk-media-query($until: tablet) {
+    grid-template-columns: minmax(0, 1fr);
+  }
 
   .govuk-form-group { margin-bottom: 0; }
 }
@@ -293,4 +306,662 @@
   > div { border-top: 2px solid govuk.govuk-colour("black"); padding-top: govuk.govuk-spacing(2); }
   dt { @include govuk.govuk-font($size: 16); color: govuk.govuk-colour("dark-grey"); }
   dd { margin: 0; @include govuk.govuk-font($size: 36, $weight: bold); font-variant-numeric: tabular-nums; }
+}
+
+// ── Phase 15: the report read as a document, not a form ────────────────────
+
+// A numeric column heading is the floor for its column's width. Without this
+// the browser sizes the column to its two-digit contents and renders the word
+// above it one letter per line.
+.prt-nowrap { white-space: nowrap; }
+
+// The page header. One block, full width, status beside the title rather than
+// under it and then again in a warning box below.
+.prt-pagehead {
+  margin-bottom: govuk.govuk-spacing(5);
+
+  .govuk-caption-l { margin-bottom: 0; }
+  h1 { margin-bottom: govuk.govuk-spacing(2); }
+
+  &__status {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: govuk.govuk-spacing(2) govuk.govuk-spacing(3);
+    margin: 0;
+
+    // The separators do the work a row of commas would, without being read out.
+    > .prt-meta + .prt-meta::before {
+      content: "";
+      display: inline-block;
+      width: 1px;
+      height: 1em;
+      margin-right: govuk.govuk-spacing(3);
+      background: govuk.govuk-colour("mid-grey");
+      vertical-align: -0.15em;
+    }
+  }
+}
+
+// The report lead: the one sentence the assessment exists to produce, at the
+// width of the page rather than two thirds of it.
+.prt-lead {
+  margin-bottom: govuk.govuk-spacing(5);
+
+  &__headline {
+    @include govuk.govuk-font($size: 24);
+    margin: 0 0 govuk.govuk-spacing(2);
+    // FULL WIDTH, not balanced. `balance` evens the line lengths, which on a
+    // four-line standfirst pulls every line in to about 700px of a 960px column
+    // — typographically correct and, beside a full-width page header, visibly
+    // short of the edge. `pretty` keeps the lines full and only prevents the
+    // last one from being a single orphaned word.
+    max-width: none;
+    text-wrap: pretty;
+  }
+
+  // A standing caveat, true of every report — a note, not news. It was a full
+  // warning box above the conclusion on every single assessment.
+  &__caveat {
+    @include govuk.govuk-font($size: 16);
+    color: govuk.govuk-colour("dark-grey");
+    border-left: 4px solid govuk.govuk-colour("mid-grey");
+    padding-left: govuk.govuk-spacing(3);
+    margin: 0;
+    max-width: 52em;
+  }
+}
+
+// ── Metric cards ──────────────────────────────────────────────────────────
+.prt-metrics {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: govuk.govuk-spacing(3);
+  margin: 0 0 govuk.govuk-spacing(5);
+
+  // A STATED COUNT IS EXACT, because the point of stating one is that `auto-fit`
+  // got it wrong: six figures in an auto-fit grid took one row of six at 160px
+  // and wrapped every label to three lines, or — one card narrower — left an
+  // orphan alone on a second row reading as a different kind of number.
+  &--2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  &--3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  &--4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+
+  // Below tablet no count survives: two is the most a phone can hold with the
+  // number still larger than its label.
+  @include govuk.govuk-media-query($until: tablet) {
+    &,
+    &--2,
+    &--3,
+    &--4 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  }
+}
+
+.prt-metric {
+  // The rule above the number is the tone. It is never the only signal: the
+  // label says what the figure is and the tone only agrees with it.
+  border-top: 4px solid govuk.govuk-colour("black");
+  padding-top: govuk.govuk-spacing(2);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+
+  &--severe { border-top-color: var(--band-severe); }
+  &--significant { border-top-color: var(--band-significant); }
+  &--moderate { border-top-color: var(--band-moderate); }
+  &--limited { border-top-color: var(--band-limited); }
+  &--good { border-top-color: govuk.govuk-colour("green"); }
+
+  &__value {
+    @include govuk.govuk-font($size: 36, $weight: bold);
+    margin: 0;
+    font-variant-numeric: tabular-nums;
+    line-height: 1.1;
+  }
+
+  &__label {
+    @include govuk.govuk-font($size: 16);
+    color: govuk.govuk-colour("dark-grey");
+    font-weight: 400;
+  }
+
+  &__note {
+    @include govuk.govuk-font($size: 16);
+    margin: 0;
+    color: govuk.govuk-colour("dark-grey");
+  }
+}
+
+// ── One segmented bar, not four boxes ─────────────────────────────────────
+.prt-stack {
+  margin-bottom: govuk.govuk-spacing(5);
+
+  &__bar {
+    display: flex;
+    width: 100%;
+    // 44px so every segment is a usable target on a touch screen, however
+    // narrow its share makes it.
+    height: 44px;
+    border: 1px solid govuk.govuk-colour("black");
+    overflow: hidden;
+  }
+
+  &__seg {
+    border: 0;
+    border-right: 1px solid govuk.govuk-colour("black");
+    padding: 0;
+    cursor: pointer;
+    font-family: inherit;
+    position: relative;
+    min-width: 12px;
+    -webkit-appearance: none;
+    appearance: none;
+
+    &:last-child { border-right: 0; }
+
+    &.is-selected::after {
+      content: "";
+      position: absolute;
+      inset: 0;
+      border: 3px solid govuk.govuk-colour("black");
+    }
+  }
+
+  &__n {
+    @include govuk.govuk-font($size: 16, $weight: bold);
+    font-variant-numeric: tabular-nums;
+  }
+
+  &__key {
+    display: flex;
+    flex-wrap: wrap;
+    gap: govuk.govuk-spacing(2) govuk.govuk-spacing(5);
+    list-style: none;
+    margin: govuk.govuk-spacing(2) 0 0;
+    padding: 0;
+
+    li {
+      display: flex;
+      align-items: baseline;
+      gap: govuk.govuk-spacing(2);
+      @include govuk.govuk-font($size: 16);
+    }
+  }
+
+  &__swatch {
+    width: 14px;
+    height: 14px;
+    flex: none;
+    border: 1px solid govuk.govuk-colour("black");
+    align-self: center;
+  }
+}
+
+// ── Density ───────────────────────────────────────────────────────────────
+//
+// A report is a document and was being laid out like a sequence of unrelated
+// panels: every section opened with a full `govuk-heading-l` and closed with
+// two units of margin, so a reader scrolled past more rule than prose. These
+// pull the rhythm in without touching type sizes, which carry the hierarchy.
+.govuk-tabs__panel > section {
+  margin-bottom: govuk.govuk-spacing(7);
+
+  > h2 {
+    margin-bottom: govuk.govuk-spacing(3);
+    padding-bottom: govuk.govuk-spacing(2);
+    border-bottom: 1px solid govuk.govuk-colour("mid-grey");
+  }
+}
+
+// Body copy in the report runs to the page, not to two thirds of it. A measure
+// is still enforced where a paragraph is genuinely prose — the lead and the
+// editorial write-up — rather than everywhere by default.
+.govuk-tabs__panel {
+  .govuk-body,
+  .govuk-list { max-width: none; }
+}
+
+// Every table fills its section. Several were sizing to their content and
+// sitting in the left two thirds with white space beside them.
+.govuk-tabs__panel table { width: 100%; }
+
+// ── The write-up, as an editorial front page ──────────────────────────────
+//
+// It was nineteen collapsed accordion rows reading "Executive assessment — 1
+// finding — Show", identical down the page, with every word the assessment
+// wrote behind a separate click. A reader could not tell whether the report
+// said anything at all.
+//
+// An editorial page leads with the piece that matters, sets it wider and larger
+// than the rest, and lets the eye fall through the others by weight. The
+// hierarchy IS the navigation.
+.prt-writeup {
+  &__lead {
+    border-top: 5px solid govuk.govuk-colour("black");
+    padding-top: govuk.govuk-spacing(3);
+    margin-bottom: govuk.govuk-spacing(6);
+  }
+
+  &__kicker {
+    @include govuk.govuk-font($size: 16, $weight: bold);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: govuk.govuk-colour("dark-grey");
+    margin: 0 0 govuk.govuk-spacing(2);
+  }
+
+  // The standfirst: the assessment's own conclusion, set as the thing a reader
+  // came for. Held to a measure because it is genuinely prose.
+  &__standfirst {
+    @include govuk.govuk-font($size: 27);
+    margin: 0 0 govuk.govuk-spacing(3);
+    max-width: 40em;
+    text-wrap: pretty;
+  }
+
+  // COLUMNS THAT FLOW, NOT A GRID THAT ROWS.
+  //
+  // A grid puts three sections on a row and gives every one of them the height
+  // of the tallest, so a short section — "Cross policy" is six lines — left a
+  // 400px hole beneath it before the next row began. Across eighteen sections
+  // that is most of a screen of white space in the middle of the page, which is
+  // the one thing an editorial layout must not have.
+  //
+  // Multicol balances the whole thing instead: the sections flow down column
+  // one, then column two, and the columns end level. It is also how a page of a
+  // newspaper actually reads. DOM order is unchanged, so the reading order for
+  // anyone not looking at it is the assessment's own.
+  &__columns {
+    columns: 3 16rem;
+    column-gap: govuk.govuk-spacing(6);
+  }
+
+  &__col {
+    // A section is not split across a column break: half of "Evidence gaps" at
+    // the foot of one column and half at the head of the next reads as two
+    // sections, one of them missing its heading.
+    break-inside: avoid;
+    display: inline-block;
+    width: 100%;
+    // A hairline rather than a box: this is a column of a page, not a card on a
+    // dashboard.
+    border-top: 1px solid govuk.govuk-colour("mid-grey");
+    padding-top: govuk.govuk-spacing(2);
+    // In a multicol flow the gap between sections is this margin, not a grid
+    // gap. The report's own section rule does not apply to these.
+    margin-bottom: govuk.govuk-spacing(5);
+  }
+
+  &__head {
+    @include govuk.govuk-font($size: 19, $weight: bold);
+    margin: 0 0 govuk.govuk-spacing(2);
+  }
+
+  &__title {
+    @include govuk.govuk-font($size: 16, $weight: bold);
+    margin: 0 0 2px;
+  }
+
+  &__body {
+    @include govuk.govuk-font($size: 16);
+    margin: 0 0 govuk.govuk-spacing(2);
+  }
+
+  &__item + &__item { margin-top: govuk.govuk-spacing(3); }
+
+  &__more {
+    @include govuk.govuk-font($size: 16);
+    color: govuk.govuk-colour("blue");
+    text-decoration: underline;
+  }
+
+  // The write-up's own columns must not inherit the section rule that gives
+  // every report section a bottom border and heavy margin.
+  .govuk-details { margin-bottom: 0; }
+}
+
+// ── A list of plays a reader can scan ─────────────────────────────────────
+//
+// Forty-seven plays as list items — a tag, a link, a body, two numbers, all at
+// one size and one weight, wrapping mid-sentence. Finding the severe ones meant
+// reading every row.
+.prt-plays {
+  list-style: none;
+  margin: 0 0 govuk.govuk-spacing(4);
+  padding: 0;
+  display: grid;
+  gap: 2px;
+}
+
+.prt-play {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: govuk.govuk-spacing(2) govuk.govuk-spacing(4);
+  align-items: start;
+  background: govuk.govuk-colour("light-grey");
+  padding: govuk.govuk-spacing(2) govuk.govuk-spacing(3);
+  // THE BAND IS THE EDGE. The one place a colour can carry magnitude without
+  // competing with the text — and it is doubled by the word, the order and the
+  // figure, so no reading depends on it.
+  border-left: 6px solid govuk.govuk-colour("mid-grey");
+
+  &--severe { border-left-color: var(--band-severe); }
+  &--significant { border-left-color: var(--band-significant); }
+  &--moderate { border-left-color: var(--band-moderate); }
+  &--limited { border-left-color: var(--band-limited); }
+
+  &__rank {
+    @include govuk.govuk-font($size: 16, $weight: bold);
+    color: govuk.govuk-colour("dark-grey");
+    font-variant-numeric: tabular-nums;
+    grid-row: 1 / span 2;
+    align-self: center;
+    min-width: 2ch;
+    text-align: right;
+  }
+
+  &__main { min-width: 0; }
+
+  &__title {
+    @include govuk.govuk-font($size: 19);
+    margin: 0;
+  }
+
+  // The body is its own line: "who is positioned to run this" is the second
+  // question a reader asks, not a parenthesis on the first.
+  &__who {
+    @include govuk.govuk-font($size: 16);
+    color: govuk.govuk-colour("dark-grey");
+    margin: 2px 0 0;
+  }
+
+  &__figures {
+    display: flex;
+    align-items: center;
+    gap: govuk.govuk-spacing(2) govuk.govuk-spacing(3);
+    // EACH FIGURE is unbreakable; the ROW is not. Legality, band and exposure
+    // side by side come to about 260px, which on a 320px screen pushed the page
+    // 34px sideways — the walk's narrow-width check caught it.
+    flex-wrap: wrap;
+    > * { white-space: nowrap; }
+  }
+
+  &__exposure,
+  &__yours {
+    @include govuk.govuk-font($size: 16);
+    font-variant-numeric: tabular-nums;
+    color: govuk.govuk-colour("dark-grey");
+  }
+
+  &__yours { font-weight: 700; color: govuk.govuk-colour("black"); }
+
+  @include govuk.govuk-media-query($until: tablet) {
+    grid-template-columns: 1fr;
+    &__rank { grid-row: auto; text-align: left; }
+    &__figures { justify-content: flex-start; }
+  }
+}
+
+// A RANKED LIST HAS THREE COLUMNS, NOT TWO.
+//
+// The unranked card is `1fr auto` — the play, then its figures. Adding the rank
+// as a third child without saying so put the number in the 1fr column and threw
+// the play into the `auto` one, so every row started at a different x and the
+// list read as a ragged right-aligned staircase. Found by looking at the
+// rendered page; the markup and the types were both perfectly happy.
+.prt-plays--ranked .prt-play {
+  grid-template-columns: auto minmax(0, 1fr) auto;
+
+  .prt-play__rank {
+    // One row now: the card's own two lines live inside `__main`, so a spanning
+    // rank was reserving a second grid row nothing ever occupied.
+    grid-row: auto;
+    align-self: center;
+    min-width: 3ch;
+  }
+
+  @include govuk.govuk-media-query($until: tablet) {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+}
+
+// A record of what a run could not do, read as a list rather than a wall.
+// Several of these open identically and differ only in what follows, so the
+// first sentence leads and the rest is a disclosure.
+.prt-gaps {
+  list-style: none;
+  margin: 0 0 govuk.govuk-spacing(4);
+  padding: 0;
+}
+
+.prt-gap {
+  border-top: 1px solid govuk.govuk-colour("mid-grey");
+  padding: govuk.govuk-spacing(2) 0;
+
+  &__lead {
+    @include govuk.govuk-font($size: 16);
+    margin: 0;
+  }
+
+  .govuk-details { margin: govuk.govuk-spacing(1) 0 0; }
+}
+
+// A contract's own words, kept verbatim and kept in a box. A zod union lists
+// twenty-six quoted kinds; reflowed as prose it is a wall nobody can read a
+// single value out of.
+.prt-contract {
+  @include govuk.govuk-font($size: 16);
+  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  white-space: pre-wrap;
+  word-break: break-word;
+  background: govuk.govuk-colour("light-grey");
+  border: 1px solid govuk.govuk-colour("mid-grey");
+  padding: govuk.govuk-spacing(2);
+  margin: 0 0 govuk.govuk-spacing(2);
+  max-height: 16rem;
+  overflow: auto;
+}
+
+// ── What it suggests ──────────────────────────────────────────────────────
+//
+// A recommendation is 400–900 characters: one sentence saying what to do, then
+// three or four saying how and against what. As numbered paragraphs they were
+// nine grey slabs in which the instruction and its caveats were set identically,
+// so finding "what should I do" meant reading all nine in full.
+.prt-recs {
+  list-style: none;
+  counter-reset: rec;
+  margin: 0 0 govuk.govuk-spacing(5);
+  padding: 0;
+  display: grid;
+  gap: govuk.govuk-spacing(3);
+}
+
+.prt-rec {
+  counter-increment: rec;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: govuk.govuk-spacing(1) govuk.govuk-spacing(3);
+  border-top: 1px solid govuk.govuk-colour("mid-grey");
+  padding-top: govuk.govuk-spacing(2);
+
+  // The number is drawn, not listed: `govuk-list--number` puts it in the marker
+  // box, which wraps the second line of a long item back under it.
+  &::before {
+    content: counter(rec);
+    @include govuk.govuk-font($size: 24, $weight: bold);
+    color: govuk.govuk-colour("dark-grey");
+    font-variant-numeric: tabular-nums;
+    grid-row: 1 / span 3;
+    min-width: 2ch;
+    text-align: right;
+  }
+
+  // The artefact's own name, as the card's title.
+  &__title {
+    @include govuk.govuk-font($size: 19, $weight: bold);
+    margin: 0 0 2px;
+  }
+
+  // The instruction. Regular weight under a bold title: four lines of bold is a
+  // block of ink, not an emphasis.
+  &__lead {
+    @include govuk.govuk-font($size: 19);
+    margin: 0;
+  }
+
+  .govuk-details { margin: govuk.govuk-spacing(1) 0 0; }
+}
+
+// ── The spine stays reachable ─────────────────────────────────────────────
+//
+// MEASURED on the Post-16 run: the Verdict panel is 8,668px and Threats is
+// 10,137px — ten screens. The four moves exist so a reader can go straight to
+// the question they arrived with, and a reader who scrolls is the one most
+// likely to want a different one; a control that leaves the viewport on the
+// first screen is a control that was only ever used from the top of the page.
+//
+// Only where the strip exists. Below `tablet` the framework tears the tabs down
+// into an index and every panel is simply present, so there is nothing to stick.
+@include govuk.govuk-media-query($from: tablet) {
+  .govuk-tabs__list {
+    position: sticky;
+    top: 0;
+    z-index: 20;
+    // Its own ground, or the report scrolls up through it.
+    background: govuk.govuk-colour("white");
+    // The framework draws the panel's top border; sticking the list over it
+    // leaves a 1px seam as the panel passes beneath.
+    box-shadow: 0 1px 0 govuk.govuk-colour("mid-grey");
+  }
+}
+
+// A summary list in the report has no actions column, so the framework's 50%
+// value cell left a fifth of every row empty. "How this was produced" is six
+// facts about the run and read as a narrow strip beside white space.
+.govuk-tabs__panel .govuk-summary-list {
+  &__key { width: 14rem; }
+  &__value { width: auto; }
+}
+
+// ── Print ─────────────────────────────────────────────────────────────────
+//
+// The likeliest thing a policy reader does with an assessment is print it or
+// save it as a PDF, and a tabbed page prints ONE of its five panels — the
+// other four carry `hidden`, which no stylesheet can override. So print shows
+// every panel, headed by the move it belongs to, and drops the controls that
+// mean nothing on paper.
+@media print {
+  .govuk-tabs__panel[hidden] { display: block !important; }
+  .govuk-tabs__list,
+  .prt-selection,
+  .prt-weights,
+  .govuk-button,
+  form { display: none !important; }
+
+  // A disclosure prints shut on paper, taking its contents with it. Everything
+  // the report hid behind "read the rest" is opened for the printed copy.
+  details > summary { display: none; }
+  details > *:not(summary) { display: block !important; }
+
+  .prt-metric,
+  .prt-play,
+  .prt-rec,
+  .prt-writeup__col { break-inside: avoid; }
+
+  a[href^="http"]::after { content: " (" attr(href) ")"; font-size: 0.8em; }
+}
+
+// A figure and the length that figure is. An exposure column running 0.77 down
+// to 0.05 reads as a run of similar decimals and is a fifteen-fold spread.
+.prt-bar {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: govuk.govuk-spacing(2);
+
+  &__track {
+    flex: 1 1 auto;
+    min-width: 2rem;
+    height: 6px;
+    background: govuk.govuk-colour("light-grey");
+  }
+
+  &__fill {
+    display: block;
+    height: 100%;
+    background: govuk.govuk-colour("dark-grey");
+  }
+
+  &__value {
+    font-variant-numeric: tabular-nums;
+    flex: 0 0 auto;
+  }
+}
+
+// The banner sits above the tabs, so the panel's full-width rule never reached
+// it and its sentence was set to the framework's 30em measure — a filter notice
+// two thirds the width of the thing it is filtering.
+.prt-selection p { max-width: none; flex: 1 1 auto; }
+
+// ── What you can do with this ─────────────────────────────────────────────
+//
+// Downloading a copy, attaching what came later and making a link to send are
+// not part of the report; they are things done with it. Below the spine they
+// apply to whichever move is open, and the Verdict panel stops ending in a file
+// picker.
+.prt-actions {
+  margin-top: govuk.govuk-spacing(7);
+  border-top: 5px solid govuk.govuk-colour("black");
+  padding-top: govuk.govuk-spacing(4);
+
+  &__head { margin-bottom: govuk.govuk-spacing(4); }
+
+  > section { margin-bottom: govuk.govuk-spacing(6); }
+  > section:last-child { margin-bottom: 0; }
+}
+
+// TEXT RUNS TO THE PAGE. Three components below the report were built as
+// standalone GOV.UK pages and kept their `two-thirds` column, so inside a
+// 960px report their prose set to 602px with a third of the row empty beside
+// it. The report decides its own measure; the framework's page grid does not
+// apply inside one of its panels.
+.govuk-tabs__panel,
+.prt-actions {
+  .govuk-grid-column-two-thirds,
+  .govuk-grid-column-one-half,
+  .govuk-grid-column-one-third { width: 100%; float: none; }
+}
+
+// What the shades in a stacked bar mean. A ramp with no key is a decoration.
+.prt-bandkey {
+  @include govuk.govuk-font($size: 16);
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: govuk.govuk-spacing(1) govuk.govuk-spacing(4);
+  color: govuk.govuk-colour("dark-grey");
+  margin: 0 0 govuk.govuk-spacing(5);
+
+  &__item { display: flex; align-items: center; gap: govuk.govuk-spacing(1); }
+}
+
+// Legality on a play card. Not a colour ramp: "inside the rules" is the
+// assessment's sharpest claim and is not the safe-looking end of a scale — a
+// play nothing forbids is a play nothing answers. So it is a word in a box, the
+// same weight whichever word it is.
+.prt-legality {
+  @include govuk.govuk-font($size: 16);
+  border: 1px solid govuk.govuk-colour("mid-grey");
+  padding: 0 govuk.govuk-spacing(1);
+  color: govuk.govuk-colour("dark-grey");
+  white-space: nowrap;
+}
+
+// The band counts above the playbook: one ramp, spaced, not a run of tags.
+.prt-bandrow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: govuk.govuk-spacing(2);
+  margin: 0 0 govuk.govuk-spacing(4);
 }

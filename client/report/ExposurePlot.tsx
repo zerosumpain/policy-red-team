@@ -2,6 +2,7 @@ import { BAND_FILL, BAND_LABEL, PLOT_SIZE, plotPoints, type Play } from '$lib/po
 import { Table } from '../govuk';
 import type { ArtefactLink } from './Report';
 import { Figure } from './Figure';
+import { BandKey } from './Metrics';
 
 /**
  * Ease against impact, as a picture and as a table.
@@ -29,7 +30,11 @@ export function ExposurePlot({ plays, linkTo }: { plays: Play[]; linkTo?: Artefa
       label="ease against impact"
       diagram={(
         <figure className="govuk-!-margin-0">
-          <svg viewBox={`0 0 ${PLOT_SIZE} ${PLOT_SIZE}`} width="100%" style={{ maxWidth: 480 }} role="img"
+          {/* 600 rather than 480: the plot is square, so it can only grow so far
+              before it is taller than a screen — but at 480 in a 900px column
+              forty-seven marks sat on top of each other in a third of the
+              available room, which is the one thing a scatter plot must not do. */}
+          <svg viewBox={`0 0 ${PLOT_SIZE} ${PLOT_SIZE}`} width="100%" style={{ maxWidth: 600 }} role="img"
                aria-label={`Scatter plot of ${plays.length} plays: how easy each is against how much damage it does. ${plays.filter((p) => p.band === 'severe').length} are in the severe band. The same figures are available as a table.`}>
             <rect x="0" y="0" width={PLOT_SIZE} height={PLOT_SIZE} fill="#f3f2f1" />
             <line x1="44" y1={PLOT_SIZE - 44} x2={PLOT_SIZE - 44} y2={PLOT_SIZE - 44} stroke="#505a5f" strokeWidth="1" />
@@ -42,6 +47,10 @@ export function ExposurePlot({ plays, linkTo }: { plays: Play[]; linkTo?: Artefa
                       fill={BAND_FILL[plays[i].band]} stroke="#0b0c0c" strokeWidth="1" />
             ))}
           </svg>
+          {/* "Colour is its band" without saying which colour is which band is
+              not a key. The table beside it carries the band as a word, so this
+              is the reading for anyone looking at the picture. */}
+          <BandKey />
           <figcaption className="govuk-body-s prt-meta">
             Each mark is one play. Colour is its band; position is how easy it is against how much
             it costs. Switch to the table for the figures.

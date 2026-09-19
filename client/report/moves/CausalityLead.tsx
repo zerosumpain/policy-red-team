@@ -2,6 +2,7 @@ import { useMemo } from 'react';
 import { BAND_LABEL, type Play } from '$lib/policy-analysis/view';
 import type { Artefact } from '$lib/policy-analysis/contracts';
 import { filterPlays, mechanismOf, narrowExcept, type Selection } from '../selection';
+import { BandKey } from '../Metrics';
 
 /**
  * THE MECHANISMS THAT GENERATE THE MOST PLAYS.
@@ -103,6 +104,11 @@ export function CausalityLead({ artefacts, list, selection, onSelect, mechanismI
           );
         })}
       </ul>
+
+      {/* The bars stack four bands and said nowhere what the shades were. A
+          ramp with no key is a decoration; the counts are already read out to
+          anyone not looking at it, so this is the same fact for anyone who is. */}
+      <BandKey label="Each bar is divided by band:" />
 
       {selection?.kind === 'mechanism' ? (
         <>

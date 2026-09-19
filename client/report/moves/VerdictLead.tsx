@@ -2,15 +2,20 @@ import { useState } from 'react';
 import { BAND_LABEL, type Band, type Play } from '$lib/policy-analysis/view';
 import type { Artefact } from '$lib/policy-analysis/contracts';
 import { Button } from '../../govuk';
+import { StackedBar } from '../Metrics';
+import { PlayList } from '../PlayList';
 import { narrowExcept, type Selection } from '../selection';
 
 /**
  * WHERE THE EXPOSURE SITS, and the three plays to read first.
  *
- * The band profile is a magnitude, so it is one hue stepped light to dark — and
- * because the two light steps sit below 3:1 against the page, no reading here
- * depends on colour: every band is written in words beside its mark, and the
- * count is printed on the bar.
+ * ONE SEGMENTED BAR, NOT FOUR BOXES. Exposure bands are parts of one whole —
+ * forty-seven plays divided four ways — and four equal cards said "four
+ * categories" while hiding the only thing that matters: that twenty of the
+ * forty-seven are severe. The bar says that in its geometry before a number is
+ * read. The ramp is one hue stepped light to dark because exposure is a
+ * magnitude, and because the two light steps fall below 3:1 against the page
+ * every band is written out in the key beside its count.
  *
  * THREE, THEN ALL OF THEM. Forty-seven plays is a wall, and a reader who meets
  * a wall reads none of it. Three is a start that can be finished, and the
@@ -62,42 +67,29 @@ export function VerdictLead({ list, bands, selection, onSelect, mechanismIds, li
         magnitude rather than a score. Select a band to carry it into the other three moves.
       </p>
 
-      <ul className="prt-profile" aria-label="Plays by exposure band">
-        {bands.map((entry) => {
-          const selected = selection?.kind === 'band' && selection.id === entry.band;
-          return (
-            <li key={entry.band}>
-              <button
-                type="button"
-                className={`prt-profile__band prt-profile__band--${entry.band}`}
-                style={{ flexGrow: Math.max(entry.count, 1) }}
-                aria-pressed={selected}
-                onClick={() => onSelect(selected ? null : { kind: 'band', id: entry.band })}
-              >
-                {/* The word, the count and the share — never the colour alone. */}
-                <span className="prt-profile__label">{BAND_LABEL[entry.band]}</span>
-                <span className="prt-profile__count">
-                  {entry.count} of {total}
-                </span>
-              </button>
-            </li>
-          );
-        })}
-      </ul>
+      <StackedBar
+        label="Plays by exposure band. Select a band to narrow every view."
+        total={total}
+        segments={bands.map((entry) => ({
+          id: entry.band,
+          label: BAND_LABEL[entry.band],
+          count: entry.count,
+          tone: entry.band,
+          selected: selection?.kind === 'band' && selection.id === entry.band,
+          onSelect: () =>
+            onSelect(
+              selection?.kind === 'band' && selection.id === entry.band
+                ? null
+                : { kind: 'band', id: entry.band },
+            ),
+        }))}
+      />
 
       <h3 className="govuk-heading-m" id="read-first">
         {selection ? 'Read these first, under this selection' : 'Read these three first'}
       </h3>
       {visible.length ? (
-        <ol className="govuk-list govuk-list--spaced" aria-labelledby="read-first">
-          {visible.map((play) => (
-            <li key={play.artefact.id}>
-              <span className={`prt-band prt-band--${play.band}`}>{BAND_LABEL[play.band]}</span>{' '}
-              {linkTo ? linkTo(play.artefact) : play.artefact.label}
-              {play.actor ? <span className="prt-meta"> — {play.actor.label}</span> : null}
-            </li>
-          ))}
-        </ol>
+        <PlayList plays={visible} linkTo={linkTo} rank />
       ) : (
         <p className="govuk-body">Nothing under this selection.</p>
       )}

@@ -90,6 +90,8 @@ export function Assessment() {
   const { analysis, stages } = detail;
   const done = stages.filter((s) => s.status === 'completed').length;
   const running = !isTerminal(analysis.status);
+  /** A run that stopped short still has a report; a run still going does not. */
+  const showReport = isFinished(analysis.status) || analysis.status === 'failed' || analysis.status === 'cancelled';
 
   const tasks: Task[] = stages.map((stage) => ({
     title: stage.name,
@@ -104,20 +106,29 @@ export function Assessment() {
 
   return (
     <>
-      <div className="govuk-grid-row">
-        <div className="govuk-grid-column-two-thirds">
-          <span className="govuk-caption-l">Assessment</span>
-          <h1 className="govuk-heading-xl">{analysis.title}</h1>
-          <p className="govuk-body">
-            <Tag colour={statusColour(analysis.status) as TagColour}>{statusLabel(analysis.status)}</Tag>{' '}
-            <span className="prt-meta">{done} of {stages.length} stages</span>
-          </p>
-        </div>
-      </div>
-
-      {analysis.status === 'failed' && analysis.error ? (
-        <WarningText>{analysis.error}</WarningText>
-      ) : null}
+      {/*
+        ONE HEADER, FULL WIDTH, STATUS STATED ONCE.
+        It was a two-thirds column holding a caption, a title, a tag and a stage
+        count, followed by a separate full-width warning box repeating the
+        failure — so a reader opening a report met the run's own troubles twice
+        before meeting a single finding. The status belongs beside the title,
+        where it qualifies it; the failure's DETAIL belongs in Provenance, which
+        is the move that exists for what the run did to itself.
+      */}
+      <header className="prt-pagehead">
+        <span className="govuk-caption-l">Assessment</span>
+        <h1 className="govuk-heading-xl">{analysis.title}</h1>
+        <p className="prt-pagehead__status">
+          <Tag colour={statusColour(analysis.status) as TagColour}>{statusLabel(analysis.status)}</Tag>
+          <span className="prt-meta">{done} of {stages.length} stages</span>
+          {analysis.model ? <span className="prt-meta">{analysis.model}</span> : null}
+          {analysis.status === 'failed' && analysis.error ? (
+            <span className="prt-meta">
+              Stopped at the last stage — <a className="govuk-link" href="#report-tab-provenance">what it kept and what it lost</a>
+            </span>
+          ) : null}
+        </p>
+      </header>
 
       {analysis.status === 'completed_with_gaps' ? (
         <NotificationBanner title="Finished, with gaps">
@@ -188,7 +199,7 @@ export function Assessment() {
             stage never produced is simply not there — an absent section rather
             than an invented one.
           */}
-          {isFinished(analysis.status) || analysis.status === 'failed' || analysis.status === 'cancelled' ? (
+          {showReport ? (
             <Report
               detail={detail}
               onChanged={() => void load()}
@@ -199,7 +210,14 @@ export function Assessment() {
               )}
             />
           ) : null}
-          {!isFinished(analysis.status) ? <TaskList items={tasks} idPrefix="stages" /> : null}
+          {/*
+            THE STAGE LIST BELONGS TO A RUN THAT IS NOT A REPORT.
+            Rendering a report for a failed run put both on the page: eighteen
+            stages of prose repeated under every one of the five moves, longer
+            than the report itself. Where a report is drawn, the stages live in
+            Provenance, which is what that move is for.
+          */}
+          {showReport ? null : <TaskList items={tasks} idPrefix="stages" />}
           <ButtonGroup>
             {(analysis.status === 'failed' || analysis.status === 'cancelled') && !detail.readOnly ? (
               <Button disabled={busy} onClick={() => void act('resume')}>

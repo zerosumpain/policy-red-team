@@ -7,8 +7,11 @@ import { useMemo, useState, type ReactNode } from 'react';
 import { network } from '$lib/policy-analysis/network';
 import { leverage } from '$lib/policy-analysis/stress';
 import type { Detail } from '../api';
-import { Accordion, Details, InsetText, SummaryList, Table, Tabs, Tag, WarningText } from '../govuk';
+import { Details, InsetText, SummaryList, Table, Tabs, WarningText } from '../govuk';
 import { mechanismIdsOf, narrowExcept, type Selection } from './selection';
+import { Bar, Metrics } from './Metrics';
+import { WriteUp } from './WriteUp';
+import { TestResult } from './TestResult';
 import { SelectionBanner } from './moves/SelectionBanner';
 import { VerdictLead } from './moves/VerdictLead';
 import { CausalityLead } from './moves/CausalityLead';
@@ -43,7 +46,20 @@ import { Addenda, AddendumNotice } from './Addenda';
  * first time a section is added, and a contents entry pointing at nothing is
  * worse than no contents at all.
  */
-type Move = 'verdict' | 'causality' | 'threats' | 'actors' | 'provenance';
+type Move = 'verdict' | 'causality' | 'threats' | 'actors' | 'provenance' | 'do';
+
+/**
+ * `do` IS NOT A TAB, and that is the point.
+ *
+ * Downloading a copy, attaching what came after, and making a link to send are
+ * not answers to "what did it conclude" — they are things you do with the
+ * answer. They sat at the foot of the Verdict panel, where between them they
+ * added about three thousand pixels of forms and radio buttons to the one view
+ * every reader lands on, so the last thing a reader saw of the assessment's
+ * conclusion was a file picker. They belong after the report, once, for all
+ * five views.
+ */
+const ACTIONS: Move = 'do';
 
 interface Section {
   id: string;
@@ -167,11 +183,18 @@ export function Report({ detail, offline, linkTo, onChanged }: {
     if (body) sections.push({ id, title, body, move });
   };
 
+  /*
+   * FIGURES, DRAWN AS FIGURES. This was a two-column summary list, so the
+   * numbers a reader takes away sat in the right-hand cell at the same weight
+   * as the sentence naming them — the least prominent thing in the section they
+   * are the point of.
+   */
   section('found', 'What it found', 'verdict',
-    <SummaryList
-      rows={figures.map((figure) => ({
-        key: figure.label,
-        value: <><strong className="govuk-!-font-size-24">{figure.figure}</strong> <span className="prt-meta">{figure.sub}</span></>,
+    <Metrics
+      metrics={figures.map((figure) => ({
+        label: figure.label,
+        value: figure.figure,
+        note: figure.sub,
       }))}
     />
   );
@@ -183,31 +206,28 @@ export function Report({ detail, offline, linkTo, onChanged }: {
         concealment. A mean rather than an average because a play that scores high on three
         and near zero on one is not a threat, and an average would hide that.
       </p>
-      <p className="govuk-body">
+      {/*
+        ONE RAMP, NOT TWO. These were GOV.UK Tags — red, orange, grey — which is
+        a THIRD colouring of the same four bands, disagreeing with the card
+        borders, the stacked bar, the mechanism segments and the plot, all of
+        which use the assessment's own ramp. Four bands cannot be red-orange-grey
+        here and purple-to-pink everywhere else and still mean one thing.
+      */}
+      <p className="prt-bandrow">
         {bands.map((band) => (
-          <span key={band.band}>
-            <Tag colour={band.band === 'severe' ? 'red' : band.band === 'significant' ? 'orange' : 'grey'}>
-              {band.count} {BAND_LABEL[band.band]}
-            </Tag>{' '}
+          <span key={band.band} className={`prt-band prt-band--${band.band}`}>
+            {band.count} {BAND_LABEL[band.band]}
           </span>
         ))}
       </p>
-      <Table
-        caption="The exploitation playbook"
-        captionSize="s"
-        scroll
-        columns={[
-          { header: 'Play' }, { header: 'Body' }, { header: 'Band' },
-          { header: 'Exposure', numeric: true }, { header: 'Legality' },
-        ]}
-        rows={list.slice(0, 20).map((play) => [
-          name(play.artefact),
-          play.actor ? name(play.actor) : '—',
-          BAND_LABEL[play.band],
-          play.exposure.toFixed(2),
-          String(play.artefact.data.legality ?? '—'),
-        ])}
-      />
+      {/*
+        THE PLAYBOOK TABLE IS GONE, and nothing was lost with it.
+        Move 3 printed the same forty-seven plays twice: once as the ranked
+        cards above, in full, and again here as the worst twenty in five
+        columns so narrow that "Department for Education" set as "Departme / nt
+        for / Educatio / n" and "compliant" as "compli / ant". The only column
+        the cards did not carry was legality, which they now do.
+      */}
       <h3 className="govuk-heading-m">Ease against impact</h3>
       <ExposurePlot plays={list} linkTo={linkTo} />
     </>
@@ -227,19 +247,52 @@ export function Report({ detail, offline, linkTo, onChanged }: {
    * reported as a finding by "How they connect" two sections above.
    */
   const ACTORS_SHOWN = 20;
+  /*
+   * A BODY THAT RUNS NO PLAY IS NOT "THE WORST 20". The board is sorted worst
+   * first and then sliced, so on a run where only twelve bodies carry a play the
+   * remaining eight rows were 0 plays / 0.00 exposure — padding a table headed
+   * "worst play first" with bodies that have no play at all, three of them
+   * spelled "Department for Education" one after another. That is a reader's
+   * first sight of the Actors move and it reads as a broken table.
+   *
+   * So the table is the bodies that actually run something, and the rest are
+   * counted in a sentence. Nothing is lost: every profile is still reachable
+   * from the relationships section and from any play it could run.
+   */
+  const active = board.filter((a) => a.plays.length);
+  const idle = board.length - active.length;
   section('actors', 'Who is involved', 'actors', board.length ? (
     <>
+      <p className="govuk-body">
+        {active.length} of the {board.length} bodies the paper names are positioned to run at least
+        one play. The figure is the worst single play each one could run, on the same 0–1 exposure
+        scale as the playbook.
+      </p>
       <Table
-        caption={`Bodies profiled, worst play first${board.length > ACTORS_SHOWN ? ` — the worst ${ACTORS_SHOWN} of ${board.length}` : ''}`}
+        caption={`Bodies that could run a play, worst first${active.length > ACTORS_SHOWN ? ` — the worst ${ACTORS_SHOWN} of ${active.length}` : ''}`}
         captionSize="s"
         scroll
-        columns={[{ header: 'Body' }, { header: 'Plays', numeric: true }, { header: 'Worst exposure', numeric: true }]}
-        rows={board.slice(0, ACTORS_SHOWN).map((actor) => [name(actor.actor), String(actor.plays.length), actor.worst.toFixed(2)])}
+        columns={[{ header: 'Body' }, { header: 'Plays', numeric: true }, { header: 'Worst exposure', numeric: true, width: '11rem' }]}
+        rows={active.slice(0, ACTORS_SHOWN).map((actor) => [
+          name(actor.actor),
+          String(actor.plays.length),
+          /* The number alone gives a reader nothing to compare: 0.77 against
+             0.05 is a fifteen-fold difference that reads as two similar
+             decimals. The bar is the comparison and the number stays exact. */
+          <Bar value={actor.worst} />,
+        ])}
       />
-      {board.length > ACTORS_SHOWN ? (
+      {active.length > ACTORS_SHOWN ? (
         <p className="govuk-body-s prt-meta">
-          {board.length - ACTORS_SHOWN} more bodies are profiled. Every one is reachable from the
+          {active.length - ACTORS_SHOWN} more bodies run a play. Every one is reachable from the
           relationships section and from any play it could run.
+        </p>
+      ) : null}
+      {idle ? (
+        <p className="govuk-body-s prt-meta">
+          {idle} further {idle === 1 ? 'body is' : 'bodies are'} profiled but run no play in this
+          assessment. Some are the same body resolved twice — entity resolution keeps candidates
+          apart rather than merging them, which &ldquo;How they connect&rdquo; reports as a finding.
         </p>
       ) : null}
     </>
@@ -253,9 +306,26 @@ export function Report({ detail, offline, linkTo, onChanged }: {
     <StressLab artefacts={artefacts} levers={levers} linkTo={linkTo} />
   ) : null);
 
+  /*
+   * FOUR FIGURES, NOT A TWO-COLUMN LIST. This was a summary list: the label in
+   * a 30% key column and the number in the value cell, leaving two thirds of
+   * the row empty and the figure at the same weight as the word. The tone tints
+   * the rule only, and only in agreement with the label — "contradicts" is not
+   * an alarm, it is the thing a red team is looking for.
+   */
+  const EVIDENCE_TONE: Record<string, 'good' | 'severe' | 'moderate' | 'limited'> = {
+    supports: 'good', contradicts: 'severe', mixed: 'moderate', insufficient: 'limited',
+  };
   section('evidence', 'What is backed up', 'verdict', mix.length ? (
     <>
-      <SummaryList noBorder rows={mix.map((entry) => ({ key: entry.label, value: String(entry.count) }))} />
+      <Metrics
+        columns={4}
+        metrics={mix.map((entry) => ({
+          label: entry.label,
+          value: entry.count.toLocaleString(),
+          tone: EVIDENCE_TONE[entry.key] ?? 'neutral',
+        }))}
+      />
       <InsetText>
         A search excerpt is weak evidence and is labelled as one. A retrieval date is not a
         publication date.
@@ -263,48 +333,61 @@ export function Report({ detail, offline, linkTo, onChanged }: {
     </>
   ) : null);
 
+  /*
+   * A RESULT IS A WORD, NOT A DATABASE VALUE. This column printed the stored
+   * enum: `high_risk`, `moderate_risk`, `indeterminate`, underscores and all,
+   * in a report a policy reader is meant to take away. The tag also carries the
+   * severity, which the bare string did not — and `indeterminate` is grey
+   * rather than green, because "the test could not decide" is not a pass.
+   */
   section('checks', 'Structural checks', 'verdict', structural.length ? (
     <Table
       caption="What the policy's own wiring was tested against"
       captionSize="s"
       scroll
-      columns={[{ header: 'Check' }, { header: 'Result' }]}
-      rows={structural.slice(0, 20).map((check) => [name(check), String(check.data.result ?? '—')])}
+      columns={[{ header: 'Check' }, { header: 'Result', width: '11rem' }]}
+      rows={structural.slice(0, 20).map((check) => [name(check), <TestResult value={check.data.result} />])}
     />
   ) : null);
 
   section('writeup', 'The write-up', 'verdict', sectionFindings.length ? (
-    <Accordion
-      id="findings"
-      sections={sectionFindings.map((group) => ({
-        heading: group.label,
-        summary: `${group.items.length} ${group.items.length === 1 ? 'finding' : 'findings'}`,
-        content: (
-          <>
-            {group.items.map((item) => {
-              const { lead, rest } = summarise(item.statement);
-              return (
-                <div key={item.id} className="govuk-!-margin-bottom-4">
-                  <h3 className="govuk-heading-s">{name(item)}</h3>
-                  <p className="govuk-body">{lead}</p>
-                  {rest ? <Details summary="Read the rest"><p className="govuk-body">{rest}</p></Details> : null}
-                </div>
-              );
-            })}
-          </>
-        ),
-      }))}
-    />
+    <WriteUp groups={sectionFindings} name={name} />
   ) : null);
 
+  /*
+   * A RECOMMENDATION IS AN ITEM, NOT A PARAGRAPH IN A RUN-ON LIST.
+   *
+   * These are 400–900 characters each — a sentence saying what to do, then
+   * three or four saying how and against what. Printed whole in a numbered
+   * list they became nine grey slabs in which the actual instruction was
+   * indistinguishable from the caveats attached to it, and a reader scanning
+   * for "what should I do" had to read all nine in full to find out.
+   *
+   * The lead sentence is the instruction and it is set as one. Everything after
+   * it is the working, and it opens on request. `summarise()` does the split —
+   * the same one the write-up uses, so the report has one idea of what an
+   * opening sentence is.
+   */
   section('suggests', 'What it suggests', 'verdict', recs.length ? (
-    <ol className="govuk-list govuk-list--number">
-      {recs.map((rec) => (
-        <li key={rec.id}>
-          {rec.statement}
-          {linkTo ? <> <span className="prt-meta">— {linkTo(rec)}</span></> : null}
-        </li>
-      ))}
+    <ol className="prt-recs">
+      {recs.map((rec) => {
+        const { lead, rest } = summarise(rec.statement);
+        return (
+          <li key={rec.id} className="prt-rec">
+            {/* The artefact's own name is the card's title, the way a play's is
+                — it was set as a grey footnote UNDER the instruction, where a
+                shorter restatement of the sentence above it reads as an
+                afterthought rather than as the thing it names. */}
+            {linkTo ? <p className="prt-rec__title">{linkTo(rec)}</p> : null}
+            <p className="prt-rec__lead">{lead}</p>
+            {rest ? (
+              <Details summary="How, and against what">
+                <p className="govuk-body-s">{rest}</p>
+              </Details>
+            ) : null}
+          </li>
+        );
+      })}
     </ol>
   ) : null);
 
@@ -324,12 +407,56 @@ export function Report({ detail, offline, linkTo, onChanged }: {
   const GAPS_SHOWN = 8;
   const gaps = [...warnings.reduce((seen, warning) => seen.set(warning, (seen.get(warning) ?? 0) + 1), new Map<string, number>())]
     .sort((a, b) => b[1] - a[1]);
-  const gapLine = ([text, count]: [string, number]) => (
-    <li key={text}>
-      {text}
-      {count > 1 ? <span className="prt-meta"> — recorded {count} times</span> : null}
-    </li>
-  );
+  /*
+   * A LIMIT LEADS WITH ITS FIRST SENTENCE, and keeps the rest behind a control.
+   *
+   * These run to six lines each and several open identically — "This call
+   * exceeded the model's context window, so its input was reduced…" — followed
+   * by a different list of what was withheld. Printed whole and stacked, the
+   * page became a wall in which the differences were invisible, which is the
+   * opposite of what a record of what a run could not do is for.
+   *
+   * `summarise()` is the same split the write-up uses, so one definition of
+   * "the first sentence" serves the whole report.
+   */
+  /*
+   * `summarise()` IS THE WRONG SPLIT FOR THESE, and the rendered page said so.
+   *
+   * It trusts one boundary — a full stop followed by a space and a CAPITAL —
+   * because policy prose is full of abbreviations and decimals. These sentences
+   * are not policy prose, they are the pipeline's own: "…so its input was
+   * reduced. 18 long items clipped to 250 characters for this call. 484 items
+   * were withheld…". Every boundary is followed by a DIGIT, so it found none and
+   * printed all six lines as the lead — which is exactly the wall this section
+   * was meant to stop being.
+   *
+   * A machine-written limit always opens with the fact and continues with the
+   * inventory, so the first full stop is the split. The floor keeps a two-word
+   * opener from becoming a lead of its own.
+   */
+  const LIMIT_FLOOR = 24;
+  const limitLead = (text: string): { lead: string; rest: string } => {
+    const boundary = text.slice(LIMIT_FLOOR).search(/[.!?]\s/);
+    if (boundary < 0) return { lead: text, rest: '' };
+    const at = LIMIT_FLOOR + boundary + 1;
+    return { lead: text.slice(0, at).trim(), rest: text.slice(at).trim() };
+  };
+  const gapLine = ([text, count]: [string, number]) => {
+    const { lead, rest } = limitLead(text);
+    return (
+      <li key={text} className="prt-gap">
+        <p className="prt-gap__lead">
+          {lead}
+          {count > 1 ? <span className="prt-meta"> — recorded {count} times</span> : null}
+        </p>
+        {rest ? (
+          <Details summary="What it withheld">
+            <p className="govuk-body-s">{rest}</p>
+          </Details>
+        ) : null}
+      </li>
+    );
+  };
   section('gaps', 'What it could not establish', 'provenance', gaps.length ? (
     <>
       <p className="govuk-body">
@@ -337,16 +464,16 @@ export function Report({ detail, offline, linkTo, onChanged }: {
         stages{gaps.length !== warnings.length ? `, ${gaps.length} of them distinct` : ''}. Nothing
         here is dropped — this is the record of what the assessment could not do.
       </p>
-      <ul className="govuk-list govuk-list--bullet">{gaps.slice(0, GAPS_SHOWN).map(gapLine)}</ul>
+      <ul className="prt-gaps">{gaps.slice(0, GAPS_SHOWN).map(gapLine)}</ul>
       {gaps.length > GAPS_SHOWN ? (
         <Details summary={`The other ${gaps.length - GAPS_SHOWN}`}>
-          <ul className="govuk-list govuk-list--bullet">{gaps.slice(GAPS_SHOWN).map(gapLine)}</ul>
+          <ul className="prt-gaps">{gaps.slice(GAPS_SHOWN).map(gapLine)}</ul>
         </Details>
       ) : null}
     </>
   ) : null);
 
-  section('take', 'Take it away', 'verdict', offline ? null : (
+  section('take', 'Take it away', ACTIONS, offline ? null : (
     <>
       <p className="govuk-body">
         Three copies, and they are not the same thing. The Word file is the one
@@ -395,7 +522,7 @@ export function Report({ detail, offline, linkTo, onChanged }: {
    * attach anything to, and the addenda it does carry are already in its
    * artefacts.
    */
-  section('after', 'What came after this was written', 'verdict', offline ? null : (
+  section('after', 'What came after this was written', ACTIONS, offline ? null : (
     <Addenda
       analysisId={analysis.id}
       status={analysis.status}
@@ -407,7 +534,7 @@ export function Report({ detail, offline, linkTo, onChanged }: {
     />
   ));
 
-  section('send', 'Send it to someone', 'verdict', offline ? null : <Shares analysisId={analysis.id} />);
+  section('send', 'Send it to someone', ACTIONS, offline ? null : <Shares analysisId={analysis.id} />);
 
   section('provenance', 'How this was produced', 'provenance',
     <SummaryList
@@ -472,17 +599,21 @@ export function Report({ detail, offline, linkTo, onChanged }: {
 
   return (
     <>
-      <div className="govuk-grid-row">
-        <div className="govuk-grid-column-two-thirds">
-          {/* ABOVE THE VERDICT, because a reader who meets the conclusion first
-              has already formed a view of a report that has been overtaken. */}
-          <AddendumNotice artefacts={artefacts} passes={detail.passes} />
-          {headline ? <p className="govuk-body-l">{headline}</p> : null}
-          <WarningText>
-            This is a red-team read, not an assurance review. Every profile is a hypothesis about
-            a body's incentives, never a finding about a named person.
-          </WarningText>
-        </div>
+      {/*
+        FULL WIDTH, AND THE STANDING CAVEAT DEMOTED.
+        The headline is the one sentence the whole assessment exists to produce
+        and it was wrapping at 630px inside a 960px column. The red-team caveat
+        is permanent, true of every report, and was taking a full warning box
+        above the conclusion every time — it is a standing note, not news, so it
+        reads as one.
+      */}
+      <div className="prt-lead">
+        <AddendumNotice artefacts={artefacts} passes={detail.passes} />
+        {headline ? <p className="prt-lead__headline">{headline}</p> : null}
+        <p className="prt-lead__caveat">
+          A red-team read, not an assurance review. Every profile is a hypothesis about a
+          body&rsquo;s incentives — never a finding about a named person.
+        </p>
       </div>
 
       <SelectionBanner selection={selection} onClear={() => setSelection(null)} />
@@ -515,6 +646,24 @@ export function Report({ detail, offline, linkTo, onChanged }: {
           },
         ]}
       />
+
+      {/*
+        AFTER THE REPORT, ONCE. A reader on Threats can still download the Word
+        file without going back to Verdict to find it, and a reader on Verdict
+        reaches the end of the assessment's conclusions at the end of the
+        assessment's conclusions.
+      */}
+      {inMove(ACTIONS).length ? (
+        <div className="prt-actions">
+          <h2 className="govuk-heading-m prt-actions__head">What you can do with this</h2>
+          {inMove(ACTIONS).map((entry) => (
+            <section key={entry.id} aria-labelledby={entry.id}>
+              <h3 className="govuk-heading-s" id={entry.id}>{entry.title}</h3>
+              {entry.body}
+            </section>
+          ))}
+        </div>
+      ) : null}
     </>
   );
 }

@@ -139,7 +139,11 @@ try {
    * filtered.
    */
   await page.getByRole('tab', { name: /verdict/i }).click();
-  const band = page.locator('.prt-profile__band').first();
+  // The four exposure boxes are one segmented bar now: `.prt-profile` is gone
+  // and the segments are the control. The walk went green on a selector that
+  // matched nothing, reporting "no exposure band to select" rather than passing
+  // — which is the right failure, and is why this is a walk and not a unit test.
+  const band = page.locator('.prt-stack__seg').first();
   if (await band.count()) {
     await band.click();
     const banner = page.locator('.prt-selection');
@@ -400,6 +404,10 @@ try {
   await page.getByRole('heading', { name: 'What came after this was written' }).scrollIntoViewIfNeeded();
   const material = path.join(dataRoot, 'walk-rebuttal.txt');
   await writeFile(material, 'A rebuttal. The Council disputes that it has the capacity assumed, and says the funding line is not committed beyond one year.');
+  // The form is behind a disclosure now: 1,300px of radios and pickers at the
+  // foot of every report was a sixth of the page, permanently open, for a thing
+  // done rarely. Opening it is part of the journey and so is walked.
+  await page.locator('summary', { hasText: 'Add something to it' }).click();
   await page.getByLabel('A critique or rebuttal').check();
   await page.getByLabel('The document', { exact: true }).setInputFiles(material);
   await page.getByLabel('Anything you want the reading to know').fill('Sent by the Council.');
@@ -442,6 +450,10 @@ try {
 
   // Writing it again, which the store refuses without a completed addendum —
   // so this could only ever run after the step above.
+  // Behind its own disclosure, for the same reason the attach form is: a
+  // restatement is the most expensive call in the tool and the rarest thing a
+  // reader does with a report.
+  await page.locator('summary', { hasText: 'Write the report again' }).click();
   const rewrite = page.getByRole('button', { name: 'Write it again' });
   if (!(await rewrite.count())) {
     failures.push('restate: not offered even with a completed addendum');
@@ -476,8 +488,14 @@ try {
   // that renders and does not navigate is the exact failure this step exists to
   // catch, and it is invisible to a type check.
   await page.getByRole('tab', { name: /threats/i }).click();
-  const playbook = page.getByRole('table', { name: /exploitation playbook/i });
-  const firstPlay = playbook.getByRole('link').first();
+  // The playbook TABLE is gone — it printed the same forty-seven plays the
+  // ranked cards above it already print, in five columns narrow enough to set
+  // "compliant" as "compli / ant". The cards are the list now, so the drill is
+  // entered from the first card's title, which is the link a reader would use.
+  // SCOPED TO THE OPEN PANEL. Play cards appear in Verdict too ("read these
+  // three first"), and a page-wide locator resolved to one inside a `hidden`
+  // panel — which clicks forever without ever being visible.
+  const firstPlay = page.locator('#report-panel-threats .prt-play__title a').first();
   const playName = (await firstPlay.innerText()).trim();
   await firstPlay.click();
   await page.waitForURL('**/artefacts/**', { timeout: 10000 });

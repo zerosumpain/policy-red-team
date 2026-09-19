@@ -5,6 +5,7 @@ import type { Artefact } from '$lib/policy-analysis/contracts';
 import { Button } from '../../govuk';
 import { isEmptyUnder, narrowExcept, type Selection } from '../selection';
 import { EQUAL, isEqual, weightedExposure } from '../weighting';
+import { PlayList } from '../PlayList';
 
 /**
  * RANK BY WHAT YOU CARE ABOUT.
@@ -102,20 +103,17 @@ export function ThreatsLead({ list, selection, mechanismIds, linkTo }: {
           : `${ranked.length} plays, re-ranked. The assessment’s own exposure is printed on each one.`}
       </p>
       {empty ? <p className="govuk-body">Nothing under this selection.</p> : null}
-      <ol className="govuk-list govuk-list--spaced" aria-labelledby="ranked">
-        {ranked.map((play) => (
-          <li key={play.artefact.id}>
-            <span className={`prt-band prt-band--${play.band}`}>{BAND_LABEL[play.band]}</span>{' '}
-            {linkTo ? linkTo(play.artefact) : play.artefact.label}
-            {play.actor ? <span className="prt-meta"> — {play.actor.label}</span> : null}
-            {/* THE ASSESSMENT'S FIGURE, ALWAYS. Without it a re-ranked list is
-                just an assertion, and the reader has no way back to what the run
-                actually concluded. */}
-            <span className="prt-meta"> · exposure {play.exposure.toFixed(2)}</span>
-            {!isDefault ? <span className="prt-meta"> · yours {weightedExposure(play, weights).toFixed(2)}</span> : null}
-          </li>
-        ))}
-      </ol>
+      <PlayList
+        plays={ranked}
+        linkTo={linkTo}
+        rank
+        trailing={isDefault ? undefined : (play) => (
+          <span className="prt-play__yours">
+            <span className="govuk-visually-hidden">Your ranking </span>
+            {weightedExposure(play, weights).toFixed(2)}
+          </span>
+        )}
+      />
     </section>
   );
 }
