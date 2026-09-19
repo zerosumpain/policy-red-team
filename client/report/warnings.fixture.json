@@ -1,0 +1,1026 @@
+[
+ [
+  1,
+  "49 groups of model output were discarded in this stage. What follows is drawn from what survived; treat structural checks over this stage's relationships as a floor, not a verdict."
+ ],
+ [
+  1,
+  "4 of 72 pages carry no policy text and were not analysed: page 1 (too little text on the page to analyse), page 3 (copyright, licence and publication notice), page 4 (a contents list, not policy text), page 72 (too little text on the page to analyse). They remain part of the document record."
+ ],
+ [
+  1,
+  "The supplied passage describes proposed policy directions but provides limited detail on delivery bodies, eligibility, funding amounts, accountability and outcome measurement."
+ ],
+ [
+  1,
+  "2 model outputs were discarded and are not part of this assessment \u2014 An artefact of kind \u201cedge\u201d does not belong to this stage. Affected: s1_001_edge_001 (edge), s1_001_edge_002 (edge)."
+ ],
+ [
+  1,
+  "The supplied passage is a foreword extract; it provides broad objectives and claims but limited implementation, measurement, legal or accountability detail."
+ ],
+ [
+  1,
+  "No independent evidence, targets, baselines, timetable, funding amounts or monitoring arrangements are stated in the supplied passage."
+ ],
+ [
+  1,
+  "The supplied passage contains cited source titles and links in footnotes, but no source URLs were supplied as artefacts; URLs were therefore left null."
+ ],
+ [
+  1,
+  "The passage does not specify funding amounts, formal decision rights, implementation timetables, responsible bodies for several interventions, or evaluation designs."
+ ],
+ [
+  1,
+  "4 items referred to something that is not in this assessment; the reference was dropped and the item kept. \u201cSkills England\u201d lost 1 unresolvable entry in mentions. \u201cEmployers\u201d lost 1 unresolvable entry in mentions. \u201cColleges and universities\u201d lost 1 unresolvable entry in mentions. \u201cLocal Get Britain Working plans\u201d lost 1 unresolvable entry in mentions."
+ ],
+ [
+  1,
+  "2 model outputs were discarded and are not part of this assessment \u2014 An artefact did not match its stage contract (claim data.category: Invalid option: expected one of \"objective\"|\"problem\"|\"responsibility\"|\"decision_right\"|\"funding\"|\"dependency\"|\"data_flow\"|\"measure\"|\"constraint\"|\"risk\"|\"benefit\"|\"claim\"|\"cited_evidence\"). Affected: s1_003_a07 (claim), s1_003_a09 (claim)."
+ ],
+ [
+  1,
+  "The passage does not identify the institution represented by 'we' or provide implementation, funding amounts, delivery timelines, or outcome evaluation arrangements."
+ ],
+ [
+  1,
+  "1 item referred to something that is not in this assessment; the reference was dropped and the item kept. \u201cJoined-up employment and skills delivery\u201d lost 1 unresolvable provenance link."
+ ],
+ [
+  1,
+  "1 model output was discarded and are not part of this assessment \u2014 An artefact did not match its stage contract (claim data.category: Invalid option: expected one of \"objective\"|\"problem\"|\"responsibility\"|\"decision_right\"|\"funding\"|\"dependency\"|\"data_flow\"|\"measure\"|\"constraint\"|\"risk\"|\"benefit\"|\"claim\"|\"cited_evidence\"). Affected: s1_005_claim_007 (claim)."
+ ],
+ [
+  1,
+  "The supplied passage is page 10 only; funding amounts, legal powers, detailed implementation arrangements, data standards and cited evidence are not specified."
+ ],
+ [
+  1,
+  "1 item referred to something that is not in this assessment; the reference was dropped and the item kept. \u201cFurther education teachers and leaders\u201d lost 1 unresolvable entry in mentions."
+ ],
+ [
+  1,
+  "1 model output was discarded and are not part of this assessment \u2014 An artefact did not match its stage contract (claim data.category: Invalid option: expected one of \"objective\"|\"problem\"|\"responsibility\"|\"decision_right\"|\"funding\"|\"dependency\"|\"data_flow\"|\"measure\"|\"constraint\"|\"risk\"|\"benefit\"|\"claim\"|\"cited_evidence\"). Affected: s1_006_claim_006 (claim)."
+ ],
+ [
+  1,
+  "2 model outputs were discarded and are not part of this assessment \u2014 An assumption must link to an affected actor or mechanism. Affected: s1_006_assumption_005 (assumption), s1_006_assumption_007 (assumption)."
+ ],
+ [
+  1,
+  "8 items referred to something that is not in this assessment; the reference was dropped and the item kept. \u201cGovernment\u201d lost 1 unresolvable entry in mentions. \u201cDepartment for Education\u201d lost 1 unresolvable entry in mentions. \u201cDepartment for Science, Innovation and Technology\u201d lost 1 unresolvable entry in mentions. \u201cOffice for Students\u201d lost 1 unresolvable entry in mentions. And 4 more."
+ ],
+ [
+  1,
+  "4 model outputs were discarded and are not part of this assessment \u2014 An artefact of kind \u201cedge\u201d does not belong to this stage. Affected: s1_007_e01 (edge), s1_007_e02 (edge), s1_007_e03 (edge), s1_007_e04 (edge)."
+ ],
+ [
+  1,
+  "2 model outputs were discarded and are not part of this assessment \u2014 An assumption must link to an affected actor or mechanism. Affected: s1_007_a03 (assumption), s1_007_a04 (assumption)."
+ ],
+ [
+  1,
+  "1 model output was discarded and are not part of this assessment \u2014 An extracted assertion could not be located in the policy text. Affected: s1_008_claim_006 (claim)."
+ ],
+ [
+  1,
+  "1 model output was discarded and are not part of this assessment \u2014 An artefact cites an unavailable source. Affected: s1_008_actor_001 (actor)."
+ ],
+ [
+  1,
+  "The passage provides objectives, evidence and high-level responsibilities but omits detailed implementation governance, delivery arrangements, data architecture, measures and legal constraints."
+ ],
+ [
+  1,
+  "6 items referred to something that is not in this assessment; the reference was dropped and the item kept. \u201cEmployers\u201d lost 1 unresolvable entry in mentions. \u201cGovernment\u201d lost 1 unresolvable entry in mentions. \u201cIndividuals\u201d lost 1 unresolvable entry in mentions. \u201cBusiness\u201d lost 1 unresolvable entry in mentions. And 2 more."
+ ],
+ [
+  1,
+  "3 model outputs were discarded and are not part of this assessment \u2014 An artefact of kind \u201cedge\u201d does not belong to this stage. Affected: s1_010_edge_001 (edge), s1_010_edge_002 (edge), s1_010_edge_003 (edge)."
+ ],
+ [
+  1,
+  "6 items referred to something that is not in this assessment; the reference was dropped and the item kept. \u201cAdults\u201d lost 1 unresolvable entry in mentions. \u201cLocal Skills Improvement Plans\u201d lost 1 unresolvable entry in mentions. \u201cGet Britain Working Plans\u201d lost 1 unresolvable entry in mentions. \u201cOffice for National Statistics\u201d lost 1 unresolvable entry in mentions. And 2 more."
+ ],
+ [
+  1,
+  "The supplied passage has a source passage artefact with sourceId and sourceQuote set to null; extracted artefacts therefore use passage_0016 as the sourceId and provenance reference."
+ ],
+ [
+  1,
+  "Implementation details for the essential-skills review, Pathways to Work delivery, funding administration and Skills Bootcamps devolution are incomplete in the supplied passage."
+ ],
+ [
+  1,
+  "26 items referred to something that is not in this assessment; the reference was dropped and the item kept. \u201cAlign essential skills training with priority skills gaps\u201d lost 1 unresolvable provenance link. \u201cDisadvantaged people have specific essential-skills needs\u201d lost 1 unresolvable provenance link. \u201cReview National Standards for Essential Digital Skills\u201d lost 1 unresolvable provenance link. \u201cPathways to Work Guarantee\u201d lost 1 unresolvable provenance link. And 22 more."
+ ],
+ [
+  1,
+  "The supplied passage does not include the underlying contents of cited Skills England reports 24 and 25; they are recorded only as claims attributed to the passage."
+ ],
+ [
+  1,
+  "The passage omits detailed implementation, governance, data standards and evaluation arrangements for skills passports and data-driven skills planning."
+ ],
+ [
+  1,
+  "4 items referred to something that is not in this assessment; the reference was dropped and the item kept. \u201cSkills England\u201d lost 1 unresolvable entry in mentions. \u201cStrategic Authorities\u201d lost 1 unresolvable entry in mentions. \u201cEmployer and skills-system partners\u201d lost 5 unresolvable entries in mentions. \u201cLabour Market Evidence Group participants\u201d lost 3 unresolvable entries in mentions."
+ ],
+ [
+  1,
+  "8 items referred to something that is not in this assessment; the reference was dropped and the item kept. \u201cStrategic Authorities\u201d lost 1 unresolvable entry in mentions. \u201cSkills England\u201d lost 1 unresolvable entry in mentions. \u201cJobs and Careers Service\u201d lost 1 unresolvable entry in mentions. \u201cEmployer Representative Bodies\u201d lost 1 unresolvable entry in mentions. And 4 more."
+ ],
+ [
+  1,
+  "The supplied passage ends immediately after introducing sector Jobs Plans; detailed implementation, governance, funding and monitoring arrangements are not provided."
+ ],
+ [
+  1,
+  "The supplied passage includes citation titles and source names but no source URLs."
+ ],
+ [
+  1,
+  "7 items referred to something that is not in this assessment; the reference was dropped and the item kept. \u201cCentral government\u201d lost 1 unresolvable entry in mentions. \u201cStrategic Authorities\u201d lost 1 unresolvable entry in mentions. \u201cEmployers\u201d lost 1 unresolvable entry in mentions. \u201cBusinesses and industry bodies\u201d lost 1 unresolvable entry in mentions. And 3 more."
+ ],
+ [
+  1,
+  "The supplied passage provides broad policy commitments and dates but omits detailed delivery governance, eligibility rules, monitoring arrangements, funding administration and implementation responsibilities."
+ ],
+ [
+  1,
+  "1 model output was discarded and are not part of this assessment \u2014 An artefact did not match its stage contract (claim data.category: Invalid option: expected one of \"objective\"|\"problem\"|\"responsibility\"|\"decision_right\"|\"funding\"|\"dependency\"|\"data_flow\"|\"measure\"|\"constraint\"|\"risk\"|\"benefit\"|\"claim\"|\"cited_evidence\"). Affected: s1_018_claim_011 (claim)."
+ ],
+ [
+  1,
+  "2 model outputs were discarded and are not part of this assessment \u2014 An extracted assertion could not be located in the policy text. Affected: s1_018_claim_002 (claim), s1_018_actor_005 (actor)."
+ ],
+ [
+  1,
+  "1 model output was discarded and are not part of this assessment \u2014 An artefact cites an unavailable source. Affected: s1_018_assumption_004 (assumption)."
+ ],
+ [
+  1,
+  "The passage does not specify detailed implementation, allocation, enforcement, monitoring or evaluation arrangements for several interventions."
+ ],
+ [
+  1,
+  "7 items referred to something that is not in this assessment; the reference was dropped and the item kept. \u201cEmployers\u201d lost 1 unresolvable entry in mentions. \u201cColleges and universities\u201d lost 1 unresolvable entry in mentions. \u201cIndustrial Strategy Zones\u201d lost 1 unresolvable entry in mentions. \u201cLabour Market Evidence Group\u201d lost 1 unresolvable entry in mentions. And 3 more."
+ ],
+ [
+  1,
+  "2 model outputs were discarded and are not part of this assessment \u2014 An extracted assertion could not be located in the policy text. Affected: s1_019_claim_008 (claim), s1_019_mechanism_002 (mechanism)."
+ ],
+ [
+  1,
+  "1 model output was discarded and are not part of this assessment \u2014 An artefact cites an unavailable source. Affected: s1_019_assumption_002 (assumption)."
+ ],
+ [
+  1,
+  "Implementation details for the guaranteed job, paid placements, automatic study-place allocation, Youth Hubs and Trailblazer scaling are incomplete in the supplied passage."
+ ],
+ [
+  1,
+  "Cited sources are named in the passage but their underlying documents were not supplied; the evidence claims are therefore literal policy-text extractions, not independently verified findings."
+ ],
+ [
+  1,
+  "3 model outputs were discarded and are not part of this assessment \u2014 An artefact of kind \u201cedge\u201d does not belong to this stage. Affected: s1_020_edge_001 (edge), s1_020_edge_002 (edge), s1_020_edge_003 (edge)."
+ ],
+ [
+  1,
+  "2 model outputs were discarded and are not part of this assessment \u2014 An extracted assertion could not be located in the policy text. Affected: s1_020_claim_003 (claim), s1_020_claim_009 (claim)."
+ ],
+ [
+  1,
+  "The passage does not specify implementation timelines, accountable bodies, funding, legal bases for data sharing, technical standards, eligibility criteria for all interventions, or outcome measures."
+ ],
+ [
+  1,
+  "7 items referred to something that is not in this assessment; the reference was dropped and the item kept. \u201cNEET risk associated with low qualifications\u201d lost 1 unresolvable provenance link. \u201cLocal authorities\u201d lost 1 unresolvable entry in mentions. \u201cStrategic Authorities\u201d lost 1 unresolvable entry in mentions. \u201cSchools\u201d lost 1 unresolvable entry in mentions. And 3 more."
+ ],
+ [
+  1,
+  "2 model outputs were discarded and are not part of this assessment \u2014 An artefact of kind \u201cedge\u201d does not belong to this stage. Affected: s1_021_edge_001 (edge), s1_021_edge_002 (edge)."
+ ],
+ [
+  1,
+  "1 model output was discarded and are not part of this assessment \u2014 An extracted assertion could not be located in the policy text. Affected: s1_021_claim_008 (claim)."
+ ],
+ [
+  1,
+  "The supplied passage does not specify the policy department or jurisdiction."
+ ],
+ [
+  1,
+  "Implementation details for AI governance, data-sharing arrangements, default-provider eligibility, funding allocation and attendance thresholds remain unspecified."
+ ],
+ [
+  1,
+  "13 items referred to something that is not in this assessment; the reference was dropped and the item kept. \u201cAutomatic allocation and wraparound support\u201d lost 1 unresolvable provenance link. \u201cLocal Authorities\u201d lost 1 unresolvable entry in mentions. \u201cOrganisations interested in tackling NEETs\u201d lost 1 unresolvable entry in mentions. \u201cSchools\u201d lost 1 unresolvable entry in mentions. And 9 more."
+ ],
+ [
+  1,
+  "2 model outputs were discarded and are not part of this assessment \u2014 An artefact did not match its stage contract (claim data.category: Invalid option: expected one of \"objective\"|\"problem\"|\"responsibility\"|\"decision_right\"|\"funding\"|\"dependency\"|\"data_flow\"|\"measure\"|\"constraint\"|\"risk\"|\"benefit\"|\"claim\"|\"cited_evidence\"). Affected: s1_022_claim_005 (claim), s1_022_claim_007 (claim)."
+ ],
+ [
+  1,
+  "1 model output was discarded and are not part of this assessment \u2014 An extracted assertion could not be located in the policy text. Affected: s1_022_claim_002 (claim)."
+ ],
+ [
+  1,
+  "3 model outputs were discarded and are not part of this assessment \u2014 An artefact cites an unavailable source. Affected: s1_022_mechanism_001 (mechanism), s1_022_actor_002 (actor), s1_022_assumption_001 (assumption)."
+ ],
+ [
+  1,
+  "The passage does not identify the jurisdiction, responsible department, detailed delivery arrangements, legal basis for data sharing, or evaluation framework."
+ ],
+ [
+  1,
+  "And 80 further warnings of the same kinds, not listed individually."
+ ],
+ [
+  2,
+  "1 group of model output were discarded in this stage. What follows is drawn from what survived; treat structural checks over this stage's relationships as a floor, not a verdict."
+ ],
+ [
+  2,
+  "No unclaimedMentions list was supplied; no actor mentions were resolved."
+ ],
+ [
+  2,
+  "The model provider became unreachable mid-call and the call was retried after waiting."
+ ],
+ [
+  2,
+  "Only high-confidence institutional consolidations and explicit ambiguity records are emitted. Generic, population-level and programme-level mentions remain unresolved in the supplied context and require additional resolution passes."
+ ],
+ [
+  2,
+  "3 model outputs were discarded and are not part of this assessment \u2014 An artefact did not match its stage contract (resolution_candidate data.candidates: Too small: expected array to have >=2 items). Affected: s2_000_resolution_001 (resolution_candidate), s2_000_resolution_002 (resolution_candidate), s2_000_resolution_003 (resolution_candidate)."
+ ],
+ [
+  2,
+  "Only clear and repeated actor identities were consolidated. Numerous remaining unclaimed mentions are heterogeneous groups, programmes, plans, datasets, named organisations and role references that require separate canonical actors or unresolved resolution_candidate records."
+ ],
+ [
+  2,
+  "Generic labels such as Government, Employers, Providers, Students and Strategic Authorities were retained with explicit ambiguity rather than treated as specific institutions."
+ ],
+ [
+  2,
+  "176 of 398 source mentions were never resolved into a named body: Further education workforce, Young people aged 16 to 18, Post-16 workforce, Local Get Britain Working plans, Young people, Schools and colleges, Universal Credit recipients unemployed over 18 months, Teaching workforce, and 168 more. Those actors are absent from the graph, the profiles and the red team."
+ ],
+ [
+  3,
+  "1 group of model output were discarded in this stage. What follows is drawn from what survived; treat structural checks over this stage's relationships as a floor, not a verdict."
+ ],
+ [
+  3,
+  "The model\u2019s reply could not be parsed and the call was made again."
+ ],
+ [
+  3,
+  "1 model output was discarded and are not part of this assessment \u2014 An extracted assertion could not be located in the policy text. Affected: s3_016_edge_001 (edge)."
+ ],
+ [
+  3,
+  "1 item referred to something that is not in this assessment; the reference was dropped and the item kept. \u201cUniversities receive benefit from research grant cost recovery reform\u201d lost 1 unresolvable provenance link."
+ ],
+ [
+  3,
+  "1 item referred to something that is not in this assessment; the reference was dropped and the item kept. \u201cStudents and applicants benefit from improved higher-education information\u201d lost 1 unresolvable provenance link."
+ ],
+ [
+  3,
+  "8 of 55 parts of this stage had nothing to report: Relationships for Parliament, Relationships for JobCentre Plus Network, Relationships for Colleges and universities, Relationships for Providers, Relationships for Ofqual, Relationships for Department for Work and Pensions, Relationships for University of Bristol, Relationships for University of Edinburgh. The model answered for each and recorded nothing, which is an answer rather than a failure."
+ ],
+ [
+  4,
+  "1 group of model output were discarded in this stage. What follows is drawn from what survived; treat structural checks over this stage's relationships as a floor, not a verdict."
+ ],
+ [
+  4,
+  "The profile is based on policy-text evidence and structural inference; no independent evidence, formal UKRI accountability documents, legal instruments, implementation timetable, outcome framework or quantified delivery costs were supplied."
+ ],
+ [
+  4,
+  "Operational objectives, incentives, risks and institutional motivations are role-based inferences, not claims about private individual psychology."
+ ],
+ [
+  4,
+  "The target actor is an unresolved resolution candidate in the supplied assessment; this profile treats it as the Department for Education because the target candidate itself is explicitly linked to that named department, but the identity-resolution uncertainty remains material."
+ ],
+ [
+  4,
+  "The supplied policy text does not specify the department's formal accountability chain, complete legal basis, delivery timetable, monitoring framework, funding allocation or outside option."
+ ],
+ [
+  4,
+  "Operational objectives, benefits, reputational incentives, political incentives and institutional motivations are structural inferences from the department's role and should not be treated as evidence of private motives."
+ ],
+ [
+  4,
+  "The supplied policy text does not establish Ofsted's accountability arrangements, legal powers, resources, implementation timetable, quantified success measures, outside option or gain from policy failure."
+ ],
+ [
+  4,
+  "Operational objectives, dependencies, costs, risks, reputational incentives and institutional motivations are structural inferences from the stated inspection and intervention functions, not direct statements of Ofsted intent."
+ ],
+ [
+  4,
+  "The target is an unresolved resolution candidate; this profile should not be treated as proof that the Scotland-and-Wales JobCentre Plus Network, Jobcentre Plus references elsewhere, and the programme-labelled candidate are the same entity."
+ ],
+ [
+  4,
+  "The supplied passage provides insufficient evidence on accountability, resources, legal powers, information control, measures and implementation authority."
+ ],
+ [
+  4,
+  "The target identity remains uncertain: the supplied resolution record states that the Jobcentre Plus mentions could not be established as one entity. This profile follows the assigned targetActorId only."
+ ],
+ [
+  4,
+  "Several incentive, accountability and information fields are structural inferences or explicitly unknown because the policy text omits organisational governance, funding, legal powers, data arrangements and measures."
+ ],
+ [
+  4,
+  "The policy text identifies Greater Manchester Combined Authority as an initial devolved delivery authority but does not specify its accountability chain, legal powers, funding settlement, targets, data controls or evaluation arrangements."
+ ],
+ [
+  4,
+  "Operational objectives, incentives, outside options and gain from failure are analytical inferences or acknowledged unknowns rather than explicit statements by the authority."
+ ],
+ [
+  4,
+  "The profile is based on a single policy passage and structural inference; authority-specific objectives, accountability, funding, legal powers, information assets, measures and outside options are largely unspecified."
+ ],
+ [
+  4,
+  "The supplied structural edge infers accountability from inclusion among authorities receiving devolved delivery; the passage expressly does not specify detailed operational duties or accountability arrangements."
+ ],
+ [
+  4,
+  "The supplied material identifies the Office for National Statistics as an evidence source only. It does not support inferences about its objectives, accountability, resources, legal powers, incentives, dependencies or available strategies in this policy."
+ ],
+ [
+  4,
+  "1 model output was discarded and are not part of this assessment \u2014 An extracted assertion could not be located in the policy text. Affected: s4_011_profile_001 (profile)."
+ ],
+ [
+  4,
+  "The supplied evidence identifies the actor and ministerial role but provides little basis for attributing individual incentives, powers, accountability arrangements, resources or implementation strategies."
+ ],
+ [
+  4,
+  "The profile does not infer private motives. Operational objectives, gain from failure and outside option are explicitly unknown where the policy extract does not support them."
+ ],
+ [
+  4,
+  "The actor identity remains unresolved; this profile describes only the candidate identified as s2_001_actor_002_candidate_0."
+ ],
+ [
+  4,
+  "The supplied evidence establishes document presentation only and does not support assumptions about substantive policy ownership, implementation authority or ministerial incentives."
+ ],
+ [
+  4,
+  "The supplied text supports the actor\u2019s title, public objectives and presentation role, but provides insufficient evidence for most incentive, accountability, legal-power and implementation fields."
+ ],
+ [
+  4,
+  "The profile is based on a presentation attribution only; the supplied text does not establish substantive implementation authority, funding, accountability, measurement or delivery arrangements."
+ ],
+ [
+  4,
+  "The supplied passage identifies Liz Kendall MP by ministerial title and associates the signatories with broad policy objectives, but does not provide sufficient evidence for actor-specific accountability, incentives, resources, legal powers, information control, delivery authority, success measures or failure gains."
+ ],
+ [
+  4,
+  "The target actor is an unresolved candidate and may represent a class of Strategic Authorities rather than one legally defined institution."
+ ],
+ [
+  4,
+  "The policy provides limited detail on formal accountability, legal powers, funding allocation, data governance, outcome measures and the authority's ability to decline participation."
+ ],
+ [
+  4,
+  "Stated objectives, outside option, gain from failure and political incentives are not established for this specific actor."
+ ],
+ [
+  4,
+  "The selected actor is an unresolved generic provider candidate; provider type, jurisdiction, accountability, legal powers, funding position and information rights are not established."
+ ],
+ [
+  4,
+  "Operational objectives, incentives, costs, benefits, risks and strategies are role-based inferences rather than stated motives of a named institution."
+ ],
+ [
+  4,
+  "The model\u2019s reply could not be parsed and the call was made again."
+ ],
+ [
+  4,
+  "The profile covers a broad, unresolved category of education providers; provider types, accountability arrangements, resources, legal powers and outside options are not specified."
+ ],
+ [
+  4,
+  "Operational objectives, costs, reputational incentives and institutional motivations are behavioural or structural inferences rather than explicit provider statements."
+ ],
+ [
+  4,
+  "The profile is based on limited policy text. Provider accountability, funding, legal powers, information control, targets and evaluation arrangements remain largely unspecified."
+ ],
+ [
+  4,
+  "The target identity is an unresolved provider-category candidate; this profile should not be treated as covering all education or skills providers."
+ ],
+ [
+  4,
+  "The actor is a population-level user group rather than a single institution. Accountability, legal powers, information control and individual success measures are not specified in the supplied policy passage."
+ ],
+ [
+  4,
+  "Operational objectives, outside options, gain from failure and strategies are structural inferences rather than direct statements by individuals and learners."
+ ],
+ [
+  4,
+  "The target is a heterogeneous user-group actor rather than a single institution. The supplied policy text provides limited evidence about collective behaviour, accountability, legal rights, costs, data governance and measurable outcomes."
+ ],
+ [
+  4,
+  "Students are a heterogeneous user group rather than a single organised institution; accountability, legal powers, information control and collective strategies are therefore largely unspecified."
+ ],
+ [
+  4,
+  "The supplied material contains broad policy commitments but no student-level targets, baselines, funding allocation, timetable for several reforms, or evaluation design."
+ ],
+ [
+  4,
+  "The target is an unresolved learner-group candidate; the profile should not be treated as identifying one homogeneous population."
+ ],
+ [
+  4,
+  "The passage provides no direct learner statements, formal accountability arrangements, legal powers, monitoring framework, funding amounts or quantified learner outcomes."
+ ],
+ [
+  4,
+  "The target actor is an unresolved user-group resolution candidate; this profile should not be treated as evidence that all students, applicants, learners or individuals form one organisation or coordinated actor."
+ ],
+ [
+  4,
+  "No formal accountability, legal powers, collective information control, political representation, measurable targets or monitoring arrangements are specified for the target actor."
+ ],
+ [
+  4,
+  "The target is a user group rather than an institution or delivery body. Most accountability, legal-power, resource, cost, incentive and failure-gain fields are unsupported by the supplied policy text and are therefore recorded as unknown."
+ ],
+ [
+  4,
+  "The target is an unresolved population-level actor rather than a specified institution or decision-maker. Accountability, legal powers, controlled information, time horizon, gain from failure and formal incentives are not established by the supplied policy text."
+ ],
+ [
+  4,
+  "The target identity remains unresolved across learner and student mentions; this profile covers only s2_001_actor_009_candidate_8."
+ ],
+ [
+  4,
+  "The passage provides intended outcomes and high-level pathway design but does not support claims about accountability, legal powers, information control, costs, outside options or gains from failure."
+ ],
+ [
+  4,
+  "The supplied policy text identifies Ofqual only in relation to Ofqual-regulated level 4 or higher qualifications and does not establish its role in the proposed unified regulatory system."
+ ],
+ [
+  4,
+  "No supported evidence was supplied for Ofqual's objectives, accountability, success criteria, time horizon, resources, constraints, legal powers, information control, dependencies, costs, benefits, risks, outside option, gain from failure, incentives or available strategies."
+ ],
+ [
+  4,
+  "The supplied evidence establishes only an association between the Department for Work and Pensions and Youth Hubs; it does not establish formal ownership, funding, delivery authority or accountability."
+ ],
+ [
+  4,
+  "The supplied evidence identifies the University of Bristol as the location of Isambard-AI but does not establish ownership, operation, funding, accountability, legal powers, objectives, incentives or implementation responsibilities."
+ ],
+ [
+  4,
+  "The profile is necessarily sparse because the supplied policy text identifies the University of Edinburgh only as the proposed location for a national supercomputer and expressly does not establish its delivery, ownership or operating responsibilities."
+ ],
+ [
+  5,
+  "This call exceeded the model's context window, so its input was reduced. 17 long items clipped to 250 characters for this call. 439 items were withheld from this call entirely: Unresolved: Skills England, Unresolved: Department for Education, Unresolved: Jobcentre Plus, Office for Students alias, Unresolved: Secretary of State for Education, Unresolved: Secretary of State for Work and Pensions, Unresolved: Secretary of State for Science, Innovation and Technology, Unresolved: Government, and 431 more. No alias, resolution_candidate was left in this call's context at all; reasoning that depends on them could not be done here. Conclusions drawn here rest on less than the full inventory."
+ ],
+ [
+  5,
+  "Research unavailable for Youth Guarantee delivery and outcomes. Authority, freshness and jurisdiction remain unverified."
+ ],
+ [
+  5,
+  "Research unavailable for Implementation authority and legislative feasibility. Authority, freshness and jurisdiction remain unverified."
+ ],
+ [
+  5,
+  "Research unavailable for Data-sharing legality and operational usability. Authority, freshness and jurisdiction remain unverified."
+ ],
+ [
+  5,
+  "Research unavailable for Validity of skills intelligence for funding decisions. Authority, freshness and jurisdiction remain unverified."
+ ],
+ [
+  5,
+  "Research unavailable for Automatic post-16 allocation capacity and effects. Authority, freshness and jurisdiction remain unverified."
+ ],
+ [
+  5,
+  "Research unavailable for Fee uplifts and provider sustainability. Authority, freshness and jurisdiction remain unverified."
+ ],
+ [
+  5,
+  "Research unavailable for Employer participation and additionality. Authority, freshness and jurisdiction remain unverified."
+ ],
+ [
+  5,
+  "Research unavailable for Devolved delivery variation and accountability. Authority, freshness and jurisdiction remain unverified."
+ ],
+ [
+  5,
+  "Research unavailable for Effects of higher-education specialisation. Authority, freshness and jurisdiction remain unverified."
+ ],
+ [
+  5,
+  "Research unavailable for AI assessment-integrity governance. Authority, freshness and jurisdiction remain unverified."
+ ],
+ [
+  5,
+  "Research unavailable for Validity of outcome and progress measures. Authority, freshness and jurisdiction remain unverified."
+ ],
+ [
+  5,
+  "Research unavailable for Evidence freshness and transferability. Authority, freshness and jurisdiction remain unverified."
+ ],
+ [
+  5,
+  "External research produced no usable sources. This assessment is based on the policy and explicitly labelled inferences only."
+ ],
+ [
+  5,
+  "This call exceeded the model's context window, so its input was reduced. 18 long items clipped to 250 characters for this call. 451 items were withheld from this call entirely: Unresolved: Skills England, Unresolved: Department for Education, Unresolved: Jobcentre Plus, Office for Students alias, Unresolved: Secretary of State for Education, Unresolved: Secretary of State for Work and Pensions, Unresolved: Secretary of State for Science, Innovation and Technology, Unresolved: Government, and 443 more. No alias, research_question, resolution_candidate was left in this call's context at all; reasoning that depends on them could not be done here. Conclusions drawn here rest on less than the full inventory."
+ ],
+ [
+  5,
+  "No research_source artefacts were supplied from the prior enquiry round. Under follow-up rules, no new research questions can be generated without retrieved findings raising a contradiction, authority gap, comparable reform, or other newly evidenced issue."
+ ],
+ [
+  5,
+  "Enquiry round 2 raised no further question, so the enquiry stopped there."
+ ],
+ [
+  6,
+  "This call exceeded the model's context window, so its input was reduced. 18 long items clipped to 250 characters for this call. 406 items were withheld from this call entirely: Unresolved: Skills England, Unresolved: Department for Education, Unresolved: Jobcentre Plus, Unresolved: Secretary of State for Education, Unresolved: Secretary of State for Work and Pensions, Unresolved: Secretary of State for Science, Innovation and Technology, Unresolved: Government, Unresolved: Employers, and 398 more. No actor, edge, research_question, resolution_candidate was left in this call's context at all; reasoning that depends on them could not be done here. Conclusions drawn here rest on less than the full inventory."
+ ],
+ [
+  6,
+  "No independent research_source rows were supplied; all matrix entries use supplied policy passages."
+ ],
+ [
+  6,
+  "Cited sources in the policy passage were not treated as independently reviewed evidence."
+ ],
+ [
+  6,
+  "Publication date and jurisdiction were treated as unknown unless explicit in the cited passage."
+ ],
+ [
+  6,
+  "Several policy claims describe intentions, targets or expected benefits rather than observed outcomes."
+ ],
+ [
+  7,
+  "6 of 10 interaction patterns have no supporting relationship in the policy graph and were assessed on inference alone: coordination, metric gaming, information asymmetry, enforcement credibility, repeated interaction, coalition formation."
+ ],
+ [
+  7,
+  "This call exceeded the model's context window, so its input was reduced. 18 long items clipped to 250 characters for this call. 484 items were withheld from this call entirely: Unresolved: Skills England, Unresolved: Department for Education, Unresolved: Jobcentre Plus, Unresolved: Secretary of State for Education, Unresolved: Secretary of State for Work and Pensions, Unresolved: Secretary of State for Science, Innovation and Technology, Unresolved: Government, Unresolved: Employers, and 476 more. No research_question, resolution_candidate was left in this call's context at all; reasoning that depends on them could not be done here. Conclusions drawn here rest on less than the full inventory."
+ ],
+ [
+  7,
+  "Principal\u2013agent applicability is not fully established because the supplied policy text does not specify the complete accountability chain, formal delegation instruments, monitoring design, funding conditions or sanctions."
+ ],
+ [
+  7,
+  "The model uses role-based behavioural hypotheses; it does not infer private motives of named individuals or institutions."
+ ],
+ [
+  7,
+  "This call exceeded the model's context window, so its input was reduced. 18 long items clipped to 250 characters for this call. 484 items were withheld from this call entirely: Unresolved: Skills England, Unresolved: Department for Education, Unresolved: Jobcentre Plus, Unresolved: Secretary of State for Education, Unresolved: Secretary of State for Work and Pensions, Unresolved: Secretary of State for Science, Innovation and Technology, Unresolved: Government, Unresolved: Employers, and 476 more. No research_question, resolution_candidate was left in this call's context at all; reasoning that depends on them could not be done here. Conclusions drawn here rest on less than the full inventory."
+ ],
+ [
+  7,
+  "This call exceeded the model's context window, so its input was reduced. 18 long items clipped to 250 characters for this call. 484 items were withheld from this call entirely: Unresolved: Skills England, Unresolved: Department for Education, Unresolved: Jobcentre Plus, Unresolved: Secretary of State for Education, Unresolved: Secretary of State for Work and Pensions, Unresolved: Secretary of State for Science, Innovation and Technology, Unresolved: Government, Unresolved: Employers, and 476 more. No research_question, resolution_candidate was left in this call's context at all; reasoning that depends on them could not be done here. Conclusions drawn here rest on less than the full inventory."
+ ],
+ [
+  7,
+  "Coordination applicability is weak or indeterminate because the supplied modelLibrary contains no coordination triggerEvidence and the policy omits binding standards, decision rights, sequencing, funding allocation and coordination-specific sanctions."
+ ],
+ [
+  7,
+  "The model uses resolved actor IDs beginning s2_ and does not infer private motives; strategies and stable behaviours are role-based hypotheses."
+ ],
+ [
+  7,
+  "No independent research question is emitted because the present model can be stated from the supplied evidence and explicit assumptions without requiring an external factual resolution."
+ ],
+ [
+  7,
+  "This call exceeded the model's context window, so its input was reduced. 18 long items clipped to 250 characters for this call. 484 items were withheld from this call entirely: Unresolved: Skills England, Unresolved: Department for Education, Unresolved: Jobcentre Plus, Unresolved: Secretary of State for Education, Unresolved: Secretary of State for Work and Pensions, Unresolved: Secretary of State for Science, Innovation and Technology, Unresolved: Government, Unresolved: Employers, and 476 more. No research_question, resolution_candidate was left in this call's context at all; reasoning that depends on them could not be done here. Conclusions drawn here rest on less than the full inventory."
+ ],
+ [
+  7,
+  "Metric-gaming applicability is weak or indeterminate because the supplied model library lists no trigger evidence for metric_gaming and the assessment does not establish observed manipulation, formal metric-linked rewards or sanctions, audit arrangements, or data-control rights."
+ ],
+ [
+  7,
+  "The model uses semi-formal behavioural hypotheses rather than fabricated payoffs or experimentally established equilibria."
+ ],
+ [
+  7,
+  "This call exceeded the model's context window, so its input was reduced. 18 long items clipped to 250 characters for this call. 484 items were withheld from this call entirely: Unresolved: Skills England, Unresolved: Department for Education, Unresolved: Jobcentre Plus, Unresolved: Secretary of State for Education, Unresolved: Secretary of State for Work and Pensions, Unresolved: Secretary of State for Science, Innovation and Technology, Unresolved: Government, Unresolved: Employers, and 476 more. No research_question, resolution_candidate was left in this call's context at all; reasoning that depends on them could not be done here. Conclusions drawn here rest on less than the full inventory."
+ ],
+ [
+  7,
+  "This call exceeded the model's context window, so its input was reduced. 18 long items clipped to 250 characters for this call. 484 items were withheld from this call entirely: Unresolved: Skills England, Unresolved: Department for Education, Unresolved: Jobcentre Plus, Unresolved: Secretary of State for Education, Unresolved: Secretary of State for Work and Pensions, Unresolved: Secretary of State for Science, Innovation and Technology, Unresolved: Government, Unresolved: Employers, and 476 more. No research_question, resolution_candidate was left in this call's context at all; reasoning that depends on them could not be done here. Conclusions drawn here rest on less than the full inventory."
+ ],
+ [
+  7,
+  "This call exceeded the model's context window, so its input was reduced. 18 long items clipped to 250 characters for this call. 484 items were withheld from this call entirely: Unresolved: Skills England, Unresolved: Department for Education, Unresolved: Jobcentre Plus, Unresolved: Secretary of State for Education, Unresolved: Secretary of State for Work and Pensions, Unresolved: Secretary of State for Science, Innovation and Technology, Unresolved: Government, Unresolved: Employers, and 476 more. No research_question, resolution_candidate was left in this call's context at all; reasoning that depends on them could not be done here. Conclusions drawn here rest on less than the full inventory."
+ ],
+ [
+  7,
+  "This call exceeded the model's context window, so its input was reduced. 18 long items clipped to 250 characters for this call. 484 items were withheld from this call entirely: Unresolved: Skills England, Unresolved: Department for Education, Unresolved: Jobcentre Plus, Unresolved: Secretary of State for Education, Unresolved: Secretary of State for Work and Pensions, Unresolved: Secretary of State for Science, Innovation and Technology, Unresolved: Government, Unresolved: Employers, and 476 more. No research_question, resolution_candidate was left in this call's context at all; reasoning that depends on them could not be done here. Conclusions drawn here rest on less than the full inventory."
+ ],
+ [
+  7,
+  "Repeated-interaction applicability is weak or indeterminate because the supplied modelLibrary contains no triggerEvidence for this pattern."
+ ],
+ [
+  7,
+  "All payoffs, sanctions and equilibria are qualitative hypotheses; the policy extract does not establish mathematical payoffs, enforceable reciprocity or observed behavioural outcomes."
+ ],
+ [
+  7,
+  "This call exceeded the model's context window, so its input was reduced. 18 long items clipped to 250 characters for this call. 484 items were withheld from this call entirely: Unresolved: Skills England, Unresolved: Department for Education, Unresolved: Jobcentre Plus, Unresolved: Secretary of State for Education, Unresolved: Secretary of State for Work and Pensions, Unresolved: Secretary of State for Science, Innovation and Technology, Unresolved: Government, Unresolved: Employers, and 476 more. No research_question, resolution_candidate was left in this call's context at all; reasoning that depends on them could not be done here. Conclusions drawn here rest on less than the full inventory."
+ ],
+ [
+  7,
+  "This call exceeded the model's context window, so its input was reduced. 18 long items clipped to 250 characters for this call. 484 items were withheld from this call entirely: Unresolved: Skills England, Unresolved: Department for Education, Unresolved: Jobcentre Plus, Unresolved: Secretary of State for Education, Unresolved: Secretary of State for Work and Pensions, Unresolved: Secretary of State for Science, Innovation and Technology, Unresolved: Government, Unresolved: Employers, and 476 more. No research_question, resolution_candidate was left in this call's context at all; reasoning that depends on them could not be done here. Conclusions drawn here rest on less than the full inventory."
+ ],
+ [
+  7,
+  "Coalition-formation applicability is weak because the supplied triggerEvidence list for this pattern is empty."
+ ],
+ [
+  7,
+  "The model uses role-based behavioural hypotheses and does not infer private motives or precise payoffs."
+ ],
+ [
+  7,
+  "No research question was added because the available evidence is insufficient to formulate a non-redundant external question that is necessary for this model."
+ ],
+ [
+  9,
+  "1 group of model output were discarded in this stage. What follows is drawn from what survived; treat structural checks over this stage's relationships as a floor, not a verdict."
+ ],
+ [
+  9,
+  "This call exceeded the model's context window, so its input was reduced. 27 long items clipped to 250 characters for this call. 619 items were withheld from this call entirely: Unresolved: Skills England, Unresolved: Department for Education, Unresolved: Jobcentre Plus, Unresolved: Secretary of State for Education, Unresolved: Secretary of State for Work and Pensions, Unresolved: Secretary of State for Science, Innovation and Technology, Unresolved: Government, Unresolved: Employers, and 611 more. No research_question, resolution_candidate was left in this call's context at all; reasoning that depends on them could not be done here. Conclusions drawn here rest on less than the full inventory."
+ ],
+ [
+  9,
+  "This call exceeded the model's context window, so its input was reduced. 27 long items clipped to 250 characters for this call. 619 items were withheld from this call entirely: Unresolved: Skills England, Unresolved: Department for Education, Unresolved: Jobcentre Plus, Unresolved: Secretary of State for Education, Unresolved: Secretary of State for Work and Pensions, Unresolved: Secretary of State for Science, Innovation and Technology, Unresolved: Government, Unresolved: Employers, and 611 more. No research_question, resolution_candidate was left in this call's context at all; reasoning that depends on them could not be done here. Conclusions drawn here rest on less than the full inventory."
+ ],
+ [
+  9,
+  "This call exceeded the model's context window, so its input was reduced. 27 long items clipped to 250 characters for this call. 619 items were withheld from this call entirely: Unresolved: Skills England, Unresolved: Department for Education, Unresolved: Jobcentre Plus, Unresolved: Secretary of State for Education, Unresolved: Secretary of State for Work and Pensions, Unresolved: Secretary of State for Science, Innovation and Technology, Unresolved: Government, Unresolved: Employers, and 611 more. No research_question, resolution_candidate was left in this call's context at all; reasoning that depends on them could not be done here. Conclusions drawn here rest on less than the full inventory."
+ ],
+ [
+  9,
+  "1 model output was discarded and are not part of this assessment \u2014 An artefact did not match the contract (id: Invalid input: expected string, received undefined; kind: Invalid option: expected one of \"passage\"|\"claim\"|\"mechanism\"|\"assumption\"|\"actor\"|\"alias\"|\"resolution_candidate\"|\"edge\"|\"profile\"|\"research_question\"|\"research_source\"|\"evidence\"|\"model\"|\"test\"|\"scenario\"|\"exploit\"|\"cross_policy\"|\"causal_chain\"|\"option_appraisal\"|\"evaluation_plan\"|\"assurance_challenge\"|\"assurance_response\"|\"review_summary\"|\"finding\"|\"recommendation\"|\"reconciliation\"|\"revision\"|\"addendum_summary\"|\"persona_link\"; label: Invalid input: expected string, received undefined). Affected: item 2 (unknown)."
+ ],
+ [
+  9,
+  "This call exceeded the model's context window, so its input was reduced. 27 long items clipped to 250 characters for this call. 619 items were withheld from this call entirely: Unresolved: Skills England, Unresolved: Department for Education, Unresolved: Jobcentre Plus, Unresolved: Secretary of State for Education, Unresolved: Secretary of State for Work and Pensions, Unresolved: Secretary of State for Science, Innovation and Technology, Unresolved: Government, Unresolved: Employers, and 611 more. No research_question, resolution_candidate was left in this call's context at all; reasoning that depends on them could not be done here. Conclusions drawn here rest on less than the full inventory."
+ ],
+ [
+  9,
+  "This call exceeded the model's context window, so its input was reduced. 27 long items clipped to 250 characters for this call. 619 items were withheld from this call entirely: Unresolved: Skills England, Unresolved: Department for Education, Unresolved: Jobcentre Plus, Unresolved: Secretary of State for Education, Unresolved: Secretary of State for Work and Pensions, Unresolved: Secretary of State for Science, Innovation and Technology, Unresolved: Government, Unresolved: Employers, and 611 more. No research_question, resolution_candidate was left in this call's context at all; reasoning that depends on them could not be done here. Conclusions drawn here rest on less than the full inventory."
+ ],
+ [
+  9,
+  "This call exceeded the model's context window, so its input was reduced. 27 long items clipped to 250 characters for this call. 619 items were withheld from this call entirely: Unresolved: Skills England, Unresolved: Department for Education, Unresolved: Jobcentre Plus, Unresolved: Secretary of State for Education, Unresolved: Secretary of State for Work and Pensions, Unresolved: Secretary of State for Science, Innovation and Technology, Unresolved: Government, Unresolved: Employers, and 611 more. No research_question, resolution_candidate was left in this call's context at all; reasoning that depends on them could not be done here. Conclusions drawn here rest on less than the full inventory."
+ ],
+ [
+  9,
+  "This call exceeded the model's context window, so its input was reduced. 27 long items clipped to 250 characters for this call. 619 items were withheld from this call entirely: Unresolved: Skills England, Unresolved: Department for Education, Unresolved: Jobcentre Plus, Unresolved: Secretary of State for Education, Unresolved: Secretary of State for Work and Pensions, Unresolved: Secretary of State for Science, Innovation and Technology, Unresolved: Government, Unresolved: Employers, and 611 more. No research_question, resolution_candidate was left in this call's context at all; reasoning that depends on them could not be done here. Conclusions drawn here rest on less than the full inventory."
+ ],
+ [
+  9,
+  "This call exceeded the model's context window, so its input was reduced. 27 long items clipped to 250 characters for this call. 619 items were withheld from this call entirely: Unresolved: Skills England, Unresolved: Department for Education, Unresolved: Jobcentre Plus, Unresolved: Secretary of State for Education, Unresolved: Secretary of State for Work and Pensions, Unresolved: Secretary of State for Science, Innovation and Technology, Unresolved: Government, Unresolved: Employers, and 611 more. No research_question, resolution_candidate was left in this call's context at all; reasoning that depends on them could not be done here. Conclusions drawn here rest on less than the full inventory."
+ ],
+ [
+  9,
+  "Research unavailable for Evidence on cooperative skills-system delivery. Authority, freshness and jurisdiction remain unverified."
+ ],
+ [
+  9,
+  "Research unavailable for Evidence on education-reform continuity after leadership change. Authority, freshness and jurisdiction remain unverified."
+ ],
+ [
+  9,
+  "External research produced no usable sources. This assessment is based on the policy and explicitly labelled inferences only."
+ ],
+ [
+  10,
+  "10 groups of model output were discarded in this stage. What follows is drawn from what survived; treat structural checks over this stage's relationships as a floor, not a verdict."
+ ],
+ [
+  10,
+  "43 of 55 profiled actors were not red-teamed in this pass: Bridget Phillipson MP, National government, Individuals and learners, Students and individuals, Disadvantaged students, Students and learners, Learners and students, Local authorities, Ofsted, Employers, Strategic Authorities, Students, Further education providers, Individuals, Education providers, Department, Greater Manchester Combined Authority, West Midlands Combined Authority, Secretary of State for Education, Secretary of State for Work and Pensions, Pat McFadden MP, Secretary of State for Science, Innovation and Technology, Central government, Local and national employers, Further education teachers and leaders, Skills providers, 16-19 education providers, Working people, Learners, Prospective students, Young people and learners, Competition and Markets Authority, Colleges and universities, Parliament, Providers, JobCentre Plus Network, Liz Kendall MP, Other education and training providers, Post-16 education and skills providers, Ofqual, Department for Work and Pensions, University of Bristol, University of Edinburgh. They are the least connected in the policy graph, not the least important. A deep run covers more of them."
+ ],
+ [
+  10,
+  "This call exceeded the model's context window, so its input was reduced. 28 long items clipped to 250 characters for this call. 191 items were withheld from this call entirely: Unresolved: Skills England, Unresolved: Department for Education, Unresolved: Jobcentre Plus, Unresolved: Secretary of State for Education, Unresolved: Secretary of State for Work and Pensions, Unresolved: Secretary of State for Science, Innovation and Technology, Unresolved: Government, Unresolved: Employers, and 183 more. No research_question, resolution_candidate was left in this call's context at all; reasoning that depends on them could not be done here. Conclusions drawn here rest on less than the full inventory."
+ ],
+ [
+  10,
+  "2 model outputs were discarded and are not part of this assessment \u2014 An exploitation play must depend on assumptions, not on other kinds of artefact. Affected: s10_000_exploit_003 (exploit), s10_000_exploit_005 (exploit)."
+ ],
+ [
+  10,
+  "This call exceeded the model's context window, so its input was reduced. 29 long items clipped to 250 characters for this call. 192 items were withheld from this call entirely: Unresolved: Skills England, Unresolved: Department for Education, Unresolved: Jobcentre Plus, Unresolved: Secretary of State for Education, Unresolved: Secretary of State for Work and Pensions, Unresolved: Secretary of State for Science, Innovation and Technology, Unresolved: Government, Unresolved: Employers, and 184 more. No research_question, resolution_candidate was left in this call's context at all; reasoning that depends on them could not be done here. Conclusions drawn here rest on less than the full inventory."
+ ],
+ [
+  10,
+  "1 model output was discarded and are not part of this assessment \u2014 An exploitation play must depend on assumptions, not on other kinds of artefact. Affected: s10_001_exploit_003 (exploit)."
+ ],
+ [
+  10,
+  "This call exceeded the model's context window, so its input was reduced. 28 long items clipped to 250 characters for this call. 191 items were withheld from this call entirely: Unresolved: Skills England, Unresolved: Department for Education, Unresolved: Jobcentre Plus, Unresolved: Secretary of State for Education, Unresolved: Secretary of State for Work and Pensions, Unresolved: Secretary of State for Science, Innovation and Technology, Unresolved: Government, Unresolved: Employers, and 183 more. No research_question, resolution_candidate was left in this call's context at all; reasoning that depends on them could not be done here. Conclusions drawn here rest on less than the full inventory."
+ ],
+ [
+  10,
+  "This call exceeded the model's context window, so its input was reduced. 29 long items clipped to 250 characters for this call. 194 items were withheld from this call entirely: Unresolved: Skills England, Unresolved: Department for Education, Unresolved: Jobcentre Plus, Unresolved: Secretary of State for Education, Unresolved: Secretary of State for Work and Pensions, Unresolved: Secretary of State for Science, Innovation and Technology, Unresolved: Government, Unresolved: Employers, and 186 more. No research_question, resolution_candidate was left in this call's context at all; reasoning that depends on them could not be done here. Conclusions drawn here rest on less than the full inventory."
+ ],
+ [
+  10,
+  "This call exceeded the model's context window, so its input was reduced. 28 long items clipped to 250 characters for this call. 193 items were withheld from this call entirely: Unresolved: Skills England, Unresolved: Department for Education, Unresolved: Jobcentre Plus, Unresolved: Secretary of State for Education, Unresolved: Secretary of State for Work and Pensions, Unresolved: Secretary of State for Science, Innovation and Technology, Unresolved: Government, Unresolved: Employers, and 185 more. No research_question, resolution_candidate was left in this call's context at all; reasoning that depends on them could not be done here. Conclusions drawn here rest on less than the full inventory."
+ ],
+ [
+  10,
+  "3 items referred to something that is not in this assessment; the reference was dropped and the item kept. \u201cShape costing evidence through controllable reporting standards\u201d lost 1 unresolvable provenance link. \u201cShape costing evidence through controllable reporting standards\u201d lost 1 unresolvable entry in targets. \u201cShape costing evidence through controllable reporting standards\u201d lost 1 unresolvable entry in preconditions."
+ ],
+ [
+  10,
+  "5 model outputs were discarded and are not part of this assessment \u2014 An exploitation play must depend on assumptions, not on other kinds of artefact. Affected: s10_004_exploit_001 (exploit), s10_004_exploit_002 (exploit), s10_004_exploit_003 (exploit), s10_004_exploit_004 (exploit), s10_004_exploit_005 (exploit)."
+ ],
+ [
+  10,
+  "2 items referred to something that is not in this assessment; the reference was dropped and the item kept. \u201cShape costing evidence through controllable reporting standards\u201d lost 1 unresolvable provenance link. \u201cShape costing evidence through controllable reporting standards\u201d lost 1 unresolvable entry in preconditions."
+ ],
+ [
+  10,
+  "This call exceeded the model's context window, so its input was reduced. 28 long items clipped to 250 characters for this call. 191 items were withheld from this call entirely: Unresolved: Skills England, Unresolved: Department for Education, Unresolved: Jobcentre Plus, Unresolved: Secretary of State for Education, Unresolved: Secretary of State for Work and Pensions, Unresolved: Secretary of State for Science, Innovation and Technology, Unresolved: Government, Unresolved: Employers, and 183 more. No research_question, resolution_candidate was left in this call's context at all; reasoning that depends on them could not be done here. Conclusions drawn here rest on less than the full inventory."
+ ],
+ [
+  10,
+  "Exploit assessment is limited by unresolved Skills England authority, funding, data ownership, accountability and enforcement arrangements."
+ ],
+ [
+  10,
+  "The plays are structural inferences, not claims that Skills England has engaged in these behaviours."
+ ],
+ [
+  10,
+  "No independent precedent was identified in the supplied artefacts."
+ ],
+ [
+  10,
+  "3 model outputs were discarded and are not part of this assessment \u2014 An exploitation play must depend on assumptions, not on other kinds of artefact. Affected: s10_005_exploit_002 (exploit), s10_005_exploit_003 (exploit), s10_005_exploit_004 (exploit)."
+ ],
+ [
+  10,
+  "This call exceeded the model's context window, so its input was reduced. 28 long items clipped to 250 characters for this call. 190 items were withheld from this call entirely: Unresolved: Skills England, Unresolved: Department for Education, Unresolved: Jobcentre Plus, Unresolved: Secretary of State for Education, Unresolved: Secretary of State for Work and Pensions, Unresolved: Secretary of State for Science, Innovation and Technology, Unresolved: Government, Unresolved: Employers, and 182 more. No research_question, resolution_candidate was left in this call's context at all; reasoning that depends on them could not be done here. Conclusions drawn here rest on less than the full inventory."
+ ],
+ [
+  10,
+  "4 model outputs were discarded and are not part of this assessment \u2014 An exploitation play must depend on assumptions, not on other kinds of artefact. Affected: s10_006_exploit_001 (exploit), s10_006_exploit_002 (exploit), s10_006_exploit_003 (exploit), s10_006_exploit_004 (exploit)."
+ ],
+ [
+  10,
+  "This call exceeded the model's context window, so its input was reduced. 28 long items clipped to 250 characters for this call. 193 items were withheld from this call entirely: Unresolved: Skills England, Unresolved: Department for Education, Unresolved: Jobcentre Plus, Unresolved: Secretary of State for Education, Unresolved: Secretary of State for Work and Pensions, Unresolved: Secretary of State for Science, Innovation and Technology, Unresolved: Government, Unresolved: Employers, and 185 more. No research_question, resolution_candidate was left in this call's context at all; reasoning that depends on them could not be done here. Conclusions drawn here rest on less than the full inventory."
+ ],
+ [
+  10,
+  "1 item referred to something that is not in this assessment; the reference was dropped and the item kept. \u201cShape or withhold implementation information\u201d lost 1 unresolvable entry in targets."
+ ],
+ [
+  10,
+  "This call exceeded the model's context window, so its input was reduced. 28 long items clipped to 250 characters for this call. 190 items were withheld from this call entirely: Unresolved: Skills England, Unresolved: Department for Education, Unresolved: Jobcentre Plus, Unresolved: Secretary of State for Education, Unresolved: Secretary of State for Work and Pensions, Unresolved: Secretary of State for Science, Innovation and Technology, Unresolved: Government, Unresolved: Employers, and 182 more. No research_question, resolution_candidate was left in this call's context at all; reasoning that depends on them could not be done here. Conclusions drawn here rest on less than the full inventory."
+ ],
+ [
+  10,
+  "1 model output was discarded and are not part of this assessment \u2014 An exploitation play must depend on assumptions, not on other kinds of artefact. Affected: s10_008_exploit_001 (exploit)."
+ ],
+ [
+  10,
+  "This call exceeded the model's context window, so its input was reduced. 28 long items clipped to 250 characters for this call. 188 items were withheld from this call entirely: Unresolved: Skills England, Unresolved: Department for Education, Unresolved: Jobcentre Plus, Unresolved: Secretary of State for Education, Unresolved: Secretary of State for Work and Pensions, Unresolved: Secretary of State for Science, Innovation and Technology, Unresolved: Government, Unresolved: Employers, and 180 more. No research_question, resolution_candidate was left in this call's context at all; reasoning that depends on them could not be done here. Conclusions drawn here rest on less than the full inventory."
+ ],
+ [
+  10,
+  "5 model outputs were discarded and are not part of this assessment \u2014 An exploitation play must depend on assumptions, not on other kinds of artefact. Affected: s10_009_exploit_001 (exploit), s10_009_exploit_002 (exploit), s10_009_exploit_003 (exploit), s10_009_exploit_004 (exploit), s10_009_exploit_005 (exploit)."
+ ],
+ [
+  10,
+  "This call exceeded the model's context window, so its input was reduced. 28 long items clipped to 250 characters for this call. 185 items were withheld from this call entirely: Unresolved: Skills England, Unresolved: Department for Education, Unresolved: Jobcentre Plus, Unresolved: Secretary of State for Education, Unresolved: Secretary of State for Work and Pensions, Unresolved: Secretary of State for Science, Innovation and Technology, Unresolved: Government, Unresolved: Employers, and 177 more. No research_question, resolution_candidate was left in this call's context at all; reasoning that depends on them could not be done here. Conclusions drawn here rest on less than the full inventory."
+ ],
+ [
+  10,
+  "No supported operational exploit was identified for the target actor; the result is an absence finding based on its supplied profile and the described mechanisms."
+ ],
+ [
+  10,
+  "1 model output was discarded and are not part of this assessment \u2014 An exploitation play must depend on assumptions, not on other kinds of artefact. Affected: s10_010_exploit_001 (exploit)."
+ ],
+ [
+  10,
+  "This call exceeded the model's context window, so its input was reduced. 28 long items clipped to 250 characters for this call. 190 items were withheld from this call entirely: Unresolved: Skills England, Unresolved: Department for Education, Unresolved: Jobcentre Plus, Unresolved: Secretary of State for Education, Unresolved: Secretary of State for Work and Pensions, Unresolved: Secretary of State for Science, Innovation and Technology, Unresolved: Government, Unresolved: Employers, and 182 more. No research_question, resolution_candidate was left in this call's context at all; reasoning that depends on them could not be done here. Conclusions drawn here rest on less than the full inventory."
+ ],
+ [
+  10,
+  "The target actor's formal authority, budget, information rights and accountability chain are largely unspecified, so the first two plays are behavioural hypotheses rather than established capabilities."
+ ],
+ [
+  10,
+  "No independent precedent was identified in the supplied material."
+ ],
+ [
+  10,
+  "3 model outputs were discarded and are not part of this assessment \u2014 An exploitation play must depend on assumptions, not on other kinds of artefact. Affected: s10_011_exploit_001 (exploit), s10_011_exploit_002 (exploit), s10_011_exploit_003 (exploit)."
+ ],
+ [
+  10,
+  "1 model output was discarded and are not part of this assessment \u2014 An exploitation play must depend on assumptions, not on other kinds of artefact. Affected: s10_011_exploit_005 (exploit)."
+ ],
+ [
+  11,
+  "No other completed policy assessment was available to compare, so cross-policy exposure could not be examined. Weaknesses that only appear when policies coexist are outside this assessment."
+ ],
+ [
+  12,
+  "1 group of model output were discarded in this stage. What follows is drawn from what survived; treat structural checks over this stage's relationships as a floor, not a verdict."
+ ],
+ [
+  12,
+  "This call exceeded the model's context window, so its input was reduced. 2 long items clipped to 500 characters for this call. 64 long items clipped to 250 characters for this call. 867 items were withheld from this call entirely: Unresolved: Skills England, Unresolved: Department for Education, Unresolved: Jobcentre Plus, Office for Students alias, Unresolved: Secretary of State for Education, Unresolved: Secretary of State for Work and Pensions, Unresolved: Secretary of State for Science, Innovation and Technology, Unresolved: Government, and 859 more. No actor, alias, claim, edge, evidence, research_question, resolution_candidate was left in this call's context at all; reasoning that depends on them could not be done here. Conclusions drawn here rest on less than the full inventory."
+ ],
+ [
+  12,
+  "Initial findings are based on the supplied surviving artefacts only; no independent research sources were available for comparison."
+ ],
+ [
+  12,
+  "High structural-risk test results indicate missing assurance relationships in the graph and must not be read as proof that powers, resources or safeguards do not exist outside the supplied evidence."
+ ],
+ [
+  12,
+  "Behavioural models, scenarios and exploitation plays are qualitative hypotheses or conditional results, not claims of observed conduct."
+ ],
+ [
+  12,
+  "No unexplained overall numerical score is provided."
+ ],
+ [
+  12,
+  "1 model output was discarded and are not part of this assessment \u2014 An extracted assertion could not be located in the policy text. Affected: s12_main_finding_003 (finding)."
+ ],
+ [
+  12,
+  "The final assessment has no objectives, confidence uncertainty section. Read it as incomplete on those grounds."
+ ],
+ [
+  13,
+  "The model\u2019s reply could not be parsed and the call was made again."
+ ],
+ [
+  14,
+  "3 groups of model output were discarded in this stage. What follows is drawn from what survived; treat structural checks over this stage's relationships as a floor, not a verdict."
+ ],
+ [
+  14,
+  "The shared context for this stage was reduced so every call could send the same one: This call exceeded the model's context window, so its input was reduced. 4 long items clipped to 500 characters for this call. 82 long items clipped to 250 characters for this call. 918 items were withheld from this call entirely: Unresolved: Skills England, Unresolved: Department for Education, Unresolved: Jobcentre Plus, Unresolved: Secretary of State for Education, Unresolved: Secretary of State for Work and Pensions, Unresolved: Secretary of State for Science, Innovation and Technology, Unresolved: Government, Unresolved: Employers, and 910 more. No actor, claim, edge, evidence, research_question, resolution_candidate was left in this call's context at all; reasoning that depends on them could not be done here. Conclusions drawn here rest on less than the full inventory."
+ ],
+ [
+  14,
+  "2 items referred to something that is not in this assessment; the reference was dropped and the item kept. \u201cAutomatic post-16 allocation and wraparound support causal chain\u201d lost 1 unresolvable provenance link. \u201cAutomatic post-16 allocation and wraparound support causal chain\u201d lost 1 unresolvable entry in assumptions."
+ ],
+ [
+  14,
+  "The model\u2019s reply could not be parsed and the call was made again."
+ ],
+ [
+  14,
+  "3 items referred to something that is not in this assessment; the reference was dropped and the item kept. \u201cCausal chain for V Levels reform\u201d lost 2 unresolvable provenance links. \u201cLearners can choose an appropriate pathway\u201d lost 1 unresolvable provenance link. \u201cPathway differentiation improves destinations\u201d lost 1 unresolvable provenance link."
+ ],
+ [
+  14,
+  "1 model output was discarded and are not part of this assessment \u2014 An assumption must link to an affected actor or mechanism. Affected: s14_077_assumption_005 (assumption)."
+ ],
+ [
+  14,
+  "1 model output was discarded and are not part of this assessment \u2014 An artefact cites an unavailable source. Affected: s14_077_causal_chain_001 (causal_chain)."
+ ],
+ [
+  14,
+  "1 item referred to something that is not in this assessment; the reference was dropped and the item kept. \u201cAccess, collaboration and research capability to growth\u201d lost 1 unresolvable provenance link."
+ ],
+ [
+  14,
+  "1 model output was discarded and are not part of this assessment \u2014 Interaction models and scenarios must depend on assumptions, not on other kinds of artefact. Affected: s14_107_causal_chain_001 (causal_chain)."
+ ],
+ [
+  14,
+  "1 item referred to something that is not in this assessment; the reference was dropped and the item kept. \u201cHigher-education supply-and-demand monitoring theory of change\u201d lost 1 unresolvable provenance link."
+ ],
+ [
+  14,
+  "The model\u2019s reply could not be parsed and the call was made again."
+ ],
+ [
+  14,
+  "1 of 151 mechanisms have no theory of change. The causal review is incomplete on those grounds."
+ ],
+ [
+  14,
+  "This stage raised 17 further questions and followed up 2: a stage may pursue 2 at a time, so the enquiry develops rather than restarting here. Not pursued: Evidence on transparent research-funding pilots, Evidence on provider progress measures, Evidence on comparable youth guarantees, Evidence on joint government-business skills funding, Comparable evidence on education grants and loans, Evidence on statutory Initial Teacher Education guidance, Evidence on modular lifelong-learning finance, Comparable evidence on inflation-linked tuition-fee caps, Evidence on sector skills coalition additionality, Evidence on assessment-reform effects, Evidence on licensing and proof-of-concept support for university spin-outs, Evidence on teaching vacancy service outcomes, Evidence on course-quality information and student choices, Evidence on recruitment-agent eligibility controls, Evidence on teacher industry exchange outcomes."
+ ],
+ [
+  14,
+  "Research unavailable for Comparable evidence on data-driven skills planning. Authority, freshness and jurisdiction remain unverified."
+ ],
+ [
+  14,
+  "Research unavailable for Comparable enforcement evidence for higher-education franchise oversight. Authority, freshness and jurisdiction remain unverified."
+ ],
+ [
+  14,
+  "External research produced no usable sources. This assessment is based on the policy and explicitly labelled inferences only."
+ ],
+ [
+  15,
+  "1 group of model output were discarded in this stage. What follows is drawn from what survived; treat structural checks over this stage's relationships as a floor, not a verdict."
+ ],
+ [
+  15,
+  "This call exceeded the model's context window, so its input was reduced. 7 long items clipped to 500 characters for this call. 193 long items clipped to 250 characters for this call. 77 items this call was built around did not fit and were withheld too: Causal chain for parliamentary presentation, Causal chain for integrated training and employment routes, Youth Guarantee access-to-outcomes causal chain, Financial support for flexible and disadvantaged study, Causal chain for funding, specialisation and collaboration reforms, Causal chain for short-course skills provision, and 71 more. Read this stage as partial. 1236 items were withheld from this call entirely: Unresolved: Skills England, Unresolved: Department for Education, Unresolved: Jobcentre Plus, Office for Students alias, Unresolved: Secretary of State for Education, Unresolved: Secretary of State for Work and Pensions, Unresolved: Secretary of State for Science, Innovation and Technology, Unresolved: Government, and 1228 more. No actor, alias, claim, edge, exploit, mechanism, model, persona_link, profile, recommendation, research_question, resolution_candidate, scenario, test was left in this call's context at all; reasoning that depends on them could not be done here. Conclusions drawn here rest on less than the full inventory."
+ ],
+ [
+  15,
+  "4 model outputs were discarded and are not part of this assessment \u2014 Interaction models and scenarios must depend on assumptions, not on other kinds of artefact. Affected: s15_main_option_appraisal_001 (option_appraisal), s15_main_option_appraisal_002 (option_appraisal), s15_main_option_appraisal_003 (option_appraisal), s15_main_evaluation_plan_001 (evaluation_plan)."
+ ],
+ [
+  16,
+  "This call exceeded the model's context window, so its input was reduced. 7 long items clipped to 500 characters for this call. 196 long items clipped to 250 characters for this call. 83 items this call was built around did not fit and were withheld too: Causal chain for parliamentary presentation, Causal chain for integrated training and employment routes, Youth Guarantee access-to-outcomes causal chain, Financial support for flexible and disadvantaged study, Causal chain for funding, specialisation and collaboration reforms, Causal chain for short-course skills provision, and 77 more. Read this stage as partial. 1222 items were withheld from this call entirely: Unresolved: Skills England, Unresolved: Department for Education, Unresolved: Jobcentre Plus, Unresolved: Secretary of State for Education, Unresolved: Secretary of State for Work and Pensions, Unresolved: Secretary of State for Science, Innovation and Technology, Unresolved: Government, Unresolved: Employers, and 1214 more. No actor, claim, edge, exploit, mechanism, model, profile, research_question, resolution_candidate, scenario, test was left in this call's context at all; reasoning that depends on them could not be done here. Conclusions drawn here rest on less than the full inventory."
+ ],
+ [
+  16,
+  "This call exceeded the model's context window, so its input was reduced. 7 long items clipped to 500 characters for this call. 196 long items clipped to 250 characters for this call. 83 items this call was built around did not fit and were withheld too: Causal chain for parliamentary presentation, Causal chain for integrated training and employment routes, Youth Guarantee access-to-outcomes causal chain, Financial support for flexible and disadvantaged study, Causal chain for funding, specialisation and collaboration reforms, Causal chain for short-course skills provision, and 77 more. Read this stage as partial. 1222 items were withheld from this call entirely: Unresolved: Skills England, Unresolved: Department for Education, Unresolved: Jobcentre Plus, Unresolved: Secretary of State for Education, Unresolved: Secretary of State for Work and Pensions, Unresolved: Secretary of State for Science, Innovation and Technology, Unresolved: Government, Unresolved: Employers, and 1214 more. No actor, claim, edge, exploit, mechanism, model, profile, research_question, resolution_candidate, scenario, test was left in this call's context at all; reasoning that depends on them could not be done here. Conclusions drawn here rest on less than the full inventory."
+ ],
+ [
+  16,
+  "This call exceeded the model's context window, so its input was reduced. 7 long items clipped to 500 characters for this call. 196 long items clipped to 250 characters for this call. 83 items this call was built around did not fit and were withheld too: Causal chain for parliamentary presentation, Causal chain for integrated training and employment routes, Youth Guarantee access-to-outcomes causal chain, Financial support for flexible and disadvantaged study, Causal chain for funding, specialisation and collaboration reforms, Causal chain for short-course skills provision, and 77 more. Read this stage as partial. 1222 items were withheld from this call entirely: Unresolved: Skills England, Unresolved: Department for Education, Unresolved: Jobcentre Plus, Unresolved: Secretary of State for Education, Unresolved: Secretary of State for Work and Pensions, Unresolved: Secretary of State for Science, Innovation and Technology, Unresolved: Government, Unresolved: Employers, and 1214 more. No actor, claim, edge, exploit, mechanism, model, profile, research_question, resolution_candidate, scenario, test was left in this call's context at all; reasoning that depends on them could not be done here. Conclusions drawn here rest on less than the full inventory."
+ ],
+ [
+  16,
+  "This call exceeded the model's context window, so its input was reduced. 7 long items clipped to 500 characters for this call. 196 long items clipped to 250 characters for this call. 83 items this call was built around did not fit and were withheld too: Causal chain for parliamentary presentation, Causal chain for integrated training and employment routes, Youth Guarantee access-to-outcomes causal chain, Financial support for flexible and disadvantaged study, Causal chain for funding, specialisation and collaboration reforms, Causal chain for short-course skills provision, and 77 more. Read this stage as partial. 1222 items were withheld from this call entirely: Unresolved: Skills England, Unresolved: Department for Education, Unresolved: Jobcentre Plus, Unresolved: Secretary of State for Education, Unresolved: Secretary of State for Work and Pensions, Unresolved: Secretary of State for Science, Innovation and Technology, Unresolved: Government, Unresolved: Employers, and 1214 more. No actor, claim, edge, exploit, mechanism, model, profile, research_question, resolution_candidate, scenario, test was left in this call's context at all; reasoning that depends on them could not be done here. Conclusions drawn here rest on less than the full inventory."
+ ],
+ [
+  16,
+  "This call exceeded the model's context window, so its input was reduced. 7 long items clipped to 500 characters for this call. 196 long items clipped to 250 characters for this call. 83 items this call was built around did not fit and were withheld too: Causal chain for parliamentary presentation, Causal chain for integrated training and employment routes, Youth Guarantee access-to-outcomes causal chain, Financial support for flexible and disadvantaged study, Causal chain for funding, specialisation and collaboration reforms, Causal chain for short-course skills provision, and 77 more. Read this stage as partial. 1222 items were withheld from this call entirely: Unresolved: Skills England, Unresolved: Department for Education, Unresolved: Jobcentre Plus, Unresolved: Secretary of State for Education, Unresolved: Secretary of State for Work and Pensions, Unresolved: Secretary of State for Science, Innovation and Technology, Unresolved: Government, Unresolved: Employers, and 1214 more. No actor, claim, edge, exploit, mechanism, model, profile, research_question, resolution_candidate, scenario, test was left in this call's context at all; reasoning that depends on them could not be done here. Conclusions drawn here rest on less than the full inventory."
+ ],
+ [
+  16,
+  "This call exceeded the model's context window, so its input was reduced. 7 long items clipped to 500 characters for this call. 196 long items clipped to 250 characters for this call. 83 items this call was built around did not fit and were withheld too: Causal chain for parliamentary presentation, Causal chain for integrated training and employment routes, Youth Guarantee access-to-outcomes causal chain, Financial support for flexible and disadvantaged study, Causal chain for funding, specialisation and collaboration reforms, Causal chain for short-course skills provision, and 77 more. Read this stage as partial. 1222 items were withheld from this call entirely: Unresolved: Skills England, Unresolved: Department for Education, Unresolved: Jobcentre Plus, Unresolved: Secretary of State for Education, Unresolved: Secretary of State for Work and Pensions, Unresolved: Secretary of State for Science, Innovation and Technology, Unresolved: Government, Unresolved: Employers, and 1214 more. No actor, claim, edge, exploit, mechanism, model, profile, research_question, resolution_candidate, scenario, test was left in this call's context at all; reasoning that depends on them could not be done here. Conclusions drawn here rest on less than the full inventory."
+ ],
+ [
+  16,
+  "This call exceeded the model's context window, so its input was reduced. 7 long items clipped to 500 characters for this call. 196 long items clipped to 250 characters for this call. 83 items this call was built around did not fit and were withheld too: Causal chain for parliamentary presentation, Causal chain for integrated training and employment routes, Youth Guarantee access-to-outcomes causal chain, Financial support for flexible and disadvantaged study, Causal chain for funding, specialisation and collaboration reforms, Causal chain for short-course skills provision, and 77 more. Read this stage as partial. 1222 items were withheld from this call entirely: Unresolved: Skills England, Unresolved: Department for Education, Unresolved: Jobcentre Plus, Unresolved: Secretary of State for Education, Unresolved: Secretary of State for Work and Pensions, Unresolved: Secretary of State for Science, Innovation and Technology, Unresolved: Government, Unresolved: Employers, and 1214 more. No actor, claim, edge, exploit, mechanism, model, profile, research_question, resolution_candidate, scenario, test was left in this call's context at all; reasoning that depends on them could not be done here. Conclusions drawn here rest on less than the full inventory."
+ ],
+ [
+  16,
+  "Research unavailable for Comparable evidence on staged and targeted education reform. Authority, freshness and jurisdiction remain unverified."
+ ],
+ [
+  16,
+  "External research produced no usable sources. This assessment is based on the policy and explicitly labelled inferences only."
+ ]
+]

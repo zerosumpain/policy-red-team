@@ -8,7 +8,13 @@ export default defineConfig({
     alias: { $lib: fileURLToPath(new URL('./src/lib', import.meta.url)) },
   },
   test: {
-    include: ['src/**/*.test.ts'],
+    // `client/` is included so presentation LOGIC can be tested without a
+    // browser. Nothing here renders React — the walk does that, and it is the
+    // right tool for it — but the pure parts a view depends on (which plays a
+    // selection narrows to, what a stage warning actually said) are arithmetic,
+    // and arithmetic covered only by a browser walk is arithmetic covered
+    // slowly and reported as a screenshot.
+    include: ['src/**/*.test.ts', 'client/**/*.test.ts'],
     // Promise.try for pdfjs on Node 22.22 — see src/lib/polyfills.ts.
     setupFiles: ['./src/lib/polyfills.ts'],
     // The integration tests need a migrated database and a worker loop, which

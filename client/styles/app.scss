@@ -96,3 +96,173 @@
     outline-offset: 0;
   }
 }
+
+// ── The exposure ramp, as custom properties ────────────────────────────────
+//
+// `BAND_FILL` in `$lib/policy-analysis/view` carries these same four values as
+// literals, because it is consumed by an SVG `fill` attribute where a custom
+// property cannot be resolved by the offline pack's inliner. These exist for the
+// places CSS needs them — a tag, a card's left edge, a swatch in a key — and the
+// two must agree. The divergence in `scripts/sync-core.mjs` explains the hues
+// and the contrast floor they clear.
+//
+// NO STATUS COLOUR EVER ENTERS A PLOT FRAME. Status is a worded tag outside the
+// drawing; the ramp owns the inside of it. That is the condition on which this
+// hue was chosen, and it is a rule rather than a preference.
+:root {
+  --band-severe: #55163a;
+  --band-significant: #ac2f6e;
+  --band-moderate: #d48cb0;
+  --band-limited: #f0d5e3;
+  // The two light steps sit below 3:1 against the page, so a mark is never
+  // meaning-bearing on fill alone: it is outlined, sized by band, and captioned
+  // with the band's word.
+  --band-ink-dark: #ffffff;
+  --band-ink-light: #4a1230;
+}
+
+// A band worn as a tag. GOV.UK's own tag colours are a status vocabulary and
+// this is a magnitude, which is why it is a separate class rather than a sixth
+// `govuk-tag--*`.
+.prt-band {
+  display: inline-block;
+  padding: 2px govuk.govuk-spacing(2);
+  font-weight: 700;
+  white-space: nowrap;
+  @include govuk.govuk-font($size: 16, $weight: bold);
+
+  &--severe { background: var(--band-severe); color: var(--band-ink-dark); }
+  &--significant { background: var(--band-significant); color: var(--band-ink-dark); }
+  &--moderate { background: var(--band-moderate); color: var(--band-ink-light); }
+  &--limited { background: var(--band-limited); color: var(--band-ink-light); }
+}
+
+// The step number above a tab label. The framework has no slot for it, and it is
+// the one addition to its Tabs: it says the first four are an order worth
+// reading in without making them a journey a reader cannot leave.
+.prt-tab {
+  &__step {
+    display: block;
+    @include govuk.govuk-font($size: 16);
+    color: govuk.govuk-colour("dark-grey");
+    text-decoration: none;
+  }
+}
+
+// ── The four moves ─────────────────────────────────────────────────────────
+
+// What is selected, stated above every view. A filter that survives a tab
+// change breaks silently — nothing throws, the view is simply narrower — so it
+// is never only a highlighted control inside one view.
+.prt-selection {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: govuk.govuk-spacing(2) govuk.govuk-spacing(3);
+  border-left: 5px solid govuk.govuk-colour("blue");
+  background: govuk.govuk-colour("light-grey");
+  padding: govuk.govuk-spacing(2) govuk.govuk-spacing(3);
+
+  p { margin: 0; }
+  .govuk-button { margin: 0; }
+}
+
+// The exposure profile: one bar, four bands, each sized by its count.
+.prt-profile {
+  display: flex;
+  list-style: none;
+  margin: 0 0 govuk.govuk-spacing(4);
+  padding: 0;
+  gap: 2px;
+
+  li { display: flex; min-width: 0; }
+
+  &__band {
+    width: 100%;
+    border: 2px solid transparent;
+    padding: govuk.govuk-spacing(2);
+    text-align: left;
+    cursor: pointer;
+    font-family: inherit;
+    // 44px, so the target is reachable on a touch screen.
+    min-height: 44px;
+
+    &--severe { background: var(--band-severe); color: var(--band-ink-dark); }
+    &--significant { background: var(--band-significant); color: var(--band-ink-dark); }
+    &--moderate { background: var(--band-moderate); color: var(--band-ink-light); }
+    &--limited { background: var(--band-limited); color: var(--band-ink-light); }
+
+    &[aria-pressed="true"] { border-color: govuk.govuk-colour("black"); }
+  }
+
+  &__label { display: block; font-weight: 700; }
+  &__count { display: block; @include govuk.govuk-font($size: 16); }
+}
+
+// Mechanisms by the plays they generate. The bar is a COUNT, with the bands
+// stacked inside it rather than averaged into a colour — six limited plays and
+// two severe ones are different objects.
+.prt-nodebars { list-style: none; margin: 0 0 govuk.govuk-spacing(5); padding: 0; }
+
+.prt-nodebar {
+  display: grid;
+  grid-template-columns: minmax(12em, 2fr) 3fr auto;
+  gap: govuk.govuk-spacing(3);
+  align-items: center;
+  padding: govuk.govuk-spacing(1) 0;
+
+  @include govuk.govuk-media-query($until: tablet) {
+    grid-template-columns: 1fr;
+    gap: govuk.govuk-spacing(1);
+  }
+
+  &__name {
+    font-family: inherit;
+    text-align: left;
+    background: none;
+    border: 0;
+    padding: 0;
+    color: govuk.govuk-colour("blue");
+    text-decoration: underline;
+    cursor: pointer;
+
+    &[aria-pressed="true"] { color: govuk.govuk-colour("black"); font-weight: 700; }
+  }
+
+  &__bar { display: flex; height: 16px; border: 1px solid govuk.govuk-colour("black"); }
+  &__seg { display: block; min-width: 3px; }
+  &__n { @include govuk.govuk-font($size: 16); color: govuk.govuk-colour("dark-grey"); white-space: nowrap; }
+}
+
+// The weighting control.
+.prt-weights {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: govuk.govuk-spacing(4);
+  border: 1px solid govuk.govuk-colour("mid-grey");
+  padding: govuk.govuk-spacing(4);
+  margin-bottom: govuk.govuk-spacing(4);
+
+  .govuk-form-group { margin-bottom: 0; }
+}
+
+.prt-range {
+  width: 100%;
+  // 28px so the thumb is a usable target; the accent keeps it visible against
+  // the light-grey panel.
+  height: 28px;
+  accent-color: govuk.govuk-colour("black");
+}
+
+// The provenance figures: four numbers that decide whether the report is
+// overclaiming, so they are read before the prose under them.
+.prt-figures {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: govuk.govuk-spacing(4);
+  margin: 0 0 govuk.govuk-spacing(5);
+
+  > div { border-top: 2px solid govuk.govuk-colour("black"); padding-top: govuk.govuk-spacing(2); }
+  dt { @include govuk.govuk-font($size: 16); color: govuk.govuk-colour("dark-grey"); }
+  dd { margin: 0; @include govuk.govuk-font($size: 36, $weight: bold); font-variant-numeric: tabular-nums; }
+}

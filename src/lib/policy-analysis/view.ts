@@ -215,10 +215,22 @@ export function plotPoints(list: Play[], size = PLOT_SIZE, pad = 44) {
  * `--accent` it scores ΔE 6.8 to a normal-vision reader, below the floor of 15.
  */
 export const BAND_FILL: Record<Band, string> = {
-  severe: 'var(--accent)',
-  significant: 'color-mix(in oklab, var(--accent) 60%, var(--bg))',
-  moderate: 'color-mix(in oklab, var(--accent) 32%, var(--bg))',
-  limited: 'color-mix(in oklab, var(--accent) 15%, var(--bg))',
+  severe: '#55163a',
+  significant: '#ac2f6e',
+  moderate: '#d48cb0',
+  limited: '#f0d5e3',
+};
+
+/**
+ * Ink that stays legible on each step. The two light steps sit below 3:1
+ * against the page, so they never carry meaning alone — every mark is outlined
+ * in `text`, sized by band, and captioned with the band's word.
+ */
+export const BAND_INK: Record<Band, string> = {
+  severe: '#ffffff',
+  significant: '#ffffff',
+  moderate: '#4a1230',
+  limited: '#4a1230',
 };
 
 export const BAND_LABEL: Record<Band, string> = {

@@ -143,7 +143,8 @@
     "src/lib/policy-analysis/offline/html.ts": "the pack's <html> and <body> carry GOV.UK's shell classes, without which version 6 styles nothing, and the generator string names this build rather than the site.",
     "src/lib/policy-analysis/offline/pack.test.ts": "asserts that NO font travels in the pack, rather than that three do.",
     "src/lib/policy-analysis/server/research.ts": "Routes search/extract through $lib/server/web-search so an install with no Tavily key falls back to the provider's grounded web search instead of answering no research questions at all.",
-    "src/lib/policy-analysis/research.test.ts": "Mocks $lib/server/web-search instead of $lib/deepdive/tavily, matching the one-line divergence in research.ts, so upstream's eight retrieval assertions keep running against the fork's wiring."
+    "src/lib/policy-analysis/research.test.ts": "Mocks $lib/server/web-search instead of $lib/deepdive/tavily, matching the one-line divergence in research.ts, so upstream's eight retrieval assertions keep running against the fork's wiring.",
+    "src/lib/policy-analysis/view.ts": "Gives BAND_FILL real values and adds BAND_INK. Upstream's ramp is var(--accent) plus three color-mix steps off it, and neither property is defined in this build — so the one consumer, ExposurePlot, painted every mark black."
   },
   "notCopied": {
     "src/lib/server/owner.ts + client-address.ts": "SvelteKit request guards. Phase 4's node:http server does this itself; nothing in the pipeline reads them.",

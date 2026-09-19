@@ -73,6 +73,59 @@ async function resolveAll(manifest) {
  * instead of passing quietly.
  */
 const DIVERGENCES = {
+  // ── The exposure ramp had no values, so every mark painted black ─────────
+  //
+  // `BAND_FILL` is `var(--accent)` and three `color-mix()` steps off it, and
+  // NEITHER custom property is defined anywhere in this build — `app.scss`
+  // declares none and there is no tokens file. It is consumed in exactly one
+  // place, `ExposurePlot.tsx`, so the `fill` was invalid and every circle fell
+  // back to black: the band encoding on that plot did nothing at all, and had
+  // done nothing since phase 8.
+  //
+  // The four values come from the phase 14 prototype and clear the system's own
+  // floor: ΔE 15 against the accent, and 16.2 between adjacent steps under
+  // protanopia, deuteranopia and tritanopia alike. `--error` was the obvious
+  // pick for `severe` and scores 6.8, below the floor; teal reaches 10.2; a warm
+  // ramp puts its middle step 8.8 from the error red, which in a product where
+  // red means FAILED is the worse collision. Magenta is the one unused hue that
+  // clears both, at 16.0.
+  //
+  // It holds on one condition worth writing down: NO STATUS COLOUR EVER ENTERS A
+  // PLOT FRAME. Status is a worded tag outside the drawing; the ramp owns the
+  // inside of it.
+  //
+  // A divergence rather than a hand edit because `view.ts` is copied, and an
+  // edit to a copied file is silently reverted by the next sync. If upstream
+  // ever gives these properties real values, this `.replace()` stops matching
+  // and throws — which is the point.
+  'src/lib/policy-analysis/view.ts': (source) =>
+    source.replace(
+      `export const BAND_FILL: Record<Band, string> = {
+  severe: 'var(--accent)',
+  significant: 'color-mix(in oklab, var(--accent) 60%, var(--bg))',
+  moderate: 'color-mix(in oklab, var(--accent) 32%, var(--bg))',
+  limited: 'color-mix(in oklab, var(--accent) 15%, var(--bg))',
+};`,
+      `export const BAND_FILL: Record<Band, string> = {
+  severe: '#55163a',
+  significant: '#ac2f6e',
+  moderate: '#d48cb0',
+  limited: '#f0d5e3',
+};
+
+/**
+ * Ink that stays legible on each step. The two light steps sit below 3:1
+ * against the page, so they never carry meaning alone — every mark is outlined
+ * in \`text\`, sized by band, and captioned with the band's word.
+ */
+export const BAND_INK: Record<Band, string> = {
+  severe: '#ffffff',
+  significant: '#ffffff',
+  moderate: '#4a1230',
+  limited: '#4a1230',
+};`,
+    ),
+
   // ── Research without a Tavily account ────────────────────────────────────
   //
   // `research.ts` imports its search engine directly, so an install with no

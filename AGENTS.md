@@ -202,6 +202,42 @@ holds the credentials this service spends money with.
   remounts on a save counter, because an uncontrolled input does not clear itself
   when `defaultValue` changes.
 
+## The report is four moves
+
+`client/report/Report.tsx` is a spine, not a cascade. Every section it builds
+carries a `move` — `verdict`, `causality`, `threats`, `actors` or `provenance` —
+and the tabs group them. A reader arrives with one of four questions and a single
+scroll answers whichever is uppermost by making them pass the other three.
+
+- **Adding a section means choosing its move.** `section(id, title, move, body)`
+  will not compile without one. A section in the wrong move still renders — just
+  never where the reader looking for it will be — so the walk visits every move
+  and asserts its headings.
+- **The offline pack keeps the cascade.** It is one file opened from `file://`
+  with every request blocked, and `Ctrl-F` across a whole document is its real
+  interface; a tabbed spine would hide five sixths of it behind JavaScript.
+  `Report` branches on `offline` for exactly this.
+- **`client/govuk/Tabs.tsx` does not instantiate `govuk-frontend`'s Tabs class.**
+  That component owns its selected state in the DOM, which makes the carried
+  selection impossible — choosing a mechanism in Causality has to move the reader
+  to Threats with the filter intact.
+- **The selection is carried, and stated in words.** `client/report/selection.ts`.
+  A filter that survives a tab change breaks silently: nothing throws, the view is
+  simply narrower. The walk asserts it survives and is clearable from another move.
+- **Opening a play is not selecting it.** Opening navigates to the drill page —
+  `Drill.tsx` argues the page case in writing — and changes no filter.
+- **A failed or cancelled run still renders a report.** Seventeen completed
+  stages are seventeen stages of work; the failure is stated and nothing absent
+  is invented.
+- **`BAND_FILL` is a recorded divergence.** Upstream's ramp is `var(--accent)`
+  plus three `color-mix()` steps and neither property is defined here, so every
+  mark painted black. The four values live in `scripts/sync-core.mjs` and in
+  `app.scss`, and they must agree. No status colour ever enters a plot frame.
+- **`client/report/warnings.ts` parses prose, and should not stay that way.** It
+  reads a run's own stage warnings for what was discarded; the durable version
+  emits those counts from the stage writer. It is tested against all 256 warnings
+  of a real run.
+
 ## Migrations
 
 Explicit SQL in `migrations/`, applied in the order `migrations/order.txt` gives —

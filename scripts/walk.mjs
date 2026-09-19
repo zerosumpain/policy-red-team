@@ -108,13 +108,59 @@ try {
   // over the event stream, so this is waiting for the UI to update itself.
   await page.getByRole('heading', { name: 'What it found' }).waitFor({ timeout: 120000 });
   const id = page.url().split('/').pop();
-  const body = await page.locator('#main-content').innerText();
-  for (const expected of ['Ways to beat it', 'Who is involved', 'How this was produced']) {
-    if (!body.includes(expected)) failures.push(`report: missing section "${expected}"`);
+
+  /*
+   * THE REPORT IS FOUR MOVES NOW, so a section being absent from the page is
+   * only a failure if its own tab is open. Every move is visited, because a
+   * section silently assigned to the wrong one still renders — just never where
+   * the reader looking for it will be.
+   */
+  const MOVES = [
+    ['verdict', 'What it found'],
+    ['causality', 'How they connect'],
+    ['threats', 'Ways to beat it'],
+    ['actors', 'Who is involved'],
+    ['provenance', 'How this was produced'],
+  ];
+  for (const [tab, heading] of MOVES) {
+    await page.getByRole('tab', { name: new RegExp(tab, 'i') }).click();
+    const visible = await page.locator('#main-content').innerText();
+    if (!visible.includes(heading)) failures.push(`report: "${heading}" is not in the ${tab} move`);
   }
-  if (!/18 of 18 completed/.test(body)) failures.push('report: does not say all eighteen stages completed');
+
+  await page.getByRole('tab', { name: /provenance|discarded/i }).click();
+  const provenance = await page.locator('#main-content').innerText();
+  if (!/18 of 18 completed/.test(provenance)) failures.push('report: does not say all eighteen stages completed');
+
+  /*
+   * THE SELECTION HAS TO SURVIVE A TAB CHANGE, which is the one thing here that
+   * breaks without throwing: the view simply shows a narrower set, and a reader
+   * comparing two moves draws a conclusion from a list they did not know was
+   * filtered.
+   */
+  await page.getByRole('tab', { name: /verdict/i }).click();
+  const band = page.locator('.prt-profile__band').first();
+  if (await band.count()) {
+    await band.click();
+    const banner = page.locator('.prt-selection');
+    const stated = await banner.innerText();
+    if (!/Showing/.test(stated)) failures.push('report: selecting a band says nothing above the views');
+
+    await page.getByRole('tab', { name: /threats/i }).click();
+    const afterTab = await page.locator('.prt-selection').innerText();
+    if (afterTab !== stated) failures.push('report: the selection did not survive a tab change');
+
+    // And it is clearable from a view other than the one that set it.
+    await page.getByRole('button', { name: /Clear the selection/i }).click();
+    const cleared = await page.locator('.prt-selection').innerText();
+    if (!/Select a band/.test(cleared)) failures.push('report: the selection could not be cleared from another move');
+  } else {
+    failures.push('report: no exposure band to select');
+  }
+
+  await page.getByRole('tab', { name: /verdict/i }).click();
   await audit('/assessments/:id (report)');
-  note(`report rendered for ${id}`);
+  note(`report rendered for ${id}, four moves with a carried selection`);
 
   // 5 — the diagram and its table are both reachable, which the accessibility
   // statement promises and which nothing else checks.
@@ -144,6 +190,8 @@ try {
   // 5b — THE RELATIONSHIP GRAPH. Present only when the paper states
   // relationships; the fixture states one, which is enough to prove the section
   // renders, counts and links.
+  // The graph lives in Causality now; open that move before looking for it.
+  await page.getByRole('tab', { name: /causality/i }).click();
   const connect = page.getByRole('heading', { name: 'How they connect' });
   if (await connect.count()) {
     await connect.scrollIntoViewIfNeeded();
@@ -174,6 +222,9 @@ try {
   // This pulls a lever and asserts the page changed, that the two directions
   // stayed opposite, and that axe is clean on the result — which is a different
   // DOM from the one at rest.
+  // The stress lab is the one thing you RUN rather than read, so it sits with
+  // the plays in Threats.
+  await page.getByRole('tab', { name: /threats/i }).click();
   const stress = page.getByRole('heading', { name: 'What if we are wrong' });
   if (await stress.count()) {
     await stress.scrollIntoViewIfNeeded();
@@ -267,6 +318,9 @@ try {
   // paper two requests later. The redacted copy leaves as a FILE, and these are
   // the assertions that matter — not that the page rendered, but that three
   // kinds of thing are absent from what a recipient receives.
+  // Sharing and the export are actions on the whole report, so they sit in
+  // Verdict — and the walk has been in Threats since the stress test.
+  await page.getByRole('tab', { name: /verdict/i }).click();
   await page.getByRole('heading', { name: 'Send it to someone' }).scrollIntoViewIfNeeded();
   const panelText = await page.locator('section[aria-labelledby="send"]').innerText();
   if (!/no link to send/i.test(panelText)) failures.push('send: does not say why there is no link');
@@ -331,6 +385,7 @@ try {
   // conclusion, and that the banner above the verdict says so — a reader who
   // meets the conclusion first has already formed a view of a report that has
   // been overtaken.
+  await page.getByRole('tab', { name: /verdict/i }).click();
   await page.getByRole('heading', { name: 'What came after this was written' }).scrollIntoViewIfNeeded();
   const material = path.join(dataRoot, 'walk-rebuttal.txt');
   await writeFile(material, 'A rebuttal. The Council disputes that it has the capacity assumed, and says the funding line is not committed beyond one year.');
@@ -355,6 +410,7 @@ try {
     { timeout: 180000, polling: 1000 },
   );
   await page.reload({ waitUntil: 'networkidle' });
+  await page.getByRole('tab', { name: /verdict/i }).click();
   await page.getByRole('heading', { name: 'What came after this was written' }).waitFor({ timeout: 60000 });
 
   const afterText = await page.locator('section[aria-labelledby="after"]').innerText();
@@ -408,6 +464,7 @@ try {
   // Reached by clicking a name in the report, never by typing the URL. A link
   // that renders and does not navigate is the exact failure this step exists to
   // catch, and it is invisible to a type check.
+  await page.getByRole('tab', { name: /threats/i }).click();
   const playbook = page.getByRole('table', { name: /exploitation playbook/i });
   const firstPlay = playbook.getByRole('link').first();
   const playName = (await firstPlay.innerText()).trim();

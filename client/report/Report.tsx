@@ -3,11 +3,17 @@ import {
   headlineSentence, ledger, plays, recommendations, summarise, tiles,
 } from '$lib/policy-analysis/view';
 import type { Artefact } from '$lib/policy-analysis/contracts';
-import { useMemo, type ReactNode } from 'react';
+import { useMemo, useState, type ReactNode } from 'react';
 import { network } from '$lib/policy-analysis/network';
 import { leverage } from '$lib/policy-analysis/stress';
 import type { Detail } from '../api';
-import { Accordion, Details, InsetText, SummaryList, Table, Tag, WarningText } from '../govuk';
+import { Accordion, Details, InsetText, SummaryList, Table, Tabs, Tag, WarningText } from '../govuk';
+import { mechanismIdsOf, type Selection } from './selection';
+import { SelectionBanner } from './moves/SelectionBanner';
+import { VerdictLead } from './moves/VerdictLead';
+import { CausalityLead } from './moves/CausalityLead';
+import { ThreatsLead } from './moves/ThreatsLead';
+import { ProvenanceLead } from './moves/ProvenanceLead';
 import { ExposurePlot } from './ExposurePlot';
 import { NetworkSection } from './Network';
 import { StressLab } from './StressLab';
@@ -37,10 +43,22 @@ import { Addenda, AddendumNotice } from './Addenda';
  * first time a section is added, and a contents entry pointing at nothing is
  * worse than no contents at all.
  */
+type Move = 'verdict' | 'causality' | 'threats' | 'actors' | 'provenance';
+
 interface Section {
   id: string;
   title: string;
   body: React.ReactNode;
+  /**
+   * Which of the four questions this section answers.
+   *
+   * A reader arrives with one of four — what did it conclude, why does it
+   * happen, what could be done, who would do it — and a single cascade answers
+   * whichever is uppermost by making them scroll past the other three. Every
+   * section that existed before this phase kept its body unchanged and gained
+   * only this field; nothing was rewritten in order to be re-arranged.
+   */
+  move: Move;
 }
 
 function Contents({ sections }: { sections: Section[] }) {
@@ -124,12 +142,16 @@ export function Report({ detail, offline, linkTo, onChanged }: {
   /** Run here rather than inside the panel, so the section can decide whether to exist. */
   const levers = useMemo(() => leverage(artefacts), [artefacts]);
 
+  const [move, setMove] = useState<Move>('verdict');
+  const [selection, setSelection] = useState<Selection>(null);
+  const mechanismIds = useMemo(() => mechanismIdsOf(artefacts), [artefacts]);
+
   const sections: Section[] = [];
-  const section = (id: string, title: string, body: React.ReactNode) => {
-    if (body) sections.push({ id, title, body });
+  const section = (id: string, title: string, move: Move, body: React.ReactNode) => {
+    if (body) sections.push({ id, title, body, move });
   };
 
-  section('found', 'What it found',
+  section('found', 'What it found', 'verdict',
     <SummaryList
       rows={figures.map((figure) => ({
         key: figure.label,
@@ -138,7 +160,7 @@ export function Report({ detail, offline, linkTo, onChanged }: {
     />
   );
 
-  section('plays', 'Ways to beat it', list.length ? (
+  section('plays', 'Ways to beat it', 'threats', list.length ? (
     <>
       <p className="govuk-body">
         Ranked by the geometric mean of four judgements — incentive, ease, impact and
@@ -189,7 +211,7 @@ export function Report({ detail, offline, linkTo, onChanged }: {
    * reported as a finding by "How they connect" two sections above.
    */
   const ACTORS_SHOWN = 20;
-  section('actors', 'Who is involved', board.length ? (
+  section('actors', 'Who is involved', 'actors', board.length ? (
     <>
       <Table
         caption={`Bodies profiled, worst play first${board.length > ACTORS_SHOWN ? ` — the worst ${ACTORS_SHOWN} of ${board.length}` : ''}`}
@@ -207,15 +229,15 @@ export function Report({ detail, offline, linkTo, onChanged }: {
     </>
   ) : null);
 
-  section('network', 'How they connect', net.edges.length ? (
+  section('network', 'How they connect', 'causality', net.edges.length ? (
     <NetworkSection net={net} artefacts={artefacts} linkTo={linkTo} />
   ) : null);
 
-  section('stress', 'What if we are wrong', levers.length ? (
+  section('stress', 'What if we are wrong', 'threats', levers.length ? (
     <StressLab artefacts={artefacts} levers={levers} linkTo={linkTo} />
   ) : null);
 
-  section('evidence', 'What is backed up', mix.length ? (
+  section('evidence', 'What is backed up', 'verdict', mix.length ? (
     <>
       <SummaryList noBorder rows={mix.map((entry) => ({ key: entry.label, value: String(entry.count) }))} />
       <InsetText>
@@ -225,7 +247,7 @@ export function Report({ detail, offline, linkTo, onChanged }: {
     </>
   ) : null);
 
-  section('checks', 'Structural checks', structural.length ? (
+  section('checks', 'Structural checks', 'verdict', structural.length ? (
     <Table
       caption="What the policy's own wiring was tested against"
       captionSize="s"
@@ -235,7 +257,7 @@ export function Report({ detail, offline, linkTo, onChanged }: {
     />
   ) : null);
 
-  section('writeup', 'The write-up', sectionFindings.length ? (
+  section('writeup', 'The write-up', 'verdict', sectionFindings.length ? (
     <Accordion
       id="findings"
       sections={sectionFindings.map((group) => ({
@@ -259,7 +281,7 @@ export function Report({ detail, offline, linkTo, onChanged }: {
     />
   ) : null);
 
-  section('suggests', 'What it suggests', recs.length ? (
+  section('suggests', 'What it suggests', 'verdict', recs.length ? (
     <ol className="govuk-list govuk-list--number">
       {recs.map((rec) => (
         <li key={rec.id}>
@@ -292,7 +314,7 @@ export function Report({ detail, offline, linkTo, onChanged }: {
       {count > 1 ? <span className="prt-meta"> — recorded {count} times</span> : null}
     </li>
   );
-  section('gaps', 'What it could not establish', gaps.length ? (
+  section('gaps', 'What it could not establish', 'provenance', gaps.length ? (
     <>
       <p className="govuk-body">
         {warnings.length} {warnings.length === 1 ? 'limit was' : 'limits were'} recorded across the
@@ -308,7 +330,7 @@ export function Report({ detail, offline, linkTo, onChanged }: {
     </>
   ) : null);
 
-  section('take', 'Take it away', offline ? null : (
+  section('take', 'Take it away', 'verdict', offline ? null : (
     <>
       <p className="govuk-body">
         Three copies, and they are not the same thing. The Word file is the one
@@ -357,7 +379,7 @@ export function Report({ detail, offline, linkTo, onChanged }: {
    * attach anything to, and the addenda it does carry are already in its
    * artefacts.
    */
-  section('after', 'What came after this was written', offline ? null : (
+  section('after', 'What came after this was written', 'verdict', offline ? null : (
     <Addenda
       analysisId={analysis.id}
       status={analysis.status}
@@ -369,9 +391,9 @@ export function Report({ detail, offline, linkTo, onChanged }: {
     />
   ));
 
-  section('send', 'Send it to someone', offline ? null : <Shares analysisId={analysis.id} />);
+  section('send', 'Send it to someone', 'verdict', offline ? null : <Shares analysisId={analysis.id} />);
 
-  section('provenance', 'How this was produced',
+  section('provenance', 'How this was produced', 'provenance',
     <SummaryList
       rows={[
         { key: 'Model', value: analysis.model ?? 'the configured default' },
@@ -381,6 +403,55 @@ export function Report({ detail, offline, linkTo, onChanged }: {
         { key: 'Stages', value: `${stages.filter((s) => s.status === 'completed').length} of ${stages.length} completed` },
       ]}
     />
+  );
+
+  /*
+   * THE OFFLINE PACK KEEPS THE CASCADE, and that is not a shortcut.
+   *
+   * The pack is one file opened from `file://` with every request blocked, and
+   * a tabbed spine hides five sixths of a report behind JavaScript. A reader who
+   * opens the pack to find what an assessment said should not need script to
+   * read it — and `Ctrl-F` across a whole document is the pack's real interface.
+   * So the moves are for the service, and the pack stays a document.
+   */
+  if (offline) {
+    return (
+      <>
+        <div className="govuk-grid-row">
+          <div className="govuk-grid-column-two-thirds">
+            <AddendumNotice artefacts={artefacts} passes={detail.passes} />
+            {headline ? <p className="govuk-body-l">{headline}</p> : null}
+            <WarningText>
+              This is a red-team read, not an assurance review. Every profile is a hypothesis about
+              a body's incentives, never a finding about a named person.
+            </WarningText>
+            <Contents sections={sections} />
+          </div>
+        </div>
+        {sections.map((entry) => (
+          <section key={entry.id} aria-labelledby={entry.id}>
+            <h2 className="govuk-heading-l" id={entry.id}>{entry.title}</h2>
+            {entry.body}
+            <p className="govuk-body-s govuk-!-margin-top-2">
+              <a className="govuk-link" href="#contents">Back to contents</a>
+            </p>
+          </section>
+        ))}
+      </>
+    );
+  }
+
+  const inMove = (move: Move) => sections.filter((entry) => entry.move === move);
+  const panel = (move: Move, lead: ReactNode) => (
+    <>
+      {lead}
+      {inMove(move).map((entry) => (
+        <section key={entry.id} aria-labelledby={entry.id}>
+          <h2 className="govuk-heading-l" id={entry.id}>{entry.title}</h2>
+          {entry.body}
+        </section>
+      ))}
+    </>
   );
 
   return (
@@ -395,19 +466,39 @@ export function Report({ detail, offline, linkTo, onChanged }: {
             This is a red-team read, not an assurance review. Every profile is a hypothesis about
             a body's incentives, never a finding about a named person.
           </WarningText>
-          <Contents sections={sections} />
         </div>
       </div>
 
-      {sections.map((entry) => (
-        <section key={entry.id} aria-labelledby={entry.id}>
-          <h2 className="govuk-heading-l" id={entry.id}>{entry.title}</h2>
-          {entry.body}
-          <p className="govuk-body-s govuk-!-margin-top-2">
-            <a className="govuk-link" href="#contents">Back to contents</a>
-          </p>
-        </section>
-      ))}
+      <SelectionBanner selection={selection} onClear={() => setSelection(null)} />
+
+      <Tabs
+        id="report"
+        label="Report sections"
+        current={move}
+        onSelect={(id) => setMove(id as Move)}
+        tabs={[
+          {
+            id: 'verdict', step: 'Move 1', label: 'Verdict',
+            panel: panel('verdict', <VerdictLead list={list} bands={bands} selection={selection} onSelect={setSelection} linkTo={linkTo} />),
+          },
+          {
+            id: 'causality', step: 'Move 2', label: 'Causality',
+            panel: panel('causality', <CausalityLead artefacts={artefacts} list={list} selection={selection} onSelect={setSelection} linkTo={linkTo} />),
+          },
+          {
+            id: 'threats', step: 'Move 3', label: 'Threats',
+            panel: panel('threats', <ThreatsLead list={list} selection={selection} linkTo={linkTo} />),
+          },
+          {
+            id: 'actors', step: 'Move 4', label: 'Actors',
+            panel: panel('actors', null),
+          },
+          {
+            id: 'provenance', step: 'Provenance', label: 'What was discarded',
+            panel: panel('provenance', <ProvenanceLead stages={stages} />),
+          },
+        ]}
+      />
     </>
   );
 }

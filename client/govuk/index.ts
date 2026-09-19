@@ -8,3 +8,4 @@ export { Table, type Column } from './Table';
 export { ErrorSummary, NotificationBanner, Panel, PhaseBanner, InsetText, WarningText } from './Feedback';
 export { Details, Accordion } from './Disclosure';
 export { FormGroup, Input, Textarea, Select, FileUpload, Radios, Checkboxes, type FieldProps } from './Form';
+export { Tabs, type Tab } from './Tabs';

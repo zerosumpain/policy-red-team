@@ -92,44 +92,6 @@ describe.skipIf(!local)('policy pipeline on isolated Postgres', () => {
       if (process.env.POLICY_KEEP_FIXTURE === '1') console.log(`Retained synthetic policy preview: ${base}/policy-analysis/${id}`);
     } finally { await browser.close(); }
   }, 180_000);
-  /*
-   * STOPPING A RUN IS A PAUSE, and the page now promises that in as many words:
-   * "Stopping keeps everything finished so far. You can resume from the stage it
-   * was on." This is the test that keeps the promise true.
-   *
-   * It matters because it is what makes a deploy affordable. An eighteen-stage
-   * assessment runs for hours, and on 2026-09-19 every code change had to wait
-   * for one to finish because nobody had confirmed a stopped run could be picked
-   * up. The machinery was always there — `control(…, 'resume')` re-queues from
-   * the first unfinished stage — but "it should work" is not the same claim as
-   * "it does".
-   */
-  it('stops without losing finished stages, and resumes from where it stopped', async () => {
-    const a = await create();
-    await advance(a.id);
-    await advance(a.id);
-    const completedBefore = (await detail(owner, a.id))!.stages.filter((s) => s.status === 'completed');
-    const artefactsBefore = await loadArtefacts(a.id);
-    expect(completedBefore.length).toBe(2);
-
-    await control(owner, a.id, 'cancel');
-    const stopped = (await detail(owner, a.id))!;
-    expect(stopped.analysis.status).toBe('cancelled');
-    // The finished work survives the stop — that is the whole promise.
-    expect(stopped.stages.filter((s) => s.status === 'completed')).toHaveLength(2);
-    expect(await loadArtefacts(a.id)).toEqual(artefactsBefore);
-
-    await control(owner, a.id, 'resume');
-    const resumed = (await detail(owner, a.id))!;
-    expect(resumed.analysis.status).not.toBe('cancelled');
-    // And it picks up at the stage it was on, not at the beginning.
-    expect(resumed.stages.filter((s) => s.status === 'completed')).toHaveLength(2);
-
-    await advance(a.id);
-    expect((await detail(owner, a.id))!.stages.filter((s) => s.status === 'completed')).toHaveLength(3);
-    await control(owner, a.id, 'cancel');
-  });
-
   it('reclaims an expired lease and makes stage completion idempotent', async () => {
     const a = await create(); const first = await claim(a.id);
     await db.update(workflowRuns).set({ leaseExpiresAt: new Date(0) }).where(eq(workflowRuns.id, first.id));

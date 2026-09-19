@@ -173,7 +173,22 @@ export function Assessment() {
         </>
       ) : (
         <>
-          {isFinished(analysis.status) ? (
+          {/*
+            A RUN THAT STOPPED SHORT STILL HAS A REPORT, and refusing to draw it
+            is the more misleading choice.
+
+            The Post-16 run failed at stage 18 of 18 holding 2,265 artefacts —
+            every actor, every mechanism, the whole exploitation playbook and the
+            independent challenge. Only the final revision is missing. Refusing to
+            render meant a reader had no path to seventeen stages of finished
+            work, and the failure notice above says plainly what is absent.
+
+            What is NOT done: nothing is silently completed. The status tag reads
+            failed, the error is printed, and the assurance response the last
+            stage never produced is simply not there — an absent section rather
+            than an invented one.
+          */}
+          {isFinished(analysis.status) || analysis.status === 'failed' || analysis.status === 'cancelled' ? (
             <Report
               detail={detail}
               onChanged={() => void load()}
