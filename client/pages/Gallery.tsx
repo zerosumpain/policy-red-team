@@ -5,6 +5,7 @@ import {
   Tag, TaskList, Textarea, WarningText, type Task,
 } from '../govuk';
 import { usePageTitle } from '../layout/Template';
+import { BarChart, Figure } from '../report/Figure';
 
 /**
  * Every component, on one page, with the content it will actually carry.
@@ -125,6 +126,50 @@ export function Gallery() {
           { heading: 'What is backed up', summary: '24 claims', content: <p className="govuk-body">Each claim against something outside the paper, or a record that nothing settles it.</p> },
           { heading: 'How they connect', summary: '26 relationship types', content: <p className="govuk-body">Only relationships the paper states. The gaps matter as much as the links.</p> },
         ]}
+      />
+
+      {/* HERE SO THE STATIC GATE CAN SEE IT. `npm run a11y` walks this route and
+          six others, none of which needs an assessment to exist; the figures
+          themselves only appear on a report, where only the browser walk
+          reaches them. Carrying one here puts the chart markup, the toggle and
+          its pressed state under axe on every run. */}
+      <h2 className="govuk-heading-l govuk-!-margin-top-8">Figures</h2>
+      <p className="govuk-body">
+        Every picture of data on the report is paired with the same data as a table, and the
+        control that swaps them is offered to everyone rather than hidden behind assistive
+        technology. Neither is the accessible alternative to the other. The bars carry no text
+        on the fill: a label written inside is unreadable on the short ones and has to pass
+        contrast against the colour, where outside it is black on white everywhere.
+      </p>
+      <Figure
+        label="relationships by family"
+        diagram={
+          <BarChart
+            label="Relationships by family"
+            rows={[
+              { key: 'money', label: 'Money and burden', value: 222, colour: '#1d70b8' },
+              { key: 'accountability', label: 'Accountability', value: 93, colour: '#1d70b8' },
+              { key: 'evidence', label: 'Evidence', value: 65, colour: '#1d70b8' },
+              { key: 'authority', label: 'Authority', value: 5, colour: '#1d70b8' },
+              { key: 'influence', label: 'Influence', value: 3, colour: '#1d70b8' },
+            ]}
+          />
+        }
+        table={
+          <Table
+            caption="Relationships by family"
+            captionSize="s"
+            scroll
+            columns={[{ header: 'Family' }, { header: 'What it covers' }, { header: 'Relationships', numeric: true }]}
+            rows={[
+              ['Money and burden', 'Who pays, who benefits, who carries the cost', '222'],
+              ['Accountability', 'Who answers to whom, and who is measured on what', '93'],
+              ['Evidence', 'What is offered in support of a claim', '65'],
+              ['Authority', 'Who can direct, veto or sanction whom', '5'],
+              ['Influence', 'Who lobbies or allies with whom', '3'],
+            ]}
+          />
+        }
       />
 
       <h2 className="govuk-heading-l govuk-!-margin-top-8">Telling the reader something</h2>
