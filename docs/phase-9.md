@@ -162,6 +162,25 @@ show-all path, where two of the fixes above live.
 | `leverage()` | inside the panel; passed in | **passed in** | the report has to know whether there are levers before it prints a heading, and a section whose body is nothing is a heading over blank space | yes |
 | The show-all control | a secondary button; a link-styled button | **link-styled** | it changes the page so it must be a button, and at the weight of a real GOV.UK button it would outrank what it reveals. govuk-frontend ships this exact reset for the accordion's own "Show all sections" | yes |
 
+## The report was seventy-nine screens
+
+Measuring the panel meant measuring the page it sits on, and the page was
+unreadable on real data. Neither of the two offenders was new:
+
+| section | was | now | why |
+|---|---|---|---|
+| What it could not establish | **30,010px** | 1,870px | 376 warnings rendered uncapped, 356 distinct, the longest 6,387 characters — 42% of the whole report |
+| Who is involved | **23,717px** | 1,161px | 511 actor rows, uncapped, while the playbook beside it caps at 20 |
+| How they connect | 7,413px | 5,978px | mine: a 30-row table and eight insights naming eight bodies each |
+| **whole report** | **71,203px — 79 screens** | **19,072px — 21 screens** | |
+
+Nothing is dropped. The warnings are collapsed by identical text with a count
+and the tail goes behind a disclosure — this is the section that records what the
+assessment could NOT do, and quietly truncating it would be the worst possible
+place to save room. The actor table keeps the worst twenty (it is already sorted
+worst-play-first) and says how many more there are; every one is reachable from
+the relationships section and from any play it could run.
+
 ## What is still outstanding
 
 Share links in the interface (the API is built and tested), persona detail, and

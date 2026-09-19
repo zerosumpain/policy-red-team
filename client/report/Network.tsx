@@ -215,19 +215,32 @@ export function NetworkSection({ net, artefacts, linkTo }: {
 
       <h3 className="govuk-heading-m" id="net-insights">What the connections show</h3>
       {net.insights.length ? (
-        net.insights.map((insight) => (
-          <div key={insight.key} className="govuk-!-margin-bottom-6">
-            <h4 className="govuk-heading-s">{insight.headline}</h4>
-            <p className="govuk-body">{insight.reading}</p>
-            <SummaryList
-              noBorder
-              rows={insight.subjects.map((subject) => ({
-                key: name(subject.id, subject.label),
-                value: subject.note,
-              }))}
-            />
-          </div>
-        ))
+        net.insights.map((insight) => {
+          /*
+           * MEASURED: eight insights naming up to eight bodies each, with a
+           * sentence of note against every one, came to four thousand pixels of
+           * a section already running to eight screens. The first few make the
+           * finding; the rest make it a list, which is the distinction
+           * `network()`'s own subject cap is drawn on one level up.
+           */
+          const SHOWN = 5;
+          const row = (subject: { id: string; label: string; note: string }) => ({
+            key: name(subject.id, subject.label),
+            value: subject.note,
+          });
+          return (
+            <div key={insight.key} className="govuk-!-margin-bottom-6">
+              <h4 className="govuk-heading-s">{insight.headline}</h4>
+              <p className="govuk-body">{insight.reading}</p>
+              <SummaryList noBorder rows={insight.subjects.slice(0, SHOWN).map(row)} />
+              {insight.subjects.length > SHOWN ? (
+                <Details summary={`The other ${insight.subjects.length - SHOWN}`}>
+                  <SummaryList noBorder rows={insight.subjects.slice(SHOWN).map(row)} />
+                </Details>
+              ) : null}
+            </div>
+          );
+        })
       ) : (
         <p className="govuk-body">
           Nothing structural stood out. With this few stated relationships there is not enough
@@ -302,7 +315,12 @@ function BodyLinkTable({ links, name }: {
   links: ReturnType<typeof bodyLinks>;
   name: (id: string, label: string) => ReactNode;
 }) {
-  const SHOWN = 30;
+  /*
+   * MEASURED at thirty: 1,616 pixels, the tallest single thing in this section.
+   * Twelve is two screens' worth of pairs and the remainder is one disclosure
+   * away — the same cap the adjacency grid draws itself at.
+   */
+  const SHOWN = 12;
   return (
     <>
       <Table

@@ -163,14 +163,36 @@ export function Report({ detail, offline, linkTo }: { detail: Detail; offline?: 
     </>
   ) : null);
 
+  /*
+   * CAPPED, like the playbook beside it.
+   *
+   * MEASURED on a real assessment: this table rendered 511 rows and stood
+   * 23,717 pixels tall — twenty-six screens for one section of a report that
+   * came to seventy-nine. `actorBoard` is already sorted worst-play-first, so
+   * the cap keeps the bodies a reader came for; the rest are counted, and the
+   * drill holds every one of them either way.
+   *
+   * 511 is also inflated: entity resolution splits an ambiguous body into
+   * candidate rows rather than merging them, which is a deliberate choice and is
+   * reported as a finding by "How they connect" two sections above.
+   */
+  const ACTORS_SHOWN = 20;
   section('actors', 'Who is involved', board.length ? (
-    <Table
-      caption="Bodies profiled, worst play first"
-      captionSize="s"
-      scroll
-      columns={[{ header: 'Body' }, { header: 'Plays', numeric: true }, { header: 'Worst exposure', numeric: true }]}
-      rows={board.map((actor) => [name(actor.actor), String(actor.plays.length), actor.worst.toFixed(2)])}
-    />
+    <>
+      <Table
+        caption={`Bodies profiled, worst play first${board.length > ACTORS_SHOWN ? ` — the worst ${ACTORS_SHOWN} of ${board.length}` : ''}`}
+        captionSize="s"
+        scroll
+        columns={[{ header: 'Body' }, { header: 'Plays', numeric: true }, { header: 'Worst exposure', numeric: true }]}
+        rows={board.slice(0, ACTORS_SHOWN).map((actor) => [name(actor.actor), String(actor.plays.length), actor.worst.toFixed(2)])}
+      />
+      {board.length > ACTORS_SHOWN ? (
+        <p className="govuk-body-s prt-meta">
+          {board.length - ACTORS_SHOWN} more bodies are profiled. Every one is reachable from the
+          relationships section and from any play it could run.
+        </p>
+      ) : null}
+    </>
   ) : null);
 
   section('network', 'How they connect', net.edges.length ? (
@@ -236,10 +258,42 @@ export function Report({ detail, offline, linkTo }: { detail: Detail; offline?: 
     </ol>
   ) : null);
 
-  section('gaps', 'What it could not establish', warnings.length ? (
-    <ul className="govuk-list govuk-list--bullet">
-      {warnings.map((warning, i) => <li key={i}>{warning}</li>)}
-    </ul>
+  /*
+   * THE SAME WARNING, SAID ONCE, AND THE TAIL ON REQUEST.
+   *
+   * MEASURED on a real assessment: 376 warnings across fourteen stages, 356 of
+   * them distinct, the longest 6,387 characters — 30,010 pixels, which was 42%
+   * of the whole report. Most of the repetition is one stage reporting the same
+   * clipped-context message once per call.
+   *
+   * Identical text is collapsed with a count, the first handful stay in the
+   * flow, and the rest go behind a disclosure. Nothing is dropped: this is the
+   * section that records what the assessment could NOT do, and quietly
+   * truncating it would be the worst possible place to save room.
+   */
+  const GAPS_SHOWN = 8;
+  const gaps = [...warnings.reduce((seen, warning) => seen.set(warning, (seen.get(warning) ?? 0) + 1), new Map<string, number>())]
+    .sort((a, b) => b[1] - a[1]);
+  const gapLine = ([text, count]: [string, number]) => (
+    <li key={text}>
+      {text}
+      {count > 1 ? <span className="prt-meta"> — recorded {count} times</span> : null}
+    </li>
+  );
+  section('gaps', 'What it could not establish', gaps.length ? (
+    <>
+      <p className="govuk-body">
+        {warnings.length} {warnings.length === 1 ? 'limit was' : 'limits were'} recorded across the
+        stages{gaps.length !== warnings.length ? `, ${gaps.length} of them distinct` : ''}. Nothing
+        here is dropped — this is the record of what the assessment could not do.
+      </p>
+      <ul className="govuk-list govuk-list--bullet">{gaps.slice(0, GAPS_SHOWN).map(gapLine)}</ul>
+      {gaps.length > GAPS_SHOWN ? (
+        <Details summary={`The other ${gaps.length - GAPS_SHOWN}`}>
+          <ul className="govuk-list govuk-list--bullet">{gaps.slice(GAPS_SHOWN).map(gapLine)}</ul>
+        </Details>
+      ) : null}
+    </>
   ) : null);
 
   section('take', 'Take it away', offline ? null : (
