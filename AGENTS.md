@@ -163,6 +163,26 @@ provider is in force rather than assuming one.
   are absent from the bytes. Add the URL to a real module without stubbing it and
   the build stops — correctly.
 
+## The model menu
+
+`offeredModels()` is the menu the submit form draws. Precedence is `POLICY_MODELS`
+(comma list of ids), then what the admin panel stored, then the built-in five.
+
+- **A provider's `catalogue()` is inventory; `models()` is the menu.** Do not
+  confuse them: the first is 447 rows, the second is a decision. `catalogue()` is
+  optional — Azure has none, because its deployment list is behind a separate ARM
+  API.
+- **The menu lives in a module variable**, refreshed by `loadOfferedModels()`.
+  That is not laziness: `isOfferedModel` is called synchronously from
+  `ingest.ts`, which this fork keeps byte-identical to upstream, so an async
+  catalogue would force a divergence into the one place that must not have one.
+  Refresh it in anything that is about to serve or commission a model.
+- **Whole records are stored, not ids** — the submit form must never need a
+  network call to render a dropdown.
+- **`tierForCost`'s boundaries are read off the built-in five**, and a test
+  asserts each one lands in the tier a human gave it. Change a threshold and that
+  test tells you which curated model you just contradicted.
+
 ## The admin panel
 
 `/admin` is the only page behind a password, and the only one that needs one: it

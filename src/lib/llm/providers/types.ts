@@ -63,4 +63,42 @@ export type ProviderDefinition = {
    * 404.
    */
   models(config: ProviderConfig): { id: string; name: string; note: string }[];
+  /**
+   * EVERYTHING THE SERVICE WILL SELL YOU, asked at the moment it is asked.
+   *
+   * `models()` above is the curated menu an assessment picks from — five things
+   * with an opinion attached. This is the raw list behind it, for the admin
+   * panel to choose that menu FROM, and the two must not be confused: one is a
+   * decision, the other is inventory.
+   *
+   * Optional, because not every service has one to give. OpenRouter and any
+   * OpenAI-compatible bridge answer `GET /v1/models`; an Azure deployment does
+   * not — its list lives behind a separate ARM API against a different
+   * credential, and inventing one from the deployment name would be a menu of
+   * one thing the reader already typed.
+   *
+   * It costs a network call and it can fail. The caller is the admin panel,
+   * which is allowed to be slow and is the right place to show the error.
+   */
+  catalogue?(config: ProviderConfig): Promise<CatalogueEntry[]>;
+};
+
+/**
+ * One row of a provider's live inventory.
+ *
+ * `promptCost`/`completionCost` are USD PER MILLION TOKENS, converted from
+ * whatever the provider quotes, because per-token prices are eight leading
+ * zeroes and nobody can compare those at a glance. Null where the service does
+ * not say — a bridge billing against a subscription has no per-token price and
+ * should not be made to invent one.
+ */
+export type CatalogueEntry = {
+  id: string;
+  name: string;
+  description: string;
+  contextLength: number | null;
+  promptCost: number | null;
+  completionCost: number | null;
+  /** True for an id that redirects to whatever is newest in a family. */
+  floating: boolean;
 };

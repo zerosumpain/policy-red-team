@@ -18,9 +18,9 @@
  * chase its importers, because the guarantee should not depend on anyone
  * remembering to add a file here.
  */
-import type { ProviderDefinition, ProviderId } from './types';
+import type { CatalogueEntry, ProviderDefinition, ProviderId } from './types';
 
-export type { ProviderDefinition, ProviderId, ProviderField, ProviderConfig } from './types';
+export type { ProviderDefinition, ProviderId, ProviderField, ProviderConfig, CatalogueEntry } from './types';
 
 const unreachable = (label: string): never => {
   throw new Error(
@@ -38,12 +38,32 @@ function stub(id: ProviderId, label: string, blurb: string, fields: ProviderDefi
     problem: (config) => (fields.every((f) => f.optional || config[f.name]?.trim()) ? null : `Fill in ${label}.`),
     model: (config) => config.model?.trim() || config.deployment?.trim() || '',
     client: () => unreachable(label),
+    /*
+     * A CATALOGUE THAT REACHES NOTHING, so the browser walk can drive the model
+     * picker without a key and without a network.
+     *
+     * Six rows, fixed, and one of them floating — the shapes the panel has to
+     * render are a long id, a price, a missing price, and the `~` alias that
+     * redirects to whatever is newest. A real call is what `client()` refuses;
+     * listing a menu is not a call, and stubbing it here keeps the dialogue
+     * under test rather than untested-because-untestable.
+     */
+    catalogue: async () => FIXTURE_CATALOGUE,
     models: (config) => {
       const own = config.model?.trim() || config.deployment?.trim();
       return own ? [{ id: own, name: own, note: 'Configured here.' }] : [];
     },
   };
 }
+
+const FIXTURE_CATALOGUE: CatalogueEntry[] = [
+  { id: 'deepseek/deepseek-v4-flash', name: 'DeepSeek V4 Flash', description: 'Efficiency-optimised, one million tokens of context.', contextLength: 1_048_576, promptCost: 0.046, completionCost: 0.093, floating: false },
+  { id: '~deepseek/deepseek-flash-latest', name: 'DeepSeek Flash Latest', description: 'Always redirects to the newest model in the DeepSeek Flash family.', contextLength: 1_048_576, promptCost: 0.13, completionCost: 0.52, floating: true },
+  { id: 'anthropic/claude-sonnet-4.5', name: 'Claude Sonnet 4.5', description: 'Strong at holding a long document in view.', contextLength: 200_000, promptCost: 3, completionCost: 15, floating: false },
+  { id: 'google/gemini-2.5-flash', name: 'Gemini 2.5 Flash', description: 'Long context at low cost.', contextLength: 1_048_576, promptCost: 0.3, completionCost: 2.5, floating: false },
+  { id: 'openai/gpt-oss-120b', name: 'GPT-OSS 120B', description: 'Open weights, good at structure.', contextLength: 131_072, promptCost: 0.09, completionCost: 0.45, floating: false },
+  { id: 'local/no-price-quoted', name: 'A bridge model with no price', description: 'Bills against a subscription, so nothing is quoted per token.', contextLength: null, promptCost: null, completionCost: null, floating: false },
+];
 
 const ALL: ProviderDefinition[] = [
   stub('openrouter', 'OpenRouter', 'Per-token access to every model in the picker.', [

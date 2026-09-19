@@ -24,6 +24,7 @@ import { client } from '$lib/db';
 import { migrate } from '../scripts/migrate.mjs';
 import { drain, runWorker } from '$lib/worker';
 import { modelAccessProblem } from '$lib/llm/client';
+import { loadOfferedModels } from '$lib/server/models/offered-store';
 
 const ROOT = path.resolve(fileURLToPath(new URL('..', import.meta.url)));
 const CLIENT = path.join(ROOT, 'dist', 'client');
@@ -145,6 +146,12 @@ server.listen(PORT, HOST, async () => {
   // learn it.
   // Async now: which service answers is a configured thing, and reading the
   // configuration means reading the encrypted store.
+  // The menu the panel chose, installed before anything can be commissioned.
+  // The submit form's GET refreshes it anyway, but a POST straight at the API
+  // after a restart would otherwise find the built-in five and quietly degrade a
+  // model the reader had legitimately added to "the configured default".
+  await loadOfferedModels().catch(() => {});
+
   const problem = await modelAccessProblem();
   if (problem) {
     console.warn(`\n  ${problem}`);

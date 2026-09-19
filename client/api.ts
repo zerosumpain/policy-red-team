@@ -129,6 +129,18 @@ export interface ProviderView {
   models: { id: string; name: string; note: string }[];
 }
 
+/** One row of a provider's live inventory. Costs are USD per MILLION tokens. */
+export interface CatalogueEntry {
+  id: string;
+  name: string;
+  description: string;
+  contextLength: number | null;
+  promptCost: number | null;
+  completionCost: number | null;
+  /** An id that redirects to whatever is newest in its family. */
+  floating: boolean;
+}
+
 export interface AdminConfig {
   active: string;
   activeProblem: string | null;
@@ -137,6 +149,16 @@ export interface AdminConfig {
   /** True when POLICY_PROVIDER pins the choice for this deployment. */
   pinned: boolean;
   providers: ProviderView[];
+  /** What the assessment picker offers today. */
+  menu: OfferedModel[];
+  /** True when somebody chose that menu, rather than it being this build's default. */
+  menuChosen: boolean;
+  /** True when POLICY_MODELS pins it, in which case the panel cannot change it. */
+  menuPinned: boolean;
+  /** What a reset would restore. */
+  builtIn: OfferedModel[];
+  /** Whether the active provider will list what it sells. Azure will not. */
+  canBrowse: boolean;
 }
 
 export interface Landing {
@@ -203,6 +225,15 @@ export const admin = {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ provider }),
+    }),
+  /** Everything the active provider sells. A few hundred rows and a network call. */
+  catalogue: () => request<{ provider: string; entries: CatalogueEntry[] }>('/api/admin/catalogue'),
+  /** Set the assessment picker's menu. An empty list resets to the built-in one. */
+  saveModels: (models: { id: string; name: string; note: string; cost: number | null }[]) =>
+    request<AdminConfig>('/api/admin/models', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ models }),
     }),
   /** One token of output against the live configuration. "Saved" is not "reachable". */
   test: () => request<{ ok: boolean; provider: string; model?: string; ms: number; message?: string }>(

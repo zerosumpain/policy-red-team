@@ -65,13 +65,65 @@ const BUILT_IN: OfferedModel[] = [
 ];
 
 /**
+ * What the admin panel has chosen, or null for "nobody has chosen".
+ *
+ * Held in a module variable and refreshed from `policy_settings`, exactly like
+ * `providerModelIds` below and for the same reason: `offeredModels()` is called
+ * from `isOfferedModel`, which `ingest.ts` — a file this fork keeps byte-
+ * identical to upstream — calls synchronously. Making the catalogue async would
+ * push a divergence into the one place that must not have one.
+ *
+ * Whoever serves the menu refreshes it first; `loadOfferedModels` is that call.
+ */
+let chosen: OfferedModel[] | null = null;
+
+export function registerOfferedModels(models: OfferedModel[] | null): void {
+  chosen = models && models.length ? models : null;
+}
+
+/** The menu this build would offer if nobody had ever chosen — for a reset control. */
+export function builtInModels(): OfferedModel[] {
+  return BUILT_IN;
+}
+
+/**
+ * Which tier a price falls in, so a model chosen from a live catalogue arrives
+ * with the same warning the built-ins carry.
+ *
+ * USD per million prompt tokens. The boundaries are not invented — they are read
+ * off the five models above, whose tiers were assigned by hand before any of
+ * this existed. Measured on OpenRouter, 2026-09-19: DeepSeek V4 Flash $0.046 and
+ * GPT-OSS 120B $0.150 are the `economy` pair; Gemini 2.5 Flash $0.300 and GLM
+ * 5.2 $0.554 are `balanced`; Claude Sonnet 4.5 $3.000 is `frontier`. So the
+ * first boundary lies between 0.15 and 0.30, and the second on 3 exactly.
+ *
+ * If a hand-authored tier ever disagrees with a derived one, the test that
+ * compares them fails — which is the point of deriving it from the list rather
+ * than from a feeling about what sounds expensive.
+ *
+ * A model with no quoted price (a subscription bridge) is `balanced`: it is not
+ * free, it just is not metered here, and telling a reader it is cheap would be
+ * the wrong kind of wrong.
+ */
+export function tierForCost(promptCostPerMillion: number | null): CostTier {
+  if (promptCostPerMillion === null) return 'balanced';
+  if (promptCostPerMillion < 0.2) return 'economy';
+  if (promptCostPerMillion < 3) return 'balanced';
+  return 'frontier';
+}
+
+/**
  * `POLICY_MODELS` is a comma-separated list of OpenRouter ids. Given one, it
  * REPLACES the built-in menu rather than adding to it: a reader who has said
  * which models they want offered does not also want five they did not pick.
+ *
+ * THE ORDER IS ENVIRONMENT, THEN PANEL, THEN BUILT-IN — the same precedence the
+ * provider registry uses, so there is one rule to remember rather than two. A
+ * deployment that pins its menu keeps it; everyone else gets what they ticked.
  */
 export function offeredModels(): OfferedModel[] {
   const configured = process.env.POLICY_MODELS?.trim();
-  if (!configured) return BUILT_IN;
+  if (!configured) return chosen ?? BUILT_IN;
   return configured
     .split(',')
     .map((id) => id.trim())

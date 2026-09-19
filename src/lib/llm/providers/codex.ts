@@ -1,4 +1,5 @@
 import OpenAI from 'openai';
+import { listOpenAICompatible } from './openai-catalogue';
 import type { ProviderDefinition } from './types';
 
 /**
@@ -71,4 +72,9 @@ export const codex: ProviderDefinition = {
     config.model?.trim()
       ? [{ id: config.model.trim(), name: config.model.trim(), note: 'Served by the endpoint you configured.' }]
       : [],
+  // A bridge knows what its subscription serves, and the reader otherwise has to
+  // guess the exact spelling of a name they cannot see. It needs only the URL to
+  // answer, so it works before a model name has been chosen — which is the point
+  // at which you need it.
+  catalogue: (config) => listOpenAICompatible(codex.client(config)),
 };

@@ -143,6 +143,62 @@ another box.
 | Removing Codex for a ship | delete the module; a build flag; an allow-list | **the allow-list** | deleting it loses the work, and a build flag makes two artefacts to test; the list is one line in `app.env` | yes |
 | `OPENROUTER_API_KEY` in `app.env` | keep it pinned; let the panel own it | **the panel owns it** (`policy_pin_openrouter: true` restores the pin) | a panel that cannot edit the one credential the install uses is a panel for nothing | yes |
 
+## The model menu, added after the panel shipped
+
+The picker offered five models, hard-coded, and the only way to change that was
+`POLICY_MODELS` in an Ansible template. The panel now builds the menu instead.
+
+**Inventory and menu are different things, and the code says so.** A provider's
+`catalogue()` is what it will sell you — 447 rows on OpenRouter. `models()` is
+the menu an assessment picks from: a handful, each carrying a note about what it
+is for. The admin page turns the first into the second, and the submit form only
+ever sees the second.
+
+`catalogue()` is optional on a `ProviderDefinition` because not every service has
+one. OpenRouter and any OpenAI-compatible bridge answer `GET /v1/models`, so one
+implementation (`openai-catalogue.ts`) serves both. Azure does not — its
+deployment list is behind a separate ARM API against a different credential — so
+it declares no catalogue and the panel says so rather than offering a browse
+button that cannot work.
+
+**It is fetched on demand, never on page load.** It is a network call to a third
+party, and the panel is mostly opened to check a key rather than to go shopping.
+
+**Search rather than scroll, and an empty box lists only what is already
+chosen.** 447 checkboxes is not a control, it is a wall. This relies on a fix
+`Checkboxes` already had — a ticked id that scrolls out of the filter is kept,
+not dropped — and the walk now asserts it, because that fix only stays fixed if
+something keeps checking: tick a model, narrow the search until it is off screen,
+save, and it must still be in the menu.
+
+**Floating aliases are flagged.** OpenRouter marks an id that redirects to
+whatever is newest in a family by prefixing it with `~`, so
+`~deepseek/deepseek-flash-latest` is a real, callable id. That is a different
+*kind* of choice: the model behind it changes without the id changing, so two
+assessments a month apart are not comparable even though the provenance section
+names the same thing. The panel tags it and says what it means.
+
+**The tier is derived from the price, and the boundary is read off the built-in
+list rather than guessed.** Measured on OpenRouter, 2026-09-19: DeepSeek V4 Flash
+$0.046 and GPT-OSS 120B $0.150 were hand-labelled `economy`; Gemini 2.5 Flash
+$0.300 and GLM 5.2 $0.554 `balanced`; Claude Sonnet 4.5 $3.000 `frontier`. So the
+first boundary lies between 0.15 and 0.30 and the second on 3 exactly. A test
+asserts each of the five lands in the tier a human gave it — the first draft used
+round numbers and put Gemini in the wrong tier, which is exactly the mistake the
+test exists to catch. A model with no quoted price is `balanced`, never free: a
+subscription bridge is not metered here, which is not the same as costing nothing.
+
+**Whole records are stored, not ids.** Storing ids alone would mean the submit
+form could not print a name without asking OpenRouter first — a network call, on
+a page load, to render a dropdown. The name, note and tier are decided once when
+the box is ticked and travel with the choice. `catalogue.ts` keeps the menu in a
+module variable refreshed from the store, for the same reason
+`registerProviderModels` does: `isOfferedModel` is called synchronously from
+`ingest.ts`, a file this fork keeps byte-identical to upstream.
+
+Precedence is the same as everywhere else: `POLICY_MODELS` beats the panel beats
+the built-in five. One rule, not two.
+
 ## What this does not close
 
 **No real assessment has ever completed.** Every gate here runs against a

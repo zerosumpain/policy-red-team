@@ -34,6 +34,7 @@ function queueResearch<T>(owner: string, run: () => Promise<T>): Promise<T> {
   return next;
 }
 import { offeredModels } from '$lib/server/models/catalogue';
+import { loadOfferedModels } from '$lib/server/models/offered-store';
 import { readSubmission, readMaterial } from '$lib/policy-analysis/server/ingest';
 import {
   addMaterial, control, detail, listAnalyses, ownedAnalysis, purge, restate,
@@ -136,6 +137,10 @@ export async function handleApi(
   // to render. One request rather than two, because the landing page needs both
   // and a second round trip buys nothing.
   if (!segments.length && method === 'GET') {
+    // Refreshed here rather than trusted from boot: this is the request that is
+    // about to draw the menu, and somebody may have changed it in the panel
+    // since the process started. One query.
+    await loadOfferedModels();
     sendJson(res, 200, {
       analyses: await listAnalyses(owner()),
       models: offeredModels(),

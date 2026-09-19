@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState, type FormEvent } from 'react';
 import { admin, type AdminConfig, type ProviderView } from '../api';
+import { ModelMenu } from './ModelMenu';
 import { Button, ButtonGroup, Details, ErrorSummary, InsetText, Input, Radios, SummaryList, Tag, WarningText } from '../govuk';
 import { usePageTitle } from '../layout/Template';
 
@@ -215,6 +216,19 @@ export function Admin() {
           </div>
         </section>
       ) : null}
+
+      <ModelMenu
+        config={config}
+        busy={busy}
+        onSave={(models) => void run(() => admin.saveModels(models), (next) => {
+          setConfig(next);
+          setOutcome(
+            models.length
+              ? `The picker now offers ${models.length} ${models.length === 1 ? 'model' : 'models'}.`
+              : 'The picker is back to the models this build ships with.',
+          );
+        })}
+      />
 
       {config.providers.map((provider) => (
         <ProviderForm

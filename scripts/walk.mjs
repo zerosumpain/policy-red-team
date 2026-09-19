@@ -612,6 +612,82 @@ try {
     failures.push(`admin: the fixture build's failure does not say why — ${tested.message}`);
   }
 
+  // ── The model menu ───────────────────────────────────────────────────────
+  //
+  // The catalogue is INVENTORY and the menu is a DECISION, and the failure this
+  // guards is the two being confused: a picker that offers everything a provider
+  // sells is a picker nobody can use, and a menu that silently loses a choice
+  // when the search narrows is worse than no search at all.
+  const menuBefore = await page.evaluate(async () =>
+    (await (await fetch('/api/admin/config')).json()).menu.map((m) => m.id));
+  if (menuBefore.length !== 5) {
+    failures.push(`admin: expected the five built-in models before anything is chosen, got ${menuBefore.length}`);
+  }
+
+  await page.getByRole('button', { name: /^Browse what/ }).click();
+  await page.getByLabel('Search the catalogue').waitFor({ timeout: 10000 });
+
+  // With the box empty, only what is already chosen is listed — otherwise this
+  // is a wall of checkboxes rather than a control.
+  const boxes = 'section[aria-labelledby="admin-models"] .govuk-checkboxes__item';
+  const emptyQuery = await page.locator(boxes).count();
+  if (emptyQuery > menuBefore.length) {
+    failures.push(`admin: an empty search listed ${emptyQuery} models, which is a wall not a menu`);
+  }
+
+  await page.getByLabel('Search the catalogue').fill('flash-latest');
+  await page.waitForTimeout(250);
+  const floating = page.locator('input[value="~deepseek/deepseek-flash-latest"]');
+  if (!(await floating.count())) {
+    failures.push('admin: searching for flash-latest does not find the floating alias');
+  } else {
+    // A floating id is a different KIND of choice and the panel has to say so:
+    // the model behind it changes without the id changing, so two assessments a
+    // month apart are not comparable though the provenance names the same thing.
+    const hint = await page.locator(boxes, { has: floating }).innerText();
+    if (!/redirects to whatever is newest/i.test(hint)) {
+      failures.push('admin: a floating alias is offered without saying what floating means');
+    }
+    await floating.check();
+  }
+
+  // Narrowing the search must not drop it. This is the trap `Checkboxes` was
+  // fixed for, and the fix only stays fixed if something keeps checking.
+  await page.getByLabel('Search the catalogue').fill('claude');
+  await page.waitForTimeout(250);
+  if (await page.locator('input[value="~deepseek/deepseek-flash-latest"]').count()) {
+    failures.push('admin: the search did not actually narrow');
+  }
+  await page.getByRole('button', { name: 'Save the menu' }).click();
+  await page.waitForTimeout(600);
+
+  const menuAfter = await page.evaluate(async () =>
+    (await (await fetch('/api/admin/config')).json()).menu);
+  if (!menuAfter.some((m) => m.id === '~deepseek/deepseek-flash-latest')) {
+    failures.push('admin: a model ticked and then filtered out of view was lost on save');
+  }
+  if (menuAfter.length !== menuBefore.length + 1) {
+    failures.push(`admin: saving the menu changed it to ${menuAfter.length}, expected ${menuBefore.length + 1}`);
+  }
+
+  // The submit form is the only reason this menu exists, so ask it, not the
+  // panel that just wrote it.
+  const offered = await page.evaluate(async () =>
+    (await (await fetch('/api/policy-analysis')).json()).models.map((m) => m.id));
+  if (!offered.includes('~deepseek/deepseek-flash-latest')) {
+    failures.push('admin: the chosen model never reached the assessment picker');
+  }
+
+  // And the reset puts the build's own five back rather than emptying it.
+  await page.getByRole('button', { name: /^Reset to the built-in/ }).click();
+  await page.waitForTimeout(600);
+  const menuReset = await page.evaluate(async () =>
+    (await (await fetch('/api/admin/config')).json()));
+  if (menuReset.menu.length !== menuBefore.length || menuReset.menuChosen) {
+    failures.push(`admin: reset left ${menuReset.menu.length} models, chosen=${menuReset.menuChosen}`);
+  }
+  note('the model menu is chosen from the catalogue, and survives the search');
+
   await page.getByRole('button', { name: 'Sign out' }).click();
   await page.getByLabel('Admin password').waitFor({ timeout: 10000 });
   const after = await page.evaluate(async () => (await fetch('/api/admin/config')).status);

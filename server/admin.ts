@@ -26,7 +26,8 @@ import {
 import { rateLimit } from '$lib/server/rate-limit';
 import { providers, redact, type ProviderConfig } from '$lib/llm/providers';
 import { clearLLMClientCache, resolveProvider } from '$lib/llm/client';
-import { registerProviderModels } from '$lib/server/models/catalogue';
+import { builtInModels, offeredModels, registerProviderModels, tierForCost, type OfferedModel } from '$lib/server/models/catalogue';
+import { loadOfferedModels, saveOfferedModels } from '$lib/server/models/offered-store';
 import {
   ACTIVE_PROVIDER, deleteSetting, providerSettingKey, readAll, writeSetting,
 } from '$lib/server/settings-store';
@@ -136,6 +137,67 @@ export async function handleAdmin(
   }
 
   /*
+   * EVERYTHING THE ACTIVE PROVIDER SELLS, so the panel can build a menu from it.
+   *
+   * Deliberately NOT cached. It is a few hundred rows behind a sign-in, asked
+   * only when somebody opens the picker, and a stale catalogue is worse than a
+   * slow one: the whole point is to find the model that appeared last week.
+   */
+  if (segments.length === 1 && segments[0] === 'catalogue' && method === 'GET') {
+    const { definition, config, problem } = await resolveProvider();
+    if (problem) throw new HttpError(400, problem);
+    if (!definition.catalogue) {
+      throw new HttpError(400, `${definition.label} does not publish a list of models. Type the name in instead.`);
+    }
+    let entries;
+    try {
+      entries = await definition.catalogue(config);
+    } catch (err) {
+      // The same posture as the connection test: a provider that would not
+      // answer is a fact about the provider, and the message it gave is the
+      // useful half.
+      throw new HttpError(502, `${definition.label} would not list its models: ${err instanceof Error ? err.message : String(err)}`);
+    }
+    sendJson(res, 200, { provider: definition.label, entries });
+    return true;
+  }
+
+  /*
+   * WHICH OF THEM THE ASSESSMENT PICKER OFFERS.
+   *
+   * An empty list is not an error, it is the reset: it clears the setting and
+   * the built-in five come back. Note is stored with the choice so the submit
+   * form never has to ask a provider what something is called.
+   */
+  if (segments.length === 1 && segments[0] === 'models' && method === 'POST') {
+    const body = await readJson(req);
+    const raw = body.models;
+    if (!Array.isArray(raw)) throw new HttpError(400, 'Send a list of models.');
+    if (raw.length > 60) throw new HttpError(400, 'That is more models than a dropdown can usefully hold. Pick the ones you will actually run.');
+
+    const seen = new Set<string>();
+    const models: OfferedModel[] = [];
+    for (const entry of raw) {
+      if (!entry || typeof entry !== 'object') throw new HttpError(400, 'Each model has to be an object.');
+      const row = entry as Record<string, unknown>;
+      const id = typeof row.id === 'string' ? row.id.trim() : '';
+      if (!id) throw new HttpError(400, 'A model needs an id.');
+      if (seen.has(id)) continue;
+      seen.add(id);
+      models.push({
+        id,
+        name: typeof row.name === 'string' && row.name.trim() ? row.name.trim() : id,
+        note: typeof row.note === 'string' ? row.note.slice(0, 400) : '',
+        tier: typeof row.cost === 'number' || row.cost === null ? tierForCost(row.cost as number | null) : 'balanced',
+      });
+    }
+
+    await saveOfferedModels(models);
+    sendJson(res, 200, await configPayload());
+    return true;
+  }
+
+  /*
    * A REAL CALL, AND A CHEAP ONE. There is no way to know a credential works
    * without using it, and "saved" is not the same claim as "reachable" — a
    * bridge on another machine, an expired key and a deployment that was renamed
@@ -185,11 +247,21 @@ async function configPayload() {
   // records "the configured default" for a run that named one.
   registerProviderModels(active.definition.models(active.config).map((m) => m.id));
 
+  const chosen = await loadOfferedModels().catch(() => null);
+
   return {
     active: active.definition.id,
     activeProblem: active.problem,
     fromEnvironment: active.fromEnvironment,
     pinned: Boolean(process.env.POLICY_PROVIDER?.trim()),
+    // The assessment picker's menu, and whether anybody has touched it. The
+    // panel needs to tell "these are the five this build ships with" from "these
+    // are the five I chose", because the reset control only makes sense for one.
+    menu: offeredModels(),
+    menuChosen: Boolean(chosen),
+    menuPinned: Boolean(process.env.POLICY_MODELS?.trim()),
+    builtIn: builtInModels(),
+    canBrowse: Boolean(active.definition.catalogue),
     providers: providers().map((definition) => {
       const config: Record<string, string> = {};
       for (const field of definition.fields) {
