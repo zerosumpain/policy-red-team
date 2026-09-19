@@ -34,7 +34,8 @@ function queueResearch<T>(owner: string, run: () => Promise<T>): Promise<T> {
   return next;
 }
 import { offeredModels } from '$lib/server/models/catalogue';
-import { loadOfferedModels } from '$lib/server/models/offered-store';
+import { refreshModelMenu } from '$lib/server/models/offered-store';
+import { runProgress } from '$lib/server/progress';
 import { readSubmission, readMaterial } from '$lib/policy-analysis/server/ingest';
 import {
   addMaterial, control, detail, listAnalyses, ownedAnalysis, purge, restate,
@@ -140,7 +141,7 @@ export async function handleApi(
     // Refreshed here rather than trusted from boot: this is the request that is
     // about to draw the menu, and somebody may have changed it in the panel
     // since the process started. One query.
-    await loadOfferedModels();
+    await refreshModelMenu();
     sendJson(res, 200, {
       analyses: await listAnalyses(owner()),
       models: offeredModels(),
@@ -152,7 +153,31 @@ export async function handleApi(
 
   // POST /api/policy-analysis — submit a paper
   if (!segments.length && method === 'POST') {
+    // BEFORE `readSubmission`, which asks `isOfferedModel` whether the
+    // commissioned model is real. An empty provider set here silently downgrades
+    // the run to the configured default — and, for Codex, to the wrong deadline.
+    await refreshModelMenu();
     const form = await readMultipart(req);
+    /*
+     * SHARED CONTEXT FIRST IS THE DEFAULT HERE, and it is a default this fork
+     * chooses rather than one upstream ships.
+     *
+     * `ingest.ts` reads the flag as `=== 'true'`, so an absent field means off —
+     * a sane default for a toggle nobody has measured, and the wrong one for a
+     * deployment paying per token. It is the prompt-cache ordering: the pipeline
+     * measured 66.1% of stage 3's input cached with it against 2.3% without, and
+     * 65% less uncached input overall. The context-heavy stages carry up to
+     * ~910,000 characters PER CALL; uncached, that is the whole bill.
+     *
+     * It cost a subscription on 2026-09-19. A run of 385 calls went out with the
+     * flag unset because the caller had copied an older submission's fields, and
+     * nothing on the way in asked whether that was deliberate.
+     *
+     * Set BEFORE `readSubmission` rather than by editing `ingest.ts`, which this
+     * fork keeps byte-identical to upstream. A caller who genuinely wants the
+     * old behaviour still gets it by sending the field as 'false'.
+     */
+    if (form.fields.sharedContextFirst === undefined) form.fields.sharedContextFirst = 'true';
     const submission = await readSubmission(asRequest(form.fields, form.file));
     const { createAnalysis } = await import('$lib/policy-analysis/server/store');
     const analysis = await createAnalysis(owner(), submission);
@@ -293,6 +318,24 @@ export async function handleApi(
     // read from the server rather than guessed, because the flag can change
     // under a running browser.
     sendJson(res, 200, { ...result, readOnly: isReadOnly() });
+    return true;
+  }
+
+  /*
+   * GET /api/policy-analysis/:id/progress — how far, and how much longer.
+   *
+   * Its own route because the page POLLS it. The detail endpoint carries every
+   * artefact of the run, which on a real assessment is thousands of rows to
+   * render one sentence about the clock; this is a dozen numbers.
+   *
+   * The SSE stream beside it fires when a STAGE ends, and a stage can take forty
+   * minutes — so between those events the page had nothing to say and no way to
+   * say how long was left. This is what fills that silence.
+   */
+  if (segments.length === 2 && segments[1] === 'progress' && method === 'GET') {
+    const progress = await runProgress(owner(), id);
+    if (!progress) throw new HttpError(404, 'No such assessment.');
+    sendJson(res, 200, progress);
     return true;
   }
 

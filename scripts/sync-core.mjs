@@ -73,6 +73,48 @@ async function resolveAll(manifest) {
  * instead of passing quietly.
  */
 const DIVERGENCES = {
+  // ── Research without a Tavily account ────────────────────────────────────
+  //
+  // `research.ts` imports its search engine directly, so an install with no
+  // `TAVILY_API_KEY` plans its research questions and answers NONE of them.
+  // Measured on 2026-09-19: twelve questions, zero sources, and twelve
+  // "Research unavailable … authority, freshness and jurisdiction remain
+  // unverified" warnings carried forward into every stage that would have cited
+  // external evidence.
+  //
+  // The Codex bridge has served `/v1/grounded/chat/completions` throughout — the
+  // same call with web search on, against the subscription already being paid
+  // for. So this fork routes `search`/`extract` through its own module, which
+  // prefers Tavily wherever a key exists and falls back to the active provider's
+  // grounded client otherwise.
+  //
+  // ONE LINE, DELIBERATELY. Everything decided lives in fork-written code
+  // (`$lib/server/web-search`), which keeps the substitution trivial to
+  // re-apply and means an upstream change to the research STAGE does not
+  // collide with our choice of search ENGINE.
+  // Upstream's own test mocks the module `research.ts` imports. Change that
+  // import and the mock stops intercepting, so all eight retrieval tests call a
+  // real search. Same one-line substitution, applied to the test, so upstream's
+  // assertions keep running against the fork's wiring rather than being skipped:
+  // they are the tests that prove instant-then-advanced escalation, bounded full
+  // reads and the refusal of unsafe links, and none of that changed.
+  'src/lib/policy-analysis/research.test.ts': (source) =>
+    source
+      .replace(
+        "vi.mock('$lib/deepdive/tavily', () => ({ search: vi.fn(), extract: vi.fn() }));",
+        "vi.mock('$lib/server/web-search', () => ({ search: vi.fn(), extract: vi.fn() }));",
+      )
+      .replace(
+        "import { search, extract } from '$lib/deepdive/tavily';",
+        "import { search, extract } from '$lib/server/web-search';",
+      ),
+
+  'src/lib/policy-analysis/server/research.ts': (source) =>
+    source.replace(
+      "import { search, extract } from '$lib/deepdive/tavily';",
+      "import { search, extract } from '$lib/server/web-search';",
+    ),
+
   // ── The redactor, and an upstream leak ───────────────────────────────────
   //
   // TWO UPSTREAM BUGS, both found by a security review of this fork's share UI

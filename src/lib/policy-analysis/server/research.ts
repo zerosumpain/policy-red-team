@@ -1,4 +1,4 @@
-import { search, extract } from '$lib/deepdive/tavily';
+import { search, extract } from '$lib/server/web-search';
 import { classifyDomain } from '$lib/deepdive/credibility';
 import { assertPublicUrl } from '$lib/server/ssrf-guard';
 import { artefact, safeSourceUrl, type Artefact, type StageOutput } from '../contracts';

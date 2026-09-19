@@ -6,6 +6,11 @@
  *   `drain(analysisId)` — run stages until ONE assessment reaches a terminal
  *   state, then return. This is what the CLI wants: a command that finishes.
  *
+ * BOTH RENEW THEIR LEASE. A claim is good for `LEASE_MS` and a real stage takes
+ * minutes, so work that does not renew is swept back to `pending` mid-flight by
+ * the reaper — and reported as a provider outage, because from inside the call
+ * that is exactly what it looks like. `drain` did not renew until 2026-09-19.
+ *
  *   `runWorker()` — the long-running loop, for phase 4's server. It is upstream's
  *   `createPolicyWorker`, copied verbatim, with its dependencies wired to this
  *   build's queue. The loop already handles lease renewal, returning an
@@ -41,6 +46,15 @@ export function isFinished(status: string): boolean {
 }
 
 export const WORKER_ID = `local:${process.pid}`;
+
+/**
+ * How long a claim is good for, and therefore how often it must be renewed.
+ *
+ * Named because the claim and the renewal have to agree: a lease shorter than
+ * the renewal interval is swept while the work is still running, which is the
+ * failure this constant exists to make impossible to reintroduce.
+ */
+const LEASE_MS = 60_000;
 
 export async function analysisStatus(analysisId: string): Promise<string | null> {
   const [row] = await db
@@ -78,7 +92,7 @@ export async function drain(analysisId: string, options: DrainOptions = {}): Pro
     if (TERMINAL.has(status)) return status;
 
     await releaseExpiredLeases(TRIGGER);
-    const claimed = await claimNext(WORKER_ID, 60_000, TRIGGER);
+    const claimed = await claimNext(WORKER_ID, LEASE_MS, TRIGGER);
     if (!claimed) {
       if (Date.now() - idleSince > idleTimeoutMs) {
         throw new Error(
@@ -90,11 +104,33 @@ export async function drain(analysisId: string, options: DrainOptions = {}): Pro
     }
 
     idleSince = Date.now();
+    /*
+     * KEEP THE LEASE ALIVE WHILE THE STAGE RUNS.
+     *
+     * This claim is for 60 seconds and a real stage takes minutes. Nothing
+     * renewed it, so 60 seconds in, `releaseExpiredLeases` — called by this
+     * loop's own next iteration, and by `runWorker`'s sweep, which the server
+     * runs at the same time — set the row back to `pending` and cleared the
+     * claim out from under work that was still in flight. The call then died
+     * and was reported as "the configured model provider could not be reached",
+     * naming the provider for a fault that was entirely ours.
+     *
+     * It is why no real assessment ever completed. Every stage of a real paper
+     * runs past a minute; every stage of the fixture finishes well inside one,
+     * so the walk, the integration tests and the CLI all passed throughout.
+     *
+     * `runWorker` never had this bug — `createPolicyWorker` takes a `renew`
+     * callback and uses it. `drain` is the one that was written here.
+     */
+    const renewal = setInterval(() => {
+      void renewLease(claimed.id, WORKER_ID, LEASE_MS).catch(() => {});
+    }, LEASE_MS / 3);
     try {
       await executePolicyRun(claimed, WORKER_ID);
       completed++;
       onStage?.({ completed, status: (await analysisStatus(analysisId)) ?? status });
     } finally {
+      clearInterval(renewal);
       await clearLease(claimed.id, WORKER_ID);
     }
   }
@@ -103,7 +139,7 @@ export async function drain(analysisId: string, options: DrainOptions = {}): Pro
 /** The long-running loop, for phase 4's server. */
 export function runWorker(log: (message: string) => void = () => {}) {
   return createPolicyWorker({
-    claim: () => claimNext(WORKER_ID, 60_000, TRIGGER),
+    claim: () => claimNext(WORKER_ID, LEASE_MS, TRIGGER),
     execute: (run: PolicyQueueRun) => executePolicyRun(run, WORKER_ID),
     renew: (run: PolicyQueueRun) => renewLease(run.id, WORKER_ID),
     clear: (run: PolicyQueueRun) => clearLease(run.id, WORKER_ID),

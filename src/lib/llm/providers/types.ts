@@ -81,6 +81,22 @@ export type ProviderDefinition = {
    * which is allowed to be slow and is the right place to show the error.
    */
   catalogue?(config: ProviderConfig): Promise<CatalogueEntry[]>;
+  /**
+   * A CLIENT THAT CAN SEARCH THE WEB, where this provider offers one.
+   *
+   * The research stage needs sources, and without a Tavily key it plans its
+   * questions and answers none of them — twelve "research unavailable" warnings
+   * and an evidence matrix with nothing external in it.
+   *
+   * The Codex bridge has served `/v1/grounded/chat/completions` all along: the
+   * same call with web search switched on, against a subscription already being
+   * paid for. This is how a provider says so.
+   *
+   * Optional, and absent is a real answer. Azure has no web search at all, and a
+   * provider that pretends to search and answers from memory would put invented
+   * sources in an assessment — far worse than an acknowledged gap.
+   */
+  grounded?(config: ProviderConfig): { client: OpenAI; model: string } | null;
 };
 
 /**

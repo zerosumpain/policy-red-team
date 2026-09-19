@@ -1,8 +1,8 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
-vi.mock('$lib/deepdive/tavily', () => ({ search: vi.fn(), extract: vi.fn() }));
+vi.mock('$lib/server/web-search', () => ({ search: vi.fn(), extract: vi.fn() }));
 vi.mock('$lib/deepdive/credibility', () => ({ classifyDomain: (host: string) => host.endsWith('.gov.uk') ? { type: 'government', score: .9 } : { type: 'other', score: .4 } }));
 vi.mock('$lib/server/ssrf-guard', () => ({ assertPublicUrl: vi.fn(async () => {}) }));
-import { search, extract } from '$lib/deepdive/tavily';
+import { search, extract } from '$lib/server/web-search';
 import { research } from './server/research';
 import { artefact, safeSourceUrl, type Artefact } from './contracts';
 const question = artefact('question', 'research_question', 'Capacity evidence', 'Does delivery capacity exist?', { importance: .9, uncertainty: .9, consequence: .9, rationale: 'Capacity could reverse this assessment.', searchStrategy: 'public implementation evaluation', gap: 'Capacity unknown.' }, { refs: ['assumption'] });

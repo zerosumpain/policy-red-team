@@ -32,6 +32,8 @@ import { providerById, providers, type ProviderConfig, type ProviderDefinition }
 import { ACTIVE_PROVIDER, providerSettingKey, readAll } from '$lib/server/settings-store';
 import type { ModelContext } from '$lib/server/models/types';
 import { mapLegacyModelId } from '$lib/constants/default-models';
+import { recordLLMCall } from '$lib/context/execution';
+import { chargeRun } from '$lib/server/budget';
 
 export type Resolved = {
   definition: ProviderDefinition;
@@ -127,8 +129,79 @@ export async function getLLMClient(ctx: ModelContext): Promise<{ client: OpenAI;
   // Keyed on the configuration, so editing a credential in the panel takes
   // effect on the next call rather than after a restart.
   const key = `${definition.id}:${JSON.stringify(config)}`;
-  if (cached?.key !== key) cached = { key, client: definition.client(config) };
+  if (cached?.key !== key) cached = { key, client: instrument(definition.id, definition.client(config)) };
 
   const own = definition.model(config);
   return { client: cached.client, model: own || mapLegacyModelId(ctx.modelId) };
+}
+
+/**
+ * COUNT WHAT EVERY CALL COSTS, or find out from the bill.
+ *
+ * Upstream installs a usage capture inside its own LLM client, and this fork
+ * dropped it along with the cost ledger it fed — so `policy_model_calls.usage`
+ * came back `[]` on every row. The pipeline was recording WHAT it called and
+ * never HOW MUCH, which is survivable on a metered card and is not on a
+ * subscription with a weekly allowance.
+ *
+ * It cost exactly that on 2026-09-19: a run made 385 calls carrying up to
+ * ~910,000 characters of uncached context each, and the first anyone knew was
+ * the subscription reporting 75% consumed for the week. Nothing on this side was
+ * counting, so nothing on this side could warn.
+ *
+ * `recordLLMCall` is a no-op outside an engine-managed node, so wrapping here is
+ * safe for every caller — the CLI, the admin panel's test button, a persona
+ * enrichment — and only the pipeline's own calls are actually collected.
+ *
+ * CACHED TOKENS ARE THE POINT, not a detail. `prompt_tokens_details.cached_tokens`
+ * is the only honest way to tell whether the shared-context ordering is working;
+ * without it "caching is on" is a claim about configuration rather than about
+ * what happened.
+ */
+function instrument(providerId: string, client: OpenAI): OpenAI {
+  const completions = client.chat.completions;
+  const create = completions.create.bind(completions);
+
+  completions.create = (async (body: Parameters<typeof create>[0], options?: Parameters<typeof create>[1]) => {
+    const result = await create(body, options);
+    let charge = 0;
+    try {
+      // A streamed response has no `usage` to read here; the pipeline does not
+      // stream, and a missing usage block must never break the call.
+      const usage = (result as { usage?: Record<string, unknown> }).usage;
+      if (usage) {
+        const num = (v: unknown): number | null => (typeof v === 'number' && Number.isFinite(v) ? v : null);
+        const promptDetails = usage.prompt_tokens_details as { cached_tokens?: unknown } | undefined;
+        const outputDetails = usage.completion_tokens_details as { reasoning_tokens?: unknown } | undefined;
+        recordLLMCall({
+          provider: providerId,
+          model: String((result as { model?: unknown }).model ?? (body as { model?: unknown }).model ?? ''),
+          tokensInput: num(usage.prompt_tokens),
+          tokensOutput: num(usage.completion_tokens),
+          cacheReadTokens: num(promptDetails?.cached_tokens),
+          reasoningTokens: num(outputDetails?.reasoning_tokens),
+          // A subscription bridge quotes no price, and inventing one would put a
+          // fabricated number in the audit. Tokens are the truth we have.
+          costUsd: null,
+          priceSnapshot: null,
+        });
+        /*
+         * AND CHARGE IT AGAINST THE RUN'S CEILING.
+         *
+         * Deliberately OUTSIDE the try/catch below. Recording usage must never
+         * fail a call — but refusing to spend past a ceiling is the one thing
+         * here that MUST be able to. A budget that gets swallowed by an error
+         * handler is a budget that does not exist, which is what the whole of
+         * 2026-09-19 demonstrated.
+         */
+        charge = (num(usage.prompt_tokens) ?? 0) + (num(usage.completion_tokens) ?? 0);
+      }
+    } catch {
+      // Accounting must never be able to fail a model call.
+    }
+    if (charge) chargeRun(charge);
+    return result;
+  }) as typeof completions.create;
+
+  return client;
 }

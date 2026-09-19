@@ -27,7 +27,8 @@ import { rateLimit } from '$lib/server/rate-limit';
 import { providers, redact, type ProviderConfig } from '$lib/llm/providers';
 import { clearLLMClientCache, resolveProvider } from '$lib/llm/client';
 import { builtInModels, offeredModels, registerProviderModels, tierForCost, type OfferedModel } from '$lib/server/models/catalogue';
-import { loadOfferedModels, saveOfferedModels } from '$lib/server/models/offered-store';
+import { loadOfferedModels, saveOfferedModels, refreshModelMenu, RUN_TOKEN_CEILING } from '$lib/server/models/offered-store';
+import { tokenCeiling } from '$lib/server/budget';
 import {
   ACTIVE_PROVIDER, deleteSetting, providerSettingKey, readAll, writeSetting,
 } from '$lib/server/settings-store';
@@ -132,6 +133,24 @@ export async function handleAdmin(
     if (!providers().some((p) => p.id === id)) throw new HttpError(400, 'This build does not offer that provider.');
     await writeSetting(ACTIVE_PROVIDER, id);
     clearLLMClientCache();
+    sendJson(res, 200, await configPayload());
+    return true;
+  }
+
+  /*
+   * THE MOST ONE RUN MAY SPEND.
+   *
+   * A subscription costs no money per call, so every run this service made on
+   * 2026-09-19 reported "$0.00" while consuming 77% of a weekly allowance. The
+   * ceiling exists because a meter nobody reads stops nothing. Zero clears it.
+   */
+  if (segments.length === 1 && segments[0] === 'ceiling' && method === 'POST') {
+    const body = await readJson(req);
+    const tokens = Number(body.tokens);
+    if (!Number.isFinite(tokens) || tokens < 0) throw new HttpError(400, 'Give a number of tokens, or 0 for no ceiling.');
+    if (tokens > 0) await writeSetting(RUN_TOKEN_CEILING, String(Math.floor(tokens)));
+    else await deleteSetting(RUN_TOKEN_CEILING);
+    await refreshModelMenu();
     sendJson(res, 200, await configPayload());
     return true;
   }
@@ -260,6 +279,8 @@ async function configPayload() {
     menu: offeredModels(),
     menuChosen: Boolean(chosen),
     menuPinned: Boolean(process.env.POLICY_MODELS?.trim()),
+    // 0 means no ceiling, which is the default.
+    tokenCeiling: tokenCeiling(),
     builtIn: builtInModels(),
     canBrowse: Boolean(active.definition.catalogue),
     providers: providers().map((definition) => {

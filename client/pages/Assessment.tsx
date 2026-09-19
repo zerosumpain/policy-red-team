@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router';
-import { api, watchRun, type Detail } from '../api';
+import { api, watchRun, type Detail, type RunProgress } from '../api';
+import { RunClock } from './RunClock';
+import { RunFindings } from './RunFindings';
 import { Button, ButtonGroup, NotificationBanner, Tag, TaskList, WarningText, type Task, type TagColour } from '../govuk';
 import { isFinished, isTerminal, statusColour, statusLabel } from '../status';
 import { Report } from '../report/Report';
@@ -20,6 +22,7 @@ export function Assessment() {
   const [detail, setDetail] = useState<Detail | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [progress, setProgress] = useState<RunProgress | null>(null);
   usePageTitle(detail?.analysis.title);
 
   const load = useCallback(async () => {
@@ -38,6 +41,36 @@ export function Assessment() {
     if (!detail || isTerminal(detail.analysis.status)) return;
     return watchRun(id, { stage: () => void load(), done: () => void load(), error: setError });
   }, [id, detail, load]);
+
+  /*
+   * HOW MUCH LONGER, asked on a timer because nothing else will say.
+   *
+   * The stream above fires when a STAGE ends, and a stage can run for forty
+   * minutes — so for most of a run the page had nothing new to show and no way
+   * to answer the only question a reader watching it actually has. This polls a
+   * small endpoint for the arithmetic; it is not the detail, which is thousands
+   * of artefacts.
+   *
+   * THIRTY SECONDS, not one. The estimate moves when a call finishes, and calls
+   * take minutes — a faster poll would redraw the same sentence and spend the
+   * reader's battery to do it.
+   */
+  useEffect(() => {
+    if (!detail || isTerminal(detail.analysis.status)) return;
+    let live = true;
+    const ask = async () => {
+      try {
+        const next = await api.progress(id);
+        if (live) setProgress(next);
+      } catch {
+        // A poll that fails is not worth an error banner over a run that is
+        // fine: the next one is thirty seconds away.
+      }
+    };
+    void ask();
+    const timer = setInterval(() => void ask(), 30_000);
+    return () => { live = false; clearInterval(timer); };
+  }, [id, detail]);
 
   async function act(action: 'cancel' | 'resume' | 'restate') {
     setBusy(true);
@@ -100,14 +133,42 @@ export function Assessment() {
           <p className="govuk-body">
             This runs to the end on its own. You can close the page — it does not stop.
           </p>
+          <RunClock progress={progress} />
           <TaskList items={tasks} idPrefix="stages" />
+          {/*
+            THE INTELLIGENCE IS READABLE BEFORE THE REPORT IS.
+            The drill route never required a finished run, but nothing linked to
+            it until the end — so a reader waiting four hours could not open work
+            that had been stored for three of them.
+          */}
+          <RunFindings detail={detail} id={id} />
           {/* A control that would only 403 is not drawn. The landing page has
               made this argument since phase 4; the flag needed to make it here
               only arrived with the share panel. */}
           {detail.readOnly ? null : (
-            <ButtonGroup>
-              <Button variant="warning" disabled={busy} onClick={() => void act('cancel')}>Cancel this run</Button>
-            </ButtonGroup>
+            <>
+              {/*
+                STOPPING IS NOT LOSING, AND THE BUTTON HAS TO SAY SO.
+                `control(…, 'cancel')` marks the CURRENT STAGE cancelled and
+                leaves every completed stage completed; `resume` re-queues from
+                the first unfinished one. So the cost of stopping is the stage in
+                flight, not the run.
+                Nothing on this page said that, so "Cancel this run" read as
+                destructive and the resume control only appeared AFTER you had
+                taken the risk — which is the wrong way round. A reader deciding
+                whether to stop a four-hour job needs to know what it costs
+                BEFORE they decide, not afterwards.
+              */}
+              <p className="govuk-body">
+                Stopping keeps everything finished so far. You can resume from the stage it was on —
+                only that stage is repeated, and repeating it produces the same artefacts.
+              </p>
+              <ButtonGroup>
+                <Button variant="warning" disabled={busy} onClick={() => void act('cancel')}>
+                  Stop this run
+                </Button>
+              </ButtonGroup>
+            </>
           )}
         </>
       ) : (
@@ -126,7 +187,9 @@ export function Assessment() {
           {!isFinished(analysis.status) ? <TaskList items={tasks} idPrefix="stages" /> : null}
           <ButtonGroup>
             {(analysis.status === 'failed' || analysis.status === 'cancelled') && !detail.readOnly ? (
-              <Button disabled={busy} onClick={() => void act('resume')}>Resume the incomplete stages</Button>
+              <Button disabled={busy} onClick={() => void act('resume')}>
+                {analysis.status === 'cancelled' ? 'Resume from where it stopped' : 'Resume the incomplete stages'}
+              </Button>
             ) : null}
             <Link className="govuk-link" to="/">Back to all assessments</Link>
           </ButtonGroup>

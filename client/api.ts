@@ -159,6 +159,40 @@ export interface AdminConfig {
   builtIn: OfferedModel[];
   /** Whether the active provider will list what it sells. Azure will not. */
   canBrowse: boolean;
+  /** The most one run may spend, in tokens. 0 means no ceiling. */
+  tokenCeiling: number;
+}
+
+/** How far a run has got, and when it should be done. Polled while it runs. */
+export interface RunProgress {
+  status: string;
+  stagesDone: number;
+  stagesTotal: number;
+  currentStage: string | null;
+  calls: { completed: number; failed: number; running: number };
+  estimate: {
+    calls: { low: number; high: number };
+    made: number;
+    seconds: { low: number; high: number } | null;
+    perCall: number | null;
+    measured: number;
+    basis: string;
+  } | null;
+  /** Measured consumption, and where it is heading. Null until usage is reported. */
+  tokens: {
+    input: number;
+    cached: number;
+    output: number;
+    reasoning: number;
+    total: number;
+    cachedShare: number | null;
+    projectedTotal: number | null;
+  } | null;
+  /** Only when a weekly allowance is configured — Codex publishes no quota to read. */
+  allowance: { weeklyTokens: number; usedByThisRun: number; projectedShare: number | null } | null;
+  says: string;
+  /** ISO instants, computed on the SERVER so a skewed client clock cannot lie. */
+  finishBy: { earliest: string; latest: string } | null;
 }
 
 export interface Landing {
@@ -187,6 +221,8 @@ export const api = {
   /** Attach something read AFTER the report was written. Starts a four-stage pass; spends. */
   material: (id: string, form: FormData) =>
     request<{ status: string }>(`/api/policy-analysis/${id}/material`, { method: 'POST', body: form }),
+  /** Small enough to poll: a dozen numbers, not every artefact of the run. */
+  progress: (id: string) => request<RunProgress>(`/api/policy-analysis/${id}/progress`),
   act: (id: string, action: 'cancel' | 'resume' | 'restate') =>
     request<{ status: string }>(`/api/policy-analysis/${id}/${action}`, { method: 'POST' }),
   purge: (id: string) => request<{ receipt: unknown }>(`/api/policy-analysis/${id}`, { method: 'DELETE' }),
@@ -228,6 +264,13 @@ export const admin = {
     }),
   /** Everything the active provider sells. A few hundred rows and a network call. */
   catalogue: () => request<{ provider: string; entries: CatalogueEntry[] }>('/api/admin/catalogue'),
+  /** The most one run may spend, in tokens. 0 clears the ceiling. */
+  setCeiling: (tokens: number) =>
+    request<AdminConfig>('/api/admin/ceiling', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ tokens }),
+    }),
   /** Set the assessment picker's menu. An empty list resets to the built-in one. */
   saveModels: (models: { id: string; name: string; note: string; cost: number | null }[]) =>
     request<AdminConfig>('/api/admin/models', {

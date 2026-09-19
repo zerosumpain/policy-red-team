@@ -217,6 +217,56 @@ export function Admin() {
         </section>
       ) : null}
 
+      <section aria-labelledby="admin-ceiling">
+        <h2 className="govuk-heading-m" id="admin-ceiling">What one run may spend</h2>
+        <div className="govuk-grid-row">
+          <div className="govuk-grid-column-two-thirds">
+            {/*
+              A SUBSCRIPTION COSTS NO MONEY PER CALL, which is what makes it
+              dangerous. Every run on 2026-09-19 reported "$0.00 spent" —
+              truthfully — while consuming 77% of a weekly allowance between
+              them, because nothing counted what was not billed.
+              A run that passes this ceiling is stopped by the code that spends,
+              not by whoever happens to be watching. What it finished is kept.
+            */}
+            <p className="govuk-body">
+              A run billed to a subscription costs nothing per call, so nothing stops it if it goes
+              wrong. This does. A run that passes the ceiling is stopped where it stands and keeps
+              the stages it finished — you can raise this and resume.
+            </p>
+            <p className="govuk-body-s prt-meta">
+              For scale: a complete eighteen-stage assessment of a 72-passage paper used about
+              61 million tokens. Leave it at 0 for no ceiling.
+            </p>
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                const value = Number(new FormData(e.currentTarget).get('tokens'));
+                void run(() => admin.setCeiling(value), (next) => {
+                  setConfig(next);
+                  setOutcome(value > 0 ? `A run may now use ${value.toLocaleString()} tokens.` : 'No ceiling — a run may use as much as it needs.');
+                });
+              }}
+              noValidate
+            >
+              <Input
+                id="token-ceiling"
+                name="tokens"
+                type="number"
+                label="Token ceiling for one run"
+                labelSize="s"
+                hint="0 for no ceiling."
+                defaultValue={String(config.tokenCeiling ?? 0)}
+                disabled={busy}
+              />
+              <ButtonGroup>
+                <Button type="submit" disabled={busy}>Save the ceiling</Button>
+              </ButtonGroup>
+            </form>
+          </div>
+        </div>
+      </section>
+
       <ModelMenu
         config={config}
         busy={busy}

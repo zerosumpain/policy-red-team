@@ -13,6 +13,19 @@ static/policy-offline/
 # a database at the repo root.
 /*.pglite
 
+# THE SETTINGS ENCRYPTION KEY, and anything else the app writes beside it.
+#
+# `settings-store.ts` mints a 0600 key file under the data directory and every
+# secret in `policy_settings` — the OpenRouter key, an Azure key, a bridge
+# credential — is AES-GCM encrypted against it. Committing the key would make the
+# encrypted column decorative: the repository is public, and a database copy plus
+# this file is the same as no encryption at all.
+#
+# `.data/` above covers the default POLICY_DATA_DIR; this covers the key
+# directory, which sits at `data/policy-keys` when nothing overrides it. Caught
+# as an untracked file on 2026-09-19, before a `git add -A` swept it in.
+/data/
+
 # Throwaway probes at the repo root. They have to live here rather than in a
 # temp directory, because `playwright` and `jszip` only resolve from inside the
 # project — and one of them was committed in phase 11 before this rule existed.

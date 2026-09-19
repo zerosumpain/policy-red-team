@@ -1,5 +1,7 @@
 import { deleteSetting, readSetting, writeSetting } from '$lib/server/settings-store';
-import { registerOfferedModels, type CostTier, type OfferedModel } from './catalogue';
+import { registerOfferedModels, registerProviderModels, type CostTier, type OfferedModel } from './catalogue';
+import { resolveProvider } from '$lib/llm/client';
+import { setTokenCeiling } from '$lib/server/budget';
 
 /**
  * THE MENU, AS THE ADMIN PANEL LEFT IT.
@@ -64,4 +66,40 @@ export async function saveOfferedModels(models: OfferedModel[]): Promise<void> {
   if (!models.length) await deleteSetting(OFFERED_MODELS);
   else await writeSetting(OFFERED_MODELS, JSON.stringify(models));
   registerOfferedModels(models);
+}
+
+/**
+ * MAKE THE MENU CURRENT — both halves of it.
+ *
+ * `isOfferedModel` consults two module variables: the panel's chosen menu, and
+ * the ids the ACTIVE PROVIDER serves. Only the first was being refreshed outside
+ * the admin panel, so a restart left the second empty until somebody happened to
+ * open /admin — and until they did, a submission naming a Codex model was read
+ * as unknown and degraded to the default.
+ *
+ * That degradation is quiet and it is expensive. The call still reaches the
+ * bridge, because `getLLMClient` asks the provider what to call rather than
+ * trusting the commission — but `policy_analyses.model` records null, so
+ * `coerceModelContext` reads the run as OpenRouter and `callTimeoutMs` gives it
+ * 180 seconds instead of Codex's 420. The one provider that needs seven minutes
+ * gets three, and every long call is reported as the model being too slow.
+ *
+ * So: anything that is about to offer or accept a model calls this first.
+ */
+/** Where the operator records the most one run may spend, in tokens. */
+export const RUN_TOKEN_CEILING = 'run.tokenCeiling';
+
+export async function refreshModelMenu(): Promise<void> {
+  await loadOfferedModels().catch(() => {});
+  // Loaded with the menu because they are read at the same moments — boot, the
+  // landing page, and immediately before a submission is accepted. A ceiling
+  // that is only read at boot is a ceiling nobody can change without a restart.
+  setTokenCeiling(Number(await readSetting(RUN_TOKEN_CEILING).catch(() => null)) || 0);
+  try {
+    const active = await resolveProvider();
+    registerProviderModels(active.definition.models(active.config).map((m) => m.id));
+  } catch {
+    // A provider that cannot be resolved offers nothing, which is already the
+    // state of the set. Never fail a submission over this.
+  }
 }
