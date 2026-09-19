@@ -52,13 +52,13 @@ describe.skipIf(!local)('the schema and the migrations agree', () => {
     expect(drift).toEqual([]);
   });
 
-  it('created all thirteen tables', async () => {
+  it('created all fourteen tables', async () => {
     const tables = (
       await client.query<{ tablename: string }>(
         `select tablename from pg_tables where schemaname = 'public' and tablename not like '\\_%'`
       )
     ).rows.map((r) => r.tablename);
-    expect(tables).toHaveLength(13);
-    expect(tables.filter((t) => t.startsWith('policy_'))).toHaveLength(11);
+    expect(tables).toHaveLength(14);
+    expect(tables.filter((t) => t.startsWith('policy_'))).toHaveLength(12);
   });
 });

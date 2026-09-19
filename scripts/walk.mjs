@@ -28,9 +28,18 @@ const note = (m) => console.log(`  ${m}`);
 // A throwaway database, the same promise the integration suite keeps: a walk
 // that creates and cancels assessments must never be able to touch a real one.
 const dataRoot = await mkdtemp(path.join(tmpdir(), 'policy-walk-'));
+const ADMIN_PASSWORD = 'walk-admin-password';
 
 const server = spawn(process.execPath, [path.join(ROOT, 'dist', 'server-fixture.js')], {
-  env: { ...process.env, POLICY_PORT: String(PORT), POLICY_DATA_DIR: path.join(dataRoot, 'db'), POLICY_SEAL_KEY_DIR: path.join(dataRoot, 'keys') },
+  env: {
+    ...process.env,
+    POLICY_PORT: String(PORT),
+    POLICY_DATA_DIR: path.join(dataRoot, 'db'),
+    POLICY_SEAL_KEY_DIR: path.join(dataRoot, 'keys'),
+    // The panel is CLOSED without one, which is itself a thing worth testing —
+    // but the walk needs it open to test the rest, so it sets its own.
+    POLICY_ADMIN_PASSWORD: ADMIN_PASSWORD,
+  },
   stdio: ['ignore', 'pipe', 'pipe'],
 });
 server.stderr.on('data', (d) => process.stderr.write(`  server: ${d}`));
@@ -534,6 +543,80 @@ try {
     await audit('/personas/:id');
     note(`dossier opens on "${personaName}", seen in two papers`);
   }
+
+  // 9c — THE ADMIN PANEL, and the lock on it.
+  //
+  // This is the only authentication in the service and the only page holding
+  // credentials, so the assertions are about what must NOT get through. Note
+  // what is not tested here because it must not exist: an address check. Behind
+  // a tunnel every request arrives from 127.0.0.1, so a gate on the client
+  // address passes for the whole internet.
+  const locked = await page.evaluate(async () => {
+    const out = {};
+    for (const [name, path, method] of [
+      ['config', '/api/admin/config', 'GET'],
+      ['save', '/api/admin/config/openrouter', 'POST'],
+      ['active', '/api/admin/active', 'POST'],
+      ['test', '/api/admin/test', 'POST'],
+    ]) {
+      const res = await fetch(path, { method, headers: { 'content-type': 'application/json' }, body: method === 'GET' ? undefined : '{}' });
+      out[name] = res.status;
+    }
+    return out;
+  });
+  for (const [name, status] of Object.entries(locked)) {
+    if (status !== 401) failures.push(`admin: ${name} answered ${status} without a session, expected 401`);
+  }
+  note('the admin API refuses everything without a session');
+
+  await page.goto(`http://127.0.0.1:${PORT}/admin`, { waitUntil: 'networkidle' });
+  await page.getByRole('heading', { name: 'Configuration', level: 1 }).waitFor({ timeout: 20000 });
+  if (!(await page.getByLabel('Admin password').count())) failures.push('admin: no password form');
+  // A wrong password must not sign anyone in, and must say nothing useful.
+  await page.getByLabel('Admin password').fill('not-the-password');
+  await page.getByRole('button', { name: 'Sign in' }).click();
+  await page.getByRole('alert').waitFor({ timeout: 10000 });
+  if (!/not the password/i.test(await page.getByRole('alert').innerText())) {
+    failures.push('admin: a wrong password did not say so');
+  }
+  if (await page.getByRole('heading', { name: 'Which service answers' }).count()) {
+    failures.push('admin: a wrong password got in');
+  }
+
+  await page.getByLabel('Admin password').fill(ADMIN_PASSWORD);
+  await page.getByRole('button', { name: 'Sign in' }).click();
+  await page.getByRole('heading', { name: 'Which service answers' }).waitFor({ timeout: 20000 });
+  const panel = await page.locator('#main-content').innerText();
+  for (const name of ['OpenRouter', 'Azure AI Foundry', 'Codex bridge']) {
+    if (!panel.includes(name)) failures.push(`admin: ${name} is not offered`);
+  }
+  await audit('/admin (signed in)');
+
+  // A SECRET GOES IN AND DOES NOT COME OUT. This is the assertion the whole
+  // page is shaped around: the server reports whether one is set, never what.
+  const secret = 'sk-or-walk-secret-value-9f2b';
+  await page.locator('#openrouter-apiKey').fill(secret);
+  await page.getByRole('button', { name: 'Save OpenRouter' }).click();
+  await page.waitForTimeout(600);
+  const readBack = await page.evaluate(async () => JSON.stringify(await (await fetch('/api/admin/config')).json()));
+  if (readBack.includes(secret)) failures.push('admin: the saved key comes back out of the config endpoint');
+  if (!/"apiKey":true/.test(readBack)) failures.push('admin: the panel cannot tell that a key is stored');
+  if ((await page.locator('#openrouter-apiKey').inputValue()) !== '') {
+    failures.push('admin: the secret box is pre-filled, so blank cannot mean "leave it alone"');
+  }
+
+  // And a fixture build must not be able to reach anything, however configured.
+  const tested = await page.evaluate(async () => (await (await fetch('/api/admin/test', { method: 'POST' })).json()));
+  if (tested.ok) failures.push('admin: the FIXTURE build reported a working provider, which it cannot have');
+  if (!/fixture/i.test(tested.message ?? '')) {
+    failures.push(`admin: the fixture build's failure does not say why — ${tested.message}`);
+  }
+
+  await page.getByRole('button', { name: 'Sign out' }).click();
+  await page.getByLabel('Admin password').waitFor({ timeout: 10000 });
+  const after = await page.evaluate(async () => (await fetch('/api/admin/config')).status);
+  if (after !== 401) failures.push(`admin: still signed in after signing out (${after})`);
+  note('the panel signs in, hides its secrets, and signs out');
 
   // 10 — the rest of the surface
   for (const [route, heading] of [['/personas', 'Persona library'], ['/design', 'Design system'], ['/accessibility', 'Accessibility statement'], ['/about', 'About this tool']]) {

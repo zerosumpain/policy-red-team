@@ -34,7 +34,7 @@ const lib = path.join(root, 'src', 'lib');
  * and is erased before this runs. The importer is checked so a future `./provider`
  * somewhere else cannot be silently swapped too.
  */
-function fixtureProviderPlugin(target, clientTarget) {
+function fixtureProviderPlugin(target, registryTarget) {
   return {
     name: 'fixture-provider',
     setup(b) {
@@ -43,12 +43,21 @@ function fixtureProviderPlugin(target, clientTarget) {
         if (!from.endsWith('/policy-analysis/server/worker.ts')) return null;
         return { path: target };
       });
-      // AND the gateway itself. Replacing the provider covers the pipeline, but
-      // `server/personas.ts` calls getLLMClient directly to research a dossier —
-      // which the openrouter.ai check below caught, after the provider swap had
-      // already been declared a success. Redirecting the client closes every
-      // path rather than every path anyone remembered.
-      b.onResolve({ filter: /^\$lib\/llm\/client$/ }, () => ({ path: clientTarget }));
+      /*
+       * AND THE REGISTRY, which is where every provider now lives.
+       *
+       * This used to redirect `$lib/llm/client` instead, because replacing the
+       * pipeline's provider covered the pipeline and missed `server/personas.ts`
+       * calling `getLLMClient` directly — the endpoint check below caught that
+       * after the swap had been declared a success.
+       *
+       * The registry is the better seam: a provider module is mostly the URL it
+       * calls, so redirecting it removes every endpoint from the bundle and the
+       * real gateway can be used unchanged. The fixture registry keeps every
+       * shape, so the admin panel is still exercisable by the walk and `client()`
+       * throws rather than constructing anything.
+       */
+      b.onResolve({ filter: /^\$lib\/llm\/providers$/ }, () => ({ path: registryTarget }));
     },
   };
 }
@@ -85,7 +94,7 @@ await bundle({ entry: 'server/index.ts', outfile: path.join(root, 'dist', 'serve
 const fixtureProvider = () => [
   fixtureProviderPlugin(
     path.join(lib, 'policy-analysis', 'server', 'provider.fixture.ts'),
-    path.join(lib, 'llm', 'client.fixture.ts')
+    path.join(lib, 'llm', 'providers', 'index.fixture.ts')
   ),
 ];
 
@@ -104,12 +113,23 @@ const fixtureServer = await bundle({
   plugins: fixtureProvider(),
 });
 
-// The guarantee the fixture build exists to make. `openrouter.ai` reaches the
-// bundle only through the real provider's client; if it is still in there, the
-// alias did not take and the "cannot spend money" claim is false.
+/*
+ * The guarantee the fixture build exists to make.
+ *
+ * An ENDPOINT, not a domain. The check used to be the bare string
+ * `openrouter.ai`, which was right while one provider existed and became
+ * prose-sensitive the moment a second did: the fixture registry's own field hint
+ * names openrouter.ai/keys, which is documentation and not a way to spend money.
+ * These are the base URLs a client is actually constructed from, one per real
+ * provider, and a new provider adds a line here.
+ */
+const ENDPOINTS = ['openrouter.ai/api', 'openai.azure.com'];
 for (const [name, source] of [['cli-fixture.js', fixture], ['server-fixture.js', fixtureServer]]) {
-  if (source.includes('openrouter.ai')) {
-    throw new Error(`dist/${name} still reaches a provider — the fixture plugin did not apply.`);
+  const found = ENDPOINTS.filter((endpoint) => source.includes(endpoint));
+  if (found.length) {
+    throw new Error(
+      `dist/${name} still reaches a provider (${found.join(', ')}) — the fixture plugin did not apply.`
+    );
   }
 }
 

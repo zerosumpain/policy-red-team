@@ -16,3 +16,4 @@
 2026-09-18-policy-sealed-model-calls.sql
 2026-09-18-policy-sealed-research.sql
 0001-schema-catchup.sql
+0002-settings.sql

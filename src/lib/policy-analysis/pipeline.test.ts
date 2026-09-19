@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 import { describe, expect, it, vi } from 'vitest';
 import JSZip from 'jszip';
 import PDFDocument from 'pdfkit';
-import { artefact, ASSURED_SYNTHESIS_STAGE, FOLLOW_UP_STAGES, MAX_BYTES, MODEL_KINDS, PATTERNS, PERSONA_STAGE, SCENARIOS, STAGE_KINDS, SYNTHESIS_STAGE, THEORY_STAGE, type Artefact, type StageInput } from './contracts';
+import { artefact, ASSURED_SYNTHESIS_STAGE, FOLLOW_UP_STAGES, MAX_BYTES, MODEL_KINDS, PATTERNS, PERSONA_STAGE, SCENARIOS, FIT_LIMIT, STAGE_KINDS, SYNTHESIS_STAGE, THEORY_STAGE, type Artefact, type StageInput } from './contracts';
 import { validateOutput, hasSource, PolicyError } from './validation';
 import { expandIndexed, sentences } from './sentences';
 import { ingest, readSubmission, validateBytes } from './server/ingest';
@@ -858,5 +858,43 @@ describe('shared context ordering', () => {
     // artefacts would be a different question, and the A/B would be measuring
     // two things at once.
     expect(ids(on[0])).toEqual(ids(off[0]));
+  });
+});
+
+/**
+ * THE ALLOWANCE IS MEASURED, NOT GUESSED.
+ *
+ * A flat 120,000-character reserve was why stage 6 cached 0.0% on 2026-09-18
+ * while stage 3 cached 66.1%. Stage 6's per-call block is a research question
+ * AND every source retrieved for it, so the payloads ran to 1,076,893 characters
+ * — over `FIT_LIMIT` — and `provider.ts` re-fitted each one, rewriting it from
+ * the front and destroying the prefix the whole change exists to create.
+ */
+describe('shared context leaves room for the largest call', () => {
+  const big = (id: string, chars: number) =>
+    artefact(id, 'claim', `Claim ${id}`, 'x'.repeat(chars), { category: 'objective', notes: '' }, { refs: [] });
+
+  it('shrinks the shared block so even the biggest call fits the budget', async () => {
+    // A shared block that would fill the window on its own, and one mechanism
+    // carrying far more than the old flat reserve would have allowed for.
+    const shared = Array.from({ length: 40 }, (_, i) => big(`s1_${i}_claim`, 20_000));
+    const mechanisms = [
+      artefact('s1_0_mech', 'mechanism', 'Small', 'x'.repeat(1_000), { intervention: 'i', implementation: 'x', notes: 'n' }, { refs: [] }),
+      artefact('s1_1_mech', 'mechanism', 'Huge', 'x'.repeat(300_000), { intervention: 'i', implementation: 'x', notes: 'n' }, { refs: [] }),
+    ];
+    const sizes: number[] = [];
+    const model = vi.fn(async (_s: number, _k: string, raw: unknown) => {
+      sizes.push(JSON.stringify(raw).length);
+      return { artefacts: [], warnings: [] };
+    });
+    await executeStage(
+      { stage: THEORY_STAGE, title: 'T', jurisdiction: null, policyArea: null, context: null, artefacts: [...shared, ...mechanisms] },
+      { model, research: neverResearch, signal: AbortSignal.timeout(20_000), sharedContextFirst: true },
+    ).catch(() => {});
+
+    expect(sizes.length).toBe(2);
+    // The whole point: no call overruns, so none is re-fitted and the prefix
+    // survives for every one of them.
+    for (const size of sizes) expect(size).toBeLessThanOrEqual(FIT_LIMIT);
   });
 });

@@ -5,6 +5,7 @@ import { New } from './pages/New';
 import { Assessment } from './pages/Assessment';
 import { Drill } from './pages/Drill';
 import { Personas } from './pages/Personas';
+import { Admin } from './pages/Admin';
 import { Persona } from './pages/Persona';
 import { Gallery } from './pages/Gallery';
 import { Accessibility } from './pages/Accessibility';
@@ -21,6 +22,9 @@ export function App() {
           own back button — see client/pages/Drill.tsx for why a drawer was not
           the answer here. */}
       <Route path="/assessments/:id/artefacts/:artefactId" element={<DrillRoute />} />
+      {/* The only page behind a password. It gates itself: the route is always
+          here, and what it shows depends on the cookie. */}
+      <Route path="/admin" element={<Template backLink={{ href: '/' }}><Admin /></Template>} />
       <Route path="/personas" element={<Template wide backLink={{ href: '/' }}><Personas /></Template>} />
       <Route path="/personas/:id" element={<Template wide backLink={{ href: '/personas', text: 'Back to the library' }}><Persona /></Template>} />
       {/* The design system, kept as a route: it is what `npm run a11y` scans and

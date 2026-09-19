@@ -1,5 +1,5 @@
 import { APPRAISAL_STAGE, ASSURANCE_CATEGORIES, ASSURANCE_STAGE, ASSURED_SYNTHESIS_STAGE, CONCURRENCY_OPTIONS, DEFAULT_CONCURRENCY, DEFAULT_EXTRACTION, DEPTH_LIMITS, FIT_LIMIT, FOLLOW_UP_STAGES, isPassStage, passOf, passOrdinal, passStep, PATTERNS, PERSONA_STAGE, REPORT_SECTIONS, RESULT_KINDS, REVISION_STATUSES, SCENARIOS, SYNTHESIS_STAGE, THEORY_STAGE, type Artefact, type Concurrency, type Extraction, type PassKind, type StageInput, type StageOutput } from './contracts';
-import { consumedSources, fitToBudget } from './budget';
+import { consumedSources, encodedSize, fitToBudget } from './budget';
 import { scoreExploits } from './exposure';
 import { clampWarnings, PolicyError, triageArtefacts, triageOutput } from './validation';
 import { modelApplicability } from './models';
@@ -274,13 +274,23 @@ export async function executeStage(input: StageInput, deps: PipelineDeps): Promi
    * results and ZERO assumptions in context.
    */
   /**
-   * ROOM LEFT FOR THE PART OF A CALL THAT IS NOT SHARED.
+   * HOW MUCH ROOM THE SHARED BLOCK MUST LEAVE FOR THE REST OF A CALL.
    *
-   * The shared block is fitted once, to this much less than the whole budget, so
-   * a call's own artefacts and the repair reserve still have somewhere to go. It
-   * is a character count because `fitToBudget` measures encoded characters.
+   * It used to be a flat 120,000 characters, and that constant is why stage 6
+   * got NO benefit from any of this. MEASURED on the run of 2026-09-18: stage 3
+   * fitted into a 10,000-character band (909,338–919,703) and cached 66.1% of
+   * its input, while stage 6's payloads ran 967,125–**1,076,893** — over
+   * `FIT_LIMIT` — so `provider.ts` re-fitted them PER CALL, rewrote each payload
+   * from the front, and cached 0.0%. Exactly the failure this whole change
+   * exists to remove, reintroduced by guessing the number.
+   *
+   * The guess was wrong because a fan-out's per-call block is not one shape:
+   * stage 3's is a few actor rows, stage 14's is one mechanism, and stage 6's is
+   * a research question PLUS every source retrieved for it. So it is no longer
+   * guessed — the caller hands over every unit's own block and the largest one
+   * decides, with a margin for the envelope's scalars and the repair reserve.
    */
-  const SHARED_CALL_ALLOWANCE = 120_000;
+  const SHARED_CALL_MARGIN = 40_000;
 
   /**
    * The context of a fan-out call, ordered so its shared part can be CACHED.
@@ -288,34 +298,41 @@ export async function executeStage(input: StageInput, deps: PipelineDeps): Promi
    * Measured on the deep Post-16 run (2026-09-17): stage 3 sent 211,029 input
    * tokens per call across 171 calls — 36.1 million — and the provider read 2.3%
    * of them from its prompt cache. Stage 14 sent 33.6 million and cached 0.5%.
-   * A prompt cache matches on an exact leading PREFIX, and both stages defeated
-   * it in their own way.
+   * A prompt cache matches an exact leading PREFIX, and the two stages defeated
+   * it differently.
    *
    * Stage 3 put the per-group artefacts FIRST and the ~890,000 shared characters
-   * after them, so the common prefix ended a few hundred bytes in — the measured
-   * 4,922 cached tokens is the system prompt and nothing else. That one is fixed
-   * by order alone.
+   * after them, so the common prefix ended a few hundred bytes in. Order fixes
+   * that one.
    *
    * Stage 14 did not: its context is already identical on every call. What broke
-   * it there was `fitToBudget`, which runs per call and takes `protect` — and
-   * `protect` carries the mechanism being written about, so a different artefact
-   * sits at the shedding boundary each time and the clipped payload differs from
-   * its first byte. That produced 122 distinct payload sizes across 144 calls.
-   * Ordering cannot fix that; fitting the shared block ONCE can, which is what
-   * `shared` below does before any call is built.
+   * it there was `fitToBudget` running per call with a `protect` set naming the
+   * mechanism being written about, so a different artefact sat at the shedding
+   * boundary each time — 122 distinct payload sizes across 144 calls. Ordering
+   * cannot fix that; fitting the shared block ONCE can, which is what happens
+   * below, before any call is built.
    *
    * Both are behind the run's own toggle, so a reader can put a paper through
-   * each way and compare the reports rather than trust this comment.
+   * each way and compare rather than trust this comment. On 2026-09-18 that
+   * comparison gave stage 3 66.1% against 2.3%, and 65% less uncached input.
    */
   const sharedFit = new Map<string, Artefact[]>();
-  const orderedContext = (shared: Artefact[], own: Artefact[], key: string): Artefact[] => {
+  const orderedContext = (shared: Artefact[], own: Artefact[], key: string, owns: Artefact[][]): Artefact[] => {
     if (!deps.sharedContextFirst) return [...new Set([...own, ...shared])];
     let fitted = sharedFit.get(key);
     if (!fitted) {
-      // `protect` is deliberately EMPTY here. What a call is for lives in `own`,
+      // The BIGGEST per-call block in this fan-out decides, because the shared
+      // block has to leave room for the worst case rather than the first one.
+      // A call that overruns is re-fitted by `provider.ts` and loses the prefix
+      // for itself AND for every call that would have matched it.
+      const largest = owns.reduce((most, o) => Math.max(most, encodedSize(o)), 0);
+      // Never give away more than half the budget: a per-call block that large
+      // means the shared block was never going to be the cacheable part.
+      const allowance = Math.min(Math.floor(FIT_LIMIT / 2), largest + SHARED_CALL_MARGIN);
+      // `protect` is deliberately EMPTY. What a call is for lives in `own`,
       // which is appended after this block and never shed by it — so nothing a
       // call depends on can be lost to a decision taken once for every call.
-      const result = fitToBudget(shared, (artefacts) => ({ artefacts }), FIT_LIMIT - SHARED_CALL_ALLOWANCE, new Set());
+      const result = fitToBudget(shared, (artefacts) => ({ artefacts }), FIT_LIMIT - allowance, new Set());
       fitted = result.artefacts;
       // Said once for the stage rather than once per call: it is one decision.
       for (const note of result.notes) output.warnings.push(`The shared context for this stage was reduced so every call could send the same one: ${note}`);
@@ -491,12 +508,18 @@ export async function executeStage(input: StageInput, deps: PipelineDeps): Promi
     // relationship needs both of its endpoints present to be assertable at all.
     const endpoints = input.artefacts.filter((a) => ['mechanism', 'claim'].includes(a.kind) || (a.kind === 'actor' && a.id.startsWith('s2_')));
     const mentionsOf = (a: Artefact) => (Array.isArray(a.data.mentions) ? a.data.mentions.length : 0);
-    await fanOut([...groups.values()].map((members) => {
+    // Every group's own block, before any call is built: the shared fit has to
+    // leave room for the LARGEST of them, not the first one it happens to see.
+    const graphUnits = [...groups.values()].map((members) => ({
+      members,
+      own: input.artefacts.filter((a) => members.some((m) => a.id === m.id || a.refs.includes(m.id))),
+    }));
+    const graphOwns = graphUnits.map((u) => u.own);
+    await fanOut(graphUnits.map(({ members, own }) => {
       const primary = [...members].sort((x, y) => mentionsOf(y) - mentionsOf(x) || x.id.localeCompare(y.id))[0];
-      const own = input.artefacts.filter((a) => members.some((m) => a.id === m.id || a.refs.includes(m.id)));
       return {
         key: primary.id,
-        context: orderedContext(endpoints, own, 'graph'),
+        context: orderedContext(endpoints, own, 'graph', graphOwns),
         describe: `Relationships for ${primary.label}`,
         extra: { protect: members.map((m) => m.id) },
       };
@@ -584,7 +607,11 @@ export async function executeStage(input: StageInput, deps: PipelineDeps): Promi
     const answerable = input.artefacts.filter((a) => a.kind === 'research_question')
       .map((question) => ({ question, sources: input.artefacts.filter((a) => a.kind === 'research_source' && a.data.questionId === question.id) }))
       .filter(({ sources }) => sources.length);
-    await fanOut(answerable.map(({ question, sources }) => ({ key: question.id, context: orderedContext(inventory, [question, ...sources], 'evidence'), describe: `Evidence for “${question.label}”`, extra: { protect: [question.id, ...sources.map((a) => a.id), ...claims] } })));
+    // A research question carries every source retrieved for it, so THIS is the
+    // fan-out whose per-call block is big and uneven. Measured 2026-09-18: a flat
+    // allowance put these payloads over `FIT_LIMIT` and the stage cached 0.0%.
+    const evidenceOwns = answerable.map(({ question, sources }) => [question, ...sources]);
+    await fanOut(answerable.map(({ question, sources }) => ({ key: question.id, context: orderedContext(inventory, [question, ...sources], 'evidence', evidenceOwns), describe: `Evidence for “${question.label}”`, extra: { protect: [question.id, ...sources.map((a) => a.id), ...claims] } })));
     // The document's own evidence pass runs last and alone: its key is `main`, so
     // it takes no sequence number and cannot be reordered by the fan-out above.
     await attempt('main', inventory, 'Evidence drawn from the policy document itself', { protect: claims });
@@ -647,12 +674,15 @@ export async function executeStage(input: StageInput, deps: PipelineDeps): Promi
     // output ceiling the graph once hit.
     const mechanisms = input.artefacts.filter((a) => a.kind === 'mechanism');
     const context = input.artefacts.filter((a) => !['passage', 'alias', 'node', 'persona_link'].includes(a.kind) && (a.kind !== 'actor' || a.id.startsWith('s2_')));
+    // One mechanism per call, so these are small and even — but measured the
+    // same way rather than assumed.
+    const theoryOwns = mechanisms.map((mechanism) => context.filter((a) => a.id === mechanism.id));
     await fanOut(mechanisms.map((mechanism) => ({
       key: mechanism.id,
       // The mechanism being written about is pulled OUT of the shared block and
       // appended as this call's own, so the shared prefix is identical on all of
       // them and the one artefact the call exists for is never shed.
-      context: orderedContext(context.filter((a) => a.id !== mechanism.id), context.filter((a) => a.id === mechanism.id), 'theory'),
+      context: orderedContext(context.filter((a) => a.id !== mechanism.id), context.filter((a) => a.id === mechanism.id), 'theory', theoryOwns),
       describe: `Theory of change for ${mechanism.label}`,
       extra: { protect: [mechanism.id, ...hypotheses] },
     })));

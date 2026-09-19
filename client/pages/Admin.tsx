@@ -1,0 +1,350 @@
+import { useCallback, useEffect, useState, type FormEvent } from 'react';
+import { admin, type AdminConfig, type ProviderView } from '../api';
+import { Button, ButtonGroup, Details, ErrorSummary, InsetText, Input, Radios, SummaryList, Tag, WarningText } from '../govuk';
+import { usePageTitle } from '../layout/Template';
+
+/**
+ * WHERE THIS INSTALL IS CONFIGURED, AND THE ONLY PAGE BEHIND A PASSWORD.
+ *
+ * Everything else here is as open as the deployment is. This holds credentials,
+ * so it is gated — by a signed cookie, never by an address check: behind a
+ * tunnel every request arrives from 127.0.0.1, so "local connections only"
+ * passes for the whole internet.
+ *
+ * A SECRET IS WRITE-ONLY. The server reports whether each one is set and never
+ * what it is, so this page cannot show a key back even to the person who typed
+ * it. That is deliberate and it is worth saying on the page: a reader who
+ * expects to check a pasted key against the original needs to know they cannot,
+ * before they close the tab.
+ *
+ * THE ENVIRONMENT WINS. A value in `app.env` overrides anything saved here, and
+ * the field says so rather than accepting an edit that will not take effect —
+ * the worst version of this page is one that lets you change something and then
+ * quietly does not.
+ */
+export function Admin() {
+  usePageTitle('Configuration');
+  const [status, setStatus] = useState<{ available: boolean; problem: string | null; signedIn: boolean } | null>(null);
+  const [config, setConfig] = useState<AdminConfig | null>(null);
+  const [password, setPassword] = useState('');
+  const [errors, setErrors] = useState<string[]>([]);
+  const [busy, setBusy] = useState(false);
+  const [outcome, setOutcome] = useState('');
+  /*
+   * Bumped on every successful save, and used as the form's React key.
+   *
+   * An uncontrolled input keeps whatever the reader typed: changing
+   * `defaultValue` on a re-render does not clear it. So after saving, the key
+   * they had just pasted was still sitting in the box under a hint promising it
+   * is never shown again. Remounting the form is the only thing that actually
+   * empties it, and it restores the stored values for every field that is not a
+   * secret at the same time.
+   */
+  const [saved, setSaved] = useState(0);
+
+  const load = useCallback(async () => {
+    try {
+      const next = await admin.status();
+      setStatus(next);
+      setConfig(next.signedIn ? await admin.config() : null);
+    } catch (err) {
+      setErrors([(err as Error).message]);
+    }
+  }, []);
+
+  useEffect(() => { void load(); }, [load]);
+
+  async function signIn(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setBusy(true);
+    setErrors([]);
+    try {
+      await admin.signIn(password);
+      setPassword('');
+      await load();
+    } catch (err) {
+      setErrors([(err as Error).message]);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function run<T>(work: () => Promise<T>, then?: (result: T) => void) {
+    setBusy(true);
+    setErrors([]);
+    try {
+      then?.(await work());
+    } catch (err) {
+      setErrors([(err as Error).message]);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  if (!status) return <p className="govuk-body" aria-live="polite">Loading…</p>;
+
+  if (!status.available) {
+    return (
+      <div className="govuk-grid-row">
+        <div className="govuk-grid-column-two-thirds">
+          <h1 className="govuk-heading-xl">Configuration</h1>
+          {/* NO PASSWORD MEANS NO PANEL — not an open one. A service that
+              published its credential editor because a deployment variable was
+              forgotten is the failure this whole page is gated against. */}
+          <InsetText>{status.problem}</InsetText>
+          <p className="govuk-body">
+            Until then this install uses whatever its environment supplies, which is how it has
+            always worked.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!status.signedIn) {
+    return (
+      <div className="govuk-grid-row">
+        <div className="govuk-grid-column-two-thirds">
+          <h1 className="govuk-heading-xl">Configuration</h1>
+          {errors.length ? <ErrorSummary errors={errors.map((text) => ({ text, href: '#admin-password' }))} /> : null}
+          <p className="govuk-body">
+            This page holds the credentials this service makes model calls with. Everything else
+            here is open; this is not.
+          </p>
+          <form onSubmit={(e) => void signIn(e)} noValidate>
+            <Input
+              id="admin-password"
+              name="password"
+              type="password"
+              label="Admin password"
+              labelSize="s"
+              hint="Set on the server as POLICY_ADMIN_PASSWORD."
+              autoComplete="current-password"
+              value={password}
+              onChange={(e) => setPassword(e.currentTarget.value)}
+              disabled={busy}
+            />
+            <ButtonGroup>
+              <Button type="submit" disabled={busy}>{busy ? 'Checking…' : 'Sign in'}</Button>
+            </ButtonGroup>
+          </form>
+        </div>
+      </div>
+    );
+  }
+
+  if (!config) return <p className="govuk-body" aria-live="polite">Loading…</p>;
+
+  const active = config.providers.find((p) => p.id === config.active);
+
+  return (
+    <>
+      <div className="govuk-grid-row">
+        <div className="govuk-grid-column-two-thirds">
+          <span className="govuk-caption-l">Admin</span>
+          <h1 className="govuk-heading-l">Configuration</h1>
+          {errors.length ? <ErrorSummary errors={errors.map((text) => ({ text, href: '#admin-active' }))} /> : null}
+
+          <SummaryList
+            rows={[
+              {
+                key: 'Answering calls',
+                value: (
+                  <>
+                    {active?.label ?? config.active}{' '}
+                    {config.activeProblem
+                      ? <Tag colour="red">Not usable</Tag>
+                      : <Tag colour="green">Ready</Tag>}
+                    {config.activeProblem ? <><br /><span className="prt-meta">{config.activeProblem}</span></> : null}
+                  </>
+                ),
+              },
+              {
+                key: 'Chosen by',
+                value: config.pinned
+                  ? 'POLICY_PROVIDER on the server. This page cannot change it.'
+                  : 'This page.',
+              },
+            ]}
+          />
+
+          <p className="govuk-body" role="status">{outcome}</p>
+          <ButtonGroup>
+            <Button
+              variant="secondary"
+              disabled={busy}
+              onClick={() =>
+                void run(() => admin.test(), (result) =>
+                  setOutcome(
+                    result.ok
+                      ? `${result.provider} answered as ${result.model} in ${result.ms} ms.`
+                      : `${result.provider} did not answer: ${result.message}`,
+                  ))
+              }
+            >
+              {busy ? 'Trying…' : 'Test the connection'}
+            </Button>
+            <Button variant="secondary" disabled={busy} onClick={() => void run(() => admin.signOut(), () => void load())}>
+              Sign out
+            </Button>
+          </ButtonGroup>
+          <p className="govuk-body-s prt-meta">
+            The test makes one real call for a single token against whatever is configured now.
+            &ldquo;Saved&rdquo; is not the same claim as &ldquo;reachable&rdquo;: a bridge on
+            another machine, an expired key and a renamed deployment all look identical until
+            something asks.
+          </p>
+        </div>
+      </div>
+
+      {!config.pinned ? (
+        <section aria-labelledby="admin-active">
+          <h2 className="govuk-heading-m" id="admin-active">Which service answers</h2>
+          <div className="govuk-grid-row">
+            <div className="govuk-grid-column-two-thirds">
+              <Radios
+                id="admin-provider"
+                legend="Use this one"
+                legendSize="s"
+                hint="Changing this takes effect on the next model call. Nothing already running is affected."
+                value={config.active}
+                onChange={(id) => void run(() => admin.use(id), setConfig)}
+                items={config.providers.map((p) => ({ value: p.id, text: p.label, hint: p.blurb }))}
+              />
+            </div>
+          </div>
+        </section>
+      ) : null}
+
+      {config.providers.map((provider) => (
+        <ProviderForm
+          key={provider.id}
+          provider={provider}
+          active={provider.id === config.active}
+          fromEnvironment={provider.id === config.active ? config.fromEnvironment : []}
+          busy={busy}
+          version={saved}
+          onSave={(values) => void run(() => admin.save(provider.id, values), (next) => {
+            setConfig(next);
+            setSaved((n) => n + 1);
+            setOutcome(`${provider.label} saved. Any key you entered is stored and will not be shown again.`);
+          })}
+        />
+      ))}
+    </>
+  );
+}
+
+/**
+ * One provider's fields.
+ *
+ * A SECRET'S BOX IS ALWAYS EMPTY and says whether one is stored beside it. The
+ * alternative — pre-filling with dots — invites a reader to believe they can
+ * check what they pasted, and leaves the page unable to tell "unchanged" from
+ * "cleared" when they submit it.
+ */
+function ProviderForm({ provider, active, fromEnvironment, busy, version, onSave }: {
+  provider: ProviderView;
+  active: boolean;
+  fromEnvironment: string[];
+  busy: boolean;
+  /** Changes on every successful save, remounting the form so a typed secret leaves the box. */
+  version: number;
+  onSave: (values: Record<string, string>) => void;
+}) {
+  function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const form = new FormData(event.currentTarget);
+    const values: Record<string, string> = {};
+    for (const field of provider.fields) {
+      const raw = form.get(field.name);
+      const value = typeof raw === 'string' ? raw : '';
+      // A SECRET LEFT BLANK IS "LEAVE IT ALONE", not "clear it" — the box is
+      // always empty, so treating blank as a deletion would wipe a key every
+      // time somebody edited the field beside it. Clearing has its own control.
+      if (field.secret && !value.trim() && provider.values[field.name] === true) continue;
+      values[field.name] = value;
+    }
+    onSave(values);
+  }
+
+  return (
+    <section aria-labelledby={`admin-${provider.id}`}>
+      <h2 className="govuk-heading-m" id={`admin-${provider.id}`}>
+        {provider.label} {active ? <Tag colour="blue">In use</Tag> : null}
+      </h2>
+      <div className="govuk-grid-row">
+        <div className="govuk-grid-column-two-thirds">
+          <p className="govuk-body">{provider.blurb}</p>
+          <form key={version} onSubmit={submit} noValidate>
+            {provider.fields.map((field) => {
+              const stored = provider.values[field.name];
+              const fromEnv = fromEnvironment.includes(field.name);
+              return (
+                <Input
+                  key={field.name}
+                  id={`${provider.id}-${field.name}`}
+                  name={field.name}
+                  type={field.secret ? 'password' : 'text'}
+                  label={field.label}
+                  labelSize="s"
+                  autoComplete="off"
+                  placeholder={field.placeholder}
+                  defaultValue={field.secret ? '' : typeof stored === 'string' ? stored : ''}
+                  disabled={busy || fromEnv}
+                  hint={
+                    <>
+                      {field.hint}
+                      {field.secret ? (
+                        <>
+                          {' '}
+                          {stored === true
+                            ? 'One is stored. Leave this blank to keep it, or type a new one to replace it.'
+                            : 'Nothing is stored.'}{' '}
+                          It is never shown again once saved.
+                        </>
+                      ) : null}
+                      {fromEnv ? (
+                        <>
+                          {' '}
+                          <strong>Set in the environment on the server</strong>, which wins over
+                          anything saved here — so this field is not editable.
+                        </>
+                      ) : null}
+                    </>
+                  }
+                />
+              );
+            })}
+            <ButtonGroup>
+              <Button type="submit" disabled={busy}>Save {provider.label}</Button>
+            </ButtonGroup>
+          </form>
+
+          {provider.models.length ? (
+            <Details summary={`What this offers — ${provider.models.length}`}>
+              <ul className="govuk-list govuk-list--bullet">
+                {provider.models.map((model) => (
+                  <li key={model.id}>
+                    <strong>{model.name}</strong> <span className="prt-meta">{model.note}</span>
+                  </li>
+                ))}
+              </ul>
+            </Details>
+          ) : (
+            <p className="govuk-body-s prt-meta">
+              Nothing configured yet, so this offers nothing to the model picker.
+            </p>
+          )}
+
+          {provider.id === 'codex' ? (
+            <WarningText>
+              A bridge is reachable from the machine running this service, not from yours. If this
+              service is on another box, a loopback address here will never connect.
+            </WarningText>
+          ) : null}
+        </div>
+      </div>
+    </section>
+  );
+}

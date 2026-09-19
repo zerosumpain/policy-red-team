@@ -17,6 +17,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import '../src/lib/polyfills';
 import { handleApi, toHttpError } from './api';
+import { handleAdmin } from './admin';
 import { serveStatic } from './static';
 import { sendJson } from './http';
 import { client } from '$lib/db';
@@ -97,6 +98,22 @@ const server = createServer(async (req, res) => {
       return;
     }
 
+    /*
+     * THE ADMIN BRANCH, above the rest and gated inside itself.
+     *
+     * Note what is NOT here: no address check. Behind a tunnel every request
+     * arrives from 127.0.0.1, so "local connections only" would pass for the
+     * whole internet — the mistake that took the author's main site down for
+     * 33 hours and exposed its admin area. `handleAdmin` requires a signed
+     * cookie and nothing else.
+     */
+    if (url.pathname.startsWith('/api/admin')) {
+      const segments = url.pathname.replace(/^\/api\/admin\/?/, '').split('/').filter(Boolean);
+      const handled = await handleAdmin(req, res, segments, req.method ?? 'GET');
+      if (!handled) sendJson(res, 404, { message: 'No such endpoint.' });
+      return;
+    }
+
     if (url.pathname.startsWith('/api/policy-analysis')) {
       const handled = await handleApi(req, res, url, startRun);
       if (!handled) sendJson(res, 404, { message: 'No such endpoint.' });
@@ -120,13 +137,15 @@ await migrate(client, { log: () => {} });
 const worker = runWorker((message) => console.log(`worker: ${message}`));
 worker.start();
 
-server.listen(PORT, HOST, () => {
+server.listen(PORT, HOST, async () => {
   console.log(`Policy Red Team on http://${HOST}:${PORT}`);
   // Said at startup rather than at the first failed assessment. Browsing,
   // reading old reports and downloading exports all work without a key; only a
   // new run needs one, and finding that out eighteen stages in is no way to
   // learn it.
-  const problem = modelAccessProblem();
+  // Async now: which service answers is a configured thing, and reading the
+  // configuration means reading the encrypted store.
+  const problem = await modelAccessProblem();
   if (problem) {
     console.warn(`\n  ${problem}`);
     console.warn(`  Existing assessments still open and export; a new one will not start.\n`);

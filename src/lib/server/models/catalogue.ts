@@ -82,8 +82,28 @@ export function offeredModels(): OfferedModel[] {
     });
 }
 
+/**
+ * Ids the ACTIVE provider serves, which are not in the OpenRouter catalogue.
+ *
+ * An Azure deployment or a bridge's model name is a perfectly good thing to
+ * commission and is not on any list here. Without this, `ingest.ts` would read
+ * every such choice as unknown and quietly degrade it to the configured default
+ * — so `policy_analyses.model` would say "the configured default" about a run
+ * that named a deployment, and the report's own provenance section would be
+ * wrong about what it was run on.
+ *
+ * A SET REPLACED WHOLE rather than added to, refreshed whenever the
+ * configuration is read. A stale id lingering after a provider changed would let
+ * a reader commission something nothing can serve.
+ */
+let providerModelIds = new Set<string>();
+
+export function registerProviderModels(ids: string[]): void {
+  providerModelIds = new Set(ids.filter(Boolean));
+}
+
 /** Is this a model the reader may commission? The question `ingest.ts` asks. */
 export function isOfferedModel(id: string | null | undefined): boolean {
   if (!id) return false;
-  return offeredModels().some((m) => m.id === id);
+  return providerModelIds.has(id) || offeredModels().some((m) => m.id === id);
 }

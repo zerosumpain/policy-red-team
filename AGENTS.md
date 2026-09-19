@@ -142,6 +142,46 @@ delete.** Do not weaken it.
   `Uint8Array.toHex`, both ES2025. `src/lib/polyfills.ts` carries them for older
   Node; if a THIRD one appears, upgrade rather than adding to that file.
 
+## Which service answers a model call
+
+`src/lib/llm/providers/` — one module per service, each exporting a
+`ProviderDefinition`. `getLLMClient(ctx)` in `src/lib/llm/client.ts` is still the
+only seam the pipeline reaches a model through; it asks `resolveProvider()` which
+provider is in force rather than assuming one.
+
+- **The environment wins over the panel, always.** `POLICY_PROVIDER` pins the
+  choice; the per-field names in `ENV_NAMES` pin individual values. The panel
+  shows which fields the environment has taken over and disables them.
+- **`POLICY_PROVIDERS` is a comma list of what an install offers.** Unset means
+  all of them. `POLICY_PROVIDERS=openrouter,azure` is how the Codex bridge leaves
+  a build that ships to anyone else — no code deleted.
+- **Do not extend `ModelProvider`** in `src/lib/constants/model-context.ts`. It
+  is a COPIED type that records what an assessment was run on; the registry has
+  its own `ProviderId` in fork-written code, which is why it needs no divergence.
+- **A new provider needs a stub in `index.fixture.ts` too.** `build.mjs`
+  redirects `$lib/llm/providers` in fixture builds and then asserts the endpoints
+  are absent from the bytes. Add the URL to a real module without stubbing it and
+  the build stops — correctly.
+
+## The admin panel
+
+`/admin` is the only page behind a password, and the only one that needs one: it
+holds the credentials this service spends money with.
+
+- **`POLICY_ADMIN_PASSWORD`, twelve characters or more.** Absent or shorter
+  closes the panel rather than opening it. A forgotten deployment variable must
+  not publish a credential editor.
+- **The gate is a signed cookie, never an address check.** Behind a tunnel every
+  request arrives from `127.0.0.1`. An address check there passes for the entire
+  internet — the mistake that took the author's main site down for 33 hours.
+- **A secret goes in and does not come out.** `GET /api/admin/config` reports
+  `true`/`false` per secret, never a value, and the browser walk asserts it. If
+  you add a field, `redact()` decides what is visible — not the handler.
+- **A blank secret means "leave it alone".** The box is always empty, so blank
+  cannot mean deletion without wiping a key on every neighbouring edit. The form
+  remounts on a save counter, because an uncontrolled input does not clear itself
+  when `defaultValue` changes.
+
 ## Migrations
 
 Explicit SQL in `migrations/`, applied in the order `migrations/order.txt` gives —

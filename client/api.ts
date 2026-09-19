@@ -109,6 +109,36 @@ export interface PersonaDossier {
   readOnly: boolean;
 }
 
+/** One field a provider needs. A `secret` is written once and never read back. */
+export interface ProviderField {
+  name: string;
+  label: string;
+  hint: string;
+  secret?: boolean;
+  placeholder?: string;
+  optional?: boolean;
+}
+
+export interface ProviderView {
+  id: string;
+  label: string;
+  blurb: string;
+  fields: ProviderField[];
+  /** A secret arrives as `true`/`false` — set or not — and never as its value. */
+  values: Record<string, string | boolean>;
+  models: { id: string; name: string; note: string }[];
+}
+
+export interface AdminConfig {
+  active: string;
+  activeProblem: string | null;
+  /** Fields the environment supplies, which the panel cannot override. */
+  fromEnvironment: string[];
+  /** True when POLICY_PROVIDER pins the choice for this deployment. */
+  pinned: boolean;
+  providers: ProviderView[];
+}
+
 export interface Landing {
   analyses: AnalysisRow[];
   models: OfferedModel[];
@@ -144,6 +174,41 @@ export const api = {
   /** Spends: two model calls plus retrieval. Refused outright in a read-only copy. */
   researchPersona: (id: string) =>
     request<{ sources: number; traits: number }>(`/api/policy-analysis/personas/${id}/research`, { method: 'POST' }),
+};
+
+/**
+ * The admin panel, which is the only part of this service behind a password.
+ *
+ * A secret goes in and never comes back: `config()` reports whether each one is
+ * set, not what it is.
+ */
+export const admin = {
+  status: () => request<{ available: boolean; problem: string | null; signedIn: boolean }>('/api/admin/status'),
+  signIn: (password: string) =>
+    request<{ signedIn: boolean }>('/api/admin/session', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ password }),
+    }),
+  signOut: () => request<{ signedIn: boolean }>('/api/admin/session', { method: 'DELETE' }),
+  config: () => request<AdminConfig>('/api/admin/config'),
+  save: (provider: string, values: Record<string, string>) =>
+    request<AdminConfig>(`/api/admin/config/${provider}`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ values }),
+    }),
+  use: (provider: string) =>
+    request<AdminConfig>('/api/admin/active', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ provider }),
+    }),
+  /** One token of output against the live configuration. "Saved" is not "reachable". */
+  test: () => request<{ ok: boolean; provider: string; model?: string; ms: number; message?: string }>(
+    '/api/admin/test',
+    { method: 'POST' },
+  ),
 };
 
 /**
