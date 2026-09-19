@@ -8,6 +8,14 @@ import { EQUAL, isEqual, weightedExposure } from '../weighting';
 import { PlayList } from '../PlayList';
 
 /**
+ * How many ranked plays this move shows before asking.
+ *
+ * Ten rather than the Verdict lead's three: there, the list is a sample inside a
+ * summary; here it is the section, and a reader has come to Threats to read it.
+ */
+const SHOWN = 10;
+
+/**
  * RANK BY WHAT YOU CARE ABOUT.
  *
  * The assessment weighs incentive, ease, impact and concealment equally. A
@@ -38,6 +46,17 @@ export function ThreatsLead({ list, selection, mechanismIds, linkTo }: {
   linkTo?: (artefact: Artefact, label?: string) => React.ReactNode;
 }) {
   const [weights, setWeights] = useState<Record<string, number>>(EQUAL);
+  const [all, setAll] = useState(false);
+  /*
+   * RESET WHEN THE SELECTION CHANGES — the same rule, and for the same reason, as
+   * VerdictLead: expand to all 47, pick a mechanism, and clearing it would drop
+   * the reader back into the wall the cap exists to prevent.
+   */
+  const [lastSelection, setLastSelection] = useState(selection);
+  if (lastSelection !== selection) {
+    setLastSelection(selection);
+    setAll(false);
+  }
   const isDefault = isEqual(weights);
   // The ranked list sets no selection of its own, so it narrows by all three.
   const shown = narrowExcept(list, selection, mechanismIds, 'band' as never);
@@ -103,8 +122,17 @@ export function ThreatsLead({ list, selection, mechanismIds, linkTo }: {
           : `${ranked.length} plays, re-ranked. The assessment’s own exposure is printed on each one.`}
       </p>
       {empty ? <p className="govuk-body">Nothing under this selection.</p> : null}
+      {/*
+        CAPPED, THE WAY THE VERDICT LEAD CAPS THE SAME LIST.
+        Uncapped, the forty-seven cards ran from 690px to 4,071px inside this
+        panel and pushed the exposure scatter four and a half screens below the
+        fold, with the stress test five and a half — so the move whose subject is
+        this list buried its own overview under it. VerdictLead.tsx:20-22 already
+        argues the rule ("a reader who meets a wall reads none of it"); ten rather
+        than three because here the list IS the section.
+      */}
       <PlayList
-        plays={ranked}
+        plays={all ? ranked : ranked.slice(0, SHOWN)}
         linkTo={linkTo}
         rank
         trailing={isDefault ? undefined : (play) => (
@@ -114,6 +142,11 @@ export function ThreatsLead({ list, selection, mechanismIds, linkTo }: {
           </span>
         )}
       />
+      {ranked.length > SHOWN ? (
+        <Button variant="secondary" onClick={() => setAll(!all)}>
+          {all ? `Show the worst ${SHOWN}` : `Show all ${ranked.length}`}
+        </Button>
+      ) : null}
     </section>
   );
 }

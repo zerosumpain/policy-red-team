@@ -102,3 +102,39 @@ export function narrowExcept(
   if (selection?.kind === own) return list;
   return filterPlays(list, selection, mechanismIds);
 }
+
+/**
+ * A SELECTION IN A URL, so the reading position survives leaving the page.
+ *
+ * `move` and `selection` were plain component state, and the drill is a separate
+ * route — so following a play out of the report and pressing Back returned the
+ * reader to Move 1 with the banner reset to "Showing everything", whatever they
+ * had been reading. Reload did the same. The URL was character-identical in
+ * every one of those states, which also meant nobody could send a colleague
+ * "look at Threats under this mechanism".
+ *
+ * ONLY THE KIND AND THE ID TRAVEL. A mechanism's and a body's `label` is the
+ * artefact's name, not something to round-trip through a query string where it
+ * would be stale the moment the assessment is restated — so it is resolved back
+ * from the artefacts on the way in, and a selection whose id is no longer in the
+ * run resolves to nothing rather than to a label that lies.
+ */
+export function selectionParam(selection: Selection): string | null {
+  return selection ? `${selection.kind}:${selection.id}` : null;
+}
+
+export function parseSelection(param: string | null, artefacts: Artefact[]): Selection {
+  if (!param) return null;
+  const cut = param.indexOf(':');
+  if (cut < 0) return null;
+  const kind = param.slice(0, cut);
+  const id = param.slice(cut + 1);
+  if (kind === 'band') {
+    return (['severe', 'significant', 'moderate', 'limited'] as Band[]).includes(id as Band)
+      ? { kind: 'band', id: id as Band }
+      : null;
+  }
+  if (kind !== 'mechanism' && kind !== 'actor') return null;
+  const found = artefacts.find((a) => a.id === id);
+  return found ? { kind, id, label: found.label } : null;
+}

@@ -101,13 +101,30 @@ export function New() {
           <Textarea id="context" label="Anything the paper does not say" labelSize="s" rows={4}
                     hint="Optional. What you already know that the assessment should take into account." />
 
+          {/*
+            WHAT IT COSTS, IN THE NUMBERS THE APP ALREADY KNOWS.
+            This page spends the money and was the only one that would not say
+            how much: "costs more", "this is a bill, not a rounding error", and
+            not a figure, a duration or a unit anywhere on it — while the admin
+            panel, which only sets a ceiling, prints "about 61 million tokens"
+            three clicks away. The standard figure is the last full run measured
+            end to end. Deep has no measured multiplier, so none is claimed.
+          */}
           <Radios
             id="depth" legend="How deeply should it read?" legendSize="s"
             hint="A deep read follows each line of enquiry further, and costs more."
             value={depth} onChange={setDepth}
             items={[
-              { value: 'standard', text: 'Standard', hint: 'One pass over every passage.' },
-              { value: 'deep', text: 'Deep', hint: 'Keeps going until a line of enquiry stops producing new evidence.' },
+              {
+                value: 'standard',
+                text: 'Standard',
+                hint: 'One pass over every passage. The last full run of a 72-passage paper made 419 model calls, used about 61 million tokens and took two and a half hours.',
+              },
+              {
+                value: 'deep',
+                text: 'Deep',
+                hint: 'Keeps going until a line of enquiry stops producing new evidence. More calls than standard, by an amount that depends on the paper — this build has not measured one end to end.',
+              },
             ]}
           />
 
@@ -115,7 +132,22 @@ export function New() {
             <Select
               id="model" label="Which model?" labelSize="s"
               hint="Optional. Leave it alone and the configured default is used. Decomposition makes one call per passage, so this is a bill, not a rounding error."
-              options={[{ value: '', text: 'Use the default' }, ...models.map((m) => ({ value: m.id, text: `${m.name} — ${m.tier}` }))]}
+              /*
+                A FLOATING ID SAYS SO HERE TOO. `~deepseek/…` is an alias whose
+                model changes without the id changing, so two assessments a month
+                apart are not comparable even though the provenance section names
+                the same thing. The menu page marks them with a tag and a
+                paragraph; the page that actually commissions a run — where the
+                argument applies with more force — dropped the tilde, the id and
+                the note, and offered them as five peers.
+              */
+              options={[
+                { value: '', text: 'Use the default' },
+                ...models.map((m) => ({
+                  value: m.id,
+                  text: `${m.name} — ${m.tier}${m.id.startsWith('~') ? ' (floating: the model behind it can change)' : ''}`,
+                })),
+              ]}
             />
           ) : null}
 
@@ -151,6 +183,15 @@ export function New() {
             </Button>
             <a className="govuk-link" href="/">Cancel</a>
           </ButtonGroup>
+          {/*
+            THE WAIT IS NARRATED. A 10 MB PDF goes up with no progress and no
+            announcement: the only signal was a button that went disabled — losing
+            focus as it did — with its label changed. Seven other places in this
+            client already carry a live region for exactly this.
+          */}
+          <p className="govuk-body prt-meta" role="status">
+            {submitting ? 'Sending the paper and starting the run. This can take a moment for a large file.' : ''}
+          </p>
         </form>
       </div>
     </div>

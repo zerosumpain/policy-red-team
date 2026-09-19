@@ -67,6 +67,9 @@ export function OfflineApp({ payload }: { payload: PackPayload }) {
       title: payload.title,
       status: payload.status,
       createdAt: payload.generatedAt,
+      // A pack has no timeline; the date it was made is the only instant it
+      // carries, and it is the honest answer to "when did this last move".
+      updatedAt: payload.generatedAt,
       completedAt: payload.completedAt,
       jurisdiction: payload.jurisdiction,
       policyArea: payload.policyArea,

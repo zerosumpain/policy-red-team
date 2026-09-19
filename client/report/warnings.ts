@@ -115,3 +115,28 @@ export function byReason(warnings: string[]): { reason: string; human: string; c
   }
   return [...seen.values()].sort((a, b) => b.count - a.count);
 }
+
+/**
+ * A WARNING AS ENGLISH, WITHOUT TOUCHING THE STORED TEXT.
+ *
+ * `validation.ts` builds "${n} model output${n === 1 ? ' was' : 's were'}
+ * discarded and are not part of this assessment" — the first verb is inflected
+ * for number and the trailing `are` is written in. On the real run 26 of the 256
+ * warnings take the singular branch and print, in front of a reader, "1 model
+ * output was discarded and are not part of this assessment". The project's own
+ * test expects the correct wording, so the generator and the test already
+ * disagree.
+ *
+ * FIXED HERE AND NOT AT THE SOURCE, deliberately. `pipeline.ts` counts discarded
+ * groups by matching the literal substring "discarded and are not part of this
+ * assessment", and that count is the figure at the top of the Provenance panel —
+ * so repairing the sentence where it is written would silently zero part of it,
+ * and `validation.ts` is a verbatim copy besides. The stored string stays
+ * byte-identical to upstream's and the reader gets English.
+ */
+export function readable(text: string): string {
+  return text.replace(
+    /\b(1 model output was discarded and) are (not part of this assessment)/g,
+    '$1 is $2',
+  );
+}

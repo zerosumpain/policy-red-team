@@ -61,9 +61,16 @@ export function Accessibility() {
           reading one thing, and the control that swaps them is offered to everyone.
         </p>
         <p className="govuk-body">
-          Where the two differ, it is the table that carries more: the exposure plot draws
-          twenty plays and the table beside it links into every one of them. A link inside a
-          drawing is reachable but poorly announced, so the drawings do not carry any.
+          Where the two differ, it is usually the table that carries more: the exposure plot
+          draws twenty plays and the table beside it links into every one of them. The plots
+          themselves carry no links, because a link inside an SVG is reachable but poorly
+          announced.
+        </p>
+        <p className="govuk-body">
+          The one drawing that does link is the map of what connects to one body, where each
+          box is the whole target rather than a word inside it, and takes the same focus
+          outline as any other link on the page. Its border colour says what kind of thing the
+          box is, and the key under the drawing says so in words as well.
         </p>
 
         <h3 className="govuk-heading-m">There is no map of the whole graph</h3>

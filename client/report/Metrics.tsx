@@ -33,9 +33,20 @@ export function Metrics({ metrics, columns }: { metrics: Metric[]; columns?: 2 |
   return (
     <dl className={`prt-metrics${columns ? ` prt-metrics--${columns}` : ''}`}>
       {metrics.map((metric) => (
+        /*
+         * THE TERM COMES FIRST IN THE MARKUP, and the figure is put back on top
+         * in CSS (`.prt-metric__value { order: -1 }`).
+         *
+         * HTML's content model for a `div` inside a `dl` is one or more `dt`
+         * followed by one or more `dd`. Emitting the value first made every one
+         * of these a definition with no term — fourteen of them across the
+         * report — and axe cannot see it: `structuredDlitemsEvaluate` walks the
+         * `dl`'s direct children, which are these `div`s, so it never inspects
+         * the ordering and the rule passes. A green gate on an invalid list.
+         */
         <div key={metric.label} className={`prt-metric prt-metric--${metric.tone ?? 'neutral'}`}>
-          <dd className="prt-metric__value">{metric.value}</dd>
           <dt className="prt-metric__label">{metric.label}</dt>
+          <dd className="prt-metric__value">{metric.value}</dd>
           {metric.note ? <dd className="prt-metric__note">{metric.note}</dd> : null}
         </div>
       ))}

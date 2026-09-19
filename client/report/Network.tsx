@@ -4,6 +4,17 @@ import { adjacency, bodyLinks, cellSentence, relationWords, unplacedEdges } from
 import { isBody, type Network as PolicyNetwork } from '$lib/policy-analysis/network';
 import { kindLabel, shapeOf } from '$lib/relationships';
 import { Details, InsetText, SummaryList, Table, Tag } from '../govuk';
+
+/**
+ * One blue, named once.
+ *
+ * `#1d70b8` was written into both bar charts here — a third raw copy of a
+ * palette entry the design system has a token for. It is the framework's link
+ * colour because these bars are the same "this is a quantity you can follow"
+ * that a link is, and because a role should track the palette rather than pin a
+ * hex that a brand refresh moves.
+ */
+const BAR_COLOUR = 'var(--govuk-link-colour, #1a65a6)';
 import { BarChart, Figure } from './Figure';
 import type { ArtefactLink } from './Report';
 
@@ -99,7 +110,7 @@ export function NetworkSection({ net, artefacts, linkTo }: {
               key: row.key,
               label: `${kindLabel(row.fromKind)} → ${kindLabel(row.toKind)}`,
               value: row.count,
-              colour: '#1d70b8',
+              colour: BAR_COLOUR,
             }))}
           />
         }
@@ -136,7 +147,7 @@ export function NetworkSection({ net, artefacts, linkTo }: {
               key: family.key,
               label: family.label,
               value: family.count,
-              colour: '#1d70b8',
+              colour: BAR_COLOUR,
             }))}
           />
         }
@@ -327,11 +338,30 @@ function BodyLinkTable({ links, name }: {
         caption={`Body-to-body relationships, busiest pair first${links.length > SHOWN ? ` — the first ${SHOWN} of ${links.length} pairs` : ''}`}
         captionSize="s"
         scroll
-        columns={[{ header: 'This body' }, { header: 'Stands in this relation' }, { header: 'To this body' }, { header: 'Both ways?' }]}
+        /*
+         * RELATIONSHIPS, NOT DISTINCT RELATION TYPES — the fix the adjacency grid
+         * already documents, applied to the list it degrades into.
+         *
+         * `bodyLinks` dedupes a pair's relation WORDS while keeping every edge id,
+         * and this printed the words. On the real run the sentence above reads "3
+         * of the 106 stated relationships run between two bodies" over a table of
+         * two rows, because the paper states "UK Research and Innovation — funds →
+         * Universities" as two separate edges and one word came out. The rows now
+         * sum to the number in the sentence, and a pair the paper states twice is
+         * visible as such.
+         */
+        columns={[
+          { header: 'This body' },
+          { header: 'Stands in this relation' },
+          { header: 'To this body' },
+          { header: 'Relationships', numeric: true, width: '8rem' },
+          { header: 'Both ways?' },
+        ]}
         rows={links.slice(0, SHOWN).map((link) => [
           name(link.fromId, link.fromLabel),
           link.relations.map(relationWords).join(', '),
           name(link.toId, link.toLabel),
+          String(link.ids.length),
           link.reciprocated ? <Tag colour="green">Yes</Tag> : <span className="prt-meta">One way</span>,
         ])}
       />
@@ -340,7 +370,10 @@ function BodyLinkTable({ links, name }: {
           <ul className="govuk-list govuk-list--bullet">
             {links.slice(SHOWN).map((link) => (
               <li key={`${link.fromId}-${link.toId}`}>
-                {name(link.fromId, link.fromLabel)} {relationWords(link.relations[0])}{' '}
+                {/* Every relation the pair stands in, the same as the table row
+                    above — this printed only the first, which is dormant while
+                    the tail is short and wrong the moment it is not. */}
+                {name(link.fromId, link.fromLabel)} {link.relations.map(relationWords).join(', ')}{' '}
                 {name(link.toId, link.toLabel)}
               </li>
             ))}

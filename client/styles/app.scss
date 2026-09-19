@@ -23,6 +23,13 @@
 //
 // Deliberately thin. Everything GOV.UK has a pattern for uses that pattern; this
 // is only for the handful of things it does not.
+//
+// GREYS ARE NAMED AS TINTS OF BLACK, not by the pre-brand names. `mid-grey`,
+// `dark-grey` and `light-grey` are deprecated in govuk-frontend 6 and printed 42
+// warnings on every build of this file, all of them saying the names go in the
+// next major. `black tint-80` / `tint-25` / `tint-95` are the same three values
+// — the compiled stylesheet is byte-identical across the change — under names
+// that will still exist.
 
 .prt-logotype {
   @include govuk.govuk-font($size: 24, $weight: bold);
@@ -56,7 +63,7 @@
 // figures so the column does not jitter as a run advances.
 .prt-meta {
   @include govuk.govuk-font($size: 16, $tabular: true);
-  color: govuk.govuk-colour("dark-grey");
+  color: govuk.govuk-colour("black", $variant: "tint-25");
 }
 
 // A control that READS as a link and IS a button.
@@ -95,6 +102,17 @@
   text-underline-offset: 0.1em;
 
   &:hover { text-decoration-thickness: 3px; }
+
+  // `.govuk-link` would carry this, but only on an anchor. Stated here so a
+  // link-shaped button focuses like everything else in the design system.
+  &:focus-visible {
+    outline: 3px solid govuk.govuk-colour("yellow");
+    outline-offset: 0;
+    background: govuk.govuk-colour("yellow");
+    color: govuk.govuk-colour("black");
+    box-shadow: 0 -2px govuk.govuk-colour("yellow"), 0 4px govuk.govuk-colour("black");
+    text-decoration: none;
+  }
 }
 
 // The one thing GOV.UK has no pattern for and this product cannot do without: a
@@ -112,6 +130,20 @@
     outline-offset: 0;
   }
 }
+
+// ONE MEASURE, IN A UNIT THAT MEANS WHAT A MEASURE MEANS.
+//
+// There were six, each an `em` count against a different font size, so six rules
+// that all say "this is prose, keep the line readable" resolved to 832, 836,
+// 836, 988, 1056 and 1080 pixels. The container is 960 and the tab panel's
+// content box about 920, so five of the six could never fire — including the
+// standfirst, whose own comment says it is "held to a measure because it is
+// genuinely prose" and which ran the full width of the page.
+//
+// `ch` is the unit a measure is actually expressed in: it scales with the type,
+// so one number means one line length at 16px and at 27px alike. 68 characters
+// is the middle of the 45-75 a typographer would give you.
+$prt-measure: 68ch;
 
 // ── The exposure ramp, as custom properties ────────────────────────────────
 //
@@ -174,7 +206,13 @@
   cursor: pointer;
   font-family: inherit;
   @include govuk.govuk-font($size: 19);
-  color: govuk.govuk-colour("blue");
+  // THE LINK TOKEN, NOT THE PALETTE ENTRY. `govuk-colour("blue")` is #1d70b8;
+  // every real anchor on the same page resolves to the framework's link colour,
+  // blue shade-10, #1a65a6. Measured on the live report: 26 elements at
+  // rgb(29,112,184) sitting beside 255 at rgb(26,101,166) — two blues a shade
+  // apart, both meaning "you can click this". A control's colour is a role, and
+  // the role has a token that tracks the palette.
+  color: govuk.govuk-functional-colour("link");
 
   // The framework's own selected treatment, which only lands on an anchor.
   .govuk-tabs__list-item--selected & {
@@ -188,8 +226,22 @@
   &__step {
     display: block;
     @include govuk.govuk-font($size: 16);
-    color: govuk.govuk-colour("dark-grey");
+    color: govuk.govuk-colour("black", $variant: "tint-25");
     text-decoration: none;
+  }
+
+  // The question the move answers, under its name. "Causality" is what the
+  // section is called; "why is any of it possible" is what a reader arrived
+  // with, and until now it existed only in a code comment.
+  &__hint {
+    display: block;
+    @include govuk.govuk-font($size: 16);
+    color: govuk.govuk-colour("black", $variant: "tint-25");
+    text-decoration: none;
+    font-weight: 400;
+    // The strip is a row of five; a question that wraps to three lines would
+    // make the spine taller than the panel heading under it.
+    max-width: 14em;
   }
 }
 
@@ -204,7 +256,7 @@
   align-items: baseline;
   gap: govuk.govuk-spacing(2) govuk.govuk-spacing(3);
   border-left: 5px solid govuk.govuk-colour("blue");
-  background: govuk.govuk-colour("light-grey");
+  background: govuk.govuk-colour("black", $variant: "tint-95");
   padding: govuk.govuk-spacing(2) govuk.govuk-spacing(3);
 
   p { margin: 0; }
@@ -327,16 +379,25 @@
     background: none;
     border: 0;
     padding: 0;
-    color: govuk.govuk-colour("blue");
+    color: govuk.govuk-functional-colour("link");
     text-decoration: underline;
     cursor: pointer;
+
+    // The design system's focus state, said explicitly. A custom control gets
+    // the browser's 1px ring otherwise, so the report carried two focus
+    // languages: yellow on every `.govuk-button`, a thin grey outline on all
+    // twenty-two of these.
+    &:focus-visible {
+      outline: 3px solid govuk.govuk-colour("yellow");
+      outline-offset: 0;
+    }
 
     &[aria-pressed="true"] { color: govuk.govuk-colour("black"); font-weight: 700; }
   }
 
   &__bar { display: flex; height: 16px; border: 1px solid govuk.govuk-colour("black"); }
   &__seg { display: block; min-width: 3px; }
-  &__n { @include govuk.govuk-font($size: 16); color: govuk.govuk-colour("dark-grey"); white-space: nowrap; }
+  &__n { @include govuk.govuk-font($size: 16); color: govuk.govuk-colour("black", $variant: "tint-25"); white-space: nowrap; }
 }
 
 // The weighting control.
@@ -349,7 +410,7 @@
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: govuk.govuk-spacing(4) govuk.govuk-spacing(6);
-  border: 1px solid govuk.govuk-colour("mid-grey");
+  border: 1px solid govuk.govuk-colour("black", $variant: "tint-80");
   padding: govuk.govuk-spacing(4);
   margin-bottom: govuk.govuk-spacing(4);
 
@@ -377,7 +438,7 @@
   margin: 0 0 govuk.govuk-spacing(5);
 
   > div { border-top: 2px solid govuk.govuk-colour("black"); padding-top: govuk.govuk-spacing(2); }
-  dt { @include govuk.govuk-font($size: 16); color: govuk.govuk-colour("dark-grey"); }
+  dt { @include govuk.govuk-font($size: 16); color: govuk.govuk-colour("black", $variant: "tint-25"); }
   dd { margin: 0; @include govuk.govuk-font($size: 36, $weight: bold); font-variant-numeric: tabular-nums; }
 }
 
@@ -410,7 +471,7 @@
       width: 1px;
       height: 1em;
       margin-right: govuk.govuk-spacing(3);
-      background: govuk.govuk-colour("mid-grey");
+      background: govuk.govuk-colour("black", $variant: "tint-80");
       vertical-align: -0.15em;
     }
   }
@@ -437,11 +498,11 @@
   // warning box above the conclusion on every single assessment.
   &__caveat {
     @include govuk.govuk-font($size: 16);
-    color: govuk.govuk-colour("dark-grey");
-    border-left: 4px solid govuk.govuk-colour("mid-grey");
+    color: govuk.govuk-colour("black", $variant: "tint-25");
+    border-left: 4px solid govuk.govuk-colour("black", $variant: "tint-80");
     padding-left: govuk.govuk-spacing(3);
     margin: 0;
-    max-width: 52em;
+    max-width: $prt-measure;
   }
 }
 
@@ -485,7 +546,11 @@
   &--limited { border-top-color: var(--band-limited); }
   &--good { border-top-color: govuk.govuk-colour("green"); }
 
+  // THE FIGURE IS DRAWN FIRST AND WRITTEN SECOND. `Metrics` emits the `<dt>`
+  // before the `<dd>` because that is the only valid order inside a `dl`; the
+  // card still reads number-then-label, which is the whole shape of it.
   &__value {
+    order: -1;
     @include govuk.govuk-font($size: 36, $weight: bold);
     margin: 0;
     font-variant-numeric: tabular-nums;
@@ -494,14 +559,14 @@
 
   &__label {
     @include govuk.govuk-font($size: 16);
-    color: govuk.govuk-colour("dark-grey");
+    color: govuk.govuk-colour("black", $variant: "tint-25");
     font-weight: 400;
   }
 
   &__note {
     @include govuk.govuk-font($size: 16);
     margin: 0;
-    color: govuk.govuk-colour("dark-grey");
+    color: govuk.govuk-colour("black", $variant: "tint-25");
   }
 }
 
@@ -526,11 +591,29 @@
     cursor: pointer;
     font-family: inherit;
     position: relative;
-    min-width: 12px;
+    // 24px, WCAG 2.2's floor for a target. It was 12, and the segments abut with
+    // no spacing, so the size exception cannot apply: at 320px the "Limited"
+    // band (2 plays of 47) rendered 12.3px wide against a 44px height, and axe
+    // reports it `serious` the moment anything asks at that width. The three
+    // wider bands absorb the difference — at most 36px of proportional accuracy
+    // across four bands on a 288px bar — and the exact count is printed in the
+    // key underneath either way.
+    min-width: 24px;
     -webkit-appearance: none;
     appearance: none;
 
     &:last-child { border-right: 0; }
+
+    // INSIDE THE BORDER BOX, because the bar clips. `.prt-stack__bar` is
+    // `overflow: hidden` and each segment's border box is exactly the bar's
+    // padding box, so a ring drawn outside is cut away entirely — which left
+    // focus looking like a thinner copy of the black `.is-selected` ring. A
+    // negative offset draws it inside, where nothing can clip it.
+    &:focus-visible {
+      outline: 3px solid govuk.govuk-colour("yellow");
+      outline-offset: -3px;
+      z-index: 1;
+    }
 
     &.is-selected::after {
       content: "";
@@ -595,7 +678,7 @@
   > h2 {
     margin-bottom: govuk.govuk-spacing(3);
     padding-bottom: govuk.govuk-spacing(2);
-    border-bottom: 1px solid govuk.govuk-colour("mid-grey");
+    border-bottom: 1px solid govuk.govuk-colour("black", $variant: "tint-80");
   }
 }
 
@@ -634,7 +717,7 @@
     @include govuk.govuk-font($size: 16, $weight: bold);
     text-transform: uppercase;
     letter-spacing: 0.08em;
-    color: govuk.govuk-colour("dark-grey");
+    color: govuk.govuk-colour("black", $variant: "tint-25");
     margin: 0 0 govuk.govuk-spacing(2);
   }
 
@@ -643,7 +726,7 @@
   &__standfirst {
     @include govuk.govuk-font($size: 27);
     margin: 0 0 govuk.govuk-spacing(3);
-    max-width: 40em;
+    max-width: $prt-measure;
     text-wrap: pretty;
   }
 
@@ -676,9 +759,19 @@
     // the bottom of it, both level with their neighbours.
     display: grid;
     grid-template-rows: auto 1fr auto;
+    // A SHUT CARD DOES NOT STRETCH TO AN OPENED NEIGHBOUR.
+    //
+    // Grid items stretch by default, so opening one card grew its row from 285px
+    // to 424px and dragged its two row-mates with it — while their text stayed at
+    // nine clamped lines, leaving a 139px void inside each card and a 149px gap
+    // between the last line and the control that `align-self: end` pins to the
+    // bottom. The clamp is a line count and cannot be made into a fit, so the
+    // honest answer is to let the shut cards keep their own height: the slack
+    // then falls outside the hairline, where it reads as page whitespace.
+    align-self: start;
     // A hairline rather than a box: this is a column of a page, not a card on a
     // dashboard.
-    border-top: 1px solid govuk.govuk-colour("mid-grey");
+    border-top: 1px solid govuk.govuk-colour("black", $variant: "tint-80");
     padding-top: govuk.govuk-spacing(2);
     margin-bottom: 0;
   }
@@ -753,12 +846,12 @@
   grid-template-columns: 1fr auto;
   gap: govuk.govuk-spacing(2) govuk.govuk-spacing(4);
   align-items: start;
-  background: govuk.govuk-colour("light-grey");
+  background: govuk.govuk-colour("black", $variant: "tint-95");
   padding: govuk.govuk-spacing(2) govuk.govuk-spacing(3);
   // THE BAND IS THE EDGE. The one place a colour can carry magnitude without
   // competing with the text — and it is doubled by the word, the order and the
   // figure, so no reading depends on it.
-  border-left: 6px solid govuk.govuk-colour("mid-grey");
+  border-left: 6px solid govuk.govuk-colour("black", $variant: "tint-80");
 
   &--severe { border-left-color: var(--band-severe); }
   &--significant { border-left-color: var(--band-significant); }
@@ -767,7 +860,7 @@
 
   &__rank {
     @include govuk.govuk-font($size: 16, $weight: bold);
-    color: govuk.govuk-colour("dark-grey");
+    color: govuk.govuk-colour("black", $variant: "tint-25");
     font-variant-numeric: tabular-nums;
     grid-row: 1 / span 2;
     align-self: center;
@@ -786,7 +879,7 @@
   // question a reader asks, not a parenthesis on the first.
   &__who {
     @include govuk.govuk-font($size: 16);
-    color: govuk.govuk-colour("dark-grey");
+    color: govuk.govuk-colour("black", $variant: "tint-25");
     margin: 2px 0 0;
   }
 
@@ -805,7 +898,7 @@
   &__yours {
     @include govuk.govuk-font($size: 16);
     font-variant-numeric: tabular-nums;
-    color: govuk.govuk-colour("dark-grey");
+    color: govuk.govuk-colour("black", $variant: "tint-25");
   }
 
   &__yours { font-weight: 700; color: govuk.govuk-colour("black"); }
@@ -850,7 +943,7 @@
 }
 
 .prt-gap {
-  border-top: 1px solid govuk.govuk-colour("mid-grey");
+  border-top: 1px solid govuk.govuk-colour("black", $variant: "tint-80");
   padding: govuk.govuk-spacing(2) 0;
 
   &__lead {
@@ -869,8 +962,8 @@
   font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
   white-space: pre-wrap;
   word-break: break-word;
-  background: govuk.govuk-colour("light-grey");
-  border: 1px solid govuk.govuk-colour("mid-grey");
+  background: govuk.govuk-colour("black", $variant: "tint-95");
+  border: 1px solid govuk.govuk-colour("black", $variant: "tint-80");
   padding: govuk.govuk-spacing(2);
   margin: 0 0 govuk.govuk-spacing(2);
   max-height: 16rem;
@@ -897,7 +990,7 @@
   display: grid;
   grid-template-columns: auto minmax(0, 1fr);
   gap: govuk.govuk-spacing(1) govuk.govuk-spacing(3);
-  border-top: 1px solid govuk.govuk-colour("mid-grey");
+  border-top: 1px solid govuk.govuk-colour("black", $variant: "tint-80");
   padding-top: govuk.govuk-spacing(2);
 
   // The number is drawn, not listed: `govuk-list--number` puts it in the marker
@@ -905,7 +998,7 @@
   &::before {
     content: counter(rec);
     @include govuk.govuk-font($size: 24, $weight: bold);
-    color: govuk.govuk-colour("dark-grey");
+    color: govuk.govuk-colour("black", $variant: "tint-25");
     font-variant-numeric: tabular-nums;
     grid-row: 1 / span 3;
     min-width: 2ch;
@@ -947,7 +1040,7 @@
     background: govuk.govuk-colour("white");
     // The framework draws the panel's top border; sticking the list over it
     // leaves a 1px seam as the panel passes beneath.
-    box-shadow: 0 1px 0 govuk.govuk-colour("mid-grey");
+    box-shadow: 0 1px 0 govuk.govuk-colour("black", $variant: "tint-80");
   }
 }
 
@@ -1015,7 +1108,55 @@
   .prt-rec,
   .prt-writeup__col { break-inside: avoid; }
 
-  a[href^="http"]::after { content: " (" attr(href) ")"; font-size: 0.8em; }
+  /*
+   * NO URL IS STAMPED INTO AN INTERNAL LINK.
+   *
+   * govuk-frontend's print layer emits `content: " (" attr(href) ")"` for
+   * `[href^="/"]` as well as for `http`, which is right on GOV.UK where a
+   * root-relative path is a readable URL. Every artefact link here is
+   * `/assessments/<uuid>/artefacts/<id>`, so the printed report carried 109 of
+   * them: a recommendation read "Create an implementation and accountability
+   * register (/assessments/36ebca37-7369-4a40-a23c- / 7fceb4d5cc2e/artefacts/
+   * s12_main_recommendation_001)", broken across two lines mid-UUID, between the
+   * heading and its own body.
+   *
+   * BOTH SELECTORS, because the framework's rule is a list and one arm of it is
+   * `[href^="/"].govuk-link:after` — a class, so (0,2,1), which beats a bare
+   * `a[href^="/"]::after` at (0,1,1) whatever the source order. Every artefact
+   * link carries `govuk-link`, so the one-selector version of this fix changed
+   * nothing at all and measured as still stamping the URL.
+   *
+   * The `http` rule that used to be here was a duplicate of one the framework
+   * already emits, and could never match a root-relative href anyway.
+   */
+  a[href^="/"]::after,
+  a[href^="/"].govuk-link::after { content: none; }
+
+  /*
+   * A WIDE TABLE FOLDS ON PAPER RATHER THAN SCROLLING OFF IT.
+   *
+   * `.prt-scroll` is the right answer on screen and the wrong one on a sheet:
+   * there is no scrollbar, so `overflow-x: auto` simply clips. Measured in print
+   * media at A4, "Body-to-body relationships, busiest pair first" had 616px of
+   * page and 843px of table — better than a quarter of it gone off the right
+   * edge, with nothing on the page saying so.
+   *
+   * `table-layout: fixed` is the declaration that does the work. Letting the
+   * overflow show, or shrinking the type, only moves the clip from the container
+   * to the page box; fixed layout is what makes the columns divide the width
+   * they have instead of sizing to their content.
+   */
+  .prt-scroll {
+    overflow: visible;
+    padding-bottom: 0;
+  }
+
+  .prt-scroll table {
+    table-layout: fixed;
+    width: 100%;
+    font-size: 0.85em;
+    word-break: break-word;
+  }
 }
 
 // A figure and the length that figure is. An exposure column running 0.77 down
@@ -1030,13 +1171,13 @@
     flex: 1 1 auto;
     min-width: 2rem;
     height: 6px;
-    background: govuk.govuk-colour("light-grey");
+    background: govuk.govuk-colour("black", $variant: "tint-95");
   }
 
   &__fill {
     display: block;
     height: 100%;
-    background: govuk.govuk-colour("dark-grey");
+    background: govuk.govuk-colour("black", $variant: "tint-25");
   }
 
   &__value {
@@ -1087,7 +1228,7 @@
   flex-wrap: wrap;
   align-items: center;
   gap: govuk.govuk-spacing(1) govuk.govuk-spacing(4);
-  color: govuk.govuk-colour("dark-grey");
+  color: govuk.govuk-colour("black", $variant: "tint-25");
   margin: 0 0 govuk.govuk-spacing(5);
 
   &__item { display: flex; align-items: center; gap: govuk.govuk-spacing(1); }
@@ -1099,9 +1240,9 @@
 // same weight whichever word it is.
 .prt-legality {
   @include govuk.govuk-font($size: 16);
-  border: 1px solid govuk.govuk-colour("mid-grey");
+  border: 1px solid govuk.govuk-colour("black", $variant: "tint-80");
   padding: 0 govuk.govuk-spacing(1);
-  color: govuk.govuk-colour("dark-grey");
+  color: govuk.govuk-colour("black", $variant: "tint-25");
   white-space: nowrap;
 }
 
@@ -1127,7 +1268,7 @@
   // statement, read once, at the top of a page about it.
   &__lead {
     @include govuk.govuk-font($size: 24);
-    max-width: 44em;
+    max-width: $prt-measure;
     text-wrap: pretty;
     margin: govuk.govuk-spacing(3) 0 govuk.govuk-spacing(4);
   }
@@ -1148,7 +1289,7 @@
 
   &__field {
     h3 { margin-bottom: govuk.govuk-spacing(1); }
-    p { max-width: 44em; margin: 0; }
+    p { max-width: $prt-measure; margin: 0; }
   }
 }
 
@@ -1176,7 +1317,7 @@
 
   &__arrow {
     @include govuk.govuk-font($size: 24);
-    color: govuk.govuk-colour("dark-grey");
+    color: govuk.govuk-colour("black", $variant: "tint-25");
     text-align: center;
 
     @include govuk.govuk-media-query($until: desktop) {
@@ -1199,9 +1340,15 @@
     gap: govuk.govuk-spacing(1);
   }
 
+  // A BOX HERE IS PART OF THE DIAGRAM, not a separator, so it takes a tone that
+  // can be seen. `tint-80` is #cecece — 1.57:1 on white — which is right for the
+  // section rules and the card hairlines and wrong for the only edge these boxes
+  // have: they ARE the conditions and the consequences of a play, drawn white on
+  // a white page. `tint-50` is #858686, 3.65:1 on white and 3.29:1 on the
+  // light-grey cards, which is the 3:1 a graphical object is meant to carry.
   &__item {
     @include govuk.govuk-font($size: 16);
-    border: 1px solid govuk.govuk-colour("mid-grey");
+    border: 1px solid govuk.govuk-colour("black", $variant: "tint-50");
     border-left-width: 4px;
     padding: govuk.govuk-spacing(1) govuk.govuk-spacing(2);
     background: govuk.govuk-colour("white");
@@ -1209,10 +1356,10 @@
 
   // The subject box, banded like the play it is.
   &__card {
-    border: 1px solid govuk.govuk-colour("mid-grey");
-    border-left: 6px solid govuk.govuk-colour("mid-grey");
+    border: 1px solid govuk.govuk-colour("black", $variant: "tint-80");
+    border-left: 6px solid govuk.govuk-colour("black", $variant: "tint-80");
     padding: govuk.govuk-spacing(2) govuk.govuk-spacing(3);
-    background: govuk.govuk-colour("light-grey");
+    background: govuk.govuk-colour("black", $variant: "tint-95");
 
     &--severe { border-left-color: var(--band-severe); }
     &--significant { border-left-color: var(--band-significant); }
@@ -1243,7 +1390,7 @@
     border-left: 4px solid govuk.govuk-colour("green");
     padding-left: govuk.govuk-spacing(3);
 
-    p { max-width: 44em; margin: 0; }
+    p { max-width: $prt-measure; margin: 0; }
   }
 }
 
@@ -1289,11 +1436,68 @@
   &__subject {
     display: block;
     @include govuk.govuk-font($size: 16);
-    border: 2px solid govuk.govuk-colour("dark-grey");
+    border: 2px solid govuk.govuk-colour("black", $variant: "tint-25");
     padding: govuk.govuk-spacing(1) govuk.govuk-spacing(2);
     background: govuk.govuk-colour("white");
     // A long body name wraps rather than pushing the grid wider.
     overflow-wrap: anywhere;
+  }
+
+  /*
+   * THE WHOLE BOX IS THE LINK, because the caption says it is.
+   *
+   * "Every box opens that entity's own page" sat under a `<span>` containing a
+   * plain inline anchor: measured on the live drill, the anchor was 18% of the
+   * box on the commonest map and `elementFromPoint` on the padding returned the
+   * span, with `cursor: auto` over the rest. The anchor is made to fill its
+   * container by pulling the padding onto it, so there is one target and it is
+   * the thing that was drawn.
+   *
+   * Hover and focus are here for the same reason: a card that does nothing when
+   * the pointer crosses it does not read as a target, and the framework's focus
+   * ring was landing on the inline text inside the border — in two fragments on a
+   * name that wrapped — rather than on the box.
+   */
+  &__node a,
+  &__subject a {
+    display: block;
+    margin: -#{govuk.govuk-spacing(1)} -#{govuk.govuk-spacing(2)};
+    padding: govuk.govuk-spacing(1) govuk.govuk-spacing(2);
+  }
+
+  &__node:has(a):hover,
+  &__subject:has(a):hover {
+    background: govuk.govuk-colour("black", $variant: "tint-95");
+  }
+
+  &__node:has(a:focus-visible),
+  &__subject:has(a:focus-visible) {
+    outline: 3px solid govuk.govuk-colour("yellow");
+    outline-offset: 0;
+    box-shadow: 0 4px govuk.govuk-colour("black");
+  }
+
+  // The key, in the figcaption: which colour is a body and which is machinery.
+  &__key {
+    display: inline-flex;
+    flex-wrap: wrap;
+    gap: govuk.govuk-spacing(1) govuk.govuk-spacing(3);
+    margin-right: govuk.govuk-spacing(3);
+  }
+
+  &__keyitem {
+    display: inline-flex;
+    align-items: center;
+    gap: govuk.govuk-spacing(1);
+  }
+
+  &__swatch {
+    display: inline-block;
+    width: 1rem;
+    height: 0.75rem;
+    border: 2px solid govuk.govuk-colour("black", $variant: "tint-25");
+    background: govuk.govuk-colour("white");
+    flex: 0 0 auto;
   }
 
   &__subject {
@@ -1322,7 +1526,7 @@
       left: 0;
       right: 0;
       top: 50%;
-      border-top: 1px solid govuk.govuk-colour("dark-grey");
+      border-top: 1px solid govuk.govuk-colour("black", $variant: "tint-25");
     }
 
     // The arrowhead, at the end the relationship runs towards — which in both
@@ -1334,7 +1538,7 @@
       right: 0;
       top: 50%;
       transform: translateY(-50%);
-      border-left: 6px solid govuk.govuk-colour("dark-grey");
+      border-left: 6px solid govuk.govuk-colour("black", $variant: "tint-25");
       border-top: 4px solid transparent;
       border-bottom: 4px solid transparent;
     }
@@ -1349,7 +1553,7 @@
     @include govuk.govuk-font($size: 16);
     line-height: 1.2;
     text-align: center;
-    color: govuk.govuk-colour("dark-grey");
+    color: govuk.govuk-colour("black", $variant: "tint-25");
     background: govuk.govuk-colour("white");
     padding: 0 govuk.govuk-spacing(1);
     max-width: 100%;
@@ -1368,12 +1572,12 @@
   margin-bottom: govuk.govuk-spacing(5);
 
   &__rung {
-    border-left: 4px solid govuk.govuk-colour("mid-grey");
+    border-left: 4px solid govuk.govuk-colour("black", $variant: "tint-80");
     padding-left: govuk.govuk-spacing(3);
   }
 
   &__head { margin-bottom: 2px; }
-  &__gloss { margin: 0 0 govuk.govuk-spacing(2); max-width: 52em; }
+  &__gloss { margin: 0 0 govuk.govuk-spacing(2); max-width: $prt-measure; }
 }
 
 // A quoted passage and its attribution.
@@ -1389,9 +1593,9 @@
 // the clauses the assessment itself quoted out of it — not a keyword search.
 .prt-quoted {
   @include govuk.govuk-font($size: 16);
-  border-left: 4px solid govuk.govuk-colour("mid-grey");
+  border-left: 4px solid govuk.govuk-colour("black", $variant: "tint-80");
   padding: govuk.govuk-spacing(2) govuk.govuk-spacing(3);
-  background: govuk.govuk-colour("light-grey");
+  background: govuk.govuk-colour("black", $variant: "tint-95");
   white-space: pre-wrap;
   max-height: 28rem;
   overflow: auto;
@@ -1403,6 +1607,14 @@
   &:focus-visible {
     outline: 3px solid govuk.govuk-colour("yellow");
     outline-offset: -3px;
+  }
+
+  // In the pack, a passage is the document rather than a citation beside one:
+  // there is nothing to scroll past it to, and clipping it would put the paper
+  // back out of reach of Ctrl-F, which is the whole reason it is rendered there.
+  &--full {
+    max-height: none;
+    overflow: visible;
   }
 
   &__key {

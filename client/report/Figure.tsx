@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { BAR_HEIGHT, bars, barsHeight } from '$lib/relationships';
 import { cx } from '../govuk';
 
@@ -22,8 +22,40 @@ import { cx } from '../govuk';
  * looking at. GOV.UK has no toggle component, so the state is carried by the
  * two button variants it does have — the current view is the solid one.
  */
+/**
+ * The framework's breakpoint, as `Tabs` uses it. Below this there is no room for
+ * a drawing that was laid out for a page.
+ */
+const TABLET = 641;
+
 export function Figure({ label, diagram, table }: { label: string; diagram: ReactNode; table: ReactNode }) {
+  /*
+   * A PHONE MEETS THE TABLE, A PAGE MEETS THE DIAGRAM.
+   *
+   * SVG text scales with the viewBox and not with the reader: `<text
+   * fontSize="15">` inside a 960-unit box is 16px when the drawing renders at
+   * 918px and about 7px when it is pinned to its 460px floor on a 320px screen.
+   * Measured on the live report at 320: all seven bar labels — "101 95% Bodies →
+   * Machinery" and the rest — came out in an 8px box. There is no CSS fix, which
+   * is the part that matters: a `font-size` on SVG text is still resolved in user
+   * units, and `vector-effect: non-scaling-size` is unimplemented everywhere.
+   *
+   * So the default changes rather than the type. The toggle is untouched and
+   * either view is one press away, which is the whole argument of this component
+   * — "THE TABLE IS NOT A FALLBACK" — and `ExposurePlot` already says the table
+   * is the more capable of the two anyway.
+   */
   const [view, setView] = useState<'diagram' | 'table'>('diagram');
+  useEffect(() => {
+    const query = window.matchMedia(`(min-width: ${TABLET}px)`);
+    const apply = () => setView(query.matches ? 'diagram' : 'table');
+    apply();
+    // Only on the way past the breakpoint: a reader who has pressed Table on a
+    // wide screen must not be put back on the diagram by a resize.
+    query.addEventListener('change', apply);
+    return () => query.removeEventListener('change', apply);
+  }, []);
+
   return (
     <>
       <div className="govuk-button-group govuk-!-margin-bottom-2">

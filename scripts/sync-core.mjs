@@ -322,9 +322,26 @@ export const WITHHELD_KINDS = ['passage', 'cross_policy', 'persona_link'] as con
   // Transport. So the pack carries NO font files at all, which is both correct
   // and the same promise `scripts/a11y.mjs` enforces on the web build.
   'src/lib/policy-analysis/server/bundle.ts': (s) => {
-    const from = s.match(/const FACES: \{ file: string; family: string; weight: string \}\[\] = \[[\s\S]*?\n\];/);
+    /*
+     * AND THE README DOES NOT PROMISE A DRILL-DOWN.
+     *
+     * "the same grids, drill-downs and stress test as the live page" is simply
+     * false of a pack: `OfflineApp` passes no `linkTo`, so every artefact name
+     * renders as plain text — deliberately, and its own comment says so. The pack
+     * does now carry the paper itself as a readable section, which is the thing a
+     * reader with no network cannot get any other way, so the sentence says that
+     * instead of naming a feature that is not there.
+     */
+    let out = s.replace(
+      'the same grids, drill-downs and stress test as the live page.',
+      `the same grids and stress test as the live page, and the policy document
+  itself at the end, so the report can be checked against its source.`
+    );
+    if (out === s) throw new Error('bundle.ts: the README blurb moved');
+
+    const from = out.match(/const FACES: \{ file: string; family: string; weight: string \}\[\] = \[[\s\S]*?\n\];/);
     if (!from) throw new Error('bundle.ts: the FACES list moved');
-    return s.replace(
+    return out.replace(
       from[0],
       `// DIVERGENCE: no embedded faces. This build sets text in the stack GOV.UK
 // itself specifies off GOV.UK — Helvetica Neue and Arial — which every reader

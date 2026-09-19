@@ -67,18 +67,66 @@ export function Home() {
         {rows?.length === 0 ? (
           <p className="govuk-body">Nothing assessed yet. Start with a paper you already know well — it is the fastest way to judge whether the thing is any good.</p>
         ) : null}
-        {rows?.length ? (
-          <Table
-            columns={[{ header: 'Paper' }, { header: 'Area' }, { header: 'Started' }, { header: 'Status' }]}
-            rows={rows.map((row) => [
-              <Link key="t" className="govuk-link" to={`/assessments/${row.id}`}>{row.title}</Link>,
-              row.policyArea ?? row.jurisdiction ?? '—',
-              new Date(row.createdAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }),
-              <Tag key="s" colour={statusColour(row.status) as TagColour}>{statusLabel(row.status)}</Tag>,
-            ])}
-          />
-        ) : null}
+        {rows?.length ? <Assessments rows={rows} /> : null}
       </div>
     </div>
+  );
+}
+
+/**
+ * THE COLUMN THAT ACTUALLY DISCRIMINATES.
+ *
+ * Paper / Area / Started / Status, on a real install, is sixteen rows reading
+ * "Education | Education | 19 Sep 2026 | <tag>": three of the four columns
+ * constant down the whole table, because they are sixteen runs of one paper on
+ * one morning. The 2h21m assessment holding the entire exploitation playbook is
+ * visually identical to fourteen stubs that lived a few minutes.
+ *
+ * "Ran for" is `updatedAt - createdAt`, which separates them at a glance. The
+ * time is shown as well as the date for the same reason the date alone failed.
+ * And the abandoned runs fold away, so the first screen is assessments: a
+ * cancelled run is a thing that happened, not a thing to read.
+ */
+function Assessments({ rows }: { rows: AnalysisRow[] }) {
+  const [showAll, setShowAll] = useState(false);
+  const spent = (row: AnalysisRow) => {
+    const ms = new Date(row.updatedAt).getTime() - new Date(row.createdAt).getTime();
+    if (!Number.isFinite(ms) || ms < 0) return '—';
+    const minutes = Math.round(ms / 60000);
+    if (minutes < 1) return 'under a minute';
+    if (minutes < 90) return `${minutes} min`;
+    return `${Math.floor(minutes / 60)}h ${String(minutes % 60).padStart(2, '0')}m`;
+  };
+  const when = (iso: string) => new Date(iso).toLocaleString('en-GB', {
+    day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit',
+  });
+  const table = (list: AnalysisRow[]) => (
+    <Table
+      columns={[{ header: 'Paper' }, { header: 'Area' }, { header: 'Started' }, { header: 'Ran for' }, { header: 'Status' }]}
+      rows={list.map((row) => [
+        <Link key="t" className="govuk-link" to={`/assessments/${row.id}`}>{row.title}</Link>,
+        row.policyArea ?? row.jurisdiction ?? '—',
+        when(row.createdAt),
+        spent(row),
+        <Tag key="s" colour={statusColour(row.status) as TagColour}>{statusLabel(row.status)}</Tag>,
+      ])}
+    />
+  );
+
+  const abandoned = rows.filter((row) => row.status === 'cancelled');
+  const kept = rows.filter((row) => row.status !== 'cancelled');
+  if (!abandoned.length || showAll) return table(rows);
+
+  return (
+    <>
+      {kept.length ? table(kept) : (
+        <p className="govuk-body">Every assessment here was cancelled before it finished.</p>
+      )}
+      <p className="govuk-body">
+        <button type="button" className="prt-linkbutton" onClick={() => setShowAll(true)}>
+          Show {abandoned.length} cancelled {abandoned.length === 1 ? 'run' : 'runs'} as well
+        </button>
+      </p>
+    </>
   );
 }

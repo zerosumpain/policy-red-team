@@ -584,6 +584,15 @@ try {
     if (ready) await page.getByRole('heading', { name: ready }).waitFor({ timeout: 30000 });
     const wide = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
     if (wide > 0) failures.push(`${label}: at 320px the page scrolls ${wide}px sideways — a table needs <Table scroll>`);
+    /*
+     * AND AXE, AT THIS WIDTH. Every audit in this file runs at 1280×900, so the
+     * rules that only bite on a phone were never asked: `target-size` on the
+     * exposure bar's narrowest segment (12px of a 24px floor) and `list` on the
+     * tab strip, whose items keep `role="presentation"` after the component tears
+     * itself down. Both were sitting on the live report, both serious, and the
+     * gate was green because nobody measured at 320.
+     */
+    await audit(label + ' at 320px');
   }
 
   /*

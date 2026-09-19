@@ -1,3 +1,4 @@
+import { useMemo } from 'react';
 import { highlight, reflow } from '$lib/highlight';
 
 /**
@@ -31,8 +32,11 @@ export function Quoted({ text, quotes }: {
    * placed on the result, because a mark is an offset into whatever string it
    * was given and reflowing afterwards would move every one of them.
    */
-  const flowed = reflow(text);
-  const runs = highlight(flowed, quotes);
+  // MEMOISED, because a drill renders six of these and the report re-renders on
+  // every selection change. `highlight` is the page's one measurable piece of
+  // synchronous work — 50ms a drill on the real run before the normalisation was
+  // hoisted out of its inner loop.
+  const runs = useMemo(() => highlight(reflow(text), quotes), [text, quotes]);
   const marked = runs.filter((run) => run.mark).length;
 
   return (
@@ -43,7 +47,27 @@ export function Quoted({ text, quotes }: {
           {marked === 1 ? 'The marked clause is' : `The ${marked} marked clauses are`} what the
           assessment quoted from this passage.
         </p>
-      ) : null}
+      ) : (
+        /*
+         * AND THE SILENT CASE SAYS SO TOO.
+         *
+         * A passage with no marks rendered as a bare wall of text under a heading
+         * promising "everything above was built from these" — on one profile drill
+         * of the real run, one marked passage followed by four unexplained walls of
+         * 3,439, 3,808, 3,684 and 2,831 characters. It happens for two different
+         * reasons and the reader cannot tell them apart: either nothing in the
+         * chain recorded a quote from this passage at all, or what it recorded was
+         * under the 24-character floor `locate` refuses to match on, because
+         * "Skills England" appears forty times in a paper and marking all forty
+         * would be the highlighter claiming a relevance the data does not carry.
+         *
+         * The sentence is written about the outcome, which is true either way.
+         */
+        <p className="govuk-body-s prt-meta prt-quoted__key">
+          Nothing in this passage matched a quote the assessment stored. It is here because
+          something in the chain above cites it.
+        </p>
+      )}
       {/*
         * FOCUSABLE, BECAUSE IT SCROLLS. `.prt-quoted` caps at 28rem and scrolls,
         * and everything inside it is text, `<mark>` and `<span>` — nothing a

@@ -21,6 +21,14 @@ export interface AnalysisRow {
   title: string;
   status: string;
   createdAt: string;
+  /**
+   * When it last moved. With `createdAt` it is how long the run went on for,
+   * which is the one field that discriminates on the landing page: sixteen rows
+   * of the same paper started on the same morning are otherwise identical but for
+   * a status tag, and the 2h21m assessment holding 2,265 artefacts looks exactly
+   * like a stub that lived for ninety seconds.
+   */
+  updatedAt: string;
   completedAt: string | null;
   jurisdiction: string | null;
   policyArea: string | null;

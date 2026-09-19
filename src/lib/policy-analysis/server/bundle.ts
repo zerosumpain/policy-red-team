@@ -89,7 +89,8 @@ WHAT THIS IS
   read with no network of any kind. Open index.html in any modern browser — by
   double-clicking it, not by serving it — and you get the full dashboard: the
   verdict, the threat, what the policy rests on, and the assessment itself, with
-  the same grids, drill-downs and stress test as the live page.
+  the same grids and stress test as the live page, and the policy document
+  itself at the end, so the report can be checked against its source.
 
 WHAT IS IN THE PACK
   index.html    The dashboard. Everything it draws is inside this one file.

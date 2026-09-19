@@ -151,8 +151,8 @@ export async function handleApi(
      * straight out, so every request for the history list also shipped `owner`
      * and `context` — the free-text "anything the paper does not say" box the
      * submitter typed into — to anyone who asked for the landing page. The client
-     * has never been able to read either: `AnalysisRow` declares seven fields and
-     * TypeScript would refuse an eighth. So this is data leaving the box that
+     * has never been able to read either: `AnalysisRow` declares what the page
+     * renders and TypeScript would refuse anything else. So this is data leaving the box that
      * nothing wanted, which on a hostname with no authentication in front of it
      * is the whole of the exposure.
      */
@@ -161,6 +161,7 @@ export async function handleApi(
       title: row.title,
       status: row.status,
       createdAt: row.createdAt,
+      updatedAt: row.updatedAt,
       completedAt: row.completedAt,
       jurisdiction: row.jurisdiction,
       policyArea: row.policyArea,

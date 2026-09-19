@@ -9,7 +9,8 @@ import { leverage } from '$lib/policy-analysis/stress';
 import { stageFacts } from '$lib/policy-analysis/stage-facts';
 import type { Detail } from '../api';
 import { Details, InsetText, SummaryList, Table, Tabs } from '../govuk';
-import { mechanismIdsOf, narrowExcept, type Selection } from './selection';
+import { mechanismIdsOf, narrowExcept, parseSelection, selectionParam, type Selection } from './selection';
+import { readable } from './warnings';
 import { Bar, Metrics } from './Metrics';
 import { WriteUp } from './WriteUp';
 import { TestResult } from './TestResult';
@@ -100,11 +101,28 @@ interface Section {
  */
 const MOVE_ORDER: Move[] = ['verdict', 'causality', 'threats', 'actors', 'provenance', 'do'];
 
-function Contents({ sections }: { sections: Section[] }) {
+/**
+ * `id` IS A PARAMETER BECAUSE THIS RENDERS MORE THAN ONCE NOW.
+ *
+ * The pack has one of these at the top of one long document. The service renders
+ * one per panel — and every panel is in the DOM at once, `hidden` or not, so a
+ * hard-coded `id="contents"` would ship five elements with the same id on a page
+ * whose gate is axe-clean.
+ *
+ * The `< 3` guard stays deliberately: at two sections in Causality and one in
+ * Actors, a contents list is longer than the thing it indexes.
+ */
+function Contents({ sections, id = 'contents', of }: { sections: Section[]; id?: string; of?: string }) {
   if (sections.length < 3) return null;
   return (
-    <nav className="govuk-!-margin-bottom-6" aria-label="Contents">
-      <h2 className="govuk-heading-s" id="contents">Contents</h2>
+    /*
+     * NAMED BY WHAT IT INDEXES. Below the tablet breakpoint every panel is on the
+     * page at once, so five `<nav aria-label="Contents">` elements are five
+     * landmarks a screen-reader user cannot tell apart — axe's `landmark-unique`,
+     * which the walk caught at 320px the moment it started auditing there.
+     */
+    <nav className="govuk-!-margin-bottom-6" aria-label={of ? `Contents of ${of}` : 'Contents'}>
+      <h2 className="govuk-heading-s" id={id}>Contents</h2>
       <ol className="govuk-list govuk-list--number govuk-list--spaced">
         {sections.map((section) => (
           <li key={section.id}>
@@ -169,29 +187,64 @@ export function Report({ detail, offline, linkTo, onChanged }: {
   const [selection, setSelection] = useState<Selection>(null);
 
   /*
-   * THE URL CAN NAME A MOVE, because things in this app already link as though
-   * it could.
+   * THE URL IS WHERE YOU ARE IN THE REPORT.
    *
-   * The failed-run banner points at `#report-tab-provenance`; the tab strip, torn
-   * down on a phone, points at `#report-panel-<move>`. Which panel is open was
-   * React state and nothing read the hash, so every one of those links scrolled
-   * somewhere and opened nothing. Reading it here makes them all work, and makes
-   * a move linkable from outside the page — which is what somebody sending
-   * "look at Provenance on this one" wants.
+   * `move` and `selection` were plain component state, and the drill is a
+   * separate route — so reading Threats under a mechanism, following a play, and
+   * pressing Back returned the reader to Move 1 with the banner reset to
+   * "Showing everything". The URL was identical in every state, so a reload lost
+   * the same thing and nobody could send anyone "look at Threats under this
+   * mechanism".
    *
-   * Both spellings are accepted because both ids exist: `-tab-` is the control,
-   * `-panel-` is the section, and a reader pasting either means the same thing.
+   * THE HISTORY API DIRECTLY, NOT `useSearchParams`. This component also renders
+   * inside the offline pack, which is one `file://` document with no router in
+   * its bundle at all — that is why `linkTo` is a prop rather than an import.
+   * `history.replaceState` degrades to nothing there, and is guarded anyway.
+   *
+   * REPLACE, NOT PUSH. Four tab changes must not become four presses of Back
+   * between the reader and the page they came from; what Back is for here is
+   * leaving the report, and the entry it returns to carries whatever was last
+   * written into it.
+   *
+   * The hash is still honoured, and wins, because it is the more explicit
+   * gesture: `#report-tab-provenance` is what the failed-run banner points at and
+   * what the tab strip becomes on a phone.
    */
   useEffect(() => {
+    if (offline) return;
     const apply = () => {
-      const found = /^#report-(?:tab|panel)-([a-z]+)$/.exec(window.location.hash);
-      const named = found?.[1] as Move | undefined;
+      const params = new URLSearchParams(window.location.search);
+      const named = params.get('move') as Move | null;
       if (named && MOVE_ORDER.includes(named)) setMove(named);
+      setSelection(parseSelection(params.get('sel'), artefacts));
+
+      const hash = /^#report-(?:tab|panel)-([a-z]+)$/.exec(window.location.hash);
+      const fromHash = hash?.[1] as Move | undefined;
+      if (fromHash && MOVE_ORDER.includes(fromHash)) setMove(fromHash);
     };
     apply();
+    window.addEventListener('popstate', apply);
     window.addEventListener('hashchange', apply);
-    return () => window.removeEventListener('hashchange', apply);
-  }, []);
+    return () => {
+      window.removeEventListener('popstate', apply);
+      window.removeEventListener('hashchange', apply);
+    };
+  }, [offline, artefacts]);
+
+  useEffect(() => {
+    if (offline) return;
+    const params = new URLSearchParams(window.location.search);
+    // `verdict` is the default, so it is left out — a reader who has not chosen
+    // anything gets the URL they arrived on.
+    if (move === 'verdict') params.delete('move'); else params.set('move', move);
+    const sel = selectionParam(selection);
+    if (sel) params.set('sel', sel); else params.delete('sel');
+    const query = params.toString();
+    const next = `${window.location.pathname}${query ? `?${query}` : ''}${window.location.hash}`;
+    if (next !== `${window.location.pathname}${window.location.search}${window.location.hash}`) {
+      window.history.replaceState(window.history.state, '', next);
+    }
+  }, [move, selection, offline]);
   const mechanismIds = useMemo(() => mechanismIdsOf(artefacts), [artefacts]);
 
   const list = plays(artefacts);
@@ -405,8 +458,19 @@ export function Report({ detail, offline, linkTo, onChanged }: {
           {idleProfiled ? `${idleProfiled} further ${idleProfiled === 1 ? 'body is' : 'bodies are'} profiled but run no play in this assessment. ` : ''}
           {idleUnprofiled ? `${idleUnprofiled} ${idleUnprofiled === 1 ? 'was' : 'were'} named and never profiled. ` : ''}
           {board.length} candidate records stand for {namedAll} names — entity resolution keeps
-          candidates apart rather than merging them, which &ldquo;How they connect&rdquo; reports as
-          a finding.
+          candidates apart rather than merging them, which{' '}
+          {/*
+            A CROSS-MOVE MENTION IS A CONTROL, NOT PROSE. "How they connect" is a
+            section in the Causality panel: one click sideways, named in a
+            sentence, with nothing to click and no hint that it was anywhere at
+            all. A button rather than an anchor, because following it changes what
+            is on the page rather than going to a new one — and a bare `href`
+            would be a full reload of a single-page app.
+          */}
+          <button type="button" className="prt-linkbutton" onClick={() => goTo('causality', 'network')}>
+            How they connect
+          </button>{' '}
+          reports as a finding.
         </p>
       ) : null}
     </>
@@ -559,7 +623,9 @@ export function Report({ detail, offline, linkTo, onChanged }: {
     return { lead: text.slice(0, at).trim(), rest: text.slice(at).trim() };
   };
   const gapLine = ([text, count]: [string, number]) => {
-    const { lead, rest } = limitLead(text);
+    // `readable` repairs one ungrammatical template on its way to the page; see
+    // the note on it for why it is not repaired where it is written.
+    const { lead, rest } = limitLead(readable(text));
     return (
       <li key={text} className="prt-gap">
         <p className="prt-gap__lead">
@@ -708,6 +774,50 @@ export function Report({ detail, offline, linkTo, onChanged }: {
   </>);
 
   /*
+   * THE PAPER ITSELF, IN THE PACK, WHERE A READER CAN FIND IT.
+   *
+   * A pack carries every `passage` artefact — 264 KiB of the white paper's own
+   * wording on the real run — and rendered none of them: passages are drawn by
+   * the drill, and a pack has no drill. So they rode inside the JSON island, and
+   * Ctrl-F, which this file calls the pack's real interface, cannot see inside a
+   * script blob. The README promised "the policy document in full"; the payload's
+   * own header says "a report you cannot check against its source is half a
+   * report". Both were describing bytes rather than a page.
+   *
+   * SERVICE-SIDE THIS STAYS ABSENT, deliberately: there the drill renders a
+   * passage with the assessment's own quotes marked in it, which is a better
+   * reading of the same text than a wall of it, and the passages are one fetch
+   * away. The pack has neither.
+   *
+   * A shared pack has no passages at all — `shareableReport` withholds the
+   * document — so this renders nothing there and says nothing about it, because
+   * the handling note already does.
+   */
+  if (offline) {
+    const passages = artefacts.filter((a) => a.kind === 'passage');
+    if (passages.length) {
+      section('paper', 'The paper itself', 'provenance', (
+        <>
+          <p className="govuk-body">
+            Every passage the assessment read, in the order it appears in the document. This is
+            here so the report can be checked against its source with no network and nothing to
+            open — searching this page searches the paper.
+          </p>
+          {passages.map((passage) => (
+            <div key={passage.id} className="prt-source">
+              <p className="govuk-body-s prt-source__cite">
+                <strong>{passage.label}</strong>
+                {passage.page ? <span className="prt-meta"> · page {passage.page}</span> : null}
+              </p>
+              <div className="prt-quoted prt-quoted--full">{passage.statement}</div>
+            </div>
+          ))}
+        </>
+      ));
+    }
+  }
+
+  /*
    * THE OFFLINE PACK KEEPS THE CASCADE, and that is not a shortcut.
    *
    * The pack is one file opened from `file://` with every request blocked, and
@@ -786,9 +896,31 @@ export function Report({ detail, offline, linkTo, onChanged }: {
     );
   }
 
+  /**
+   * Open another move and land on a section inside it.
+   *
+   * The scroll waits two frames for the same reason `Tabs` does: the panel it is
+   * scrolling into has only just been rendered, and the browser clamps the scroll
+   * position after the document's height changes.
+   */
+  const goTo = (next: Move, anchor: string) => {
+    setMove(next);
+    requestAnimationFrame(() => requestAnimationFrame(() => {
+      document.getElementById(anchor)?.scrollIntoView({ block: 'start' });
+    }));
+  };
+
   const inMove = (move: Move) => sections.filter((entry) => entry.move === move);
   const panel = (move: Move) => (
     <>
+      {/*
+        WHAT IS IN THIS PANEL, AT THE TOP OF IT. The Verdict panel is 4,481px with
+        six headings, and "What it suggests" — the recommendations, the most
+        actionable thing in the report — sits 3,441px down the first view every
+        reader lands on, with nothing naming it. The component and every anchor
+        already existed; only the pack was getting them.
+      */}
+      <Contents sections={inMove(move)} id={`contents-${move}`} of={move} />
       {inMove(move).map((entry) => (entry.bare ? (
         <Fragment key={entry.id}>{entry.body}</Fragment>
       ) : (
@@ -826,25 +958,45 @@ export function Report({ detail, offline, linkTo, onChanged }: {
         label="Report sections"
         current={move}
         onSelect={(id) => setMove(id as Move)}
+        /*
+         * THE QUESTION EACH MOVE ANSWERS, ON THE SCREEN.
+         *
+         * The four questions are what the whole structure is for and they were
+         * written down twice — in the comment at the head of this file and in
+         * each lead's own prose — and rendered nowhere: scanning the live page
+         * for "what did it conclude", "why does it happen", "what could be done"
+         * and "who would do it" found none of them. So the spine read
+         * "Verdict / Causality / Threats / Actors", which are an analyst's words
+         * for four things a reader has not been told the shape of yet.
+         *
+         * The fifth entry also used to put a noun in the step slot and a sentence
+         * in the label slot, which broke the one cue that says the first four are
+         * an order. It is "Last" now, and it is a hint like the others.
+         */
         tabs={[
           {
             id: 'verdict', step: 'Move 1', label: 'Verdict',
+            hint: 'What did it conclude',
             panel: panel('verdict'),
           },
           {
             id: 'causality', step: 'Move 2', label: 'Causality',
+            hint: 'Why is any of it possible',
             panel: panel('causality'),
           },
           {
             id: 'threats', step: 'Move 3', label: 'Threats',
+            hint: 'What could be done to it',
             panel: panel('threats'),
           },
           {
             id: 'actors', step: 'Move 4', label: 'Actors',
+            hint: 'Who would do it',
             panel: panel('actors'),
           },
           {
-            id: 'provenance', step: 'Provenance', label: 'What was discarded',
+            id: 'provenance', step: 'Last', label: 'Provenance',
+            hint: 'What the run discarded',
             panel: panel('provenance'),
           },
         ]}

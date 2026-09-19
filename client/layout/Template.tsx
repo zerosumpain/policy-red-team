@@ -32,13 +32,25 @@ export const SERVICE_NAME = 'Policy Red Team';
  */
 let arrived = false;
 
-function useRouteChange() {
+function useRouteChange(transient: boolean) {
   const { pathname } = useLocation();
   useEffect(() => {
+    /*
+     * A LOADING PLACEHOLDER IS NOT AN ARRIVAL, and this is subtle enough to have
+     * shipped once already. Every page but the landing one is code-split, so a
+     * cold load renders `App`'s Suspense fallback first — and the fallback draws
+     * this same component. Its effect claimed `arrived`, so when the real page
+     * mounted a moment later the flag was already true and it was treated as a
+     * NAVIGATION: focus moved into `#main-content`, which has `tabindex="-1"`, so
+     * the first Tab on a freshly loaded page went to the first focusable element
+     * AFTER the main element — a footer link, past the skip link and past the
+     * whole page. Measured on /about, /new, /personas, /design and /accessibility.
+     */
+    if (transient) return;
     if (!arrived) { arrived = true; return; }
     window.scrollTo(0, 0);
     document.getElementById('main-content')?.focus({ preventScroll: true });
-  }, [pathname]);
+  }, [pathname, transient]);
 }
 
 /**
@@ -75,12 +87,19 @@ export function usePageTitle(title?: string) {
  *   skipping to the main content skips the "this is not a government service"
  *   notice rather than having to hear it on every page.
  */
-export function Template({ children, backLink, wide }: {
+export function Template({ children, backLink, wide, transient }: {
   children: ReactNode;
   backLink?: { href: string; text?: string };
   wide?: boolean;
+  /**
+   * This render is a placeholder for a page still loading, not the page.
+   *
+   * It suppresses the route-change behaviour, because a fallback that claims the
+   * document's one "arrival" makes the real page look like a navigation to it.
+   */
+  transient?: boolean;
 }) {
-  useRouteChange();
+  useRouteChange(!!transient);
   return (
     <>
       <a href="#main-content" className="govuk-skip-link" data-module="govuk-skip-link">

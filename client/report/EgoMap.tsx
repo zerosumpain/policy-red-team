@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react';
 import { relationWords } from '$lib/policy-analysis/matrix';
 import type { Edge, EntityNode } from '$lib/policy-analysis/network';
-import { kindColour } from '$lib/relationships';
+import { kindColour, kindLabel } from '$lib/relationships';
 import { Table } from '../govuk';
 import { Figure } from './Figure';
 
@@ -64,6 +64,16 @@ export function EgoMap({ node, incoming, outgoing, kindOf, linkFor }: {
   const shownIn = incoming.slice(0, DRAWN);
   const shownOut = outgoing.slice(0, DRAWN);
   const hidden = (incoming.length - shownIn.length) + (outgoing.length - shownOut.length);
+  /*
+   * The kinds this map draws, in the order they appear: the hub, then whatever
+   * its spokes are. `kindLabel` folds the raw kind into the same five slots
+   * `kindColour` does, so two kinds that share a colour share one key entry, and
+   * a map of one body and eleven mechanisms gets two entries rather than twelve.
+   */
+  const kinds = [...new Map(
+    [node.kind, ...shownIn.map((e) => kindOf(e.fromId)), ...shownOut.map((e) => kindOf(e.toId))]
+      .map((kind) => [kindLabel(kind), kind] as const),
+  ).values()];
 
   /*
    * FROM AND TO, not "this body" and "to this".
@@ -147,6 +157,27 @@ export function EgoMap({ node, incoming, outgoing, kindOf, linkFor }: {
             </div>
           </div>
           <figcaption className="govuk-body-s prt-meta">
+            {/*
+              THE KEY, NAMING ONLY THE KINDS THIS MAP ACTUALLY DRAWS.
+              The border colour is the only thing that says whether a box is a
+              body or a piece of machinery, and there was no key anywhere in the
+              app: the comment above says a reader "learns it once" from the
+              relationship section, and that section deliberately refuses the ramp
+              ("colour belongs where it carries something, which here is the ego
+              map"). It matters on a star graph — 101 of 106 edges run actor to
+              mechanism, so nearly every map is a hub of one colour with spokes of
+              another, and "Enhanced reception offer" does not say which it is.
+              `kindLabel` and `kindColour` both go through `kindSlot`, so the key
+              cannot drift from the boxes.
+            */}
+            <span className="prt-ego__key">
+              {kinds.map((kind) => (
+                <span key={kind} className="prt-ego__keyitem">
+                  <span className="prt-ego__swatch" style={{ borderColor: kindColour(kind) }} aria-hidden="true" />
+                  {kindLabel(kind)}
+                </span>
+              ))}
+            </span>
             Every box opens that entity&rsquo;s own page.
             {hidden ? ` ${hidden} more ${hidden === 1 ? 'relationship is' : 'relationships are'} in the table.` : ''}
             {' '}

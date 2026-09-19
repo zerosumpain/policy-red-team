@@ -866,7 +866,9 @@ function RecommendationSection({ artefact, all, plays: list, link, rankOf }: {
         distance on its own means nothing here, and each group states the rule it used.
       </p>
 
-      {links.plays.length ? tiers.map((tier) => {
+      {links.plays.length ? tiers.map((tier, _i, all) => {
+        // The first tier in `tiers` order — strongest first — that has members.
+        const strongest = all.find((t) => links.plays.some((p) => p.tier === t));
         /*
          * SORTED, BECAUSE THE TABLE SAYS IT IS. `linkRecommendation` walks the
          * artefacts in storage order and then sorts by tier only; `Array.sort` is
@@ -922,9 +924,19 @@ function RecommendationSection({ artefact, all, plays: list, link, rankOf }: {
             ) : null}
           </>
         );
-        // The named tier is a claim and opens; the other two are leads and do
-        // not get to be the first thing a reader meets.
-        return tier === 'named'
+        /*
+         * THE STRONGEST TIER THAT HAS ANYTHING IN IT OPENS.
+         *
+         * The rule was "named opens, the other two are leads and do not get to be
+         * the first thing a reader meets", which is right when there is a named
+         * tier. Four of the six recommendations on the real run have none — and
+         * there the rule shut everything: under "The plays it bears on — 28 of 47"
+         * the only element on the page was one closed toggle reading "Rests on the
+         * same assumption — 28". A section promising 28 plays and showing none
+         * reads as empty rather than as weak, which is the opposite of what the
+         * tiers are for.
+         */
+        return tier === strongest
           ? <div key={tier}>{body}</div>
           : <Details key={tier} summary={`${TIER_LABEL[tier]} — ${inTier.length}`}>{body}</Details>;
       }) : (

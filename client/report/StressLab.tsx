@@ -3,7 +3,7 @@ import type { Artefact } from '$lib/policy-analysis/contracts';
 import { stress } from '$lib/policy-analysis/stress';
 import type { leverage } from '$lib/policy-analysis/stress';
 import { byCause, reading, STANDING_COLOUR, STANDING_LABEL, type CauseGroup } from '$lib/stress-view';
-import { Details, InsetText, Tag, WarningText } from '../govuk';
+import { Details, Tag, WarningText } from '../govuk';
 import { Checkboxes } from '../govuk/Form';
 import type { ArtefactLink } from './Report';
 
@@ -49,7 +49,23 @@ export function StressLab({ artefacts, levers, linkTo }: {
   /** Drawn before the list asks to be opened, and after. Upstream's figures. */
   const RAIL = 9;
   const ALL = 24;
-  const offered = levers.slice(0, ALL);
+  /*
+   * THE CAP DOES NOT CUT THROUGH A TIE.
+   *
+   * `levers` is ordered by how much of the assessment rests on each assumption,
+   * and a flat slice at 24 landed in the middle of a seven-way tie on the real
+   * run: ranks 23 to 29 all have nine dependants, two were offered and five were
+   * not, separated by 0.032 on a product of three model judgements. A reader
+   * cannot see that boundary and there is nothing behind it — the compute is
+   * under a millisecond either way, and the cap is paying for height.
+   *
+   * So it runs on to the end of whatever group it lands in. Here that is 24 plus
+   * five; it cannot run away, because the tail of the distribution is assumptions
+   * with one dependant and the list is sorted.
+   */
+  const edge = levers[ALL - 1]?.dependants;
+  const past = levers.findIndex((lever, i) => i >= ALL && lever.dependants !== edge);
+  const offered = levers.slice(0, levers.length <= ALL ? levers.length : past === -1 ? levers.length : past);
 
   /*
    * A TICKED LEVER IS ALWAYS ON SCREEN.
@@ -60,7 +76,7 @@ export function StressLab({ artefacts, levers, linkTo }: {
    * removes the state rather than explaining it.
    */
   const failing = new Set(failed);
-  const head = offered.slice(0, allLevers ? ALL : RAIL);
+  const head = offered.slice(0, allLevers ? offered.length : RAIL);
   const shown = allLevers ? head : [...head, ...offered.slice(RAIL).filter((l) => failing.has(l.artefact.id))];
   const machinery = result.lost.filter((group) => !group.primary);
 
@@ -111,8 +127,8 @@ export function StressLab({ artefacts, levers, linkTo }: {
                had no route to the screen at all. The cap is upstream's and is
                deliberate; claiming it was everything was not. */
             hint={
-              levers.length > ALL
-                ? `${levers.length} assumptions have something resting on them. The figure beside each is how many, and the ${ALL} most rested on are offered here.`
+              levers.length > offered.length
+                ? `${levers.length} assumptions have something resting on them. The figure beside each is how many, and the ${offered.length} most rested on are offered here — the cut runs to the end of a tie rather than through the middle of one.`
                 : `The figure beside each is how many things rest on it, and they are ordered by it. Only assumptions something actually rests on are offered — ${levers.length} of them.`
             }
             values={failed}
@@ -150,26 +166,27 @@ export function StressLab({ artefacts, levers, linkTo }: {
         </div>
 
         <div className="govuk-grid-column-one-half">
-          {!failed.length ? (
-            <InsetText>
-              Nothing failed yet. Tick an assumption and this becomes a list of what the assessment
-              would lose — and, separately, of what a threat would lose with it.
-            </InsetText>
-          ) : (
-            <>
-              {/* TWO SENTENCES, because there are two directions and one figure
-                  cannot carry both. This used to print `counts.total`, which
-                  sums all five kinds including plays — so a lever that only
-                  took threats off the table reported them as conclusions that
-                  fell, which is the one place the tool could lie outright. */}
-              <p className="govuk-body-l" role="status">
-                {result.moved
+          {/*
+            ONE LIVE REGION, ALWAYS MOUNTED.
+            It used to be inside the `failed.length` branch, so the element did
+            not exist until the first lever was ticked and arrived already
+            populated — and a live region inserted and filled in the same frame
+            is not reliably announced by NVDA or JAWS. So the first pull, which
+            is the whole point of the panel, was silent, and every one after it
+            spoke. The region is here whatever the state; only its sentence
+            changes. `Feedback.tsx` records the other half of this mechanic.
+          */}
+          <p className="govuk-body-l" role="status">
+            {!failed.length
+              ? 'Nothing failed yet. Tick an assumption and this becomes a list of what the assessment would lose — and, separately, of what a threat would lose with it.'
+              : `${result.moved
                   ? `${result.moved} of ${result.population} conclusions and results lose their footing.`
-                  : `No conclusion loses its footing. All ${result.population} stand without ${failed.length === 1 ? 'that assumption' : 'those assumptions'}.`}
-                {result.disarmed.length
+                  : `No conclusion loses its footing. All ${result.population} stand without ${failed.length === 1 ? 'that assumption' : 'those assumptions'}.`}${result.disarmed.length
                   ? ` ${result.disarmed.length} of ${result.plays} ways to beat the policy are taken off the table.`
-                  : ''}
-              </p>
+                  : ''}`}
+          </p>
+          {!failed.length ? null : (
+            <>
               {result.unmovable ? (
                 <p className="govuk-body-s prt-meta">
                   The {result.unmovable} structural {result.unmovable === 1 ? 'check is' : 'checks are'} untouched

@@ -33,8 +33,17 @@ export type Tab = {
   id: string;
   /** "Verdict". The label a reader scans for. */
   label: string;
-  /** "Move 1", "Provenance". Printed above the label; omit for no step. */
+  /** "Move 1", "Last". Printed above the label; omit for no step. */
   step?: string;
+  /**
+   * The question this section answers, printed under the label.
+   *
+   * The second addition to the framework's Tabs, and for the same kind of reason
+   * as the step: "Causality" is what the move is called and not what it is for,
+   * and a reader arriving with a question cannot match it to a noun they have
+   * not been given a definition of.
+   */
+  hint?: string;
   panel: ReactNode;
 };
 
@@ -162,6 +171,7 @@ export function Tabs({ id, label, tabs, current, onSelect }: {
             <>
               {tab.step ? <span className="prt-tab__step">{tab.step}</span> : null}
               {tab.label}
+              {tab.hint ? <span className="prt-tab__hint">{tab.hint}</span> : null}
             </>
           );
           return (

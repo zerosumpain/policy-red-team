@@ -6,6 +6,7 @@ import { RunFindings } from './RunFindings';
 import { Button, ButtonGroup, NotificationBanner, Tag, TaskList, WarningText, type Task, type TagColour } from '../govuk';
 import { isFinished, isTerminal, statusColour, statusLabel } from '../status';
 import { Report } from '../report/Report';
+import { ProvenanceLead } from '../report/moves/ProvenanceLead';
 import { usePageTitle } from '../layout/Template';
 
 /**
@@ -51,17 +52,30 @@ export function Assessment() {
 
   useEffect(() => { void load('report'); }, [load]);
 
+  /*
+   * KEYED ON WHETHER IT IS RUNNING, NOT ON THE WHOLE `detail`.
+   *
+   * `load()` assigns a freshly parsed object, so the reference changed on every
+   * stage event and both effects below tore themselves down and rebuilt: one
+   * EventSource per stage rather than one per visit — nineteen connections held
+   * open through Cloudflare over an hours-long run — and a progress interval that
+   * was cleared, fired an extra immediate poll, and restarted eighteen times.
+   *
+   * `running` is a boolean, so it changes exactly once: when the run ends.
+   */
+  const running = detail ? !isTerminal(detail.analysis.status) : false;
+
   // Follow the run while it is going. The stream closes itself on `done`; this
   // only has to stop listening when the reader leaves.
   useEffect(() => {
-    if (!detail || isTerminal(detail.analysis.status)) return;
+    if (!running) return;
     /*
      * A STAGE BOUNDARY ASKS THE SMALL QUESTION. Eighteen of these fire over a
      * run and the page is drawing a stage list and an index of links; `done`
      * asks the big one, because that is the moment the report appears.
      */
     return watchRun(id, { stage: () => void load('progress'), done: () => void load('report'), error: setError });
-  }, [id, detail, load]);
+  }, [id, running, load]);
 
   /*
    * HOW MUCH LONGER, asked on a timer because nothing else will say.
@@ -77,7 +91,7 @@ export function Assessment() {
    * reader's battery to do it.
    */
   useEffect(() => {
-    if (!detail || isTerminal(detail.analysis.status)) return;
+    if (!running) return;
     let live = true;
     const ask = async () => {
       try {
@@ -91,7 +105,7 @@ export function Assessment() {
     void ask();
     const timer = setInterval(() => void ask(), 30_000);
     return () => { live = false; clearInterval(timer); };
-  }, [id, detail]);
+  }, [id, running]);
 
   async function act(action: 'cancel' | 'resume' | 'restate') {
     setBusy(true);
@@ -112,15 +126,25 @@ export function Assessment() {
   const done = stages.filter((s) => s.status === 'completed').length;
   /** The stage that actually stopped — read, not assumed to be the last one. */
   const failed = stages.find((s) => s.status === 'failed');
-  const running = !isTerminal(analysis.status);
   /** A run that stopped short still has a report; a run still going does not. */
   const showReport = isFinished(analysis.status) || analysis.status === 'failed' || analysis.status === 'cancelled';
 
+  /*
+   * THE TAG COUNTS THE GAPS, AND THE HINT SAYS IT IS A SAMPLE.
+   *
+   * A stage row showed one warning and no sign that there were others. On the
+   * real run stage 2 holds 60, stage 5 holds 53 and stage 11 holds 33 — 256 in
+   * total, 77 KiB of text — and a reader watching the run had no route to any of
+   * it, because the view that rolls them all up lives inside the report and the
+   * report is not rendered until the run is over.
+   */
   const tasks: Task[] = stages.map((stage) => ({
     title: stage.name,
-    hint: stage.error ?? (stage.warnings.length ? stage.warnings[0] : undefined),
+    hint: stage.error ?? (stage.warnings.length
+      ? `${stage.warnings[0]}${stage.warnings.length > 1 ? ` And ${stage.warnings.length - 1} more like it.` : ''}`
+      : undefined),
     status: stage.status === 'completed' && stage.warnings.length
-      ? { tag: { text: 'With gaps', colour: 'yellow' } }
+      ? { tag: { text: `${stage.warnings.length} ${stage.warnings.length === 1 ? 'gap' : 'gaps'}`, colour: 'yellow' } }
       : stage.status === 'completed' ? { tag: { text: 'Completed', colour: 'green' } }
       : stage.status === 'running' ? { tag: { text: 'Running', colour: 'blue' } }
       : stage.status === 'failed' ? { tag: { text: 'Failed', colour: 'red' } }
@@ -202,6 +226,16 @@ export function Assessment() {
             that had been stored for three of them.
           */}
           <RunFindings detail={detail} id={id} />
+          {/*
+            WHAT IT IS THROWING AWAY, WHILE IT IS THROWING IT AWAY.
+            `ProvenanceLead` is the view whose stated premise is that an
+            undercount is the serious direction — and it lived only inside the
+            report, which is not rendered until the run is terminal. So for the
+            whole of a several-hour run the one place the discards are counted
+            honestly was unreachable. It takes `stages` and nothing else, and
+            renders nothing at all until there is something parseable in them.
+          */}
+          <ProvenanceLead stages={stages} />
           {/* A control that would only 403 is not drawn. The landing page has
               made this argument since phase 4; the flag needed to make it here
               only arrived with the share panel. */}

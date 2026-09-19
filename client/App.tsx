@@ -1,18 +1,53 @@
+import { Suspense, lazy } from 'react';
 import { Route, Routes, useParams } from 'react-router';
 import { Template } from './layout/Template';
 import { Home } from './pages/Home';
-import { New } from './pages/New';
-import { Assessment } from './pages/Assessment';
-import { Drill } from './pages/Drill';
-import { Personas } from './pages/Personas';
-import { Admin } from './pages/Admin';
-import { Persona } from './pages/Persona';
-import { Gallery } from './pages/Gallery';
-import { Accessibility } from './pages/Accessibility';
-import { About } from './pages/About';
+
+/**
+ * EVERY PAGE BUT THE LANDING ONE IS SPLIT OFF.
+ *
+ * Importing them all eagerly put the whole app in the entry chunk, and the
+ * expensive passenger was not a page: `contracts.ts` imports zod for its eighty
+ * schemas, the client imports that same module for plain `as const` vocabularies
+ * — STAGES, ORIGINS, RELATIONS — and rollup cannot drop the schemas because they
+ * sit at module scope beside them. Attributed from the shipped source map, that
+ * is 91,380 bytes of the 558,912-byte bundle, 18 KB of it a JSON-Schema
+ * GENERATOR whose only caller runs in the pipeline and never reaches a browser.
+ *
+ * Nothing on the landing path touches it: `Home` does not, and `client/api.ts`
+ * imports the types with `import type`, which is erased. So splitting the routes
+ * takes zod, the drill, the gallery and the whole report tree — roughly 190 KB —
+ * off the first paint of `/`, and they load when a reader opens an assessment.
+ *
+ * The alternative is splitting `contracts.ts` itself, which would be better and
+ * costs more: it is a verbatim upstream copy, and so are the two lib modules in
+ * the client graph that import its values, so it is three declared divergences
+ * on the file the whole pipeline's contract lives in. Worth proposing upstream
+ * rather than only here.
+ */
+const New = lazy(() => import('./pages/New').then((m) => ({ default: m.New })));
+const Assessment = lazy(() => import('./pages/Assessment').then((m) => ({ default: m.Assessment })));
+const Drill = lazy(() => import('./pages/Drill').then((m) => ({ default: m.Drill })));
+const Personas = lazy(() => import('./pages/Personas').then((m) => ({ default: m.Personas })));
+const Admin = lazy(() => import('./pages/Admin').then((m) => ({ default: m.Admin })));
+const Persona = lazy(() => import('./pages/Persona').then((m) => ({ default: m.Persona })));
+const Gallery = lazy(() => import('./pages/Gallery').then((m) => ({ default: m.Gallery })));
+const Accessibility = lazy(() => import('./pages/Accessibility').then((m) => ({ default: m.Accessibility })));
+const About = lazy(() => import('./pages/About').then((m) => ({ default: m.About })));
 
 export function App() {
   return (
+    /*
+     * THE FALLBACK IS A HEADING, NOT A SPINNER — the same argument the drill's own
+     * loading state makes: a page with no `h1` while it loads is a page a screen
+     * reader cannot place, and "next heading" finds nothing.
+     */
+    <Suspense fallback={(
+      <Template transient>
+        <h1 className="govuk-heading-l">Loading</h1>
+        <p className="govuk-body">Fetching this page.</p>
+      </Template>
+    )}>
     <Routes>
       <Route path="/" element={<Template wide><Home /></Template>} />
       <Route path="/new" element={<Template backLink={{ href: '/' }}><New /></Template>} />
@@ -34,6 +69,7 @@ export function App() {
       <Route path="/accessibility" element={<Template backLink={{ href: '/' }}><Accessibility /></Template>} />
       <Route path="/about" element={<Template backLink={{ href: '/' }}><About /></Template>} />
     </Routes>
+    </Suspense>
   );
 }
 

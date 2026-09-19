@@ -2,7 +2,7 @@ import { useMemo } from 'react';
 import { factLabel, stageFacts } from '$lib/policy-analysis/stage-facts';
 import { Details, Table } from '../../govuk';
 import { Metrics } from '../Metrics';
-import { byReason } from '../warnings';
+import { byReason, readable } from '../warnings';
 
 /**
  * WHAT THE RUN THREW AWAY, AND WHY.
@@ -25,7 +25,7 @@ import { byReason } from '../warnings';
  * undercount is the serious direction.
  */
 export function ProvenanceLead({ stages }: { stages: { warnings: string[] }[] }) {
-  const warnings = useMemo(() => stages.flatMap((s) => s.warnings ?? []), [stages]);
+  const warnings = useMemo(() => stages.flatMap((s) => (s.warnings ?? []).map(readable)), [stages]);
   const facts = useMemo(() => stageFacts(warnings), [warnings]);
   const reasons = useMemo(() => byReason(warnings), [warnings]);
 

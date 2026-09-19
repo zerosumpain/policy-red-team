@@ -34,7 +34,7 @@ import { GRAPH_KIND, kindSlot } from '$lib/policy-analysis/graph3d';
 import type { Edge, EntityNode, Network } from '$lib/policy-analysis/network';
 
 /**
- * The categorical ramp, in GOV.UK's palette rather than the site's.
+ * The categorical ramp, in govuk-frontend 6.5's palette rather than the site's.
  *
  * `GRAPH_KIND` carries the LABELS and the ordering, and they are kept — the two
  * builds should call the same things by the same names. Its hues are the Strange
@@ -50,12 +50,25 @@ import type { Edge, EntityNode, Network } from '$lib/policy-analysis/network';
  * as a border or a fill behind BLACK text, where the bar is 21:1 and the colour
  * only has to clear 1.4.11's 3:1 as a graphical object. All five do.
  */
+/*
+ * PINNED TO THE VERSION THIS BUILD COMPILES AGAINST, which the comment above did
+ * not used to name. These were v4/v5 values — #4c2c92, #b58840, #00703c,
+ * #d4351c, #505a5f — and govuk-frontend 6.5 ships purple #54319f, brown #99704a,
+ * green #0f7a52, red #ca3535 and black tint-25 #484949, so every one of the five
+ * was a near-miss against the colour the framework was drawing next to it: the
+ * app's own green is #0f7a52 while a `claim` box beside it was #00703c, and the
+ * page's `.prt-meta` is #484949 while an `other` box was #505a5f.
+ *
+ * Headroom rather than a fix: brown goes from 3.20:1 to 4.40:1 on white, which
+ * widens a margin the old value already cleared. These are still borders on
+ * white, and the contrast note above is still the rule they have to meet.
+ */
 export const GRAPH_COLOUR: Record<string, string> = {
-  actor: '#4c2c92',
-  mechanism: '#b58840',
-  claim: '#00703c',
-  assumption: '#d4351c',
-  other: '#505a5f',
+  actor: '#54319f',
+  mechanism: '#99704a',
+  claim: '#0f7a52',
+  assumption: '#ca3535',
+  other: '#484949',
 };
 
 export const kindLabel = (kind: string): string => GRAPH_KIND[kindSlot(kind)].label;
