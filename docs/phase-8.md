@@ -106,7 +106,14 @@ walk                 the section, its tables, the pressed state, 320px
 offline              378 kB pack (up 50 kB), opens from file:// with no network
 real data            3,106 artefacts: axe clean on the report and on a drill
                      with an ego map; 0px sideways at 320px; report in ~1.1s
+real pack            built from the same assessment and opened from file:// with
+                     every non-file request aborted — the whole section renders,
+                     0 outward links, 0px sideways at 320px, 4.9 MB of one file
 ```
+
+The last two are not gates and cannot be: they need a real assessment, and the
+repository has a fixture. They were run by hand, and between them they found the
+reflow failure, the mismatched figures and the invisible toggle state.
 
 ## Decision log
 
