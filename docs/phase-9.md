@@ -9,25 +9,29 @@ Tick an assumption to suppose it false, and the page reports what the
 assessment loses. On the real *Best Start in Life* assessment, one lever:
 
 ```
-33 of 83 conclusions and results move.
+26 of 38 conclusions and results lose their footing.
+5 of 45 ways to beat the policy are taken off the table.
 The 12 structural checks are untouched whatever is failed here.
 
-Recommendations — 6 of 6
+Recommendations — 5 of 6
   What they rest on no longer stands.
     Create a responsibility, authority and resource compact
       Nothing left supporting it · 3 of what it cites no longer stand
     …
 
-Conclusions — 13 of 15
-    …
+Conclusions — 12 of 15
   rests on “Cross-sector coordination”
     Actors are numerous but institutional accountability is unresolved  Partly undercut
     …
 
-Taken off the table — 5
+Taken off the table — 5 of 45
   The good news on this page.
   needs “Cross-sector coordination”
     Delegate delivery while retaining credit and shifting blame  Taken off the table
+
+No longer applies — 2
+  Everything these rested on that stopped standing was a threat taken off the
+  table. They have not been undermined; what they were about is gone.
 ```
 
 The arithmetic is `stress.ts`, copied and untouched: it walks citations the
@@ -88,16 +92,18 @@ answer to the question that was asked.
 
 ```
 typecheck            clean
-unit                 468 in 28 files   (13 new, on the reading)
+unit                 472 in 28 files   (17 new, on the reading)
 integration          19, 1 skipped
 a11y                 7 routes, one h1 each, the reflow rule in the built CSS
-walk                 pulls a lever, asserts the page changed, that both
-                     directions stayed opposite, and unticks it again
+walk                 pulls a lever, asserts the page changed, walks the DOM to
+                     prove no lost row carries a good-news tag, exercises the
+                     show-all path, and unticks it again
 offline              389 kB pack (up 11 kB)
-real data            three levers on 3,100 artefacts — 44 of 83 move, axe clean,
-                     0px sideways at 320px
+real data            levers pulled on 3,100 artefacts — axe clean, 0px sideways
+                     at 320px, a ticked lever survives the rail collapsing, and
+                     no section mixes the two directions
 real pack            the simulation RUNS from file:// with every request
-                     aborted: 33 of 83 move, no server, no model
+                     aborted: no server, no model
 ```
 
 ## What the review found
