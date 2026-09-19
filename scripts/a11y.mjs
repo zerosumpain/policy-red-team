@@ -117,6 +117,15 @@ for (const route of ROUTES) {
   // A route that renders nothing passes every accessibility check ever written.
   const text = (await page.locator('#main-content').innerText().catch(() => '')).trim();
   if (text.length < 40) failures.push(`${route}: main content is empty or barely rendered`);
+
+  // EXACTLY ONE LEVEL-1 HEADING. axe checks that a page has one and never that
+  // it has only one, so a component whose own markup is an `h1` — GOV.UK's
+  // confirmation panel is — puts a second on any page that shows it as an
+  // example. A screen-reader user then hears two top-level headings and cannot
+  // tell which one the page is about. Found on /design after the figures
+  // arrived, by counting rather than by any gate.
+  const headings = await page.locator('h1').count();
+  if (headings !== 1) failures.push(`${route}: ${headings} level-1 headings, expected exactly one`);
   for (const message of consoleErrors) failures.push(`${route}: page error — ${message}`);
 
   // The skip link must be first in the tab order and must point at something

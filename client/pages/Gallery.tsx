@@ -196,7 +196,7 @@ export function Gallery() {
         the run — there is no recovery, by design.
       </InsetText>
 
-      <Panel title="Assessment submitted">
+      <Panel level={3} title="Assessment submitted">
         Reference <strong>PA-2026-0041</strong>
       </Panel>
 

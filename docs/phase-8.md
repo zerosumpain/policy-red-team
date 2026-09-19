@@ -147,6 +147,15 @@ self-relationship appeared on both sides of its own map; `kind === 'actor'`
 re-implemented `isBody` from the copied core; and the longest pair label ran
 past the viewBox.
 
+**And one more, found by the live check rather than the review.** Putting a
+figure on `/design` meant loading that page in a browser, which turned up a
+SECOND level-1 heading: GOV.UK's confirmation panel is an `h1`, because on a
+confirmation page the page *is* the panel — but on a gallery it is an example
+among twenty, under a heading of its own. axe checks a page HAS an `h1` and
+never that it has only one, so a screen-reader user heard two top-level
+headings with no way to tell which the page was about. `Panel` takes a level
+now, and `npm run a11y` counts them on every route.
+
 **And the fix for (3) did not work the first time.** The type changed, both
 implementations changed, and the call site still passed one argument — so the
 page rendered exactly as before. Found by re-rendering the real assessment and

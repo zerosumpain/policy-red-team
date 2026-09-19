@@ -72,10 +72,22 @@ export function NotificationBanner({ type, title, children }: {
 }
 
 /** The confirmation panel at the end of a journey. */
-export function Panel({ title, children }: { title: ReactNode; children?: ReactNode }) {
+export function Panel({ title, children, level = 1 }: {
+  title: ReactNode;
+  children?: ReactNode;
+  /**
+   * GOV.UK's panel is an `h1` because it is a confirmation page's own heading —
+   * the page IS the panel. On the DESIGN GALLERY it is an example among twenty,
+   * under a heading of its own, and rendering it as written put a second level-1
+   * heading on the page. axe does not flag that; a screen-reader user hears two
+   * top-level headings and cannot tell which one the page is about.
+   */
+  level?: 1 | 2 | 3;
+}) {
+  const Heading = `h${level}` as 'h1' | 'h2' | 'h3';
   return (
     <div className="govuk-panel govuk-panel--confirmation">
-      <h1 className="govuk-panel__title">{title}</h1>
+      <Heading className="govuk-panel__title">{title}</Heading>
       {children ? <div className="govuk-panel__body">{children}</div> : null}
     </div>
   );
