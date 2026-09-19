@@ -54,14 +54,27 @@ export function Figure({ label, diagram, table }: { label: string; diagram: Reac
  * black on white everywhere and the colour carries nothing but identity — which
  * the table repeats in words for a reader who cannot see it.
  */
-export function BarChart({ rows, label }: {
+export function BarChart({ rows, label, total }: {
   rows: { key: string; label: string; value: number; colour: string }[];
   label: string;
+  /**
+   * What the percentages are OF.
+   *
+   * Passed in rather than summed here, because the two charts on the report have
+   * identical grammar and different denominators: the shape chart's rows
+   * partition every relationship in the graph, while the families chart leaves
+   * out any relation type no family claims. Summing the rows made one chart's
+   * percentages quietly mean something else, with nothing on either saying so.
+   */
+  total: number;
 }) {
-  const WIDTH = 720;
+  // A chart of nothing is a `viewBox` of height zero, which does not render at
+  // all — an empty frame under a heading, with no way to tell it from a bug.
+  if (!rows.length) return null;
+
+  const WIDTH = 960;
   const TRACK = 360;
   const geometry = bars(rows.map((r) => r.value), TRACK);
-  const total = rows.reduce((sum, r) => sum + r.value, 0);
 
   return (
     <figure className="govuk-!-margin-0">
@@ -69,7 +82,10 @@ export function BarChart({ rows, label }: {
         <svg
           viewBox={`0 0 ${WIDTH} ${barsHeight(rows.length)}`}
           width="100%"
-          style={{ maxWidth: WIDTH, minWidth: 420 }}
+          // Wide enough for the longest label this can carry — a pair of kind
+          // names either side of an arrow — which at 720 ran past the viewBox
+          // and was silently clipped.
+          style={{ maxWidth: WIDTH, minWidth: 460 }}
           role="img"
           aria-label={`Bar chart: ${label}. ${rows.map((r) => `${r.label}, ${r.value}`).join('. ')}. The same figures are available as a table.`}
         >

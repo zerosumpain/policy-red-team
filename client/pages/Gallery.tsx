@@ -146,6 +146,7 @@ export function Gallery() {
         diagram={
           <BarChart
             label="Relationships by family"
+            total={388}
             rows={[
               { key: 'money', label: 'Money and burden', value: 222, colour: '#1d70b8' },
               { key: 'accountability', label: 'Accountability', value: 93, colour: '#1d70b8' },

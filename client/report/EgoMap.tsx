@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react';
 import { axisLabel, relationWords } from '$lib/policy-analysis/matrix';
 import type { Edge, EntityNode } from '$lib/policy-analysis/network';
-import { EGO_SPOKES, egoLayout, kindColour } from '$lib/relationships';
+import { EGO_BOX, EGO_SPOKES, egoLayout, kindColour } from '$lib/relationships';
 import { Table } from '../govuk';
 import { Figure } from './Figure';
 
@@ -38,6 +38,15 @@ export function EgoMap({ node, incoming, outgoing, labelOf, linkFor }: {
   const RIGHT_START = 550;
   const colour = kindColour(node.kind);
 
+  /*
+   * FROM AND TO, not "this body" and "to this".
+   *
+   * The columns used to be written from the subject's point of view, which is
+   * true for half the rows and a lie for the other half: an incoming row put the
+   * OTHER entity under "This body" and the subject under "To this", so a screen
+   * reader navigating by column header announced the wrong one every time. The
+   * relationship has a direction of its own and the headers name it.
+   */
   const rows: ReactNode[][] = [
     ...incoming.map((edge) => [
       'Points at this',
@@ -95,8 +104,16 @@ export function EgoMap({ node, incoming, outgoing, labelOf, linkFor }: {
                   </text>
                 </g>
               ))}
-              <rect x={CENTRE_X - 96} y={layout.centreY - 20} width="192" height="40" fill={colour} />
-              <text x={CENTRE_X} y={layout.centreY + 5} textAnchor="middle" fontSize="14" fill="#ffffff">
+              {/* A BORDER, NOT A FILL UNDER WHITE LETTERS. `kindColour('mechanism')`
+                  is GOV.UK brown at 3.20:1, and 359 of 452 relationships on a real
+                  paper end at a mechanism — so the commonest map there is lettered
+                  its subject below the contrast minimum. axe cannot see it: it will
+                  not resolve an SVG <text> against a sibling <rect> fill. Black on
+                  white is 21:1 and the colour now only has to clear 1.4.11's 3:1 as
+                  a graphical object, which all five do. */}
+              <rect x={CENTRE_X - 96} y={layout.centreY - EGO_BOX / 2} width="192" height={EGO_BOX}
+                    fill="#ffffff" stroke={colour} strokeWidth="3" />
+              <text x={CENTRE_X} y={layout.centreY + 5} textAnchor="middle" fontSize="14" fill="#0b0c0c">
                 {axisLabel(node.label, 24)}
               </text>
             </svg>
@@ -112,7 +129,7 @@ export function EgoMap({ node, incoming, outgoing, labelOf, linkFor }: {
           caption="Every relationship the paper states about this"
           captionSize="s"
           scroll
-          columns={[{ header: 'Direction' }, { header: 'This body' }, { header: 'Stands in this relation' }, { header: 'To this' }]}
+          columns={[{ header: 'Direction' }, { header: 'From' }, { header: 'Stands in this relation' }, { header: 'To' }]}
           rows={rows}
         />
       )}

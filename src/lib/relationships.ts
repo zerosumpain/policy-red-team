@@ -39,8 +39,16 @@ import type { Edge, EntityNode, Network } from '$lib/policy-analysis/network';
  * `GRAPH_KIND` carries the LABELS and the ordering, and they are kept — the two
  * builds should call the same things by the same names. Its hues are the Strange
  * Ramblings ramp, which belongs to a dark dashboard; these are the same five
- * roles in the GOV.UK palette, all of them at or above 4.5:1 on white so a
- * swatch beside black text passes without a second colour.
+ * roles in the GOV.UK palette.
+ *
+ * THESE ARE GRAPHICAL-OBJECT COLOURS, NOT TEXT COLOURS, and the difference was
+ * a real defect. An earlier version of this comment claimed all five clear
+ * 4.5:1 on white; `#b58840` is **3.20:1**, so the ego map's subject box — filled
+ * with it and lettered in white — failed WCAG 1.4.3 on the commonest map there
+ * is, and axe cannot see it because it will not resolve an SVG `<text>` against
+ * a sibling `<rect>` fill. Nothing is lettered on these any more: they are used
+ * as a border or a fill behind BLACK text, where the bar is 21:1 and the colour
+ * only has to clear 1.4.11's 3:1 as a graphical object. All five do.
  */
 export const GRAPH_COLOUR: Record<string, string> = {
   actor: '#4c2c92',
@@ -110,7 +118,12 @@ export function egoOf(net: Network, id: string): Ego {
   return {
     node: net.nodes.find((n) => n.id === id) ?? null,
     out: net.edges.filter((e) => e.fromId === id),
-    in: net.edges.filter((e) => e.toId === id),
+    // A SELF-RELATIONSHIP IS COUNTED ONCE, on the side that asserts it. Reading
+    // both ends independently put it in `out` and in `in`, so the entity was
+    // drawn on both sides of its own map and listed twice in the table beneath.
+    // `matrix.ts` excludes `fromId === toId` everywhere; this is the derivation
+    // that did not.
+    in: net.edges.filter((e) => e.toId === id && e.fromId !== id),
   };
 }
 
@@ -151,6 +164,10 @@ export const barsHeight = (count: number) => Math.max(0, count * (BAR_HEIGHT + B
  */
 export const EGO_SPOKES = 8;
 export const EGO_ROW = 30;
+/** The subject's own box. It is drawn centred, so the picture can never be shorter than it. */
+export const EGO_BOX = 40;
+/** Room below the last spoke for its second line — the relation, set under the name. */
+export const EGO_TAIL = 22;
 
 /**
  * Where the spokes of an ego picture sit.
@@ -160,6 +177,13 @@ export const EGO_ROW = 30;
  * a paragraph to say. So the two sides are laid out independently and the
  * subject is centred against the taller of them, rather than each side being
  * centred on its own, which would hide exactly that.
+ *
+ * THE BOX HAS TO FIT. The first version sized the picture at one row per spoke
+ * and nothing else, so a body with a single relationship — 183 of 267 on a real
+ * assessment have one or none — got a 30-unit viewBox holding a 40-unit box
+ * centred in it, and SVG clipped the subject off its own diagram top and bottom.
+ * The last spoke's second line was clipped at every count for the same reason.
+ * The height now carries both.
  */
 export function egoLayout(inCount: number, outCount: number): {
   height: number;
@@ -168,7 +192,12 @@ export function egoLayout(inCount: number, outCount: number): {
   right: number[];
 } {
   const rows = Math.max(inCount, outCount, 1);
-  const height = rows * EGO_ROW;
-  const at = (count: number) => Array.from({ length: count }, (_, i) => (i + 0.5) * EGO_ROW + ((rows - count) * EGO_ROW) / 2);
-  return { height, centreY: height / 2, left: at(inCount), right: at(outCount) };
+  const height = Math.max(rows * EGO_ROW + EGO_TAIL, EGO_BOX);
+  const centreY = height / 2;
+  // The shorter side is centred within the taller, and both sit against the top
+  // of the row band — whose own offset is whatever the box needed.
+  const top = (height - EGO_TAIL - rows * EGO_ROW) / 2;
+  const at = (count: number) =>
+    Array.from({ length: count }, (_, i) => top + (i + 0.5) * EGO_ROW + ((rows - count) * EGO_ROW) / 2);
+  return { height, centreY, left: at(inCount), right: at(outCount) };
 }

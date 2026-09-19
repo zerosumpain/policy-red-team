@@ -124,6 +124,34 @@ That is the whole argument for having copied the view layer rather than
 reimplementing it: two pictures of one graph cannot disagree about what is in
 it.
 
+## What the review found
+
+Eight real defects, several verified by the reviewer rendering the components
+against a synthetic graph built to the real assessment's proportions. The two
+that mattered most were invisible to every gate:
+
+| | What was wrong | Why it mattered |
+|---|---|---|
+| 1 | white text on `#b58840` in the ego map — **3.20:1** | 359 of 452 relationships end at a mechanism, so the commonest map there is lettered its subject below the contrast minimum. axe cannot see it: it will not resolve an SVG `<text>` against a sibling `<rect>` fill. The comment above the ramp asserted an invariant that was simply false. Now a white box with a coloured border and black text — 21:1, and the colour only has to clear 1.4.11's 3:1 as a graphical object |
+| 2 | `egoLayout` sized the picture at one row per spoke and nothing else | a body with a single relationship — **183 of 267 on the real paper** — got a 30-unit box holding a 40-unit subject, and SVG clipped it off its own diagram. The last spoke's second line was clipped at every count |
+| 3 | the page named the wrong entities on two insights | `network()` composes those subjects as "A → B" while the subject id is the EDGE's; the link renderer read `artefact.label` and printed the model's name for the edge. "Parents bear childcare access costs" where the truth was "Health → State-funded preschool childcare". **The offline pack, which has no renderer, was printing it correctly the whole time** |
+| 4 | "N busier-than-average bodies are not on the grid" | `adjacency()` draws the busiest and drops the tail. The sentence said the opposite of the cap's own rule |
+| 5 | grid cells counted relation TYPES | while `placeable` and `shown`, quoted in the sentence directly above, count relationships. Three `reports_to` edges on one pair rendered as `1` |
+| 6 | the ego table's headers were written from the subject's point of view | true for half the rows and a lie for the other half: an incoming row put the other entity under "This body" |
+| 7 | `network()` ran on every drill | including the ~90% of artefacts that have no relationships. Now gated on a scan for "is this id an edge endpoint" |
+| 8 | `grid.bodies.indexOf(from)` inside the inner map | correct, but O(n) run n² times, and cubic the day the cap is raised |
+
+Plus: a chart of zero rows produced `viewBox="0 0 720 0"`, which renders nothing;
+the two charts' percentages had different denominators with nothing saying so; a
+self-relationship appeared on both sides of its own map; `kind === 'actor'`
+re-implemented `isBody` from the copied core; and the longest pair label ran
+past the viewBox.
+
+**And the fix for (3) did not work the first time.** The type changed, both
+implementations changed, and the call site still passed one argument — so the
+page rendered exactly as before. Found by re-rendering the real assessment and
+looking for the arrows, not by re-reading the diff.
+
 ## Decision log
 
 | Fork | Options | Chosen | Why | Reversible? |
@@ -136,6 +164,8 @@ it.
 | The toggle | `govuk-tabs`; a button pair | **a button pair** | tabs below 641px render every panel stacked, so a phone would get the chart and the identical table beneath it — duplication where the point is a choice | yes |
 | `network()` in the render body | leave it; memoise | **memoise** | 145ms on a real assessment, and the report re-renders on every stage event while a run is in flight | yes |
 | The walk's body-to-body assertion | enrich the fixture; accept either branch | **accept either branch** | the fixture's one relationship runs body→machinery, which is the real shape too; ten test files read that fixture and changing it to satisfy a gate is the wrong way round | yes |
+| The ego map's subject | darken the fill; letter it in black on white with a coloured border | **border** | there is no darker brown in the GOV.UK palette, and a rule that says "pick the text colour from the fill" is a rule somebody gets wrong later | yes |
+| The grid contract | trust the reviewer's reading; pin it in a test | **pin it** | the branch real data never reaches is the branch nothing was checking; `relationships.test.ts` now asserts that a cell's `ids` sum to `shown` | yes |
 
 ## What is still outstanding
 

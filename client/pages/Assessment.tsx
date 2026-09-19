@@ -110,9 +110,9 @@ export function Assessment() {
           {isFinished(analysis.status) ? (
             <Report
               detail={detail}
-              linkTo={(artefact) => (
+              linkTo={(artefact, label) => (
                 <Link className="govuk-link" to={`/assessments/${id}/artefacts/${encodeURIComponent(artefact.id)}`}>
-                  {artefact.label}
+                  {label ?? artefact.label}
                 </Link>
               )}
             />

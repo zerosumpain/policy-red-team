@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react';
 import type { Artefact } from '$lib/policy-analysis/contracts';
 import { adjacency, bodyLinks, cellSentence, relationWords, unplacedEdges } from '$lib/policy-analysis/matrix';
-import type { Network as PolicyNetwork } from '$lib/policy-analysis/network';
+import { isBody, type Network as PolicyNetwork } from '$lib/policy-analysis/network';
 import { kindLabel, shapeOf } from '$lib/relationships';
 import { Details, InsetText, SummaryList, Table, Tag } from '../govuk';
 import { BarChart, Figure } from './Figure';
@@ -41,13 +41,25 @@ export function NetworkSection({ net, artefacts, linkTo }: {
   const unplaced = unplacedEdges(net, grid);
   const byId = new Map(artefacts.map((a) => [a.id, a]));
 
-  /** A name the reader can open, where the thing behind it is still in this copy. */
+  /**
+   * A name the reader can open, where the thing behind it is still in this copy.
+   *
+   * THE COMPOSED LABEL IS PASSED ON, and leaving it out was a real defect. Two
+   * of these insights are about a RELATIONSHIP rather than a body: `network()`
+   * sets their subject id to the edge's and composes the label as "A → B". A
+   * link rendered from the artefact alone printed the model's own name for that
+   * edge instead — the one thing on the row that does not say which direction
+   * the insight is about. The offline pack, with no renderer at all, was
+   * printing it correctly the whole time.
+   */
   const name = (id: string, label: string): ReactNode => {
     const artefact = byId.get(id);
-    return artefact && linkTo ? linkTo(artefact) : label;
+    return artefact && linkTo ? linkTo(artefact, label) : label;
   };
 
-  const bodies = net.nodes.filter((n) => n.kind === 'actor').length;
+  // `isBody` rather than a second `kind === 'actor'`: BODY_KINDS is the copied
+  // definition of what counts as a body, and it has drifted once already.
+  const bodies = net.nodes.filter(isBody).length;
   const lead = shape.rows[0];
   /** Rows whose pair the paper also states the other way round. Counted, never halved: a pair is two rows and the arithmetic is one more thing to get wrong. */
   const twoWay = links.filter((link) => link.reciprocated).length;
@@ -78,6 +90,7 @@ export function NetworkSection({ net, artefacts, linkTo }: {
         diagram={
           <BarChart
             label="Relationships by the kind of thing at each end"
+            total={shape.total}
             /* ONE COLOUR. Colouring these by the kind at one end made three of
                the four bars purple, which reads as a grouping that is not there
                — the categories are already named in full on every bar. Colour
@@ -112,11 +125,13 @@ export function NetworkSection({ net, artefacts, linkTo }: {
         actually arrives with. A paper heavy on money and light on authority is telling you
         something about where it expects compliance to come from.
       </p>
+      {net.families.some((family) => family.count) ? (
       <Figure
         label="relationships by family"
         diagram={
           <BarChart
             label="Relationships by family"
+            total={net.families.reduce((sum, family) => sum + family.count, 0)}
             rows={net.families.map((family) => ({
               key: family.key,
               label: family.label,
@@ -140,6 +155,13 @@ export function NetworkSection({ net, artefacts, linkTo }: {
           />
         }
       />
+      ) : (
+        <p className="govuk-body">
+          Every relationship here uses a relation type no family claims, so there is nothing to
+          group. That is a sign the vocabulary has moved on from the families rather than a
+          finding about the paper.
+        </p>
+      )}
       {net.unfamilied ? (
         <p className="govuk-body-s prt-meta">
           {net.unfamilied} {net.unfamilied === 1 ? 'relationship uses a relation type' : 'relationships use relation types'}{' '}
@@ -160,7 +182,7 @@ export function NetworkSection({ net, artefacts, linkTo }: {
           <p className="govuk-body">
             {grid.placeable} of the {grid.total} stated relationships run between two bodies
             {grid.placeable !== grid.total
-              ? ' — the rest run from a body to machinery or to a claim, and were never grid material'
+              ? ' — the rest have machinery or a claim at one end, and were never grid material'
               : ''}
             .{' '}
             {grid.legible
@@ -238,14 +260,21 @@ function AdjacencyTable({ grid, name }: {
         scroll
         firstCellIsHeader
         columns={[{ header: 'From ↓ / about →' }, ...grid.bodies.map((body) => ({ header: body.label, numeric: true }))]}
-        rows={grid.bodies.map((from) => [
+        rows={grid.bodies.map((from, i) => [
           name(from.id, from.label),
           ...grid.bodies.map((to, j) => {
-            const cell = grid.rows[grid.bodies.indexOf(from)]?.[j] ?? null;
+            // The row index is already in hand. `indexOf` inside the inner map
+            // was correct but ran an O(n) scan n² times, and would scale
+            // cubically the day the cap is raised for a meshier paper.
+            const cell = grid.rows[i]?.[j] ?? null;
             if (!cell) return <span className="govuk-visually-hidden">No stated relationship</span>;
+            // RELATIONSHIPS, not distinct relation types. `relations` is the
+            // vocabulary used on this pair; `ids` is the relationships
+            // themselves, which is what `placeable` and `shown` count in the
+            // sentence directly above this table.
             return (
               <>
-                {cell.relations.length}
+                {cell.ids.length}
                 <span className="govuk-visually-hidden"> — {cellSentence(from.label, to.label, cell)}</span>
               </>
             );
@@ -254,8 +283,13 @@ function AdjacencyTable({ grid, name }: {
       />
       {grid.omitted.length ? (
         <p className="govuk-body-s prt-meta">
-          {grid.omitted.length} busier-than-average {grid.omitted.length === 1 ? 'body is' : 'bodies are'} not
-          on the grid: {grid.omitted.slice(0, 5).map((b) => b.label).join(', ')}
+          {/* The cap DRAWS the busiest and drops the tail — `adjacency()` sorts
+              by placeable links and takes the first twelve. Calling what it
+              dropped "busier than average" said the opposite of the rule. */}
+          The grid draws the {grid.bodies.length} bodies with the most
+          body-to-body relationships. {grid.omitted.length} quieter{' '}
+          {grid.omitted.length === 1 ? 'one is' : 'ones are'} left off:{' '}
+          {grid.omitted.slice(0, 5).map((b) => b.label).join(', ')}
           {grid.omitted.length > 5 ? ', and others' : ''}.
         </p>
       ) : null}
@@ -272,7 +306,7 @@ function BodyLinkTable({ links, name }: {
   return (
     <>
       <Table
-        caption="Every relationship the paper states between two bodies"
+        caption={`Body-to-body relationships, busiest pair first${links.length > SHOWN ? ` — the first ${SHOWN} of ${links.length} pairs` : ''}`}
         captionSize="s"
         scroll
         columns={[{ header: 'This body' }, { header: 'Stands in this relation' }, { header: 'To this body' }, { header: 'Both ways?' }]}

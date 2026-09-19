@@ -65,8 +65,16 @@ function Contents({ sections }: { sections: Section[] }) {
  * the pack cannot render a link even by accident — the machinery to do it is
  * not in the bundle — rather than relying on a flag being read correctly in
  * eight places.
+ *
+ * `label` OVERRIDES THE ARTEFACT'S OWN NAME, and it is not optional dressing.
+ * Two of the network insights are about a RELATIONSHIP rather than a body, so
+ * `network()` composes their subject label as "A → B" while the subject id is
+ * the edge's. A renderer reading only `artefact.label` threw that away and
+ * printed the model's name for the edge — the one thing on the row that does
+ * not say which direction the insight is about. The offline pack, which has no
+ * renderer at all, was printing it correctly the whole time.
  */
-export type ArtefactLink = (artefact: Artefact) => ReactNode;
+export type ArtefactLink = (artefact: Artefact, label?: string) => ReactNode;
 
 /**
  * `offline` suppresses the download section.
@@ -80,6 +88,7 @@ export function Report({ detail, offline, linkTo }: { detail: Detail; offline?: 
   const { artefacts, analysis, stages } = detail;
   /** The name of a thing, and — where the caller can offer one — the way into it. */
   const name = (artefact: Artefact): ReactNode => (linkTo ? linkTo(artefact) : artefact.label);
+
   const list = plays(artefacts);
   const board = actorBoard(artefacts, list);
   const warnings = stages.flatMap((s) => s.warnings);
