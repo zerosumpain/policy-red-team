@@ -3,11 +3,11 @@ import {
   headlineSentence, ledger, plays, recommendations, summarise, tiles,
 } from '$lib/policy-analysis/view';
 import type { Artefact } from '$lib/policy-analysis/contracts';
-import { useMemo, useState, type ReactNode } from 'react';
+import { Fragment, useMemo, useState, type ReactNode } from 'react';
 import { network } from '$lib/policy-analysis/network';
 import { leverage } from '$lib/policy-analysis/stress';
 import type { Detail } from '../api';
-import { Details, InsetText, SummaryList, Table, Tabs, WarningText } from '../govuk';
+import { Details, InsetText, SummaryList, Table, Tabs } from '../govuk';
 import { mechanismIdsOf, narrowExcept, type Selection } from './selection';
 import { Bar, Metrics } from './Metrics';
 import { WriteUp } from './WriteUp';
@@ -75,7 +75,29 @@ interface Section {
    * only this field; nothing was rewritten in order to be re-arranged.
    */
   move: Move;
+  /**
+   * The body renders its own `<section>` and its own heading.
+   *
+   * The four move leads do — they were written as the head of a tab panel, not
+   * as an entry in a cascade — and wrapping them in a second section with a
+   * second `h2` would print every one of their titles twice. Being in the list
+   * at all is what matters: the offline pack renders the list, and for three
+   * phases it did not render these, so a pack carried neither the exposure
+   * bands, nor the mechanisms, nor the ranked playbook, nor the record of what
+   * the run discarded.
+   */
+  bare?: boolean;
 }
+
+/**
+ * The order a document reads the moves in, which is the order of the spine.
+ *
+ * The service groups by move because a reader arrives with one of four
+ * questions. A pack has no spine to click, so it makes the same grouping the
+ * order of the page — and then the two artefacts agree about the shape of the
+ * report as well as about its contents.
+ */
+const MOVE_ORDER: Move[] = ['verdict', 'causality', 'threats', 'actors', 'provenance', 'do'];
 
 function Contents({ sections }: { sections: Section[] }) {
   if (sections.length < 3) return null;
@@ -182,6 +204,32 @@ export function Report({ detail, offline, linkTo, onChanged }: {
   const section = (id: string, title: string, move: Move, body: React.ReactNode) => {
     if (body) sections.push({ id, title, body, move });
   };
+  /** A lead: same list, same contents entry, but it draws its own heading. */
+  const lead = (id: string, title: string, move: Move, body: React.ReactNode) => {
+    if (body) sections.push({ id, title, body, move, bare: true });
+  };
+
+  /*
+   * THE FOUR MOVE LEADS ARE SECTIONS NOW, and that is a fix rather than a
+   * refactor. They were passed straight into `panel()`, so they existed only
+   * where there were panels — which meant the offline pack, which renders the
+   * section list, carried none of them: no exposure bands, no "read these three
+   * first", no mechanism chart, and no record of what the run discarded. The
+   * regression got worse when the duplicate playbook table was deleted from
+   * "Ways to beat it", because the ranked list that replaced it lives in the
+   * Threats lead — so a pack lost all forty-seven plays outright.
+   *
+   * Pushed FIRST, in move order, because `inMove()` preserves push order and
+   * the lead is the head of its panel.
+   */
+  lead('exposure-profile', 'Where the exposure sits', 'verdict',
+    <VerdictLead list={list} bands={bands} selection={selection} onSelect={setSelection} mechanismIds={mechanismIds} linkTo={linkTo} />);
+  lead('mechanisms', 'The mechanisms that generate the most plays', 'causality',
+    <CausalityLead artefacts={artefacts} list={list} selection={selection} onSelect={setSelection} mechanismIds={mechanismIds} linkTo={linkTo} />);
+  lead('weights', 'Rank by what you care about', 'threats',
+    <ThreatsLead list={list} selection={selection} mechanismIds={mechanismIds} linkTo={linkTo} />);
+  lead('discarded', 'What was discarded, and why', 'provenance',
+    <ProvenanceLead stages={stages} />);
 
   /*
    * FIGURES, DRAWN AS FIGURES. This was a two-column summary list, so the
@@ -557,21 +605,53 @@ export function Report({ detail, offline, linkTo, onChanged }: {
    * read it — and `Ctrl-F` across a whole document is the pack's real interface.
    * So the moves are for the service, and the pack stays a document.
    */
+  /*
+   * THE PACK READS IN MOVE ORDER. The service groups by move because a reader
+   * arrives with one of four questions; a pack has no spine to click, so it
+   * makes the same grouping the order of the page. `sort` on a copy, and stable,
+   * so within a move the order is the order the sections were written in.
+   */
+  const ordered = offline
+    ? [...sections].sort((a, b) => MOVE_ORDER.indexOf(a.move) - MOVE_ORDER.indexOf(b.move))
+    : sections;
+
   if (offline) {
     return (
-      <>
-        <div className="govuk-grid-row">
-          <div className="govuk-grid-column-two-thirds">
-            <AddendumNotice artefacts={artefacts} passes={detail.passes} />
-            {headline ? <p className="govuk-body-l">{headline}</p> : null}
-            <WarningText>
-              This is a red-team read, not an assurance review. Every profile is a hypothesis about
-              a body's incentives, never a finding about a named person.
-            </WarningText>
-            <Contents sections={sections} />
-          </div>
+      /*
+        `prt-pack` IS THE PACK'S HALF OF THE REPORT'S STYLING.
+        Every density and full-width rule the service gained was scoped to
+        `.govuk-tabs__panel`, which a pack has none of — so the pack kept the
+        framework's 30em measure, tables that sized to their content, and
+        summary lists with a 50% value column. Two artefacts of one assessment
+        that disagree about how wide a table is are two reports.
+      */
+      <div className="prt-pack">
+        {/* THE SAME LEAD AS THE SERVICE, and for the same reasons: the headline
+            is the one sentence the assessment exists to produce and ran at two
+            thirds of the page, and the red-team caveat is true of every report
+            ever produced, which makes it a standing note rather than the
+            warning box it was given on every one of them. */}
+        <div className="prt-lead">
+          <AddendumNotice artefacts={artefacts} passes={detail.passes} />
+          {headline ? <p className="prt-lead__headline">{headline}</p> : null}
+          <p className="prt-lead__caveat">
+            A red-team read, not an assurance review. Every profile is a hypothesis about a
+            body&rsquo;s incentives — never a finding about a named person.
+          </p>
         </div>
-        {sections.map((entry) => (
+        <Contents sections={ordered} />
+        {ordered.map((entry) => (entry.bare ? (
+          /* It draws its own section and its own heading; a wrapper here would
+             print both titles. The way back to the contents still follows it,
+             because a pack is one very long page and that link is how a reader
+             gets out of the middle of it. */
+          <div key={entry.id}>
+            {entry.body}
+            <p className="govuk-body-s govuk-!-margin-top-2">
+              <a className="govuk-link" href="#contents">Back to contents</a>
+            </p>
+          </div>
+        ) : (
           <section key={entry.id} aria-labelledby={entry.id}>
             <h2 className="govuk-heading-l" id={entry.id}>{entry.title}</h2>
             {entry.body}
@@ -579,21 +659,22 @@ export function Report({ detail, offline, linkTo, onChanged }: {
               <a className="govuk-link" href="#contents">Back to contents</a>
             </p>
           </section>
-        ))}
-      </>
+        )))}
+      </div>
     );
   }
 
   const inMove = (move: Move) => sections.filter((entry) => entry.move === move);
-  const panel = (move: Move, lead: ReactNode) => (
+  const panel = (move: Move) => (
     <>
-      {lead}
-      {inMove(move).map((entry) => (
+      {inMove(move).map((entry) => (entry.bare ? (
+        <Fragment key={entry.id}>{entry.body}</Fragment>
+      ) : (
         <section key={entry.id} aria-labelledby={entry.id}>
           <h2 className="govuk-heading-l" id={entry.id}>{entry.title}</h2>
           {entry.body}
         </section>
-      ))}
+      )))}
     </>
   );
 
@@ -626,23 +707,23 @@ export function Report({ detail, offline, linkTo, onChanged }: {
         tabs={[
           {
             id: 'verdict', step: 'Move 1', label: 'Verdict',
-            panel: panel('verdict', <VerdictLead list={list} bands={bands} selection={selection} onSelect={setSelection} mechanismIds={mechanismIds} linkTo={linkTo} />),
+            panel: panel('verdict'),
           },
           {
             id: 'causality', step: 'Move 2', label: 'Causality',
-            panel: panel('causality', <CausalityLead artefacts={artefacts} list={list} selection={selection} onSelect={setSelection} mechanismIds={mechanismIds} linkTo={linkTo} />),
+            panel: panel('causality'),
           },
           {
             id: 'threats', step: 'Move 3', label: 'Threats',
-            panel: panel('threats', <ThreatsLead list={list} selection={selection} mechanismIds={mechanismIds} linkTo={linkTo} />),
+            panel: panel('threats'),
           },
           {
             id: 'actors', step: 'Move 4', label: 'Actors',
-            panel: panel('actors', null),
+            panel: panel('actors'),
           },
           {
             id: 'provenance', step: 'Provenance', label: 'What was discarded',
-            panel: panel('provenance', <ProvenanceLead stages={stages} />),
+            panel: panel('provenance'),
           },
         ]}
       />

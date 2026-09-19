@@ -503,7 +503,20 @@
 // panels: every section opened with a full `govuk-heading-l` and closed with
 // two units of margin, so a reader scrolled past more rule than prose. These
 // pull the rhythm in without touching type sizes, which carry the hierarchy.
-.govuk-tabs__panel > section {
+// THE REPORT HAS TWO CONTAINERS, NOT ONE, and every rule below was written for
+// only the first of them. In the service a section is a direct child of a tab
+// panel; in the offline pack there are no tabs at all — the pack keeps the
+// cascade on purpose, because it is one file opened from `file://` where Ctrl-F
+// is the real interface. So the pack inherited none of this: its body copy sat
+// at the framework's 30em, its tables sized to their content, and its summary
+// lists kept the 50% value column. Two artefacts of one assessment that
+// disagree about how wide a table is are two reports.
+//
+// Named as a pair rather than folded into one class because that is what they
+// are: the tab panel is the framework's element and `.prt-pack` is ours, and
+// neither can be given the other's name.
+.govuk-tabs__panel > section,
+.prt-pack > section {
   margin-bottom: govuk.govuk-spacing(7);
 
   > h2 {
@@ -516,14 +529,16 @@
 // Body copy in the report runs to the page, not to two thirds of it. A measure
 // is still enforced where a paragraph is genuinely prose — the lead and the
 // editorial write-up — rather than everywhere by default.
-.govuk-tabs__panel {
+.govuk-tabs__panel,
+.prt-pack {
   .govuk-body,
   .govuk-list { max-width: none; }
 }
 
 // Every table fills its section. Several were sizing to their content and
 // sitting in the left two thirds with white space beside them.
-.govuk-tabs__panel table { width: 100%; }
+.govuk-tabs__panel table,
+.prt-pack table { width: 100%; }
 
 // ── The write-up, as an editorial front page ──────────────────────────────
 //
@@ -871,7 +886,8 @@
 // A summary list in the report has no actions column, so the framework's 50%
 // value cell left a fifth of every row empty. "How this was produced" is six
 // facts about the run and read as a narrow strip beside white space.
-.govuk-tabs__panel .govuk-summary-list {
+.govuk-tabs__panel .govuk-summary-list,
+.prt-pack .govuk-summary-list {
   &__key { width: 14rem; }
   &__value { width: auto; }
 }
@@ -959,6 +975,7 @@
 // it. The report decides its own measure; the framework's page grid does not
 // apply inside one of its panels.
 .govuk-tabs__panel,
+.prt-pack,
 .prt-actions {
   .govuk-grid-column-two-thirds,
   .govuk-grid-column-one-half,

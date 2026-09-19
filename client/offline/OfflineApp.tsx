@@ -75,14 +75,22 @@ export function OfflineApp({ payload }: { payload: OfflinePayload }) {
 
       <div className="govuk-width-container govuk-width-container--wide">
         <main className="govuk-main-wrapper" id="main-content" tabIndex={-1}>
-          <span className="govuk-caption-l">Assessment</span>
-          <h1 className="govuk-heading-xl">{payload.title}</h1>
-          <p className="govuk-body">
-            <Tag colour={statusColour(payload.status) as TagColour}>{statusLabel(payload.status)}</Tag>{' '}
-            <span className="prt-meta">
-              Pack made {new Date(payload.generatedAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })}
-            </span>
-          </p>
+          {/* THE SERVICE'S PAGE HEADER, not a second one. The status was a
+              tag on its own line under an `xl` heading with the date after it;
+              on the service the same facts sit in one row beside the title,
+              separated by rules. A pack a reader opens next to the service
+              should look like the thing they left. */}
+          <header className="prt-pagehead">
+            <span className="govuk-caption-l">Assessment</span>
+            <h1 className="govuk-heading-xl">{payload.title}</h1>
+            <p className="prt-pagehead__status">
+              <Tag colour={statusColour(payload.status) as TagColour}>{statusLabel(payload.status)}</Tag>
+              <span className="prt-meta">
+                Pack made {new Date(payload.generatedAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })}
+              </span>
+              <span className="prt-meta">{payload.artefacts.length.toLocaleString()} artefacts</span>
+            </p>
+          </header>
 
           <InsetText>
             This is an offline copy. Nothing on this page reaches the network, and nothing here
