@@ -56,13 +56,23 @@ export function RunFindings({ detail, id }: { detail: Detail; id: string }) {
     else byKind.set(a.kind, [a]);
   }
 
+  /*
+   * THE COUNT IS THE ASSESSMENT'S, NOT THE LIST'S.
+   *
+   * `?view=progress` sends the first 25 of each kind — the same 25 this shows —
+   * rather than all 2,265 artefacts on every stage boundary. So "how many are
+   * there" has to come from `artefactCounts` where the server sent it; the array
+   * length is only the truth when nothing was capped.
+   */
+  const held = (kind: string) => detail.artefactCounts?.[kind] ?? byKind.get(kind)?.length ?? 0;
   const groups = INTERESTING.filter(({ kind }) => byKind.get(kind)?.length).map((g) => ({
     ...g,
     items: byKind.get(g.kind)!,
+    count: held(g.kind),
   }));
   if (!groups.length) return null;
 
-  const total = groups.reduce((n, g) => n + g.items.length, 0);
+  const total = groups.reduce((n, g) => n + g.count, 0);
 
   return (
     <section aria-labelledby="run-findings">
@@ -81,7 +91,7 @@ export function RunFindings({ detail, id }: { detail: Detail; id: string }) {
       </p>
 
       {groups.map((group) => (
-        <Details key={group.kind} summary={`${group.label} — ${group.items.length}`}>
+        <Details key={group.kind} summary={`${group.label} — ${group.count.toLocaleString()}`}>
           <p className="govuk-body-s prt-meta">{group.why}</p>
           <ul className="govuk-list govuk-list--bullet">
             {/* Capped. A stage-3 run holds 569 actors, and a list that long is a
@@ -103,9 +113,10 @@ export function RunFindings({ detail, id }: { detail: Detail; id: string }) {
               );
             })}
           </ul>
-          {group.items.length > 25 ? (
+          {group.count > group.items.slice(0, 25).length ? (
             <p className="govuk-body-s prt-meta">
-              and {group.items.length - 25} more, which the finished report lists in full.
+              and {(group.count - group.items.slice(0, 25).length).toLocaleString()} more, which the
+              finished report lists in full.
             </p>
           ) : null}
         </Details>

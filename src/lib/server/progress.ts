@@ -1,4 +1,7 @@
-import { detail } from '$lib/policy-analysis/server/store';
+import { asc, eq, sql } from 'drizzle-orm';
+import { db } from '$lib/db';
+import { policyArtefacts, policyExecutions, policyModelCalls, policyStages } from '$lib/db/schema';
+import { ownedAnalysis } from '$lib/policy-analysis/server/store';
 import { STAGES } from '$lib/policy-analysis/contracts';
 import { describeEstimate, estimateRun, type RunEstimate } from './estimate';
 import { readSetting } from '$lib/server/settings-store';
@@ -11,11 +14,13 @@ import { readSetting } from '$lib/server/settings-store';
  * of its life the page has nothing new to say and no way to say how long is
  * left. This is what the poll asks for in between.
  *
- * IT IS DELIBERATELY SMALL. The obvious implementation is "fetch the detail
- * again every thirty seconds", and on a real assessment that is three thousand
- * artefacts over the wire to render one sentence. The server still reads the
- * run — the estimate needs the passage count and every call's duration — but
- * what crosses the network is a dozen numbers.
+ * IT IS DELIBERATELY SMALL AT BOTH ENDS. The obvious implementation is "fetch
+ * the detail again every thirty seconds", and on a real assessment that is three
+ * thousand artefacts over the wire to render one sentence. This crossed the
+ * network as a dozen numbers from the start — but for a while it still BUILT the
+ * whole page to produce them, which on the live run measured ~205ms of server
+ * time per poll for 337 bytes of answer. `runFacts` below reads what the estimate
+ * needs and nothing else.
  */
 export type RunProgress = {
   status: string;
@@ -66,11 +71,65 @@ export type RunProgress = {
   finishBy: { earliest: string; latest: string } | null;
 };
 
+/**
+ * ITS OWN READS, NOT `detail()`.
+ *
+ * "What crosses the network is a dozen numbers" was true and was only half the
+ * job: the server still built the whole page to produce them. `detail()` runs
+ * thirteen queries, reads every artefact row and every provenance row, unseals
+ * each one, assembles the metadata array and runs the cross-policy and persona
+ * joins — measured at ~205ms per call against 337 bytes of output, on a poll that
+ * fires every thirty seconds for the life of a run, through the ONE PGlite
+ * connection the worker is also using for its two-second lease check.
+ *
+ * Four queries cover what this function actually reads. The artefact count is a
+ * GROUP BY rather than a `count(*) FILTER`, because a FILTER aggregate cannot use
+ * `policy_artefacts_kind_idx` and the whole point is to stop reading the rows.
+ * Nothing here needs the seal: `ordinal`, `name`, `status` and `kind` are all
+ * plaintext on a sealed run, and the call columns were never sealed.
+ */
+async function runFacts(owner: string, id: string) {
+  const analysis = await ownedAnalysis(owner, id);
+  if (!analysis) return null;
+
+  const stages = await db
+    .select({ name: policyStages.name, status: policyStages.status })
+    .from(policyStages)
+    .where(eq(policyStages.analysisId, id))
+    .orderBy(asc(policyStages.ordinal));
+
+  const calls = await db
+    .select({
+      status: policyModelCalls.status,
+      usage: policyModelCalls.usage,
+      startedAt: policyModelCalls.startedAt,
+      completedAt: policyModelCalls.completedAt,
+    })
+    .from(policyModelCalls)
+    .innerJoin(policyExecutions, eq(policyExecutions.id, policyModelCalls.executionId))
+    .innerJoin(policyStages, eq(policyStages.id, policyExecutions.stageId))
+    .where(eq(policyStages.analysisId, id));
+
+  const kinds = await db
+    .select({ kind: policyArtefacts.kind, n: sql<number>`count(*)::int` })
+    .from(policyArtefacts)
+    .where(eq(policyArtefacts.analysisId, id))
+    .groupBy(policyArtefacts.kind);
+
+  return {
+    analysis,
+    stages,
+    calls,
+    passages: kinds.find((k) => k.kind === 'passage')?.n ?? 0,
+    artefactCount: kinds.reduce((sum, k) => sum + Number(k.n), 0),
+  };
+}
+
 export async function runProgress(owner: string, id: string): Promise<RunProgress | null> {
-  const found = await detail(owner, id);
+  const found = await runFacts(owner, id);
   if (!found) return null;
 
-  const { analysis, stages, artefacts, calls } = found;
+  const { analysis, stages, calls, passages, artefactCount } = found;
   const done = stages.map((s, i) => [i, s] as const).filter(([, s]) => s.status === 'completed').map(([i]) => i);
   const runningIndex = stages.findIndex((s) => s.status === 'running');
 
@@ -81,7 +140,6 @@ export async function runProgress(owner: string, id: string): Promise<RunProgres
     .filter((c) => c.completedAt && c.startedAt && (c.status === 'completed' || c.status === 'failed'))
     .map((c) => new Date(c.completedAt!).getTime() - new Date(c.startedAt!).getTime());
 
-  const passages = artefacts.filter((a) => a.kind === 'passage').length;
 
   // Summed from what the provider reported, not from what we think we sent.
   let input = 0, cached = 0, output = 0, reasoning = 0, measuredCalls = 0;
@@ -104,7 +162,7 @@ export async function runProgress(owner: string, id: string): Promise<RunProgres
         completedStages: done,
         callDurationsMs: durations,
         concurrency: analysis.concurrency ?? undefined,
-        artefacts: artefacts.length,
+        artefacts: artefactCount,
         callsMade: calls.length,
       });
 

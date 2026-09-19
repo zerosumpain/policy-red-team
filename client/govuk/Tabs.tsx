@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 
 /**
  * SECTIONS OF ONE THING, which is what the framework's Tabs are for.
@@ -76,6 +76,52 @@ export function Tabs({ id, label, tabs, current, onSelect }: {
   }, []);
 
   /*
+   * SELECTING FROM A DEEP SCROLL USED TO DROP THE READER BELOW THE REPORT.
+   *
+   * Changing panel changes the document's height, and the browser clamps the
+   * scroll position to whatever is left. Measured on the real run at 1280×900:
+   * from y=4200 inside Threats (a 6,104px panel), choosing Actors (919px) left
+   * the reader at y=2187 with the tab strip 653px ABOVE the viewport and the
+   * chosen panel 1,500px above that — looking at the download links, which
+   * belong to no move at all, with no visible way back to the spine.
+   *
+   * So the view is brought back after the switch, and only when it has actually
+   * gone — a reader changing tabs from the top of the report must not be jumped
+   * anywhere. See `select` for why the panel and not the tab decides that.
+   *
+   * FOCUS IS NOT MOVED. The obvious alternative, focusing the panel, ships a
+   * keyboard regression: `onKeyDown` is bound to the `<ul>` and the panel is its
+   * sibling, so once focus leaves the list a second ArrowRight never reaches the
+   * handler and arrow navigation stops after one press.
+   */
+  const root = useRef<HTMLDivElement>(null);
+  const select = (next: string) => {
+    onSelect(next);
+    if (stripped) return; // the anchor below does its own jumping
+    /*
+     * THE PANEL IS THE TARGET, NOT THE TAB. `.govuk-tabs__list` is
+     * `position: sticky`, so it is pinned to the top of the viewport for as long
+     * as its container is on screen — which means scrolling IT into view is a
+     * no-op precisely when it is stuck, and the first attempt at this landed ten
+     * pixels short for exactly that reason. What actually left the reader
+     * stranded was the PANEL: measured at 1280×900, from y=4200 inside Threats
+     * (6,104px) choosing Actors (919px) clamped the scroll to y=2187 and put the
+     * chosen panel 1,500px above the viewport, on the download links.
+     *
+     * So the panel's bounds decide, and the whole tab block is what gets scrolled
+     * to, because arriving at the strip is arriving at the top of the view you
+     * asked for. A second frame, because the height changes and the browser
+     * clamps the scroll after React commits.
+     */
+    requestAnimationFrame(() => requestAnimationFrame(() => {
+      const panel = document.getElementById(`${id}-panel-${next}`);
+      if (!panel || !root.current) return;
+      const { top } = panel.getBoundingClientRect();
+      if (top < 0 || top > window.innerHeight) root.current.scrollIntoView({ block: 'start' });
+    }));
+  };
+
+  /*
    * ARROW KEYS MOVE, AND MOVING SELECTS. That is the framework's behaviour and
    * the WAI-ARIA authoring practice for a tab list whose panels are cheap to
    * render: a reader arrowing along the spine sees each view as they pass it.
@@ -104,7 +150,7 @@ export function Tabs({ id, label, tabs, current, onSelect }: {
    * than left as a trap for whoever adds `initAll()` later.
    */
   return (
-    <div className="govuk-tabs">
+    <div className="govuk-tabs" ref={root}>
       <h2 className="govuk-tabs__title">{label}</h2>
       <ul
         className="govuk-tabs__list"
@@ -112,24 +158,64 @@ export function Tabs({ id, label, tabs, current, onSelect }: {
       >
         {tabs.map((tab) => {
           const selected = tab.id === current;
+          const inside = (
+            <>
+              {tab.step ? <span className="prt-tab__step">{tab.step}</span> : null}
+              {tab.label}
+            </>
+          );
           return (
-            <li key={tab.id} className={`govuk-tabs__list-item${selected ? ' govuk-tabs__list-item--selected' : ''}`} role="presentation">
-              <button
-                type="button"
-                id={`${id}-tab-${tab.id}`}
-                className="govuk-tabs__tab prt-tab"
-                {...(stripped
-                  ? {}
-                  : { role: 'tab', 'aria-controls': `${id}-panel-${tab.id}`, 'aria-selected': selected })}
-                // ONE STOP FOR THE WHOLE LIST. A tab list is a single tab stop;
-                // the arrow keys move within it. Without this every tab is a
-                // stop and the spine becomes six presses to get past.
-                tabIndex={stripped || selected ? 0 : -1}
-                onClick={() => onSelect(tab.id)}
-              >
-                {tab.step ? <span className="prt-tab__step">{tab.step}</span> : null}
-                {tab.label}
-              </button>
+            <li
+              key={tab.id}
+              className={`govuk-tabs__list-item${selected ? ' govuk-tabs__list-item--selected' : ''}`}
+              // ONLY WHILE IT IS A TAB LIST. `presentation` strips the `<li>` of
+              // its list semantics, which is right for a tablist and wrong for
+              // the plain index this becomes on a phone — axe reports the
+              // stripped list as a `list` violation, correctly, because every
+              // child has had its role taken away.
+              {...(stripped ? {} : { role: 'presentation' })}
+            >
+              {stripped ? (
+                /*
+                 * AN ANCHOR ON A PHONE, WHICH IS THE FRAMEWORK'S OWN MARKUP.
+                 *
+                 * Torn down, every panel is on the page and the list is an index
+                 * of them — so the control has to move the reader, and a button
+                 * setting state nobody renders cannot. Measured at 390×844 on the
+                 * real run: the document is 55,644px, tapping "Move 3 / Threats"
+                 * moved the scroll 0px, and the panel it names begins 18,918px
+                 * down — twenty-two screens from the reader who asked for it.
+                 * The underline and the blue were already there, promising a jump
+                 * the button never made.
+                 *
+                 * `onClick` stays so the selection survives a rotation back above
+                 * TABLET, where the strip becomes a tab strip again.
+                 */
+                <a
+                  id={`${id}-tab-${tab.id}`}
+                  className="govuk-tabs__tab prt-tab"
+                  href={`#${id}-panel-${tab.id}`}
+                  onClick={() => onSelect(tab.id)}
+                >
+                  {inside}
+                </a>
+              ) : (
+                <button
+                  type="button"
+                  id={`${id}-tab-${tab.id}`}
+                  className="govuk-tabs__tab prt-tab"
+                  role="tab"
+                  aria-controls={`${id}-panel-${tab.id}`}
+                  aria-selected={selected}
+                  // ONE STOP FOR THE WHOLE LIST. A tab list is a single tab stop;
+                  // the arrow keys move within it. Without this every tab is a
+                  // stop and the spine becomes six presses to get past.
+                  tabIndex={selected ? 0 : -1}
+                  onClick={() => select(tab.id)}
+                >
+                  {inside}
+                </button>
+              )}
             </li>
           );
         })}
@@ -146,11 +232,18 @@ export function Tabs({ id, label, tabs, current, onSelect }: {
                 'aria-labelledby': `${id}-tab-${tab.id}`,
                 hidden: tab.id !== current,
               })}
-          // Focusable so the panel can take focus when a view is entered from
-          // somewhere other than its own tab — following a mechanism from
-          // Causality into Threats, for instance.
-          tabIndex={0}
         >
+          {/*
+            * THE PANEL SAYS WHICH MOVE IT IS, for the two readings where the tab
+            * strip is not there to say it.
+            *
+            * On paper the print stylesheet un-hides all five panels and hides the
+            * strip, so the report ran fifteen `h2`s together with nothing marking
+            * where Verdict ended and Causality began. On a phone every panel is on
+            * the page for the same reason. Hidden above `tablet`, where the
+            * selected tab is the heading and a second one would only repeat it.
+            */}
+          <h2 className="prt-movehead">{tab.step ? `${tab.step} — ` : ''}{tab.label}</h2>
           {tab.panel}
         </section>
       ))}

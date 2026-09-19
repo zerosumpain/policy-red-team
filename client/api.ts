@@ -57,6 +57,15 @@ export interface Detail {
   passes: PassRow[];
   personas: { actorId: string | null; personaId: string; name: string; sightings: number }[];
   heartbeat: string | null;
+  /**
+   * How many of each kind the assessment holds, when the answer was capped.
+   *
+   * `?view=progress` sends the first 25 artefacts of each kind — which is all the
+   * run index shows — so the lengths of `artefacts` are no longer the totals. The
+   * counts come separately rather than being inferred, because "Assumptions — 25"
+   * beside a list of 25 is a quieter kind of wrong than a slow page.
+   */
+  artefactCounts?: Record<string, number>;
   /** True when the server refuses every mutation, so the page can decline to draw a control that would 403. */
   readOnly: boolean;
 }
@@ -214,18 +223,75 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   return (await response.json()) as T;
 }
 
+/**
+ * ONE FETCH OF ONE ASSESSMENT, HELD WHILE THE READER MOVES AROUND IT.
+ *
+ * `Assessment` and `Drill` are sibling routes, so following a play out of the
+ * report unmounts one and mounts the other, and pressing Back unmounts and
+ * mounts again. Each remount called `detail` and each call was the whole
+ * assessment: measured on the live service, report → drill → Back is three
+ * fetches and 13,469,643 decoded bytes to look at one play and come back.
+ *
+ * The comment on the drill's own fetch defends it on the grounds that the drill
+ * needs the whole list anyway. That is true of the DATA and says nothing about
+ * the REQUEST.
+ *
+ * KEYED BY VIEW as well as by id, because `?view=report` is a different and
+ * smaller answer, and handing the report's stubbed artefacts to the drill would
+ * give it blank pages for the five kinds it is the only thing that renders.
+ *
+ * THE PROMISE IS CACHED, NOT THE RESULT, so two components mounting in the same
+ * tick share one request instead of racing two. A rejected one is dropped
+ * immediately: a failure must not be remembered as an answer.
+ */
+export type DetailView = 'report' | 'progress';
+
+const held = new Map<string, Promise<Detail>>();
+
+/** Anything that changes an assessment drops it. See `api.act`, `material`, `purge`. */
+export function forget(id?: string): void {
+  if (!id) { held.clear(); return; }
+  for (const key of [...held.keys()]) if (key.startsWith(`${id}|`)) held.delete(key);
+}
+
+function heldDetail(id: string, view?: DetailView): Promise<Detail> {
+  const key = `${id}|${view ?? 'full'}`;
+  const found = held.get(key);
+  if (found) return found;
+  const query = view ? `?view=${view}` : '';
+  const pending = request<Detail>(`/api/policy-analysis/${id}${query}`);
+  held.set(key, pending);
+  void pending.catch(() => held.delete(key));
+  return pending;
+}
+
 export const api = {
   landing: () => request<Landing>('/api/policy-analysis'),
-  detail: (id: string) => request<Detail>(`/api/policy-analysis/${id}`),
+  /**
+   * Everything, including the kinds only the drill renders.
+   *
+   * `view` narrows it to what the report draws — see `forTheReport` in
+   * `server/api.ts`. On the real run that is 4.5 MB against about 3.1 MB.
+   */
+  detail: (id: string, view?: DetailView) => heldDetail(id, view),
+  /** Drop what is held for an assessment, so the next read goes to the server. */
+  forget,
   submit: (form: FormData) => request<{ id: string }>('/api/policy-analysis', { method: 'POST', body: form }),
   /** Attach something read AFTER the report was written. Starts a four-stage pass; spends. */
-  material: (id: string, form: FormData) =>
-    request<{ status: string }>(`/api/policy-analysis/${id}/material`, { method: 'POST', body: form }),
+  material: (id: string, form: FormData) => {
+    forget(id);
+    return request<{ status: string }>(`/api/policy-analysis/${id}/material`, { method: 'POST', body: form });
+  },
   /** Small enough to poll: a dozen numbers, not every artefact of the run. */
   progress: (id: string) => request<RunProgress>(`/api/policy-analysis/${id}/progress`),
-  act: (id: string, action: 'cancel' | 'resume' | 'restate') =>
-    request<{ status: string }>(`/api/policy-analysis/${id}/${action}`, { method: 'POST' }),
-  purge: (id: string) => request<{ receipt: unknown }>(`/api/policy-analysis/${id}`, { method: 'DELETE' }),
+  act: (id: string, action: 'cancel' | 'resume' | 'restate') => {
+    forget(id);
+    return request<{ status: string }>(`/api/policy-analysis/${id}/${action}`, { method: 'POST' });
+  },
+  purge: (id: string) => {
+    forget(id);
+    return request<{ receipt: unknown }>(`/api/policy-analysis/${id}`, { method: 'DELETE' });
+  },
   personas: () => request<{ personas: PersonaSummary[]; readOnly: boolean }>('/api/policy-analysis/personas'),
   persona: (id: string) => request<PersonaDossier>(`/api/policy-analysis/personas/${id}`),
   forgetPersona: (id: string) => request<{ removed: boolean }>(`/api/policy-analysis/personas/${id}`, { method: 'DELETE' }),

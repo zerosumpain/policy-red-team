@@ -3,9 +3,10 @@ import {
   headlineSentence, ledger, plays, recommendations, summarise, tiles,
 } from '$lib/policy-analysis/view';
 import type { Artefact } from '$lib/policy-analysis/contracts';
-import { Fragment, useMemo, useState, type ReactNode } from 'react';
+import { Fragment, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { network } from '$lib/policy-analysis/network';
 import { leverage } from '$lib/policy-analysis/stress';
+import { stageFacts } from '$lib/policy-analysis/stage-facts';
 import type { Detail } from '../api';
 import { Details, InsetText, SummaryList, Table, Tabs } from '../govuk';
 import { mechanismIdsOf, narrowExcept, type Selection } from './selection';
@@ -166,6 +167,31 @@ export function Report({ detail, offline, linkTo, onChanged }: {
    */
   const [move, setMove] = useState<Move>('verdict');
   const [selection, setSelection] = useState<Selection>(null);
+
+  /*
+   * THE URL CAN NAME A MOVE, because things in this app already link as though
+   * it could.
+   *
+   * The failed-run banner points at `#report-tab-provenance`; the tab strip, torn
+   * down on a phone, points at `#report-panel-<move>`. Which panel is open was
+   * React state and nothing read the hash, so every one of those links scrolled
+   * somewhere and opened nothing. Reading it here makes them all work, and makes
+   * a move linkable from outside the page — which is what somebody sending
+   * "look at Provenance on this one" wants.
+   *
+   * Both spellings are accepted because both ids exist: `-tab-` is the control,
+   * `-panel-` is the section, and a reader pasting either means the same thing.
+   */
+  useEffect(() => {
+    const apply = () => {
+      const found = /^#report-(?:tab|panel)-([a-z]+)$/.exec(window.location.hash);
+      const named = found?.[1] as Move | undefined;
+      if (named && MOVE_ORDER.includes(named)) setMove(named);
+    };
+    apply();
+    window.addEventListener('hashchange', apply);
+    return () => window.removeEventListener('hashchange', apply);
+  }, []);
   const mechanismIds = useMemo(() => mechanismIdsOf(artefacts), [artefacts]);
 
   const list = plays(artefacts);
@@ -180,8 +206,27 @@ export function Report({ detail, offline, linkTo, onChanged }: {
     [list, selection, mechanismIds],
   );
   const board = useMemo(() => actorBoard(artefacts, boardPlays), [artefacts, boardPlays]);
-  const warnings = stages.flatMap((s) => s.warnings);
-  const figures = ledger(artefacts, list, warnings.length);
+  const warnings = useMemo(() => stages.flatMap((s) => s.warnings), [stages]);
+  /*
+   * ONE REPORT, ONE NUMBER FOR ONE WORD.
+   *
+   * The ledger's fourth cell is labelled "Open questions" and was handed the raw
+   * count of every stage warning — 256 on the real run. Three tabs later the
+   * Provenance move runs the repo's own classifier over the identical array and
+   * prints 156 open questions, because 100 of those sentences are discards,
+   * dropped references, pages never reached and things the paper did not cover.
+   * `stage-facts.ts` says so itself: "'Open question' is also the site's own word
+   * for them: it is what the ink ledger's fourth cell counts." It did not.
+   *
+   * So the cell reads the same classifier the Provenance panel does. The raw 256
+   * is still on the page, in the gaps section, where it is labelled "limits
+   * recorded" and is the right number for that sentence.
+   */
+  const openQuestions = useMemo(
+    () => stageFacts(warnings).find((fact) => fact.kind === 'open')?.count ?? 0,
+    [warnings],
+  );
+  const figures = ledger(artefacts, list, openQuestions);
   const headline = headlineSentence(artefacts);
   const sectionFindings = findingsBySection(artefacts);
   const recs = recommendations(artefacts);
@@ -308,11 +353,30 @@ export function Report({ detail, offline, linkTo, onChanged }: {
    * from the relationships section and from any play it could run.
    */
   const active = board.filter((a) => a.plays.length);
-  const idle = board.length - active.length;
+  /*
+   * COUNTED FROM WHAT IS THERE, not from the length of the board.
+   *
+   * A board row survives with a null profile — `actorBoard` maps every actor
+   * artefact and attaches `profiles.find(...) ?? null` — so "N further bodies are
+   * profiled but run no play" was counting rows, not profiles. On the real run
+   * that claimed 159 profiles where 43 exist: 116 of those bodies were named and
+   * never profiled at all.
+   *
+   * And a row is a CANDIDATE, not a body. The 171 rows resolve to 56 distinct
+   * names — "Employers" appears 25 times, "Skills England" 23 — because entity
+   * resolution deliberately keeps candidates apart rather than merging them. So
+   * "of the bodies the paper names" has to count names; the candidate figure
+   * belongs in the sentence about resolution, where it means something.
+   */
+  const names = (rows: typeof board) => new Set(rows.map((a) => a.actor.label.trim().toLowerCase())).size;
+  const namedAll = names(board);
+  const namedActive = names(active);
+  const idleProfiled = board.filter((a) => !a.plays.length && a.profile).length;
+  const idleUnprofiled = board.filter((a) => !a.plays.length && !a.profile).length;
   section('actors', 'Who is involved', 'actors', board.length ? (
     <>
       <p className="govuk-body">
-        {active.length} of the {board.length} bodies the paper names are positioned to run at least
+        {namedActive} of the {namedAll} bodies the paper names are positioned to run at least
         one play. The figure is the worst single play each one could run, on the same 0–1 exposure
         scale as the playbook.
       </p>
@@ -336,11 +400,13 @@ export function Report({ detail, offline, linkTo, onChanged }: {
           relationships section and from any play it could run.
         </p>
       ) : null}
-      {idle ? (
+      {idleProfiled || idleUnprofiled ? (
         <p className="govuk-body-s prt-meta">
-          {idle} further {idle === 1 ? 'body is' : 'bodies are'} profiled but run no play in this
-          assessment. Some are the same body resolved twice — entity resolution keeps candidates
-          apart rather than merging them, which &ldquo;How they connect&rdquo; reports as a finding.
+          {idleProfiled ? `${idleProfiled} further ${idleProfiled === 1 ? 'body is' : 'bodies are'} profiled but run no play in this assessment. ` : ''}
+          {idleUnprofiled ? `${idleUnprofiled} ${idleUnprofiled === 1 ? 'was' : 'were'} named and never profiled. ` : ''}
+          {board.length} candidate records stand for {namedAll} names — entity resolution keeps
+          candidates apart rather than merging them, which &ldquo;How they connect&rdquo; reports as
+          a finding.
         </p>
       ) : null}
     </>
@@ -399,7 +465,7 @@ export function Report({ detail, offline, linkTo, onChanged }: {
   ) : null);
 
   section('writeup', 'The write-up', 'verdict', sectionFindings.length ? (
-    <WriteUp groups={sectionFindings} name={name} />
+    <WriteUp groups={sectionFindings} name={name} offline={offline} />
   ) : null);
 
   /*
@@ -412,9 +478,12 @@ export function Report({ detail, offline, linkTo, onChanged }: {
    * for "what should I do" had to read all nine in full to find out.
    *
    * The lead sentence is the instruction and it is set as one. Everything after
-   * it is the working, and it opens on request. `summarise()` does the split —
-   * the same one the write-up uses, so the report has one idea of what an
-   * opening sentence is.
+   * it is the working, and it opens on request, and `summarise()` does the split.
+   *
+   * (It used to say "the same one the write-up uses". That stopped being true
+   * when the write-up became a grid of fixed-height cards: it clamps in CSS and
+   * splits nothing. Measured on the real run, `summarise()` declines to split ten
+   * of its twelve sections, which is why it is not used there.)
    */
   section('suggests', 'What it suggests', 'verdict', recs.length ? (
     <ol className="prt-recs">
@@ -464,8 +533,8 @@ export function Report({ detail, offline, linkTo, onChanged }: {
    * page became a wall in which the differences were invisible, which is the
    * opposite of what a record of what a run could not do is for.
    *
-   * `summarise()` is the same split the write-up uses, so one definition of
-   * "the first sentence" serves the whole report.
+   * `summarise()` is the split the recommendations use, so one definition of
+   * "the first sentence" serves both.
    */
   /*
    * `summarise()` IS THE WRONG SPLIT FOR THESE, and the rendered page said so.
@@ -584,17 +653,59 @@ export function Report({ detail, offline, linkTo, onChanged }: {
 
   section('send', 'Send it to someone', ACTIONS, offline ? null : <Shares analysisId={analysis.id} />);
 
-  section('provenance', 'How this was produced', 'provenance',
+  /*
+   * A ROW IS DROPPED RATHER THAN GUESSED AT.
+   *
+   * "the configured default" and "the provider default" are true statements on
+   * the service, where a null column means the run took whatever was configured.
+   * In a pack made before the run's own facts travelled with it they were
+   * guesses, printed with the same confidence as a fact — and the stage row was
+   * worse than a guess, because a pack that knows no statuses counts none of them
+   * completed. A pack that cannot say stays quiet; the service is unchanged.
+   */
+  const known = stages.some((stage) => stage.status !== 'unknown');
+  /*
+   * WHAT STOPPED, IN THE MOVE THAT EXISTS FOR WHAT THE RUN DID TO ITSELF.
+   *
+   * `stage.error` was in the payload and read by nothing: the assessment page
+   * suppressed its own task list once a report existed, and `ProvenanceLead`
+   * takes `{ warnings }` alone, so a failed stage left no trace anywhere a reader
+   * could find it. A run that stopped is a fact about the report's completeness,
+   * which is the one thing this section is for.
+   */
+  const stopped = stages.filter((stage) => stage.status === 'failed');
+  section('provenance', 'How this was produced', 'provenance', <>
+    {stopped.length ? (
+      <InsetText>
+        <p className="govuk-body">
+          {stopped.length === 1 ? 'One stage did not finish' : `${stopped.length} stages did not finish`}
+          {': '}
+          {stopped.map((stage) => `${stage.name.toLowerCase()} (stage ${stage.ordinal + 1})`).join(', ')}.
+          {' '}Everything below is what the run produced before that, and the work those stages
+          would have written is absent rather than filled in.
+        </p>
+        {stopped.map((stage) => (stage.error ? (
+          <p className="govuk-body" key={stage.ordinal}>{stage.error}</p>
+        ) : null))}
+      </InsetText>
+    ) : null}
     <SummaryList
       rows={[
-        { key: 'Model', value: analysis.model ?? 'the configured default' },
-        { key: 'Reasoning effort', value: analysis.thinkingLevel ?? 'the provider default' },
+        ...(analysis.model || !offline ? [{ key: 'Model', value: analysis.model ?? 'the configured default' }] : []),
+        ...(analysis.thinkingLevel || !offline
+          ? [{ key: 'Reasoning effort', value: analysis.thinkingLevel ?? 'the provider default' }]
+          : []),
         { key: 'Depth', value: analysis.depth },
         { key: 'Sealed', value: analysis.sealed ? 'Yes — none of the paper is stored in the clear' : 'No' },
-        { key: 'Stages', value: `${stages.filter((s) => s.status === 'completed').length} of ${stages.length} completed` },
+        ...(known
+          ? [{
+              key: 'Stages',
+              value: `${stages.filter((s) => s.status === 'completed').length} of ${stages.length} completed`,
+            }]
+          : []),
       ]}
     />
-  );
+  </>);
 
   /*
    * THE OFFLINE PACK KEEPS THE CASCADE, and that is not a shortcut.
@@ -644,13 +755,24 @@ export function Report({ detail, offline, linkTo, onChanged }: {
           /* It draws its own section and its own heading; a wrapper here would
              print both titles. The way back to the contents still follows it,
              because a pack is one very long page and that link is how a reader
-             gets out of the middle of it. */
-          <div key={entry.id}>
+             gets out of the middle of it.
+
+             A FRAGMENT, NOT A DIV — the service branch below has always used one,
+             and the difference was invisible until it wasn't. Every density rule
+             is written as a pair, `.govuk-tabs__panel > section` and
+             `.prt-pack > section`, and a wrapping div breaks the child combinator
+             on the pack's half. Measured on a real pack: the eleven sections that
+             are direct children get their bottom margin and the rule under their
+             heading; these four — where the exposure sits, the mechanisms, the
+             weighting, what was discarded, the heads of all four moves — got
+             none, and read as a different level of heading than the same heading
+             on the service. */
+          <Fragment key={entry.id}>
             {entry.body}
             <p className="govuk-body-s govuk-!-margin-top-2">
               <a className="govuk-link" href="#contents">Back to contents</a>
             </p>
-          </div>
+          </Fragment>
         ) : (
           <section key={entry.id} aria-labelledby={entry.id}>
             <h2 className="govuk-heading-l" id={entry.id}>{entry.title}</h2>

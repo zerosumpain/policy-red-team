@@ -44,7 +44,16 @@ export function Quoted({ text, quotes }: {
           assessment quoted from this passage.
         </p>
       ) : null}
-      <div className="prt-quoted">
+      {/*
+        * FOCUSABLE, BECAUSE IT SCROLLS. `.prt-quoted` caps at 28rem and scrolls,
+        * and everything inside it is text, `<mark>` and `<span>` — nothing a
+        * keyboard can land on. So a reader who does not use a mouse could not get
+        * past about line 22 of a passage whose median length on a real run is
+        * 3,618 characters, in the one section the drill exists for. axe reports
+        * it `serious`; the gates never saw it, because the walk drills into a
+        * 672-byte fixture that never overflows the box.
+        */}
+      <div className="prt-quoted" tabIndex={0} role="group" aria-label="The paper’s own wording, scrollable">
         {runs.map((run, i) => (run.mark
           ? <mark key={i} className="prt-mark">{run.text}</mark>
           : <span key={i}>{run.text}</span>))}

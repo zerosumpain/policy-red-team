@@ -339,7 +339,7 @@ export function Drill() {
         </p>
       ) : null}
 
-      <Chain chain={chain} link={link} stageOf={stageOf} marks={marks} kind={artefact.kind} />
+      <Chain chain={chain} link={link} stageOf={stageOf} marks={marks} kind={artefact.kind} own={stage} />
 
       {cites.total ? (
         <section aria-labelledby="cited-by">
@@ -427,16 +427,27 @@ function ArtefactList({ items, link, stageOf }: { items: Artefact[]; link: (a: A
  * saying what the ladder is: the stages of the run, walked in reverse, ending
  * at the document.
  */
-function Chain({ chain, link, stageOf, marks, kind }: {
+function Chain({ chain, link, stageOf, marks, kind, own }: {
   chain: ReturnType<typeof provenance>;
   link: (a: Artefact) => React.ReactNode;
   stageOf: StageOf;
   /** Quotes to mark in the passages at the foot of the ladder. */
   marks: (string | null | undefined)[];
   kind: string;
+  /** The stage this page's own artefact was produced at — the rungs are measured from it. */
+  own: number;
 }) {
   const steps = chain.hops.length;
   const thing = kind === 'exploit' ? 'play' : kind === 'recommendation' ? 'recommendation' : 'finding';
+  /*
+   * ONLY CLAIMED WHERE IT IS TRUE. A recommendation's rungs print 10 → 200 → 90
+   * on the real run: the third is smaller because the walk hit its 300-node cap
+   * mid-rung, which is a fact about the cap and not about the pipeline. The
+   * InsetText below already says the chain was cut; the sentence promising growth
+   * was contradicting it two paragraphs earlier.
+   */
+  const growing = chain.stoppedBy !== 'nodes'
+    && chain.hops.every((hop, i) => i === 0 || hop.items.length >= chain.hops[i - 1].items.length);
 
   return (
     <section aria-labelledby="chain">
@@ -465,11 +476,23 @@ function Chain({ chain, link, stageOf, marks, kind }: {
             looks like a fault rather than the shape of a pipeline where every
             stage reads several things from the stage below it.
           */}
+          {/*
+            A STEP IS A CITATION, NOT A STAGE — which is what the walk actually
+            follows, and saying otherwise put the page at odds with itself. The
+            rung headed "one stage of the run away" listed items the tags beside
+            them called stage 2, nine stages back, on a play produced at stage 11;
+            on the real run 74% of a play's direct citations are nine stages back
+            and 2% are one. Each rung now reads its own items and says where they
+            were written, so the gloss and the tags cannot disagree.
+          */}
           <p className="govuk-body">
-            Each step back is one stage of the assessment, in reverse. What this {thing} cites
-            directly was written by the stage before it; what <em>that</em> cites was written by the
-            stage before that, down to the paper itself. The lists get longer going back because
-            every stage reads several things from the one below it.
+            Each step back follows what the last one cited. What this {thing} cites directly was
+            written by whichever stage established it — often several stages earlier, not the one
+            before — and what <em>those</em> cite was written earlier still, down to the paper
+            itself.
+            {growing
+              ? ' The lists get longer going back, because a stage reads several things from the work below it.'
+              : ''}
           </p>
           <p className="govuk-body">
             Followed back {steps} {steps === 1 ? 'step' : 'steps'}, through {chain.reached}{' '}
@@ -507,60 +530,141 @@ function Chain({ chain, link, stageOf, marks, kind }: {
               {hop.depth === 1 ? 'What it cites directly' : `${ordinal(hop.depth)} step back`}
               {' — '}{hop.items.length}
             </h3>
-            <p className="govuk-body-s prt-meta prt-ladder__gloss">{stepGloss(hop.depth, thing)}</p>
+            <p className="govuk-body-s prt-meta prt-ladder__gloss">
+              {stepGloss(hop.depth, thing, hop.items, stageOf, own)}
+            </p>
             <ArtefactList items={hop.items} link={link} stageOf={stageOf} />
           </div>
         ))}
       </div>
 
-      {chain.sources.length ? (
-        <>
-          <h3 className="govuk-heading-s">
-            Back at the paper — {chain.sources.length} {chain.sources.length === 1 ? 'passage' : 'passages'}
-          </h3>
-          <p className="govuk-body">
-            The document's own wording, in the order it appears there. Everything above was
-            built from these.
-          </p>
-          {chain.sources.slice(0, 6).map((source) => (
-            <div key={source.id} className="prt-source">
-              {/* Attribution above the quotation, the way a citation reads —
-                  and nothing at all where the document has no pages, because
-                  "page not recorded" is noise on every passage of a .txt. */}
-              <p className="govuk-body-s prt-source__cite">
-                {link(source)}
-                {source.page ? <span className="prt-meta"> · page {source.page}</span> : null}
-              </p>
-              {/* MARKED, because otherwise this is two thousand words and the
-                  reader is looking for one clause. The marks are the quotes the
-                  chain's own artefacts recorded, not a keyword search. */}
-              <Quoted text={paperWording(source) ?? ''} quotes={marks} />
-            </div>
-          ))}
-          {chain.sources.length > 6 ? (
-            <Details summary={`The other ${chain.sources.length - 6} passages`}>
-              <ArtefactList items={chain.sources.slice(6)} link={link} stageOf={stageOf} />
-            </Details>
-          ) : null}
-        </>
-      ) : null}
+      {chain.sources.length ? <Paper sources={chain.sources} link={link} stageOf={stageOf} marks={marks} /> : null}
     </section>
   );
 }
 
 /**
- * What a given distance back actually means, in this assessment's terms.
+ * THE BOTTOM OF THE LADDER — and it is not all passages.
+ *
+ * `provenance()` collects a source from every ancestor that has any paper
+ * wording, which for anything but a passage is its own `sourceQuote` — the clause
+ * that artefact pulled out, not the passage it came from. Both belong here: the
+ * chain really did end at the paper through them. What was wrong was calling all
+ * of them passages and then ordering the whole set by page alone.
+ *
+ * Measured on one recommendation of the real run: 85 "passages", of which 3 were
+ * passages and the rest were 40 edges, 17 claims, 15 mechanisms and 10 actors.
+ * The six shown were 251, 63, 130, 24, 247 and 38 characters — one of them a
+ * body's name quoted inside its own highlight — while the 1,196- and
+ * 3,616-character passages the chain actually reached sat below a shut
+ * disclosure, because page order put short fragments from page 5 above them.
+ *
+ * So passages lead, quotations follow, page order holds within each, and the
+ * heading counts the two separately. Nothing is dropped and nothing is reordered
+ * that a reader was relying on.
+ */
+function Paper({ sources, link, stageOf, marks }: {
+  sources: Artefact[];
+  link: (a: Artefact) => React.ReactNode;
+  stageOf: StageOf;
+  marks: (string | null | undefined)[];
+}) {
+  const passages = sources.filter((s) => s.kind === 'passage');
+  const quotations = sources.filter((s) => s.kind !== 'passage');
+  const ordered = [...passages, ...quotations];
+  const shown = ordered.slice(0, 6);
+  const rest = ordered.slice(6);
+  const count = (n: number, word: string) => `${n} ${n === 1 ? word : `${word}s`}`;
+
+  return (
+    <>
+      <h3 className="govuk-heading-s">
+        Back at the paper — {passages.length && quotations.length
+          ? `${count(passages.length, 'passage')} and ${count(quotations.length, 'quotation')}`
+          : passages.length
+            ? count(passages.length, 'passage')
+            : count(quotations.length, 'quotation')}
+      </h3>
+      <p className="govuk-body">
+        The document&rsquo;s own wording. Everything above was built from these.
+        {quotations.length ? (
+          <> A <em>quotation</em> is the clause one of the things above recorded; the passage it
+          was taken from is not itself in this chain. Passages come first, then quotations, each
+          in the order they appear in the paper.</>
+        ) : (
+          <> They are in the order they appear there.</>
+        )}
+      </p>
+      {shown.map((source) => (
+        <div key={source.id} className="prt-source">
+          {/* Attribution above the quotation, the way a citation reads —
+              and nothing at all where the document has no pages, because
+              "page not recorded" is noise on every passage of a .txt. */}
+          <p className="govuk-body-s prt-source__cite">
+            {link(source)}
+            {source.kind === 'passage' ? null : (
+              <span className="prt-meta"> · quoted by this {fieldLabel(source.kind).toLowerCase()}</span>
+            )}
+            {source.page ? <span className="prt-meta"> · page {source.page}</span> : null}
+          </p>
+          {/* MARKED, because otherwise this is two thousand words and the
+              reader is looking for one clause. The marks are the quotes the
+              chain's own artefacts recorded, not a keyword search. */}
+          <Quoted text={paperWording(source) ?? ''} quotes={marks} />
+        </div>
+      ))}
+      {rest.length ? (
+        <Details summary={`The other ${rest.length} ${rest.length === 1 ? 'one' : 'of them'}`}>
+          <ArtefactList items={rest} link={link} stageOf={stageOf} />
+        </Details>
+      ) : null}
+    </>
+  );
+}
+
+/**
+ * What a given rung actually is, read off the rung.
  *
  * Deliberately concrete rather than generic: "one stage earlier" tells a reader
  * nothing they could not read off the number. What they want to know is how far
  * from the document they now are, because that is what decides how much of what
  * they are reading is the paper and how much is the tool.
+ *
+ * IT HAS TO BE MEASURED, NOT ASSERTED. This used to hard-code the distance —
+ * depth 1 was "one stage of the run away", depth 3 was "most of what is listed
+ * was read off the document" — and both were wrong on the real run, above lists
+ * whose own stage tags said so on the same line. Depth 1 is nine stages back 74%
+ * of the time for a play; depth 3 is a direct reading of the paper 53–64% of the
+ * time, and on one recommendation the whole rung is deterministic structural
+ * checks that were never read off anything. So the sentence is built from the
+ * items the rung is about to list, and the page cannot contradict itself.
  */
-function stepGloss(depth: number, thing: string): string {
-  if (depth === 1) return `What this ${thing} was written from — one stage of the run away from it.`;
-  if (depth === 2) return 'What those in turn were written from: two stages from this page, and that much closer to the paper.';
-  if (depth === 3) return 'Three stages back. At this distance most of what is listed was read off the document rather than inferred from earlier work.';
-  return `${depth} stages back. This far down the ladder nearly everything is a direct reading of the paper.`;
+function stepGloss(depth: number, thing: string, items: Artefact[], stageOf: StageOf, own: number): string {
+  const what = depth === 1
+    ? `What this ${thing} was written from.`
+    : depth === 2
+      ? 'What those in turn were written from.'
+      : `${depth} citations back.`;
+
+  // A pass owns ordinals in the hundreds — `PASS_BASE * n + k` — which are not
+  // on the run's scale, so they are left out of the range rather than printed as
+  // a stage number nobody can place.
+  const ordinals = items.map((item) => stageOf(item.id)).filter((n) => Number.isFinite(n) && !isPassStage(n));
+  if (!ordinals.length || !Number.isFinite(own) || isPassStage(own)) return what;
+
+  const low = Math.min(...ordinals);
+  const high = Math.max(...ordinals);
+  const where = low === high
+    ? `All of it was written at stage ${low + 1}`
+    : `It was written at stages ${low + 1} to ${high + 1}`;
+  const gap = (n: number) => (n === 0
+    ? 'the same stage as this page'
+    : n > 0
+      ? `${n} ${n === 1 ? 'stage' : 'stages'} earlier`
+      : `${-n} ${-n === 1 ? 'stage' : 'stages'} later`);
+  const near = own - high;
+  const far = own - low;
+  return `${what} ${where} — ${near === far ? gap(far) : `from ${gap(far)} to ${gap(near)}`}.`;
 }
 
 /**
@@ -763,7 +867,27 @@ function RecommendationSection({ artefact, all, plays: list, link, rankOf }: {
       </p>
 
       {links.plays.length ? tiers.map((tier) => {
-        const inTier = links.plays.filter((p) => p.tier === tier);
+        /*
+         * SORTED, BECAUSE THE TABLE SAYS IT IS. `linkRecommendation` walks the
+         * artefacts in storage order and then sorts by tier only; `Array.sort` is
+         * stable, so within a tier the order was whatever the database returned.
+         * The table prints a Rank column and captions itself "the worst 12 of 28"
+         * — and on the real run that 12 read 10, 17, 4, 19, 7, 2, 28, 24, 44, 12,
+         * 23, 16, omitting the two worst plays the tier contained and including
+         * the forty-fourth. The one column on the page that is meant to be
+         * ordered was noise.
+         */
+        const rank = (id: string) => {
+          // `rankOf` is a `findIndex` + 1, so a play that is not in the ranked
+          // list at all comes back as 0 — which would sort it to the TOP of a
+          // table headed "worst first". It goes last.
+          const found = rankOf(id);
+          return found > 0 ? found : Number.MAX_SAFE_INTEGER;
+        };
+        const inTier = links.plays
+          .filter((p) => p.tier === tier)
+          .slice()
+          .sort((a, b) => rank(a.id) - rank(b.id));
         if (!inTier.length) return null;
         const body = (
           <>

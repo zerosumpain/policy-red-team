@@ -47,6 +47,8 @@ import { PolicyError } from '$lib/policy-analysis/validation';
 import { assessmentDocument, isDownloadFormat, isExportFormat } from '$lib/policy-analysis/server/export';
 import { assessmentBundle } from '$lib/policy-analysis/server/bundle';
 import { ownerPayload, sharedPayload } from '$lib/policy-analysis/offline/payload';
+import { runFacts, type PackPayload } from '$lib/offline-run';
+import { forProgress, forTheReport } from '$lib/detail-views';
 import { shareableReport } from '$lib/policy-analysis/share';
 import { STAGES } from '$lib/policy-analysis/contracts';
 import { analysisStatus } from '$lib/worker';
@@ -142,8 +144,29 @@ export async function handleApi(
     // about to draw the menu, and somebody may have changed it in the panel
     // since the process started. One query.
     await refreshModelMenu();
+    /*
+     * THE SEVEN FIELDS THE CLIENT DECLARES, not the twenty the table has.
+     *
+     * `listAnalyses` is a bare `select()` and this route used to spread the row
+     * straight out, so every request for the history list also shipped `owner`
+     * and `context` — the free-text "anything the paper does not say" box the
+     * submitter typed into — to anyone who asked for the landing page. The client
+     * has never been able to read either: `AnalysisRow` declares seven fields and
+     * TypeScript would refuse an eighth. So this is data leaving the box that
+     * nothing wanted, which on a hostname with no authentication in front of it
+     * is the whole of the exposure.
+     */
+    const analyses = (await listAnalyses(owner())).map((row) => ({
+      id: row.id,
+      title: row.title,
+      status: row.status,
+      createdAt: row.createdAt,
+      completedAt: row.completedAt,
+      jurisdiction: row.jurisdiction,
+      policyArea: row.policyArea,
+    }));
     sendJson(res, 200, {
-      analyses: await listAnalyses(owner()),
+      analyses,
       models: offeredModels(),
       stages: STAGES,
       readOnly: isReadOnly(),
@@ -317,7 +340,35 @@ export async function handleApi(
     // would only 403 — the same argument the landing page already makes. It is
     // read from the server rather than guessed, because the flag can change
     // under a running browser.
-    sendJson(res, 200, { ...result, readOnly: isReadOnly() });
+    const view = url.searchParams.get('view');
+    const shaped = view === 'report' ? forTheReport(result)
+      : view === 'progress' ? forProgress(result)
+      : result;
+    const body = { ...shaped, readOnly: isReadOnly() };
+
+    /*
+     * AN ASSESSMENT THAT HAS STOPPED CHANGING CAN BE REVALIDATED.
+     *
+     * Measured on the live service: opening the report, following one artefact
+     * into the drill and pressing Back is three full fetches of the same
+     * assessment — 13,469,643 decoded bytes — because React Router remounts each
+     * route and `sendJson` sets nothing but content-type and content-length, so
+     * the browser has no way to ask "still the same?".
+     *
+     * `updatedAt` moves on every mutation, which makes it the version. `readOnly`
+     * is folded in because it is sent from here precisely because it can change
+     * under a running browser, and an ETag keyed on the row alone would serve a
+     * stale one from the cache. `private` because this is one reader's own work
+     * and no shared cache should hold it.
+     */
+    const stamp = result.analysis.updatedAt;
+    const version = stamp instanceof Date ? stamp.toISOString() : String(stamp ?? '');
+    const etag = `W/"${id}-${version}-${isReadOnly() ? 'ro' : 'rw'}-${view ?? 'full'}"`;
+    if (req.headers['if-none-match'] === etag) {
+      res.writeHead(304, { etag, 'cache-control': 'private, must-revalidate' }).end();
+      return true;
+    }
+    sendJson(res, 200, body, { etag, 'cache-control': 'private, must-revalidate' });
     return true;
   }
 
@@ -424,20 +475,27 @@ export async function handleApi(
     const redacted = shared ? shareableReport({ artefacts: result.artefacts, stages: result.stages }) : null;
     const artefacts = redacted ? redacted.artefacts : result.artefacts;
 
+    /*
+     * WHAT THE RUN DID TRAVELS WITH IT. Without this the pack's page had no
+     * stage statuses and no model to print, so it invented them — "256 of 256
+     * completed" for a run that failed at 17 of 18. See `$lib/offline-run`.
+     */
+    const pack: PackPayload = {
+      ...(redacted
+        ? sharedPayload({ ...meta, artefacts, warnings: redacted.warnings, withheld: redacted.withheld })
+        : ownerPayload({
+            ...meta,
+            sealed: result.analysis.sealed,
+            documentSha256: result.documents?.[0]?.sha256 ?? null,
+            artefacts,
+            stages: result.stages,
+          })),
+      run: runFacts(result),
+    };
+
     const response = isExportFormat(format)
       ? await assessmentDocument(artefacts, meta, format)
-      : await assessmentBundle({
-          payload: redacted
-            ? sharedPayload({ ...meta, artefacts, warnings: redacted.warnings, withheld: redacted.withheld })
-            : ownerPayload({
-                ...meta,
-                sealed: result.analysis.sealed,
-                documentSha256: result.documents?.[0]?.sha256 ?? null,
-                artefacts,
-                stages: result.stages,
-              }),
-          meta,
-        });
+      : await assessmentBundle({ payload: pack, meta });
 
     await pipeResponse(response, res);
     return true;

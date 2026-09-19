@@ -30,11 +30,11 @@ try {
 import { client, db } from '$lib/db';
 import { migrate } from './scripts/migrate.mjs';
 import { createAnalysis, detail, listAnalyses, loadArtefacts } from '$lib/policy-analysis/server/store';
-import { STAGES } from '$lib/policy-analysis/contracts';
+import { CONCURRENCY_OPTIONS, STAGES } from '$lib/policy-analysis/contracts';
 import { drain, isFinished } from '$lib/worker';
 import { modelAccessProblem } from '$lib/llm/client';
 import { getOwnerEmails } from '$lib/server/access';
-import type { Depth } from '$lib/policy-analysis/contracts';
+import type { Concurrency, Depth } from '$lib/policy-analysis/contracts';
 
 const MIME: Record<string, string> = {
   '.txt': 'text/plain',
@@ -77,6 +77,8 @@ assess options
   --title <t>        defaults to the file name
   --jurisdiction <j> --area <a> --context <c>
   --depth <standard|deep>             default standard
+  --agents <1-6>                      calls in flight at once, default 6
+  --shared-context-first <true|false> order the shared block first, default true
   --owner <email>                     default POLICY_OWNER_EMAIL
   --out <file>                        default <title>.report.json
   --quiet                             no per-stage progress
@@ -94,6 +96,30 @@ async function assess(file: string, flags: Flags): Promise<number> {
   const owner = str(flags, 'owner') ?? getOwnerEmails()[0];
   const depth = (str(flags, 'depth') ?? 'standard') as Depth;
   const quiet = flags.quiet === true;
+
+  /*
+   * THE SAME DEFAULTS THE HTTP ROUTE TAKES, because the reason that route sets
+   * them applies here more, not less.
+   *
+   * `server/api.ts` defaults `sharedContextFirst` to true and says why: "It cost
+   * a subscription on 2026-09-19. A run of 385 calls went out with the flag
+   * unset because the caller had copied an older submission's fields, and
+   * nothing on the way in asked whether that was deliberate." That fix was
+   * applied to the route. This entry point passed `false` written into the
+   * source, where nobody would ever be asked whether it was deliberate at all.
+   *
+   * `concurrency: null` resolves to DEFAULT_CONCURRENCY, which is 1 — so every
+   * fan-out ran serially. The comment on that default excuses it with "the
+   * submission form suggests a higher number"; in this fork the form has no such
+   * field, so nothing was suggesting anything and a headless run took six times
+   * longer than the same run through the browser.
+   */
+  const agents = Number(str(flags, 'agents') ?? 6);
+  if (!CONCURRENCY_OPTIONS.includes(agents as Concurrency)) {
+    console.error(`--agents must be one of ${CONCURRENCY_OPTIONS.join(', ')}.`);
+    return 2;
+  }
+  const sharedContextFirst = str(flags, 'shared-context-first') !== 'false';
 
   // Before anything is written down. An assessment created without a key is a
   // row, a queue envelope and eighteen pending stages that exist only to fail.
@@ -113,9 +139,9 @@ async function assess(file: string, flags: Flags): Promise<number> {
     depth,
     model: null,
     thinkingLevel: null,
-    concurrency: null,
+    concurrency: agents as Concurrency,
     extraction: null,
-    sharedContextFirst: false,
+    sharedContextFirst,
     sealed: false,
     sealedResearch: false,
     filename: path.basename(file),

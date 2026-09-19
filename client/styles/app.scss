@@ -71,6 +71,17 @@
 // `-webkit-appearance` is in that mixin and is not optional: without it iOS
 // Safari keeps its own button chrome, which `background: none` alone does not
 // remove.
+// AND THE COLOUR AND THE UNDERLINE HAVE TO BE HERE, because the framework
+// cannot give them to a button. `.govuk-link`'s colour declarations are all
+// `:link` and `:visited` — neither pseudo-class matches a `<button>` — which is
+// the same trap `.prt-tab` below documents. Adding `govuk-link` alongside this
+// reset, which is what the two callers did, buys the underline and the yellow
+// focus state and leaves the control at the user agent's `buttontext` black.
+//
+// Measured on the real run before this rule: the twelve "Read it in full"
+// controls on the write-up computed `rgb(0, 0, 0)`, no underline, 16px/400 —
+// identical to the paragraph directly above them, so the one route to the text
+// the card is hiding read as the next sentence of it.
 .prt-linkbutton {
   -webkit-appearance: none;
   appearance: none;
@@ -79,6 +90,11 @@
   padding: 0;
   font: inherit;
   cursor: pointer;
+  color: govuk.govuk-functional-colour("link");
+  text-decoration: underline;
+  text-underline-offset: 0.1em;
+
+  &:hover { text-decoration-thickness: 3px; }
 }
 
 // The one thing GOV.UK has no pattern for and this product cannot do without: a
@@ -193,6 +209,57 @@
 
   p { margin: 0; }
   .govuk-button { margin: 0; }
+
+  // AND IT HAS TO SURVIVE THE SCROLL, or it is stated exactly where it cannot be
+  // read. Measured on the real run: choose the twenty-second mechanism in
+  // Causality — 1,061px down — and the banner updates to name it 512px above the
+  // viewport; move to Threats from there and the panel drops from 47 play cards
+  // to 1, with the only explanation still off-screen. A filter nobody can see is
+  // the silent narrowing this component exists to prevent.
+  //
+  // FROM TABLET ONLY. A sticky bar spends viewport height, and this one wraps to
+  // two lines with its button; at 400% zoom, where WCAG 2.2 reflow is the
+  // constraint, that is a meaningful share of the screen. Below tablet the report
+  // is one long document with no tab strip, so there is less to be confused by.
+  @include govuk.govuk-media-query($from: tablet) {
+    position: sticky;
+    top: 0;
+    z-index: 10;
+  }
+}
+
+// THE MOVE, NAMED INSIDE ITS OWN PANEL — see `Tabs.tsx`. Hidden while the tab
+// strip is drawn, because there the selected tab is already the heading; shown
+// on a phone and on paper, where the strip is gone and five panels run together.
+//
+// `govuk-visually-hidden` is not used because this has to come BACK, and undoing
+// that mixin means restating every one of its declarations anyway.
+.prt-movehead {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+@mixin prt-movehead-shown {
+  position: static;
+  width: auto;
+  height: auto;
+  overflow: visible;
+  clip-path: none;
+  white-space: normal;
+  @include govuk.govuk-font($size: 24, $weight: bold);
+  margin: 0 0 govuk.govuk-spacing(4);
+  padding-bottom: govuk.govuk-spacing(1);
+  border-bottom: 2px solid govuk.govuk-colour("black");
+}
+
+@include govuk.govuk-media-query($until: tablet) {
+  .prt-movehead { @include prt-movehead-shown; }
 }
 
 // The exposure profile: one bar, four bands, each sized by its count.
@@ -248,8 +315,14 @@
     gap: govuk.govuk-spacing(1);
   }
 
+  // THE SAME BUTTON TRAP `.prt-tab` DOCUMENTS, in a second place. `font-family:
+  // inherit` took the family and left the SIZE, so all 22 mechanism names
+  // rendered at the user agent's 13.333px inside a 19px panel — 30% smaller than
+  // the prose around them, and below every step on the GDS scale. The mixin sets
+  // family, size and line-height together, which is why it, and not a bare
+  // `font-size`, is the fix.
   &__name {
-    font-family: inherit;
+    @include govuk.govuk-font($size: 19);
     text-align: left;
     background: none;
     border: 0;
@@ -656,15 +729,10 @@
     align-self: end;
   }
 
-  &__more {
-    @include govuk.govuk-font($size: 16);
-    color: govuk.govuk-colour("blue");
-    text-decoration: underline;
-  }
-
-  // The write-up's own columns must not inherit the section rule that gives
-  // every report section a bottom border and heavy margin.
-  .govuk-details { margin-bottom: 0; }
+  // `&__more` used to live here — the colour and underline this card's control
+  // needed, written for it and applied by nothing. It is gone because
+  // `.prt-linkbutton` now carries both, which fixes every link-shaped button at
+  // once rather than this one; the stress lab's control had the same bug.
 }
 
 // ── A list of plays a reader can scan ─────────────────────────────────────
@@ -911,6 +979,36 @@
   // the report hid behind "read the rest" is opened for the printed copy.
   details > summary { display: none; }
   details > *:not(summary) { display: block !important; }
+
+  // AND SO DOES A LINE CLAMP, which is the same defect wearing CSS rather than
+  // markup and was missed when the write-up's disclosure became a clamp. Measured
+  // on the real run in print emulation: all twelve sections still cut at nine
+  // lines, 1,701px of the assessment's own prose — about 74 lines — gone from the
+  // paper copy, four of them mid-word, each under a "Read it in full" control
+  // that a reader cannot press.
+  //
+  // `WriteUp` also opens every section on `beforeprint`, which is the half of
+  // this CSS cannot do: a shut card renders only the first of its items, so the
+  // siblings are not in the document for any stylesheet to reach. This rule is
+  // what catches a browser that prints without firing that event.
+  .prt-writeup__body {
+    display: block;
+    -webkit-line-clamp: none;
+    line-clamp: none;
+    overflow: visible;
+    min-height: 0;
+  }
+
+  // The control is not a `.govuk-button`, so hiding those missed it and the PDF
+  // carried a live-looking "Read it in full" exactly where the missing text was.
+  .prt-linkbutton { display: none !important; }
+
+  // A passage scrolls inside 28rem on screen; on paper there is nothing to
+  // scroll, so the box simply clipped the rest of the white paper's wording.
+  .prt-quoted { max-height: none; overflow: visible; }
+
+  // Five panels print as one document, so each says which move it is.
+  .prt-movehead { @include prt-movehead-shown; }
 
   .prt-metric,
   .prt-play,
@@ -1242,10 +1340,13 @@
     }
   }
 
+  // The relation, sitting on the line. It used to include the 16px step and then
+  // override it with `0.8rem` — 12.8px, the only rem-valued size in the file and
+  // on no step of the scale. The mixin's 16 is the smallest the design system
+  // has, and it is enough.
   &__rel {
     position: relative;
     @include govuk.govuk-font($size: 16);
-    font-size: 0.8rem;
     line-height: 1.2;
     text-align: center;
     color: govuk.govuk-colour("dark-grey");
@@ -1295,6 +1396,15 @@
   max-height: 28rem;
   overflow: auto;
 
+  // A SCROLL REGION HAS TO BE REACHABLE FROM A KEYBOARD, and this one holds
+  // nothing focusable — it is text, marks and spans. `Quoted` puts `tabIndex` and
+  // a label on it for that reason; the focus ring is here because a scroll
+  // container clips both axes, so the ring needs room inside the box.
+  &:focus-visible {
+    outline: 3px solid govuk.govuk-colour("yellow");
+    outline-offset: -3px;
+  }
+
   &__key {
     display: flex;
     align-items: center;
@@ -1332,5 +1442,23 @@
 // bodies on a real assessment have relationships in one direction only, and
 // reserving the empty column pushed the subject against one edge with half the
 // figure blank. The heading stays — "nothing points at it" is the finding.
-.prt-ego--no-in { grid-template-columns: auto auto minmax(0, 1fr); }
-.prt-ego--no-out { grid-template-columns: minmax(0, 1fr) auto auto; }
+//
+// THAT ARGUMENT IS ABOUT THREE COLUMNS, SO IT BELONGS INSIDE THE THREE-COLUMN
+// MEDIA QUERY. Written flat at the end of the file these two carried the same
+// specificity as `.prt-ego`'s own `$until: desktop` rule and came later, so they
+// beat it and the map never stacked on a phone. And because the EMPTY side kept
+// an `auto` (max-content) track while the populated side took `1fr`, the
+// sentence "It points at nothing in the paper." outbid the column holding every
+// stated relationship. Measured on the live drill for a mechanism with one
+// incoming edge: at 375px the populated track computed to 0px and "Department
+// for Education" rendered 24px wide by 274px tall — one character per line —
+// inside a 794px figure, for a single relationship. 119 of the 120 entities on
+// the real run carry one of these two classes, so this was very nearly every
+// map on the page.
+//
+// `minmax(14rem, 1fr)` is the floor that stops it: below about 224px a box of
+// body names is not a box, so the empty side's sentence gives way first.
+@include govuk.govuk-media-query($from: desktop) {
+  .prt-ego--no-in { grid-template-columns: auto auto minmax(14rem, 1fr); }
+  .prt-ego--no-out { grid-template-columns: minmax(14rem, 1fr) auto auto; }
+}

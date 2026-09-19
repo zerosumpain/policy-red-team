@@ -48,13 +48,28 @@ try {
   note(`assessment ${id}`);
 
   // 2 — wait for it to finish
+  let served = null;
   for (let i = 0; i < 240; i++) {
     const detail = await (await fetch(`http://127.0.0.1:${PORT}/api/policy-analysis/${id}`)).json();
+    served = detail;
     if (['completed', 'completed_with_gaps'].includes(detail.analysis.status)) break;
     if (['failed', 'cancelled'].includes(detail.analysis.status)) throw new Error(`run ${detail.analysis.status}`);
     await new Promise((r) => setTimeout(r, 500));
   }
   note('assessment finished');
+
+  /*
+   * WHAT THE SERVICE SAYS ABOUT THE RUN, held so the pack can be checked against
+   * it. The pack used to synthesise one stage per warning with `status:
+   * 'completed'` written in — so on the real run it printed "Stages — 256 of 256
+   * completed" for a run that failed at 17 of 18, while the service, from the
+   * same assessment, printed "17 of 18". Nothing caught it, because nothing here
+   * compared the two artefacts on a fact they both state.
+   */
+  const truth = {
+    stages: `${served.stages.filter((s) => s.status === 'completed').length} of ${served.stages.length} completed`,
+    model: served.analysis.model,
+  };
 
   // 3 — download the pack and unzip it, as a reader would
   const zipped = await fetch(`http://127.0.0.1:${PORT}/api/policy-analysis/${id}/export?format=bundle`);
@@ -121,6 +136,24 @@ try {
   // and an unstyled pack is a pack nobody reads.
   const background = await page.evaluate(() => getComputedStyle(document.body).backgroundColor);
   if (background === 'rgba(0, 0, 0, 0)') failures.push('the pack rendered unstyled — the govuk-template classes are missing');
+
+  // TWO ARTEFACTS OF ONE ASSESSMENT MUST NOT DISAGREE, which is the pack's own
+  // stated principle. This is the fact they both print.
+  if (!body.includes(truth.stages)) {
+    failures.push(`the pack does not agree with the service about the run: expected "${truth.stages}"`);
+  }
+  if (truth.model && !body.includes(truth.model)) {
+    failures.push(`the pack does not name the model the run used (${truth.model})`);
+  }
+  note(`the pack and the service agree: stages "${truth.stages}"${truth.model ? `, model ${truth.model}` : ''}`);
+
+  // NOTHING IS CLIPPED IN A PACK. The write-up clamps to nine lines on the
+  // service, which is `overflow: hidden` — so the hidden text is out of Ctrl-F as
+  // well as out of sight, and Ctrl-F is the only interface a single file:// page
+  // has. A pack renders every section open.
+  const clipped = await page.evaluate(() =>
+    [...document.querySelectorAll('.prt-writeup__body')].filter((el) => el.scrollHeight > el.clientHeight + 2).length);
+  if (clipped) failures.push(`${clipped} write-up sections are clipped in the pack, so their text cannot be searched`);
 
   if (attempted.length) failures.push(`the pack tried to reach the network: ${[...new Set(attempted)].slice(0, 5).join(', ')}`);
   else note('no request left the page');

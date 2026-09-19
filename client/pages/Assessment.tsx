@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router';
-import { api, watchRun, type Detail, type RunProgress } from '../api';
+import { api, watchRun, type Detail, type DetailView, type RunProgress } from '../api';
 import { RunClock } from './RunClock';
 import { RunFindings } from './RunFindings';
 import { Button, ButtonGroup, NotificationBanner, Tag, TaskList, WarningText, type Task, type TagColour } from '../govuk';
@@ -25,21 +25,42 @@ export function Assessment() {
   const [progress, setProgress] = useState<RunProgress | null>(null);
   usePageTitle(detail?.analysis.title);
 
-  const load = useCallback(async () => {
+  /*
+   * `view=report` — the narrow answer, which is what this page renders.
+   *
+   * It draws the stage list, the findings-so-far index and, once the run is
+   * over, the report. None of those reads a causal chain, a research question,
+   * a persona link, an assurance challenge or an option appraisal, and on the
+   * real run those five kinds are about 1.4 MB of a 4.5 MB response. See
+   * `forTheReport` in `server/api.ts` for what a stub keeps and why it is a stub.
+   *
+   * `fresh` DROPS WHAT IS HELD FIRST. The stream below fires on every stage
+   * boundary and the whole point of re-reading then is that the run has moved;
+   * serving that from a cache would freeze the page at the first stage.
+   */
+  const load = useCallback(async (view: DetailView = 'report') => {
     try {
-      setDetail(await api.detail(id));
+      // A re-read is a re-read: the run has moved, which is the whole reason the
+      // stream fired. Serving it from what is held would freeze the page.
+      api.forget(id);
+      setDetail(await api.detail(id, view));
     } catch (err) {
       setError((err as Error).message);
     }
   }, [id]);
 
-  useEffect(() => { void load(); }, [load]);
+  useEffect(() => { void load('report'); }, [load]);
 
   // Follow the run while it is going. The stream closes itself on `done`; this
   // only has to stop listening when the reader leaves.
   useEffect(() => {
     if (!detail || isTerminal(detail.analysis.status)) return;
-    return watchRun(id, { stage: () => void load(), done: () => void load(), error: setError });
+    /*
+     * A STAGE BOUNDARY ASKS THE SMALL QUESTION. Eighteen of these fire over a
+     * run and the page is drawing a stage list and an index of links; `done`
+     * asks the big one, because that is the moment the report appears.
+     */
+    return watchRun(id, { stage: () => void load('progress'), done: () => void load('report'), error: setError });
   }, [id, detail, load]);
 
   /*
@@ -89,6 +110,8 @@ export function Assessment() {
 
   const { analysis, stages } = detail;
   const done = stages.filter((s) => s.status === 'completed').length;
+  /** The stage that actually stopped — read, not assumed to be the last one. */
+  const failed = stages.find((s) => s.status === 'failed');
   const running = !isTerminal(analysis.status);
   /** A run that stopped short still has a report; a run still going does not. */
   const showReport = isFinished(analysis.status) || analysis.status === 'failed' || analysis.status === 'cancelled';
@@ -122,13 +145,39 @@ export function Assessment() {
           <Tag colour={statusColour(analysis.status) as TagColour}>{statusLabel(analysis.status)}</Tag>
           <span className="prt-meta">{done} of {stages.length} stages</span>
           {analysis.model ? <span className="prt-meta">{analysis.model}</span> : null}
-          {analysis.status === 'failed' && analysis.error ? (
-            <span className="prt-meta">
-              Stopped at the last stage — <a className="govuk-link" href="#report-tab-provenance">what it kept and what it lost</a>
-            </span>
-          ) : null}
         </p>
       </header>
+
+      {/*
+        A FAILED RUN SAYS WHY IT FAILED.
+        `analysis.error` — "1 independent challenge has no response in the revised
+        assessment." — was in the payload and rendered nowhere: the page used it
+        as a CONDITION and then printed a fixed sentence, "Stopped at the last
+        stage", which is a guess that happens to be right for a run that dies at
+        eighteen of eighteen and wrong for one that dies at three. So the reason
+        is printed as written and the stage is read off the rows.
+
+        The link works now too. It used to point at `#report-tab-provenance`,
+        which is the tab BUTTON — but which panel is open is React state, and
+        nothing in the client listened to the hash, so above the tablet
+        breakpoint the click scrolled to the strip, focused a button and left
+        Verdict open. `Report` reads the hash now; see the note there.
+      */}
+      {analysis.status === 'failed' ? (
+        <NotificationBanner title="Stopped before the end">
+          <p className="govuk-body">{analysis.error ?? 'It recorded no reason.'}</p>
+          <p className="govuk-body">
+            {failed
+              ? `It stopped in ${failed.name.toLowerCase()} — stage ${failed.ordinal + 1} of ${stages.length}. `
+              : ''}
+            {done} {done === 1 ? 'stage' : 'stages'} finished and{' '}
+            {detail.artefacts.length.toLocaleString()} artefacts were kept.{' '}
+            <a className="govuk-link" href="#report-tab-provenance">
+              What it kept and what it lost
+            </a>
+          </p>
+        </NotificationBanner>
+      ) : null}
 
       {analysis.status === 'completed_with_gaps' ? (
         <NotificationBanner title="Finished, with gaps">

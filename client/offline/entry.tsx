@@ -11,7 +11,7 @@
 import { createRoot } from 'react-dom/client';
 import { OfflineApp } from './OfflineApp';
 import { PAYLOAD_ELEMENT_ID, ROOT_ELEMENT_ID } from '$lib/policy-analysis/offline/html';
-import type { OfflinePayload } from '$lib/policy-analysis/offline/payload';
+import type { PackPayload } from '$lib/offline-run';
 import '../styles/app.scss';
 
 function fail(message: string): void {
@@ -28,9 +28,9 @@ function start(): void {
     fail('This pack is missing its assessment data and cannot be displayed. The Word and markdown copies in the same folder are unaffected.');
     return;
   }
-  let payload: OfflinePayload;
+  let payload: PackPayload;
   try {
-    payload = JSON.parse(island.textContent) as OfflinePayload;
+    payload = JSON.parse(island.textContent) as PackPayload;
   } catch {
     fail('This pack’s assessment data could not be read — the file may have been truncated in transit. The Word and markdown copies in the same folder are unaffected.');
     return;

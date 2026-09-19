@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import type { Artefact } from '$lib/policy-analysis/contracts';
 
 /**
@@ -39,11 +39,50 @@ import type { Artefact } from '$lib/policy-analysis/contracts';
  */
 const LEAD_SECTION = 'executive_assessment';
 
-export function WriteUp({ groups, name }: {
+/**
+ * TRUE WHILE THE BROWSER IS MAKING A PAGE OF THIS.
+ *
+ * The clamp is the disclosure's successor and inherited its worst property: a
+ * shut card renders only the FIRST of its findings, so the rest are not in the
+ * document at all and no print stylesheet can reach them. Measured on the real
+ * run in print emulation, the paper copy lost 1,701px of the assessment's own
+ * prose — about 74 lines — across all twelve sections, four of them cut mid-word.
+ *
+ * `beforeprint` is the same hook the report's own print helper uses to open
+ * disclosures, for the same reason, and it restores afterwards so the screen is
+ * unchanged. The `@media print` rule that releases the clamp stays as well: this
+ * handles the text that is missing from the DOM, that handles the text that is
+ * merely clipped, and a browser that fires neither is not one this has to serve.
+ */
+function usePrinting(): boolean {
+  const [printing, setPrinting] = useState(false);
+  useEffect(() => {
+    const on = () => setPrinting(true);
+    const off = () => setPrinting(false);
+    window.addEventListener('beforeprint', on);
+    window.addEventListener('afterprint', off);
+    return () => {
+      window.removeEventListener('beforeprint', on);
+      window.removeEventListener('afterprint', off);
+    };
+  }, []);
+  return printing;
+}
+
+export function WriteUp({ groups, name, offline = false }: {
   groups: { section: string; label: string; items: Artefact[] }[];
   /** Renders a finding's own title — a link into the drill where one is offered. */
   name: (artefact: Artefact) => ReactNode;
+  /**
+   * THE PACK HAS NO FOLD. A clamp is `overflow: hidden`, which takes the clipped
+   * text out of Ctrl-F as well as out of sight — and Ctrl-F is the offline pack's
+   * whole interface, a single `file://` document with no server to ask. So the
+   * pack renders every section open: there is nothing there to click.
+   */
+  offline?: boolean;
 }) {
+  const printing = usePrinting();
+
   if (!groups.length) return null;
 
   const lead = groups.find((g) => g.section === LEAD_SECTION);
@@ -62,16 +101,18 @@ export function WriteUp({ groups, name }: {
 
       <div className="prt-writeup__columns">
         {rest.map((group) => (
-          <Section key={group.section} group={group} name={name} />
+          <Section key={group.section} group={group} name={name} forced={offline || printing} />
         ))}
       </div>
     </div>
   );
 }
 
-function Section({ group, name }: {
+function Section({ group, name, forced }: {
   group: { section: string; label: string; items: Artefact[] };
   name: (artefact: Artefact) => ReactNode;
+  /** Open regardless of what the reader asked for — printing, or a pack. */
+  forced: boolean;
 }) {
   /*
    * ONE CARD, ONE SECTION, whatever it holds. A section with six findings and
@@ -81,7 +122,8 @@ function Section({ group, name }: {
    * shows the first finding's opening lines, and the control says how much more
    * there is.
    */
-  const [open, setOpen] = useState(false);
+  const [asked, setAsked] = useState(false);
+  const open = asked || forced;
   const more = group.items.length - 1;
 
   return (
@@ -91,7 +133,7 @@ function Section({ group, name }: {
     >
       <h3 className="prt-writeup__head" id={`writeup-${group.section}`}>{group.label}</h3>
 
-      <div className="prt-writeup__body">
+      <div className="prt-writeup__body" id={`writeup-body-${group.section}`}>
         {(open ? group.items : group.items.slice(0, 1)).map((item, i) => (
           <div key={item.id} className={i ? 'prt-writeup__item' : undefined}>
             {open && group.items.length > 1 ? (
@@ -107,16 +149,27 @@ function Section({ group, name }: {
         height whether or not that section has anything more to say. Where there
         is genuinely nothing hidden it is not rendered as a control a reader can
         press and be disappointed by — the card simply ends level.
+
+        Not present at all where there is no fold: a pack renders every section
+        open, so a control offering to open one would do nothing.
       */}
-      <p className="prt-writeup__foot">
-        <button type="button" className="prt-linkbutton" onClick={() => setOpen(!open)}>
-          {open
-            ? 'Show less'
-            : more > 0
-              ? `Read it in full, and ${more} more in this section`
-              : 'Read it in full'}
-        </button>
-      </p>
+      {forced ? null : (
+        <p className="prt-writeup__foot">
+          <button
+            type="button"
+            className="prt-linkbutton"
+            aria-expanded={open}
+            aria-controls={`writeup-body-${group.section}`}
+            onClick={() => setAsked(!asked)}
+          >
+            {open
+              ? 'Show less'
+              : more > 0
+                ? `Read it in full, and ${more} more in this section`
+                : 'Read it in full'}
+          </button>
+        </p>
+      )}
     </section>
   );
 }

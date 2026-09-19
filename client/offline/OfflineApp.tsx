@@ -1,4 +1,4 @@
-import type { OfflinePayload } from '$lib/policy-analysis/offline/payload';
+import type { PackPayload } from '$lib/offline-run';
 import type { Detail } from '../api';
 import { Report } from '../report/Report';
 import { InsetText, Tag, type TagColour } from '../govuk';
@@ -18,7 +18,49 @@ import { statusColour, statusLabel } from '../status';
  * for one figure and the provenance table, and both are about what happened
  * rather than about what is still to come.
  */
-export function OfflineApp({ payload }: { payload: OfflinePayload }) {
+export function OfflineApp({ payload }: { payload: PackPayload }) {
+  /*
+   * THE RUN'S OWN FACTS, WHERE THE PACK HAS THEM.
+   *
+   * This used to synthesise one stage per warning with `status: 'completed'`
+   * written in, and null model, null effort, 'standard' depth. The report counts
+   * completed stages out of total, so the pack printed "Stages — 256 of 256
+   * completed" for a run that failed at 17 of 18, under its own header tag
+   * reading Failed, in the section whose whole job is saying what the run did.
+   * The service, from the same assessment, read "17 of 18 completed".
+   *
+   * `payload.run` carries the real rows. Where it is absent — nothing this code
+   * produces, since a pack embeds the script that reads it — the pack says
+   * nothing rather than inventing: the stages are still listed so the warnings
+   * have somewhere to hang, but with no status to count, and `Report` drops the
+   * rows it would otherwise fill with defaults.
+   */
+  const run = payload.run;
+  const byStage = new Map<string, string[]>();
+  for (const warning of payload.warnings) {
+    byStage.set(warning.stage, [...(byStage.get(warning.stage) ?? []), warning.text]);
+  }
+
+  const stages: Detail['stages'] = run
+    ? run.stages.map((stage) => ({
+        ordinal: stage.ordinal,
+        name: stage.name,
+        status: stage.status,
+        warnings: byStage.get(stage.name) ?? [],
+        startedAt: null,
+        completedAt: null,
+        error: stage.error,
+      }))
+    : payload.warnings.map((warning, i) => ({
+        ordinal: i,
+        name: warning.stage,
+        status: 'unknown',
+        warnings: [warning.text],
+        startedAt: null,
+        completedAt: null,
+        error: null,
+      }));
+
   const detail: Detail = {
     analysis: {
       id: 'offline',
@@ -28,25 +70,14 @@ export function OfflineApp({ payload }: { payload: OfflinePayload }) {
       completedAt: payload.completedAt,
       jurisdiction: payload.jurisdiction,
       policyArea: payload.policyArea,
-      model: null,
-      thinkingLevel: null,
-      depth: 'standard',
+      model: run?.model ?? null,
+      thinkingLevel: run?.thinkingLevel ?? null,
+      depth: run?.depth ?? 'standard',
       sealed: payload.sealed,
       error: null,
       context: null,
     },
-    // One row per warning, carrying the stage that raised it: enough for the
-    // report's "what it could not establish" section and its stage count, and
-    // honest about the fact that a pack does not carry a timeline.
-    stages: payload.warnings.map((warning, i) => ({
-      ordinal: i,
-      name: warning.stage,
-      status: 'completed',
-      warnings: [warning.text],
-      startedAt: null,
-      completedAt: null,
-      error: null,
-    })),
+    stages,
     artefacts: payload.artefacts,
     // A pack carries no per-row metadata and does not render the drill, which is
     // the only thing that reads it.

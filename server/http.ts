@@ -10,9 +10,13 @@ import busboy from 'busboy';
 
 export const MAX_UPLOAD_BYTES = 10 * 1024 * 1024;
 
-export function sendJson(res: ServerResponse, status: number, body: unknown): void {
+export function sendJson(res: ServerResponse, status: number, body: unknown, headers: Record<string, string> = {}): void {
   const payload = JSON.stringify(body);
-  res.writeHead(status, { 'content-type': 'application/json; charset=utf-8', 'content-length': Buffer.byteLength(payload) });
+  res.writeHead(status, {
+    'content-type': 'application/json; charset=utf-8',
+    'content-length': Buffer.byteLength(payload),
+    ...headers,
+  });
   res.end(payload);
 }
 

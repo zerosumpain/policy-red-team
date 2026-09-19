@@ -98,6 +98,102 @@ const DIVERGENCES = {
   // edit to a copied file is silently reverted by the next sync. If upstream
   // ever gives these properties real values, this `.replace()` stops matching
   // and throws — which is the point.
+  // ── The prompt cache reached three more fan-outs ─────────────────────────
+  //
+  // `orderedContext` exists because a prompt cache matches an exact leading
+  // PREFIX, and it was wired into three of the nine fan-out sites. Measured on
+  // the live run (36ebca37, 419 calls, 61.3M tokens): the wired stages cached
+  // 67.5% and 85.1% of their input; the four that skip it cached 225,792 of
+  // 10,116,528 — 2.2% — leaving 9.89M uncached input tokens, 42% of the run's
+  // whole uncached input. Stage 7 read 3,584 of 2,373,405 from cache, stage 9
+  // 1,792 of 1,899,464, stage 10 10,752 of 4,374,911, stage 16 209,664 of
+  // 1,468,748.
+  //
+  // The two causes are the ones the function's own comment names. Stages 7, 9
+  // and 16 hand every call an IDENTICAL context that is over `FIT_LIMIT`, so
+  // `provider.ts` shed ~372,000 characters per call independently and landed
+  // somewhere slightly different each time. Stage 10 orders shared-first already
+  // and then defeats itself with a `protect` set naming the actor being written
+  // about — exactly the failure stage 14 was rewritten to fix.
+  //
+  // THE FIX IS UPSTREAM'S OWN, APPLIED FOUR MORE TIMES. Stage 10 takes stage
+  // 14's shape: the subject comes out of the shared block and goes in as the
+  // call's own, where it is appended after the shared bytes and never shed. The
+  // three whose context is entirely shared have nowhere to put their essentials,
+  // so `orderedContext` gains an optional `protect` — and the distinction that
+  // makes that safe is the one the original comment draws: a set that is
+  // IDENTICAL on every call is one decision taken once, while a set that varies
+  // per call is what moved the boundary 122 times across 144 calls.
+  //
+  // Concurrency bounds the prize: with six lanes the first batch can never hit,
+  // so this recovers roughly half of the 9.89M rather than all of it.
+  //
+  // A divergence rather than a hand edit because `pipeline.ts` is copied. If
+  // upstream wires these itself, or moves any of the four, a `.replace()` here
+  // stops matching and the sync throws instead of quietly dropping the fix.
+  'src/lib/policy-analysis/pipeline.ts': (s) => {
+    let out = s.replace(
+      '  const orderedContext = (shared: Artefact[], own: Artefact[], key: string, owns: Artefact[][]): Artefact[] => {',
+      '  const orderedContext = (shared: Artefact[], own: Artefact[], key: string, owns: Artefact[][], protect: Set<string> = new Set()): Artefact[] => {',
+    );
+    out = out.replace(
+      `      // \`protect\` is deliberately EMPTY. What a call is for lives in \`own\`,
+      // which is appended after this block and never shed by it — so nothing a
+      // call depends on can be lost to a decision taken once for every call.
+      const result = fitToBudget(shared, (artefacts) => ({ artefacts }), FIT_LIMIT - allowance, new Set());`,
+      `      // \`protect\` DEFAULTS TO EMPTY: what a call is for lives in \`own\`, which is
+      // appended after this block and never shed by it. A fan-out whose context
+      // is ENTIRELY shared has nowhere else to put its essentials, so it may pass
+      // a set — one that is identical on every call, which is a single decision
+      // and cannot move the shedding boundary between calls the way a per-call
+      // set does. See the divergence note in scripts/sync-core.mjs.
+      const result = fitToBudget(shared, (artefacts) => ({ artefacts }), FIT_LIMIT - allowance, protect);`,
+    );
+    // Stages 7 and 9 — interaction patterns and scenarios.
+    out = out.replace(
+      "    await fanOut((stage === 7 ? PATTERNS : SCENARIOS).map((key) => ({ key, context, describe:",
+      `    // ONE FIT FOR THE WHOLE FAN-OUT: every call here is handed the identical
+    // context, and both stages cached 0.2% without it. See sync-core.mjs.
+    await fanOut((stage === 7 ? PATTERNS : SCENARIOS).map((key) => ({ key, context: orderedContext(context, [], stage === 7 ? 'patterns' : 'scenarios', [[]], new Set(hypotheses)), describe:`,
+    );
+    // Stage 10 — the exploitation fan-out, given stage 14's shape.
+    out = out.replace(
+      `    await fanOut(ranked.slice(0, limits.actors).map((actor) => ({
+      key: actor.id,
+      context: [...base, ...profiles.filter((p) => p.data.actorId === actor.id)],`,
+      `    // STAGE 14'S SHAPE: the actor and its profiles come OUT of the shared block
+    // and go in as this call's own, so a per-call \`protect\` can no longer move
+    // the shedding boundary. See sync-core.mjs.
+    const chosen = ranked.slice(0, limits.actors);
+    const playOwns = chosen.map((actor) => [
+      ...base.filter((a) => a.id === actor.id),
+      ...profiles.filter((p) => p.data.actorId === actor.id),
+    ]);
+    await fanOut(chosen.map((actor, i) => ({
+      key: actor.id,
+      context: orderedContext(base.filter((a) => a.id !== actor.id), playOwns[i], 'plays', playOwns, new Set(hypotheses)),`,
+    );
+    // Stage 16 — the assurance challenges.
+    out = out.replace(
+      `    await fanOut(ASSURANCE_CATEGORIES.map((category) => ({
+      key: category,
+      context,
+      describe: \`\${category.replaceAll('_', ' ')} challenge\`,
+      extra: { targetCategory: category, protect: [...context.filter((a) => ['finding', 'recommendation', 'causal_chain', 'option_appraisal', 'evaluation_plan', 'evidence'].includes(a.kind)).map((a) => a.id), ...hypotheses] },`,
+      `    // The report itself, which every challenge must see whatever its remit, and
+    // which is the same list for all seven — so it is protected once in the
+    // shared fit rather than seven times at the boundary. See sync-core.mjs.
+    const assured = [...context.filter((a) => ['finding', 'recommendation', 'causal_chain', 'option_appraisal', 'evaluation_plan', 'evidence'].includes(a.kind)).map((a) => a.id), ...hypotheses];
+    await fanOut(ASSURANCE_CATEGORIES.map((category) => ({
+      key: category,
+      context: orderedContext(context, [], 'assurance', [[]], new Set(assured)),
+      describe: \`\${category.replaceAll('_', ' ')} challenge\`,
+      extra: { targetCategory: category, protect: assured },`,
+    );
+    if (out === s) throw new Error('pipeline.ts: the fan-out sites moved');
+    return out;
+  },
+
   'src/lib/policy-analysis/view.ts': (source) =>
     source.replace(
       `export const BAND_FILL: Record<Band, string> = {

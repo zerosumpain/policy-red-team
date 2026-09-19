@@ -317,7 +317,7 @@ export async function executeStage(input: StageInput, deps: PipelineDeps): Promi
    * comparison gave stage 3 66.1% against 2.3%, and 65% less uncached input.
    */
   const sharedFit = new Map<string, Artefact[]>();
-  const orderedContext = (shared: Artefact[], own: Artefact[], key: string, owns: Artefact[][]): Artefact[] => {
+  const orderedContext = (shared: Artefact[], own: Artefact[], key: string, owns: Artefact[][], protect: Set<string> = new Set()): Artefact[] => {
     if (!deps.sharedContextFirst) return [...new Set([...own, ...shared])];
     let fitted = sharedFit.get(key);
     if (!fitted) {
@@ -329,10 +329,13 @@ export async function executeStage(input: StageInput, deps: PipelineDeps): Promi
       // Never give away more than half the budget: a per-call block that large
       // means the shared block was never going to be the cacheable part.
       const allowance = Math.min(Math.floor(FIT_LIMIT / 2), largest + SHARED_CALL_MARGIN);
-      // `protect` is deliberately EMPTY. What a call is for lives in `own`,
-      // which is appended after this block and never shed by it — so nothing a
-      // call depends on can be lost to a decision taken once for every call.
-      const result = fitToBudget(shared, (artefacts) => ({ artefacts }), FIT_LIMIT - allowance, new Set());
+      // `protect` DEFAULTS TO EMPTY: what a call is for lives in `own`, which is
+      // appended after this block and never shed by it. A fan-out whose context
+      // is ENTIRELY shared has nowhere else to put its essentials, so it may pass
+      // a set — one that is identical on every call, which is a single decision
+      // and cannot move the shedding boundary between calls the way a per-call
+      // set does. See the divergence note in scripts/sync-core.mjs.
+      const result = fitToBudget(shared, (artefacts) => ({ artefacts }), FIT_LIMIT - allowance, protect);
       fitted = result.artefacts;
       // Said once for the stage rather than once per call: it is one decision.
       for (const note of result.notes) output.warnings.push(`The shared context for this stage was reduced so every call could send the same one: ${note}`);
@@ -591,7 +594,9 @@ export async function executeStage(input: StageInput, deps: PipelineDeps): Promi
       const unsupported = modelApplicability(input.artefacts).filter((p) => !p.triggerEvidence.length).map((p) => p.pattern.replaceAll('_', ' '));
       if (unsupported.length) output.warnings.push(`${unsupported.length} of ${PATTERNS.length} interaction patterns have no supporting relationship in the policy graph and were assessed on inference alone: ${unsupported.join(', ')}.`);
     }
-    await fanOut((stage === 7 ? PATTERNS : SCENARIOS).map((key) => ({ key, context, describe: `The ${key.replaceAll('_', ' ')} ${stage === 7 ? 'interaction model' : 'scenario'}`, extra: { protect: hypotheses } })));
+    // ONE FIT FOR THE WHOLE FAN-OUT: every call here is handed the identical
+    // context, and both stages cached 0.2% without it. See sync-core.mjs.
+    await fanOut((stage === 7 ? PATTERNS : SCENARIOS).map((key) => ({ key, context: orderedContext(context, [], stage === 7 ? 'patterns' : 'scenarios', [[]], new Set(hypotheses)), describe: `The ${key.replaceAll('_', ' ')} ${stage === 7 ? 'interaction model' : 'scenario'}`, extra: { protect: hypotheses } })));
   } else if (stage === 6) {
     // One evidence pass per research question, so retrieved sources are read
     // against the question they answer rather than all at once. Both the depth
@@ -633,9 +638,17 @@ export async function executeStage(input: StageInput, deps: PipelineDeps): Promi
     if (basis === 'prominence') output.warnings.push('The policy graph held no relationships for the profiled actors, so the red team selected its actors by how prominently the document names them rather than by connectivity. Treat the choice of who was red-teamed as a reflection of the document, not of the policy structure.');
     if (ranked.length > limits.actors) output.warnings.push(`${ranked.length - limits.actors} of ${ranked.length} profiled actors were not red-teamed in this pass: ${ranked.slice(limits.actors).map((a) => a.label).join(', ')}. ${order} A deep run covers more of them.`);
     const base = input.artefacts.filter((a) => !['passage', 'alias', 'node', 'profile'].includes(a.kind) && !supersededSource(a) && (a.kind !== 'actor' || a.id.startsWith('s2_')));
-    await fanOut(ranked.slice(0, limits.actors).map((actor) => ({
+    // STAGE 14'S SHAPE: the actor and its profiles come OUT of the shared block
+    // and go in as this call's own, so a per-call `protect` can no longer move
+    // the shedding boundary. See sync-core.mjs.
+    const chosen = ranked.slice(0, limits.actors);
+    const playOwns = chosen.map((actor) => [
+      ...base.filter((a) => a.id === actor.id),
+      ...profiles.filter((p) => p.data.actorId === actor.id),
+    ]);
+    await fanOut(chosen.map((actor, i) => ({
       key: actor.id,
-      context: [...base, ...profiles.filter((p) => p.data.actorId === actor.id)],
+      context: orderedContext(base.filter((a) => a.id !== actor.id), playOwns[i], 'plays', playOwns, new Set(hypotheses)),
       describe: `Exploitation plays for ${actor.label}`,
       extra: { protect: [actor.id, ...profiles.filter((p) => p.data.actorId === actor.id).map((p) => p.id), ...hypotheses], priorPersona: priors.get(actor.id) ?? null },
     })));
@@ -691,11 +704,15 @@ export async function executeStage(input: StageInput, deps: PipelineDeps): Promi
     // seven distinct checks. Each reviewer sees the same saved assessment but
     // receives only one challenge remit and cannot rewrite the report.
     const context = input.artefacts.filter((a) => !['passage', 'alias', 'node', 'persona_link'].includes(a.kind) && (a.kind !== 'actor' || a.id.startsWith('s2_')));
+    // The report itself, which every challenge must see whatever its remit, and
+    // which is the same list for all seven — so it is protected once in the
+    // shared fit rather than seven times at the boundary. See sync-core.mjs.
+    const assured = [...context.filter((a) => ['finding', 'recommendation', 'causal_chain', 'option_appraisal', 'evaluation_plan', 'evidence'].includes(a.kind)).map((a) => a.id), ...hypotheses];
     await fanOut(ASSURANCE_CATEGORIES.map((category) => ({
       key: category,
-      context,
+      context: orderedContext(context, [], 'assurance', [[]], new Set(assured)),
       describe: `${category.replaceAll('_', ' ')} challenge`,
-      extra: { targetCategory: category, protect: [...context.filter((a) => ['finding', 'recommendation', 'causal_chain', 'option_appraisal', 'evaluation_plan', 'evidence'].includes(a.kind)).map((a) => a.id), ...hypotheses] },
+      extra: { targetCategory: category, protect: assured },
     })));
   } else if (stage === 11) {
     // Failing to LOAD the comparison must not cost the assessment its stage; the
