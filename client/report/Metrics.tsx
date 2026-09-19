@@ -123,14 +123,18 @@ export function StackedBar({ segments, total, label }: { segments: Segment[]; to
  * be a second, finer encoding of the same thing, disagreeing with it at every
  * boundary. This is ink on grey and means only "more".
  */
-export function Bar({ value, max = 1 }: { value: number; max?: number }) {
+export function Bar({ value, max = 1, digits }: { value: number; max?: number; digits?: number }) {
   const share = Math.max(0, Math.min(1, max ? value / max : 0)) * 100;
+  // An exposure runs 0–1 and needs two decimals to separate 0.75 from 0.73; a
+  // score out of a hundred needs none, and printed "82.00" beside "72.00" for
+  // no reason but the default.
+  const places = digits ?? (max > 1 ? 0 : 2);
   return (
     <span className="prt-bar">
       <span className="prt-bar__track" aria-hidden="true">
         <span className="prt-bar__fill" style={{ width: `${share}%` }} />
       </span>
-      <span className="prt-bar__value">{value.toFixed(2)}</span>
+      <span className="prt-bar__value">{value.toFixed(places)}</span>
     </span>
   );
 }

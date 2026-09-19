@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react';
-import { axisLabel, relationWords } from '$lib/policy-analysis/matrix';
+import { relationWords } from '$lib/policy-analysis/matrix';
 import type { Edge, EntityNode } from '$lib/policy-analysis/network';
-import { EGO_BOX, EGO_SPOKES, egoLayout, kindColour } from '$lib/relationships';
+import { kindColour } from '$lib/relationships';
 import { Table } from '../govuk';
 import { Figure } from './Figure';
 
@@ -16,27 +16,54 @@ import { Figure } from './Figure';
  * DIRECTION IS THE WHOLE READING. A body with eighteen outgoing duties and
  * nothing incoming is a body the paper has handed work to without wiring
  * anything back — one of the faults the network insights name in prose, visible
- * here in a second. So incoming sits left, outgoing right, and the subject is
- * centred against the taller side rather than each side being centred on its own.
+ * here in a second. So what points at it sits left, what it points at sits
+ * right, and the subject is centred between them.
+ *
+ * IT WAS AN SVG AND IS NOT ANY MORE, for three reasons that are all the same
+ * reason: SVG cannot do text.
+ *  - Every spoke was a bare label truncated at 22 characters, so six of Skills
+ *    England's relationships read "Authoritative skills…", "Data-analytics
+ *    respons…", "Data-driven skills…". A box that wraps says the whole name.
+ *  - The relation was printed UNDER each label rather than on the line, so the
+ *    words "is accountable for" appeared six times down the right-hand side
+ *    instead of once on each connector where they belong.
+ *  - Nothing was a link. The obvious thing to do with a diagram of what a body
+ *    is wired to is to follow one of the wires, and there was no way to.
+ *
+ * So the picture is a CSS grid of real boxes: the names wrap, the relation sits
+ * on the connector, and every far end is an anchor into its own page — which
+ * means it is keyboard-operable and announced correctly for free rather than by
+ * a bespoke focus order over `<g>` elements.
  */
-export function EgoMap({ node, incoming, outgoing, labelOf, linkFor }: {
+
+/**
+ * How many relationships are drawn per side.
+ *
+ * Higher than the old SVG's eight because a wrapping box costs a row rather
+ * than a slot in a fixed-height viewBox — but still capped, because a body with
+ * forty-one outgoing duties makes a picture nobody reads, and the table below
+ * carries every one of them either way.
+ */
+const DRAWN = 12;
+
+export function EgoMap({ node, incoming, outgoing, kindOf, linkFor }: {
   node: EntityNode;
   incoming: Edge[];
   outgoing: Edge[];
-  labelOf: (id: string) => string;
-  /** How the far end of a relationship is rendered in the table. */
+  /**
+   * What kind of thing an id is, for the box's colour.
+   *
+   * From the caller rather than off the edge: `Edge` carries `fromId`/`toId`
+   * and no kinds, and the resolved kind lives on the network's node index —
+   * which the caller already builds, because it needs it for the labels too.
+   */
+  kindOf: (id: string) => string;
+  /** How the far end of a relationship is rendered — an anchor where there is one. */
   linkFor: (id: string) => ReactNode;
 }) {
-  const shownIn = incoming.slice(0, EGO_SPOKES);
-  const shownOut = outgoing.slice(0, EGO_SPOKES);
-  const hidden = incoming.length - shownIn.length + (outgoing.length - shownOut.length);
-  const layout = egoLayout(shownIn.length, shownOut.length);
-
-  const WIDTH = 760;
-  const LEFT_END = 210;
-  const CENTRE_X = 380;
-  const RIGHT_START = 550;
-  const colour = kindColour(node.kind);
+  const shownIn = incoming.slice(0, DRAWN);
+  const shownOut = outgoing.slice(0, DRAWN);
+  const hidden = (incoming.length - shownIn.length) + (outgoing.length - shownOut.length);
 
   /*
    * FROM AND TO, not "this body" and "to this".
@@ -67,60 +94,66 @@ export function EgoMap({ node, incoming, outgoing, labelOf, linkFor }: {
       label="what connects to this"
       diagram={(
         <figure className="govuk-!-margin-0">
-          <div className="prt-scroll" tabIndex={0} role="region" aria-label="What connects to this, as a diagram">
-            <svg
-              viewBox={`0 0 ${WIDTH} ${layout.height}`}
-              width="100%"
-              style={{ maxWidth: WIDTH, minWidth: 520 }}
-              role="img"
-              aria-label={
-                `Relationship diagram for ${node.label}. ` +
-                `${incoming.length} ${incoming.length === 1 ? 'relationship points' : 'relationships point'} at it` +
-                `${incoming.length ? `: ${shownIn.map((e) => `${labelOf(e.fromId)} ${relationWords(e.relation)} it`).join('; ')}` : ''}. ` +
-                `It points at ${outgoing.length}` +
-                `${outgoing.length ? `: ${shownOut.map((e) => `it ${relationWords(e.relation)} ${labelOf(e.toId)}`).join('; ')}` : ''}. ` +
-                'The same relationships are available as a table.'
-              }
-            >
-              {shownIn.map((edge, i) => (
-                <g key={`in-${edge.artefact.id}`}>
-                  <line x1={LEFT_END} y1={layout.left[i]} x2={CENTRE_X - 96} y2={layout.centreY} stroke="#505a5f" strokeWidth="1.5" />
-                  <text x={LEFT_END - 8} y={layout.left[i] + 4} textAnchor="end" fontSize="13" fill="#0b0c0c">
-                    {axisLabel(labelOf(edge.fromId), 22)}
-                  </text>
-                  <text x={LEFT_END - 8} y={layout.left[i] + 17} textAnchor="end" fontSize="11" fill="#505a5f">
-                    {relationWords(edge.relation)} →
-                  </text>
-                </g>
-              ))}
-              {shownOut.map((edge, i) => (
-                <g key={`out-${edge.artefact.id}`}>
-                  <line x1={CENTRE_X + 96} y1={layout.centreY} x2={RIGHT_START} y2={layout.right[i]} stroke="#505a5f" strokeWidth="1.5" />
-                  <text x={RIGHT_START + 8} y={layout.right[i] + 4} fontSize="13" fill="#0b0c0c">
-                    {axisLabel(labelOf(edge.toId), 22)}
-                  </text>
-                  <text x={RIGHT_START + 8} y={layout.right[i] + 17} fontSize="11" fill="#505a5f">
-                    → {relationWords(edge.relation)}
-                  </text>
-                </g>
-              ))}
-              {/* A BORDER, NOT A FILL UNDER WHITE LETTERS. `kindColour('mechanism')`
-                  is GOV.UK brown at 3.20:1, and 359 of 452 relationships on a real
-                  paper end at a mechanism — so the commonest map there is lettered
-                  its subject below the contrast minimum. axe cannot see it: it will
-                  not resolve an SVG <text> against a sibling <rect> fill. Black on
-                  white is 21:1 and the colour now only has to clear 1.4.11's 3:1 as
-                  a graphical object, which all five do. */}
-              <rect x={CENTRE_X - 96} y={layout.centreY - EGO_BOX / 2} width="192" height={EGO_BOX}
-                    fill="#ffffff" stroke={colour} strokeWidth="3" />
-              <text x={CENTRE_X} y={layout.centreY + 5} textAnchor="middle" fontSize="14" fill="#0b0c0c">
-                {axisLabel(node.label, 24)}
-              </text>
-            </svg>
+          {/* A SIDE WITH NOTHING ON IT DOES NOT TAKE A THIRD OF THE PICTURE.
+              183 of 267 bodies on a real assessment have relationships in one
+              direction only, and reserving the empty column pushed the subject
+              hard against one edge with half the figure blank. The heading
+              still appears — "nothing points at it" is the finding — it is just
+              not given a column of its own. */}
+          <div className={`prt-ego${incoming.length ? '' : ' prt-ego--no-in'}${outgoing.length ? '' : ' prt-ego--no-out'}`}>
+            <div className="prt-ego__side prt-ego__side--in">
+              <h3 className="prt-ego__head">
+                Points at this{incoming.length ? ` — ${incoming.length}` : ''}
+              </h3>
+              {shownIn.length ? shownIn.map((edge) => (
+                <div key={edge.artefact.id} className="prt-ego__row">
+                  <span className="prt-ego__node" style={{ borderColor: kindColour(kindOf(edge.fromId)) }}>
+                    {linkFor(edge.fromId)}
+                  </span>
+                  <Connector relation={relationWords(edge.relation)} />
+                </div>
+              )) : (
+                <p className="govuk-body-s prt-meta">
+                  Nothing in the paper points at it.
+                </p>
+              )}
+            </div>
+
+            {/* The subject, centred between the two sides and coloured by what
+                kind of thing it is — the same five-colour key the relationship
+                section uses, so a reader learns it once. */}
+            <div className="prt-ego__hub">
+              <span className="prt-ego__subject" style={{ borderColor: kindColour(node.kind) }}>
+                {node.label}
+              </span>
+            </div>
+
+            <div className="prt-ego__side prt-ego__side--out">
+              <h3 className="prt-ego__head">
+                This points at{outgoing.length ? ` — ${outgoing.length}` : ''}
+              </h3>
+              {shownOut.length ? shownOut.map((edge) => (
+                <div key={edge.artefact.id} className="prt-ego__row">
+                  <Connector relation={relationWords(edge.relation)} />
+                  <span className="prt-ego__node" style={{ borderColor: kindColour(kindOf(edge.toId)) }}>
+                    {linkFor(edge.toId)}
+                  </span>
+                </div>
+              )) : (
+                <p className="govuk-body-s prt-meta">
+                  It points at nothing in the paper.
+                </p>
+              )}
+            </div>
           </div>
           <figcaption className="govuk-body-s prt-meta">
-            What points at it on the left, what it points at on the right.
-            {hidden ? ` ${hidden} more in the table.` : ''}
+            Every box opens that entity&rsquo;s own page.
+            {hidden ? ` ${hidden} more ${hidden === 1 ? 'relationship is' : 'relationships are'} in the table.` : ''}
+            {' '}
+            <span className="govuk-visually-hidden">
+              {node.label} has {incoming.length} incoming and {outgoing.length} outgoing
+              relationships. The same relationships are available as a table.
+            </span>
           </figcaption>
         </figure>
       )}
@@ -134,5 +167,21 @@ export function EgoMap({ node, incoming, outgoing, labelOf, linkFor }: {
         />
       )}
     />
+  );
+}
+
+/**
+ * The line between two boxes, with the relation ON it.
+ *
+ * A rule drawn across the cell and the words sitting on it with the page's own
+ * background behind them — which is why the arrowhead is a character rather
+ * than a border trick: it has to sit at the end of a line whose length is
+ * whatever the grid gave the column.
+ */
+function Connector({ relation }: { relation: string }) {
+  return (
+    <span className="prt-ego__link" aria-hidden="true">
+      <span className="prt-ego__rel">{relation}</span>
+    </span>
   );
 }

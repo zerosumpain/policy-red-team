@@ -1,7 +1,5 @@
 import { useState, type ReactNode } from 'react';
-import { summarise } from '$lib/policy-analysis/view';
 import type { Artefact } from '$lib/policy-analysis/contracts';
-import { Details } from '../govuk';
 
 /**
  * THE WRITE-UP, AS THE FRONT PAGE OF A REPORT RATHER THAN A FILING CABINET.
@@ -17,13 +15,22 @@ import { Details } from '../govuk';
  * matters, sets it wider and larger than the rest, and lets the eye fall
  * through the others by weight. The hierarchy is the navigation. So the
  * executive assessment runs full width as a standfirst, and the remaining
- * sections run as columns beneath it, each showing its opening sentence rather
+ * sections run as columns beneath it, each showing its opening lines rather
  * than a count of how many sentences it is hiding.
  *
- * NOTHING IS HIDDEN THAT WAS NOT HIDDEN BEFORE. `summarise()` already splits a
- * finding into its lead and its remainder — the same split the accordion used
- * — and "read the rest" stays a disclosure. What changed is that the lead is on
- * the page, because a heading plus a count is not a summary of anything.
+ * THE COLUMNS ARE A GRID OF EQUAL CARDS, and getting there took two wrong
+ * answers first. A plain grid gave every cell the height of the tallest in its
+ * row, so a six-line section left a 400px hole beneath it. Multicol balanced
+ * the whole flow and fixed the holes, but then nothing lined up at all: each
+ * column ran at its own rhythm, so the headings sat at nineteen different
+ * heights down the page and the eye had no row to follow across.
+ *
+ * WHAT MAKES BOTH TRUE AT ONCE is a fixed body height. Every card clamps its
+ * text to the same number of lines, so every card is the same height, so every
+ * heading in a row starts level and every control ends level — with no hole,
+ * because there is no tallest cell to leave one. The clamp is visual only:
+ * "Read it in full" opens the whole statement, and the text under the fold is
+ * the same text, not a second copy of it.
  *
  * THE ORDER IS THE ASSESSMENT'S. `findingsBySection` returns them in
  * `REPORT_SECTIONS` order, which is the order the pipeline writes and the order
@@ -47,19 +54,9 @@ export function WriteUp({ groups, name }: {
       {lead ? (
         <div className="prt-writeup__lead">
           <h3 className="prt-writeup__kicker">{lead.label}</h3>
-          {lead.items.map((item) => {
-            const { lead: opening, rest: remainder } = summarise(item.statement);
-            return (
-              <div key={item.id}>
-                <p className="prt-writeup__standfirst">{opening}</p>
-                {remainder ? (
-                  <Details summary="Read the rest">
-                    <p className="govuk-body">{remainder}</p>
-                  </Details>
-                ) : null}
-              </div>
-            );
-          })}
+          {lead.items.map((item) => (
+            <p key={item.id} className="prt-writeup__standfirst">{item.statement}</p>
+          ))}
         </div>
       ) : null}
 
@@ -77,36 +74,49 @@ function Section({ group, name }: {
   name: (artefact: Artefact) => ReactNode;
 }) {
   /*
-   * One finding shows its opening sentence outright. Several collapse to the
-   * first, with the count as the control — because a section holding six
-   * findings and one holding one are different objects and should not look the
-   * same, which is exactly what the accordion made them.
+   * ONE CARD, ONE SECTION, whatever it holds. A section with six findings and
+   * one with a single finding are different objects and should not look the
+   * same — which is exactly what the accordion made them — but they must be the
+   * same SHAPE, or the row they sit in stops being a row. So the card always
+   * shows the first finding's opening lines, and the control says how much more
+   * there is.
    */
   const [open, setOpen] = useState(false);
-  const shown = open ? group.items : group.items.slice(0, 1);
+  const more = group.items.length - 1;
 
   return (
-    <section className="prt-writeup__col" aria-labelledby={`writeup-${group.section}`}>
+    <section
+      className={`prt-writeup__col${open ? ' is-open' : ''}`}
+      aria-labelledby={`writeup-${group.section}`}
+    >
       <h3 className="prt-writeup__head" id={`writeup-${group.section}`}>{group.label}</h3>
-      {shown.map((item) => {
-        const { lead: opening, rest: remainder } = summarise(item.statement);
-        return (
-          <div key={item.id} className="prt-writeup__item">
-            {group.items.length > 1 ? <h4 className="prt-writeup__title">{name(item)}</h4> : null}
-            <p className="prt-writeup__body">{opening}</p>
-            {remainder ? (
-              <Details summary="Read the rest">
-                <p className="govuk-body">{remainder}</p>
-              </Details>
+
+      <div className="prt-writeup__body">
+        {(open ? group.items : group.items.slice(0, 1)).map((item, i) => (
+          <div key={item.id} className={i ? 'prt-writeup__item' : undefined}>
+            {open && group.items.length > 1 ? (
+              <h4 className="prt-writeup__title">{name(item)}</h4>
             ) : null}
+            <p className="prt-writeup__text">{item.statement}</p>
           </div>
-        );
-      })}
-      {group.items.length > 1 ? (
-        <button type="button" className="prt-linkbutton prt-writeup__more" onClick={() => setOpen(!open)}>
-          {open ? 'Show fewer' : `Show all ${group.items.length} in this section`}
+        ))}
+      </div>
+
+      {/*
+        ALWAYS PRESENT, so the foot of every card in a row sits at the same
+        height whether or not that section has anything more to say. Where there
+        is genuinely nothing hidden it is not rendered as a control a reader can
+        press and be disappointed by — the card simply ends level.
+      */}
+      <p className="prt-writeup__foot">
+        <button type="button" className="prt-linkbutton" onClick={() => setOpen(!open)}>
+          {open
+            ? 'Show less'
+            : more > 0
+              ? `Read it in full, and ${more} more in this section`
+              : 'Read it in full'}
         </button>
-      ) : null}
+      </p>
     </section>
   );
 }
