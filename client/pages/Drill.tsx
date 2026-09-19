@@ -111,7 +111,11 @@ export function Drill() {
             {fieldLabel(artefact.kind)}
             {STAGES[stage] ? ` · produced at stage ${stage + 1}, ${STAGES[stage].toLowerCase()}` : null}
           </p>
-          <p className="govuk-body-l">{artefact.statement}</p>
+          {/* A PASSAGE'S STATEMENT IS ITS WORDING, and the section below sets
+              it as the quotation it is. Printing both put the same text on the
+              page twice — invisible against the fixture, obvious the moment a
+              real paper was ingested. */}
+          {artefact.kind === 'passage' ? null : <p className="govuk-body-l">{artefact.statement}</p>}
           {artefact.origin === 'behavioural_hypothesis' || artefact.kind === 'profile' ? (
             <WarningText>
               This is a hypothesis about what a body's position rewards. It is not a finding about
@@ -178,7 +182,7 @@ export function Drill() {
                     }]
                   : []),
                 ...(artefact.page || artefact.section
-                  ? [{ key: 'Where in the paper', value: [artefact.page ? `Page ${artefact.page}` : null, artefact.section].filter(Boolean).join(' · ') }]
+                  ? [{ key: 'Where in the paper', value: whereInThePaper(artefact) }]
                   : []),
                 ...(artefact.relation ? [{ key: 'Relation', value: fieldLabel(artefact.relation) }] : []),
                 ...(artefact.temporal ? [{ key: 'Time', value: fieldLabel(artefact.temporal) }] : []),
@@ -344,6 +348,20 @@ function Chain({ chain, link, stageOf }: { chain: ReturnType<typeof provenance>;
       ) : null}
     </section>
   );
+}
+
+/**
+ * Where the artefact sits in the document.
+ *
+ * The section is dropped when it only repeats the page, which a PDF makes the
+ * common case rather than the odd one: an extractor with no headings names each
+ * section after the page it came from, and the row then read "Page 1 · Page 1".
+ */
+function whereInThePaper(artefact: Artefact): string {
+  const page = artefact.page ? `Page ${artefact.page}` : null;
+  const section = artefact.section?.trim() || null;
+  if (page && section && section.toLowerCase() === page.toLowerCase()) return page;
+  return [page, section].filter(Boolean).join(' · ');
 }
 
 const ORDINALS = ['', 'First', 'Second', 'Third', 'Fourth', 'Fifth', 'Sixth', 'Seventh', 'Eighth'];
