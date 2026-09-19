@@ -37,8 +37,10 @@ import { stageOfId } from '$lib/policy-analysis/view';
  * the walk exists to find.
  */
 export function paperWording(artefact: Artefact): string | null {
-  if (artefact.kind === 'passage') return artefact.statement || null;
-  return artefact.sourceQuote || null;
+  const value = artefact.kind === 'passage' ? artefact.statement : artefact.sourceQuote;
+  // Trimmed for the EMPTINESS TEST only; the original is what is returned,
+  // because the point of this field is that it reads as the document has it.
+  return value && value.trim() ? value : null;
 }
 
 /** One step back. `depth` 1 is what the artefact cites directly. */
@@ -56,8 +58,24 @@ export type Provenance = {
   sources: Artefact[];
   /** How many distinct ancestors were reached, across every hop. */
   reached: number;
-  /** True when a cap stopped the walk. See the note above: this is not the same as having no ancestors. */
-  truncated: boolean;
+  /**
+   * WHY the walk stopped short, or null if it exhausted the graph.
+   *
+   * Not a boolean. The page has to explain itself, and "the list would have been
+   * too long" and "the ladder is deeper than we followed" are different
+   * sentences — a single flag meant saying the first when the second was true.
+   */
+  stoppedBy: 'depth' | 'nodes' | null;
+  /**
+   * Refs naming something that is not in this list.
+   *
+   * A shared copy has had artefacts redacted out from under the refs that name
+   * them, so the chain thins rather than breaks. Counting them is what lets the
+   * page distinguish "this rests on nothing" from "what this rests on is not in
+   * this copy" — which, said the wrong way round, is a false statement about the
+   * assessment.
+   */
+  unresolved: number;
 };
 
 /**
@@ -94,15 +112,16 @@ export function provenance(
 ): Provenance {
   const byId = new Map(all.map((a) => [a.id, a]));
   const subject = byId.get(id);
-  if (!subject) return { hops: [], sources: [], reached: 0, truncated: false };
+  if (!subject) return { hops: [], sources: [], reached: 0, stoppedBy: null, unresolved: 0 };
 
   // The subject is seen from the start, so a graph that cites its way back round
   // to it terminates instead of listing the artefact as its own ancestor.
   const seen = new Set<string>([id]);
   const hops: Hop[] = [];
   let frontier = subject.refs;
-  let truncated = false;
+  let stoppedBy: 'depth' | 'nodes' | null = null;
   let reached = 0;
+  let unresolved = 0;
 
   for (let depth = 1; depth <= maxDepth && frontier.length; depth++) {
     const items: Artefact[] = [];
@@ -110,20 +129,24 @@ export function provenance(
     for (const ref of frontier) {
       if (seen.has(ref)) continue;
       seen.add(ref);
-      // A ref naming something not in this list is not a fault worth surfacing
-      // here: a shared copy has had artefacts redacted out of it by design, and
-      // the chain should thin rather than break.
+      // A ref naming something not in this list is not a fault: a shared copy
+      // has had artefacts redacted out of it by design. It is COUNTED rather
+      // than ignored, because a chain that thinned to nothing and a chain that
+      // was always empty are different things to say.
       const artefact = byId.get(ref);
-      if (!artefact) continue;
-      if (reached >= maxNodes) { truncated = true; break; }
+      if (!artefact) { unresolved++; continue; }
+      if (reached >= maxNodes) { stoppedBy = 'nodes'; break; }
       items.push(artefact);
       reached++;
       next.push(...artefact.refs);
     }
     if (items.length) hops.push({ depth, items: order(items, stageOf) });
-    if (truncated) break;
+    if (stoppedBy) break;
     frontier = next;
-    if (depth === maxDepth && next.some((ref) => !seen.has(ref))) truncated = true;
+    // RESOLVABLE refs only. An unresolvable one beyond the depth cap is a
+    // redaction, which is already reported as `unresolved`; counting it here
+    // would put "the chain goes further than this" on a page where it does not.
+    if (depth === maxDepth && next.some((ref) => !seen.has(ref) && byId.has(ref))) stoppedBy = 'depth';
   }
 
   // Ordered by where they sit in the DOCUMENT, not by where they sit in the
@@ -132,7 +155,7 @@ export function provenance(
   const sources = subsume(hops.flatMap((hop) => hop.items).filter((a) => paperWording(a)))
     .sort((a, b) => (a.page ?? Infinity) - (b.page ?? Infinity) || a.label.localeCompare(b.label));
 
-  return { hops, sources, reached, truncated };
+  return { hops, sources, reached, stoppedBy, unresolved };
 }
 
 /**
@@ -152,16 +175,48 @@ export function citedBy(id: string, all: Artefact[], limit = MAX_CITED_BY, stage
  *
  * A claim's `sourceQuote` is a span of the passage it was read from, so a chain
  * holding both shows the reader the same sentence twice and implies two
- * independent groundings where there is one. The fuller wording wins, which is
- * the passage — except in a shared copy, where the passages have been redacted
- * out and the quotations are the only trace of the document left.
+ * independent groundings where there is one.
+ *
+ * A PASSAGE IS NEVER DROPPED. The first version of this rule was plain string
+ * containment in either direction, and a policy paper repeats itself — an annex
+ * restating a sentence from page 14 swallowed page 14, and the reader silently
+ * lost a citation from the one section this whole feature exists to produce.
+ * A passage is a PLACE in the document; two of them saying the same thing are
+ * two citations, not one.
+ *
+ * So the rule models the actual relationship: a quotation was taken OUT of a
+ * passage, and is redundant only when that passage is here too. In a shared copy
+ * the passages have been redacted and nothing covers the quotations, which is
+ * why this is a filter over what is present rather than an assumption about
+ * what must be.
  */
 function subsume(candidates: Artefact[]): Artefact[] {
   const flat = (v: string) => v.replace(/\s+/g, ' ').trim().toLowerCase();
-  const texts = candidates.map((a) => flat(paperWording(a) ?? ''));
-  return candidates.filter((_, i) =>
-    !texts.some((other, j) => j !== i && other.length > texts[i].length && other.includes(texts[i])),
-  );
+  const text = new Map(candidates.map((a) => [a, flat(paperWording(a) ?? '')]));
+  const passages = candidates.filter((a) => a.kind === 'passage').map((a) => text.get(a) as string);
+
+  const kept: Artefact[] = [];
+  const already = new Set<string>();
+  for (const candidate of candidates) {
+    const own = text.get(candidate) as string;
+    if (candidate.kind === 'passage') { kept.push(candidate); continue; }
+    if (passages.some((passage) => passage.includes(own))) continue;
+    // Several claims read off one sentence quote it identically. `includes`
+    // with a strict length test never catches that, which was the commonest
+    // duplicate of the lot.
+    if (already.has(own)) continue;
+    already.add(own);
+    kept.push(candidate);
+  }
+
+  // And a quotation wholly inside a longer quotation, now the passages that
+  // would have covered both are known not to be here.
+  return kept.filter((a) => a.kind === 'passage' || !kept.some((other) => {
+    if (other === a || other.kind === 'passage') return false;
+    const mine = text.get(a) as string;
+    const theirs = text.get(other) as string;
+    return theirs.length > mine.length && theirs.includes(mine);
+  }));
 }
 
 /** Latest stage first, then alphabetical — the order the pipeline built them in, reversed. */

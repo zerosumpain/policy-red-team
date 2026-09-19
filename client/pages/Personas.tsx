@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { api } from '../api';
 import { Table } from '../govuk';
+import { usePageTitle } from '../layout/Template';
 
 /**
  * The persona library — bodies this install has met more than once.
@@ -10,6 +11,7 @@ import { Table } from '../govuk';
  * a reader knows whether a profile is a first impression or a pattern.
  */
 export function Personas() {
+  usePageTitle('Persona library');
   const [rows, setRows] = useState<{ id: string; name: string; sightings: number; kind: string | null }[] | null>(null);
   const [error, setError] = useState<string | null>(null);
 

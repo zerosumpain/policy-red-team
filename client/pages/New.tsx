@@ -2,6 +2,7 @@ import { useEffect, useState, type FormEvent } from 'react';
 import { useNavigate } from 'react-router';
 import { api, type OfferedModel } from '../api';
 import { Button, ButtonGroup, ErrorSummary, FileUpload, Input, Radios, Select, Textarea, WarningText } from '../govuk';
+import { usePageTitle } from '../layout/Template';
 
 /**
  * Commissioning an assessment.
@@ -21,6 +22,7 @@ import { Button, ButtonGroup, ErrorSummary, FileUpload, Input, Radios, Select, T
  * have handed an unpublished paper to a system they were told would destroy it.
  */
 export function New() {
+  usePageTitle('Assess a paper');
   const navigate = useNavigate();
   const [models, setModels] = useState<OfferedModel[]>([]);
   const [depth, setDepth] = useState('standard');

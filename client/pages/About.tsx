@@ -1,4 +1,7 @@
+import { usePageTitle } from '../layout/Template';
+
 export function About() {
+  usePageTitle('About this tool');
   return (
     <div className="govuk-grid-row">
       <div className="govuk-grid-column-two-thirds">

@@ -4,6 +4,7 @@ import {
   InsetText, NotificationBanner, Panel, Radios, Select, SummaryList, Table,
   Tag, TaskList, Textarea, WarningText, type Task,
 } from '../govuk';
+import { usePageTitle } from '../layout/Template';
 
 /**
  * Every component, on one page, with the content it will actually carry.
@@ -42,6 +43,7 @@ function stageTasks(): Task[] {
 }
 
 export function Gallery() {
+  usePageTitle('Design system');
   const [depth, setDepth] = useState('standard');
   const [showErrors, setShowErrors] = useState(false);
 

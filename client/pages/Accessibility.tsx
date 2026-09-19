@@ -1,4 +1,5 @@
 import { SERVICE_NAME } from '../layout/Template';
+import { usePageTitle } from '../layout/Template';
 
 /**
  * The accessibility statement.
@@ -11,6 +12,7 @@ import { SERVICE_NAME } from '../layout/Template';
  * same reasons.
  */
 export function Accessibility() {
+  usePageTitle('Accessibility statement');
   return (
     <div className="govuk-grid-row">
       <div className="govuk-grid-column-two-thirds">

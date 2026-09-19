@@ -68,21 +68,65 @@ Neither was visible to a type check or to a green test. Both were found by
 looking at the rendered page, which is the third time in this build that has
 been the thing that worked.
 
+## What the review found
+
+A code review of the diff found **six real defects**, four of them in the walk
+itself. Every one is now covered by a test that fails without the fix.
+
+| | What was wrong | Why it mattered |
+|---|---|---|
+| 1 | `subsume` compared lengths with a strict `>`, so two IDENTICAL quotations never collapsed | the commonest duplicate of the lot: `quotes.ts` stores the document's own wording for a span, so a claim reading a one-sentence passage carries it byte for byte, and "Back at the paper" printed the same sentence twice with two attributions |
+| 2 | `subsume` was plain string containment in either direction | **a policy paper repeats itself.** An annex restating a sentence from page 14 swallowed page 14, and the reader silently lost a citation from the one section this feature exists to produce. A passage is a PLACE in the document and is now never dropped |
+| 3 | a redacted ref at exactly the depth cap set `truncated` | the walk thins on an unresolvable ref everywhere else; the depth check counted them, so a shared copy was told there was more to see |
+| 4 | one `truncated` boolean for two different caps | the page said "a list longer than this answers nothing" when what had actually happened was that the ladder was deeper than eight. Now `stoppedBy: 'depth' \| 'nodes' \| null` |
+| 5 | "This cites nothing else in the assessment" was asserted when every ref had been REDACTED | a false statement about the assessment, on a shared copy. `unresolved` is now counted and said out loud |
+| 6 | `error` and `detail` were never cleared when `id` changed | one component instance serves every artefact of every assessment, so a failed load on A left its error on B for good |
+
+And three about the page rather than the walk: a pass artefact printed
+"stage 101" (`PASS_BASE` is 100); the error state was a red paragraph with no
+`h1` and nothing announced, so a screen-reader user following a link into a
+purged assessment heard silence; and **nothing moved focus, scroll or the title
+on a route change** — which this phase caused, by turning the back link from an
+`<a href>` into a router `Link`. A document navigation was doing all three for
+free. `useRouteChange` does them now, and the walk asserts all three.
+
+Two of those were interesting to fix:
+
+- **The first attempt at the focus fix did nothing**, and passed review by
+  inspection. Each route renders its own `<Template>`, so React unmounts one and
+  mounts another on every navigation — a per-instance "have we landed yet" ref is
+  false every single time. Arrival is a property of the DOCUMENT. Caught by the
+  walk assertion, not by reading the code.
+- **The drill's tables pushed the page sideways at 320px**, and so did the
+  report's — the links this change added to the actors and checks columns made
+  the cells wider than a phone. WCAG 2.2 1.4.10, which axe cannot see: a table
+  that overflows is valid markup. `<Table scroll>` on all four, and the walk now
+  measures `scrollWidth` at 320px on both pages.
+
+The review also asked for a cheap guard on the offline boundary, which until now
+rested on a forty-second Playwright run. `src/lib/offline-boundary.test.ts` walks
+the import graph from `client/offline/entry.tsx` and fails if anything reachable
+imports react-router. Reading the built bundle would have proved nothing — a
+minifier renames `useHref` and drops the message. Verified by planting the import
+and watching it name the file.
+
 ## Verification
 
 ```
 typecheck            clean
-unit                 433 in 25 files   (12 new, on the walk)
+unit                 441 in 26 files   (20 new: the walk, and the offline boundary)
 integration          19, 1 skipped
 a11y                 6 routes, WCAG 2.2 AA, no licensed asset shipped
-walk                 submit → report → drill → follow the chain → back
+walk                 submit → report → drill → follow the chain → 320px → back
 offline              opens from file:// with every request blocked
 ```
 
-The walk gained four assertions that matter: the drill is reached by *clicking a
-name in the report* rather than by typing a URL, its chain says how far back it
-went, it reaches the paper, and coming back out of it routes rather than
-reloads. axe is clean on the drill and on the page a chain link lands on.
+The walk gained eight assertions that matter: the drill is reached by *clicking a
+name in the report* rather than by typing a URL; it lands at the top of the page,
+with focus in the main landmark and the artefact's name in the tab; its chain
+says how far back it went and reaches the paper; coming back out of it routes
+rather than reloads; and neither the report nor the drill scrolls sideways at
+320px. axe is clean on the drill and on the page a chain link lands on.
 
 ## Decision log
 
@@ -96,6 +140,10 @@ reloads. axe is clean on the drill and on the page a chain link lands on.
 | Chain caps | uncapped; cap silently; cap and say so | **cap and say so** | "rests on nothing further" and "we stopped looking" are different facts, and only one of them is about the policy | yes |
 | Duplicate quotations | show both; keep the fuller wording | **keep the fuller** | a claim's `sourceQuote` is a span of the passage above it, and showing both implies two groundings where there is one — except in a shared copy, where the passage is redacted and the quote is all that is left | yes |
 | The true stage | accept `stageOfId`; type the field the server already sends | **type the field** | the alternative was telling a reader that a structural check was produced during ingestion | yes |
+| `truncated` | keep the boolean and reword; name the cap | **name the cap** | two reasons to stop are two sentences, and one flag made the page say the wrong one | yes |
+| A pass artefact's stage | print the ordinal; name the pass | **name the pass** | `PASS_BASE` is 100, so the arithmetic that prints "stage 11" prints "stage 101" | yes — the pass row would give the step |
+| `document.title` | leave it for every route; a hook the pages call | **a hook** | opening three findings in three tabs was the argument for a page over a drawer, and three tabs reading "Policy Red Team" is that argument not working | yes |
+| The offline boundary | trust the Playwright gate; walk the import graph | **walk the graph** | a minifier renames `useHref`, so grepping the bundle proves nothing, and a forty-second browser run is not where a boundary should be enforced | yes |
 
 ## What is still outstanding
 
@@ -103,11 +151,8 @@ Unchanged from phase 4 except that the drill is now done: the 3D relationship
 graph and the table beside it, the stress lab, share links in the interface (the
 API is built and tested), persona detail, and material and restate.
 
-Two smaller things this phase noticed and did not do:
+One smaller thing this phase noticed and did not do:
 
-- **No page sets `document.title`.** A drill opened in a tab is "Policy Red
-  Team" like every other page. Fixing it for one route only would be worse than
-  the current consistency, so it is a change for all of them or none.
 - **`src/lib/policy-analysis/pipeline.ts` has moved upstream** (`72c40f6`, sizing
   the shared-context reserve from the calls rather than from a guess). It is a
   prompt-cache optimisation, unrelated to this work, and pulling it in changes

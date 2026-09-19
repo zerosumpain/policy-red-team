@@ -3,10 +3,11 @@ import { Link, useParams } from 'react-router';
 import type { Artefact } from '$lib/policy-analysis/contracts';
 import { explain } from '$lib/policy-analysis/glossary';
 import { BAND_LABEL, confidenceJudgement, plays, stageOfId, type Band } from '$lib/policy-analysis/view';
-import { STAGES } from '$lib/policy-analysis/contracts';
+import { STAGES, isPassStage } from '$lib/policy-analysis/contracts';
 import { citedBy, paperWording, provenance, type StageOf } from '$lib/provenance';
 import { api, type Detail } from '../api';
 import { Details, InsetText, SummaryList, Table, Tag, WarningText } from '../govuk';
+import { usePageTitle } from '../layout/Template';
 import { ArtefactValue, fieldLabel } from '../report/ArtefactValue';
 
 /**
@@ -34,17 +35,45 @@ export function Drill() {
 
   useEffect(() => {
     let live = true;
+    // CLEARED FIRST. One component instance serves every artefact of every
+    // assessment, so without this a failed load on assessment A leaves its error
+    // paragraph on assessment B for good, and a successful one renders B's
+    // artefact id against A's artefact list for a paint — a flash of "that is
+    // not in this assessment" on a page that is about to load fine.
+    setError(null);
+    setDetail(null);
     api.detail(id)
       .then((data) => { if (live) setDetail(data); })
       .catch((err: Error) => { if (live) setError(err.message); });
     return () => { live = false; };
   }, [id]);
 
-  if (error) return <p className="govuk-body govuk-error-message">{error}</p>;
-  if (!detail) return <p className="govuk-body">Loading…</p>;
+  // Derived above the early returns because `usePageTitle` is a hook and a hook
+  // cannot sit behind one. Opening three findings in three tabs was the argument
+  // for this being a page rather than a drawer, and three tabs all reading
+  // "Policy Red Team" is that argument not actually working.
+  const artefact = detail?.artefacts.find((a) => a.id === artefactId) ?? null;
+  usePageTitle(artefact?.label);
+
+  // A PAGE, not a red sentence. `govuk-error-message` is the field-level class;
+  // used alone it left <main> with no h1 at all, nothing announced, and a
+  // screen-reader user following a link into a purged assessment heard silence.
+  if (error) {
+    return (
+      <div className="govuk-grid-row">
+        <div className="govuk-grid-column-two-thirds" role="alert">
+          <h1 className="govuk-heading-l">There is a problem</h1>
+          <p className="govuk-body">{error}</p>
+          <p className="govuk-body">
+            <Link className="govuk-link" to={`/assessments/${id}`}>Go back to the assessment</Link>
+          </p>
+        </div>
+      </div>
+    );
+  }
+  if (!detail) return <p className="govuk-body" aria-live="polite">Loading…</p>;
 
   const all = detail.artefacts;
-  const artefact = all.find((a) => a.id === artefactId) ?? null;
 
   if (!artefact) {
     return (
@@ -108,8 +137,7 @@ export function Drill() {
           <span className="govuk-caption-l">{detail.analysis.title}</span>
           <h1 className="govuk-heading-l">{artefact.label}</h1>
           <p className="govuk-body-s prt-meta">
-            {fieldLabel(artefact.kind)}
-            {STAGES[stage] ? ` · produced at stage ${stage + 1}, ${STAGES[stage].toLowerCase()}` : null}
+            {fieldLabel(artefact.kind)} · {producedIn(stage)}
           </p>
           {/* A PASSAGE'S STATEMENT IS ITS WORDING, and the section below sets
               it as the quotation it is. Printing both put the same text on the
@@ -137,6 +165,7 @@ export function Drill() {
           <Table
             caption="Ranked against the whole playbook, not against each other"
             captionSize="s"
+            scroll
             columns={[{ header: 'Rank', numeric: true }, { header: 'Play' }, { header: 'Band' }, { header: 'Exposure', numeric: true }]}
             rows={couldRun.map((p) => [
               String(rankOf(p.artefact.id)),
@@ -257,7 +286,7 @@ function ArtefactList({ items, link, stageOf }: { items: Artefact[]; link: (a: A
     <ul className="govuk-list govuk-list--bullet">
       {items.map((item) => (
         <li key={item.id}>
-          {link(item)} <span className="prt-meta">{fieldLabel(item.kind)}, stage {stageOf(item.id) + 1}</span>
+          {link(item)} <span className="prt-meta">{fieldLabel(item.kind)}, {stageTag(stageOf(item.id))}</span>
         </li>
       ))}
     </ul>
@@ -279,7 +308,16 @@ function Chain({ chain, link, stageOf }: { chain: ReturnType<typeof provenance>;
       <h2 className="govuk-heading-m" id="chain">What it rests on</h2>
       <div className="govuk-grid-row">
         <div className="govuk-grid-column-two-thirds">
-          {steps === 0 ? (
+          {steps === 0 && chain.unresolved ? (
+            /* Every ref resolved to nothing. Saying "it cites nothing" here
+               would be a false statement about the assessment: it cites things
+               this copy does not contain. */
+            <p className="govuk-body">
+              It rests on {chain.unresolved} {chain.unresolved === 1 ? 'thing' : 'things'} that are
+              not in this copy of the assessment. A shared copy withholds the paper itself and
+              anything read directly off it.
+            </p>
+          ) : steps === 0 ? (
             <p className="govuk-body">
               This cites nothing else in the assessment. It is either read straight off the paper or
               established by a stage that works from the document rather than from earlier findings.
@@ -291,14 +329,25 @@ function Chain({ chain, link, stageOf }: { chain: ReturnType<typeof provenance>;
               {chain.sources.length
                 ? `, ending at ${chain.sources.length} ${chain.sources.length === 1 ? 'passage' : 'passages'} of the paper itself.`
                 : '. None of them quotes the paper directly.'}
+              {chain.unresolved
+                ? ` ${chain.unresolved} further ${chain.unresolved === 1 ? 'reference is' : 'references are'} not in this copy.`
+                : ''}
             </p>
           )}
 
-          {chain.truncated ? (
+          {/* Two different reasons to stop, and they are not the same sentence.
+              One boolean meant telling a reader the list would have been too
+              long when in fact the ladder was deeper than we followed it. */}
+          {chain.stoppedBy === 'nodes' ? (
             <InsetText>
-              The chain goes further than this. It was followed to {chain.reached} things and stopped
-              — not because there was nothing else, but because a list longer than this answers
-              nothing.
+              The chain goes further than this. It was followed to {chain.reached} things and
+              stopped — not because there was nothing else, but because a list longer than this
+              answers nothing.
+            </InsetText>
+          ) : chain.stoppedBy === 'depth' ? (
+            <InsetText>
+              The chain goes deeper than this. It was followed back {steps} steps and stopped there;
+              what those rest on in turn is reachable by opening any of them.
             </InsetText>
           ) : null}
 
@@ -348,6 +397,25 @@ function Chain({ chain, link, stageOf }: { chain: ReturnType<typeof provenance>;
       ) : null}
     </section>
   );
+}
+
+/**
+ * Which stage produced it, in words.
+ *
+ * A pass — material attached after the report, or a restatement — owns ordinals
+ * `PASS_BASE * n + k`, so the arithmetic that prints "stage 11" prints
+ * "stage 101" for an addendum. Which step of which pass needs the pass row,
+ * which this page does not have, so it says the true and useful half.
+ */
+function producedIn(ordinal: number): string {
+  if (isPassStage(ordinal)) return 'added by a later pass over the assessment';
+  const name = STAGES[ordinal];
+  return name ? `produced at stage ${ordinal + 1}, ${name.toLowerCase()}` : `produced at stage ${ordinal + 1}`;
+}
+
+/** The same fact, short enough to sit beside a link in a list. */
+function stageTag(ordinal: number): string {
+  return isPassStage(ordinal) ? 'a later pass' : `stage ${ordinal + 1}`;
 }
 
 /**
@@ -409,6 +477,7 @@ function PlaySection({ play }: { play: ReturnType<typeof plays>[number] }) {
       <Table
         caption="The four judgements behind the rank"
         captionSize="s"
+        scroll
         columns={[{ header: 'Factor' }, { header: 'Score', numeric: true }, { header: 'What a high score means' }]}
         rows={play.factors.map((factor) => {
           const term = explain(factor.key);

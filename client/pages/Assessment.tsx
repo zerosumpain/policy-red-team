@@ -4,6 +4,7 @@ import { api, watchRun, type Detail } from '../api';
 import { Button, ButtonGroup, NotificationBanner, Tag, TaskList, WarningText, type Task, type TagColour } from '../govuk';
 import { isFinished, isTerminal, statusColour, statusLabel } from '../status';
 import { Report } from '../report/Report';
+import { usePageTitle } from '../layout/Template';
 
 /**
  * One assessment: its progress while it runs, its report when it is done.
@@ -19,6 +20,7 @@ export function Assessment() {
   const [detail, setDetail] = useState<Detail | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  usePageTitle(detail?.analysis.title);
 
   const load = useCallback(async () => {
     try {

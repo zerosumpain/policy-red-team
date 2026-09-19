@@ -29,7 +29,7 @@ describe('the provenance chain', () => {
     expect(chain.hops.map((h) => h.depth)).toEqual([1, 2, 3]);
     expect(chain.hops.map((h) => h.items.map((a) => a.id))).toEqual([['s10_1_exploit'], ['s1_1_claim'], ['m1_passage_0001']]);
     expect(chain.reached).toBe(3);
-    expect(chain.truncated).toBe(false);
+    expect(chain.stoppedBy).toBeNull();
     // The terminus, which is the whole point: the reader can go and read page 14.
     expect(chain.sources.map((a) => a.id)).toEqual(['m1_passage_0001']);
   });
@@ -52,7 +52,7 @@ describe('the provenance chain', () => {
     const all = [node('a', ['b']), node('b', ['c']), node('c', ['a', 'b'])];
     const chain = provenance('a', all);
     expect(chain.hops.flatMap((h) => h.items.map((i) => i.id))).toEqual(['b', 'c']);
-    expect(chain.truncated).toBe(false);
+    expect(chain.stoppedBy).toBeNull();
   });
 
   it('thins rather than breaks when a ref names something that is not here', () => {
@@ -64,20 +64,33 @@ describe('the provenance chain', () => {
     expect(chain.reached).toBe(1);
   });
 
-  it('says it stopped early rather than pretending there was nothing further', () => {
-    // "Rests on nothing else" and "we stopped looking" are different facts and
-    // only one of them is about the policy.
+  it('says WHY it stopped early, because the page has to explain itself', () => {
+    // "Rests on nothing else", "the ladder is deeper than we followed" and "the
+    // list would have been too long" are three different sentences, and a single
+    // boolean made the page say the wrong one.
     const all = [node('a', ['b']), node('b', ['c']), node('c', ['d']), node('d', [])];
-    const shallow = provenance('a', all, { maxDepth: 2 });
-    expect(shallow.hops).toHaveLength(2);
-    expect(shallow.truncated).toBe(true);
+    expect(provenance('a', all, { maxDepth: 2 }).stoppedBy).toBe('depth');
+    expect(provenance('a', all, { maxNodes: 2 }).stoppedBy).toBe('nodes');
+    expect(provenance('a', all, { maxNodes: 2 }).reached).toBe(2);
+    expect(provenance('a', all).stoppedBy).toBeNull();
+  });
 
-    const narrow = provenance('a', all, { maxNodes: 2 });
-    expect(narrow.reached).toBe(2);
-    expect(narrow.truncated).toBe(true);
+  it('does not claim the chain goes further when what is beyond the cap was redacted', () => {
+    // The walk thins on an unresolvable ref everywhere else; the depth check has
+    // to apply the same rule, or a shared copy is told there is more to see.
+    // Two rungs followed, and what lies past the second is a redaction.
+    const redacted = [node('a', ['b']), node('b', ['c']), node('c', ['gone'])];
+    expect(provenance('a', redacted, { maxDepth: 2 }).stoppedBy).toBeNull();
+    // The same shape, with something really there past the cap.
+    expect(provenance('a', [...redacted, node('gone', [])], { maxDepth: 2 }).stoppedBy).toBe('depth');
+  });
 
-    const whole = provenance('a', all);
-    expect(whole.truncated).toBe(false);
+  it('counts the refs that resolved to nothing, so an emptied chain is not reported as an empty one', () => {
+    const chain = provenance('a', [node('a', ['gone1', 'gone2'])]);
+    expect(chain.hops).toHaveLength(0);
+    expect(chain.reached).toBe(0);
+    expect(chain.unresolved).toBe(2);
+    expect(provenance('a', [node('a', ['b']), node('b', [])]).unresolved).toBe(0);
   });
 
   it('orders the sources by where they sit in the paper, not in the pipeline', () => {
@@ -106,6 +119,35 @@ describe('the provenance chain', () => {
     expect(chain.sources.map((a) => a.id)).toEqual([passage.id]);
   });
 
+  it('shows a sentence once when the quotation is the WHOLE passage, not merely part of it', () => {
+    // The commonest duplicate of the lot, and a strict length test never caught
+    // it: `quotes.ts` stores the document's own wording for the span, so a claim
+    // reading a one-sentence passage carries it byte for byte.
+    const line = 'The Council is accountable for delivery and bears implementation costs.';
+    const passage = artefact('m1_passage_0014', 'passage', 'Passage', line, {}, { page: 14 });
+    const claim = artefact('s1_1_claim', 'claim', 'Claim', 'Statement', {}, { refs: [passage.id], sourceQuote: line });
+    const chain = provenance('s12_1_finding', [node('s12_1_finding', [claim.id]), claim, passage]);
+    expect(chain.sources.map((a) => a.id)).toEqual([passage.id]);
+  });
+
+  it('shows one sentence once when several claims were read off it', () => {
+    const line = 'The Council is accountable for delivery.';
+    const claims = [1, 2, 3].map((n) =>
+      artefact(`s1_${n}_claim`, 'claim', `Claim ${n}`, 'Statement', {}, { refs: ['m1_passage_0014'], sourceQuote: line }));
+    const chain = provenance('top', [node('top', claims.map((c) => c.id)), ...claims]);
+    expect(chain.sources).toHaveLength(1);
+  });
+
+  it('NEVER drops a passage, even when a longer one repeats its wording', () => {
+    // A policy paper repeats itself. An annex restating a sentence used to
+    // swallow the page it was restating, and the reader lost a citation from the
+    // one section this whole feature exists to produce.
+    const early = artefact('m1_passage_0014', 'passage', 'Passage 14', 'The Council is accountable for delivery.', {}, { page: 14 });
+    const annex = artefact('m1_passage_0061', 'passage', 'Passage 61', 'Annex B repeats it: The Council is accountable for delivery. Costs fall to the authority.', {}, { page: 61 });
+    const chain = provenance('top', [node('top', [early.id, annex.id]), early, annex]);
+    expect(chain.sources.map((a) => a.page)).toEqual([14, 61]);
+  });
+
   it('keeps the quotation when the passage it came from has been redacted away', () => {
     // A shared copy withholds the document. The quotations are then the only
     // trace of it left, and dropping them would leave the chain ungrounded.
@@ -115,7 +157,7 @@ describe('the provenance chain', () => {
   });
 
   it('returns an empty chain for an id that is not in the list', () => {
-    expect(provenance('nobody', [node('a')])).toEqual({ hops: [], sources: [], reached: 0, truncated: false });
+    expect(provenance('nobody', [node('a')])).toEqual({ hops: [], sources: [], reached: 0, stoppedBy: null, unresolved: 0 });
   });
 });
 

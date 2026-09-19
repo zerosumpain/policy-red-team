@@ -3,6 +3,7 @@ import { Link } from 'react-router';
 import { api, type AnalysisRow } from '../api';
 import { NotificationBanner, Table, Tag, type TagColour } from '../govuk';
 import { statusLabel, statusColour } from '../status';
+import { usePageTitle } from '../layout/Template';
 
 /**
  * Everything assessed so far.
@@ -15,6 +16,9 @@ export function Home() {
   const [rows, setRows] = useState<AnalysisRow[] | null>(null);
   const [readOnly, setReadOnly] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // No page name: the landing page IS the service, and "Policy Red Team —
+  // Policy Red Team" is what a title built by rote looks like.
+  usePageTitle();
 
   useEffect(() => {
     api.landing()

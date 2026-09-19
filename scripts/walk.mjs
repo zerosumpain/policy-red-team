@@ -128,6 +128,7 @@ try {
   const playName = (await firstPlay.innerText()).trim();
   await firstPlay.click();
   await page.waitForURL('**/artefacts/**', { timeout: 10000 });
+  const drillUrl = page.url();
   // WAIT FOR THE HEADING, don't just look for it. The drill fetches the
   // assessment on mount, so the URL changes a beat before the page has anything
   // on it — and reading the DOM in that beat reports an empty page, which is
@@ -135,6 +136,20 @@ try {
   await page.getByRole('heading', { level: 1, name: playName }).waitFor({ timeout: 10000 }).catch(() => {
     failures.push(`drill: opened ${page.url()} but its heading never became "${playName}"`);
   });
+  // WHAT THE BROWSER USED TO DO FOR FREE. The playbook sits well down a long
+  // report, so a client-side navigation that moves neither scroll nor focus
+  // lands the reader partway down the new page, below its own heading, with
+  // nothing announced. All three are asserted because all three were free until
+  // the back link stopped being a document navigation.
+  const landing = await page.evaluate(() => ({
+    scrollY: window.scrollY,
+    focused: document.activeElement?.id ?? null,
+    title: document.title,
+  }));
+  if (landing.scrollY !== 0) failures.push(`drill: landed ${landing.scrollY}px down the page`);
+  if (landing.focused !== 'main-content') failures.push(`drill: focus went to "${landing.focused}", not the main landmark`);
+  if (!landing.title.startsWith(playName)) failures.push(`drill: the tab still says "${landing.title}"`);
+
   const drill = await page.locator('#main-content').innerText();
   for (const expected of ['How this would be run', 'Where this stands', 'What it rests on']) {
     if (!drill.includes(expected)) failures.push(`drill: missing section "${expected}"`);
@@ -176,13 +191,31 @@ try {
   }
   note('the back link returns to the report without reloading');
 
-  // 8 — the history now has a row, and it links back
+  // 8 — REFLOW, at the narrowest width WCAG 2.2 asks about.
+  //
+  // 1.4.10 is about content reflowing to 320 CSS pixels without a second scroll
+  // direction, and axe cannot see it: a table that pushes the page sideways is
+  // valid markup. Both drill tables did, and so did the report's — the links
+  // this change added to the actors and checks columns made cells wider than the
+  // phone they have to fit on. `<Table scroll>` is the fix and this is what
+  // notices the next one.
+  await page.setViewportSize({ width: 320, height: 800 });
+  for (const [label, url] of [['report', `http://127.0.0.1:${PORT}/assessments/${id}`], ['drill', drillUrl]]) {
+    await page.goto(url, { waitUntil: 'networkidle' });
+    await page.getByRole('heading', { level: 1 }).waitFor({ timeout: 20000 });
+    const wide = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
+    if (wide > 0) failures.push(`${label}: at 320px the page scrolls ${wide}px sideways — a table needs <Table scroll>`);
+  }
+  await page.setViewportSize({ width: 1280, height: 900 });
+  note('nothing overflows at 320px');
+
+  // 9 — the history now has a row, and it links back
   await page.goto(`http://127.0.0.1:${PORT}/`, { waitUntil: 'networkidle' });
   if (!(await page.getByRole('link', { name: 'Walk fixture paper' }).isVisible())) failures.push('landing: the finished assessment is not listed');
   await audit('/ (with a row)');
   note('history lists it');
 
-  // 9 — the rest of the surface
+  // 10 — the rest of the surface
   for (const [route, heading] of [['/personas', 'Persona library'], ['/design', 'Design system'], ['/accessibility', 'Accessibility statement'], ['/about', 'About this tool']]) {
     await page.goto(`http://127.0.0.1:${PORT}${route}`, { waitUntil: 'networkidle' });
     if (!(await page.getByRole('heading', { name: heading, level: 1 }).isVisible())) failures.push(`${route}: no "${heading}" heading`);

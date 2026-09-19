@@ -144,6 +144,7 @@ export function Report({ detail, offline, linkTo }: { detail: Detail; offline?: 
     <Table
       caption="Bodies profiled, worst play first"
       captionSize="s"
+      scroll
       columns={[{ header: 'Body' }, { header: 'Plays', numeric: true }, { header: 'Worst exposure', numeric: true }]}
       rows={board.map((actor) => [name(actor.actor), String(actor.plays.length), actor.worst.toFixed(2)])}
     />
@@ -163,6 +164,7 @@ export function Report({ detail, offline, linkTo }: { detail: Detail; offline?: 
     <Table
       caption="What the policy's own wiring was tested against"
       captionSize="s"
+      scroll
       columns={[{ header: 'Check' }, { header: 'Result' }]}
       rows={structural.slice(0, 20).map((check) => [name(check), String(check.data.result ?? '—')])}
     />

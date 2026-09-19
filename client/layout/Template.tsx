@@ -1,10 +1,61 @@
 import type { ReactNode } from 'react';
-import { Link } from 'react-router';
+import { useEffect } from 'react';
+import { Link, useLocation } from 'react-router';
 import { cx } from '../govuk/cx';
 import { PhaseBanner } from '../govuk/Feedback';
 
 /** The service's own name. Not a government service, and it says so. */
 export const SERVICE_NAME = 'Policy Red Team';
+
+/**
+ * WHAT A DOCUMENT NAVIGATION USED TO DO FOR FREE.
+ *
+ * Every link in this app was near the top of its own page until the drill
+ * arrived, and the drill is reached from a table well down a long report. A
+ * client-side navigation moves neither the scroll position nor the focus, so
+ * without this a reader clicking a play name lands PARTWAY DOWN the new page,
+ * below its own heading, with focus still on `<body>` and nothing announced.
+ * The browser did all three when the back link was a plain `<a href>`; swapping
+ * it for the router's `Link` is what took them away, so this is the other half
+ * of that change rather than a separate improvement.
+ *
+ * `#main-content` already carries `tabindex="-1"` for the skip link, so it can
+ * take focus; `preventScroll` because the scroll has just been set deliberately.
+ * Arrival is skipped — the browser has only just loaded the document, and moving
+ * focus out of nowhere on arrival is its own kind of rude.
+ *
+ * THAT FLAG IS AT MODULE SCOPE, not in a ref, and the first version of this had
+ * it in a ref and therefore did nothing at all. Each route renders its own
+ * `<Template>`, so React unmounts one and mounts another on every navigation and
+ * a per-instance "have we landed yet" is false every single time. Arrival is a
+ * property of the DOCUMENT, and this module is evaluated once per document.
+ */
+let arrived = false;
+
+function useRouteChange() {
+  const { pathname } = useLocation();
+  useEffect(() => {
+    if (!arrived) { arrived = true; return; }
+    window.scrollTo(0, 0);
+    document.getElementById('main-content')?.focus({ preventScroll: true });
+  }, [pathname]);
+}
+
+/**
+ * What the browser tab says.
+ *
+ * Called by the page rather than derived here, because the two pages whose name
+ * is worth having — an assessment and an artefact — only know it once their data
+ * has loaded, which is after any effect of this component has run. A tab reading
+ * "Policy Red Team" eight times over is the thing that makes "open three
+ * findings in three tabs" — the argument for the drill being a page at all —
+ * not actually work.
+ */
+export function usePageTitle(title?: string) {
+  useEffect(() => {
+    document.title = title ? `${title} — ${SERVICE_NAME}` : SERVICE_NAME;
+  }, [title]);
+}
 
 /**
  * The page shell.
@@ -29,6 +80,7 @@ export function Template({ children, backLink, wide }: {
   backLink?: { href: string; text?: string };
   wide?: boolean;
 }) {
+  useRouteChange();
   return (
     <>
       <a href="#main-content" className="govuk-skip-link" data-module="govuk-skip-link">
