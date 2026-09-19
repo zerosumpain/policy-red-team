@@ -5,10 +5,12 @@ import {
 import type { Artefact } from '$lib/policy-analysis/contracts';
 import { useMemo, type ReactNode } from 'react';
 import { network } from '$lib/policy-analysis/network';
+import { leverage } from '$lib/policy-analysis/stress';
 import type { Detail } from '../api';
 import { Accordion, Details, InsetText, SummaryList, Table, Tag, WarningText } from '../govuk';
 import { ExposurePlot } from './ExposurePlot';
 import { NetworkSection } from './Network';
+import { StressLab } from './StressLab';
 
 /**
  * The report.
@@ -107,6 +109,8 @@ export function Report({ detail, offline, linkTo }: { detail: Detail; offline?: 
    * not need it.
    */
   const net = useMemo(() => network(artefacts), [artefacts]);
+  /** Run here rather than inside the panel, so the section can decide whether to exist. */
+  const levers = useMemo(() => leverage(artefacts), [artefacts]);
 
   const sections: Section[] = [];
   const section = (id: string, title: string, body: React.ReactNode) => {
@@ -171,6 +175,10 @@ export function Report({ detail, offline, linkTo }: { detail: Detail; offline?: 
 
   section('network', 'How they connect', net.edges.length ? (
     <NetworkSection net={net} artefacts={artefacts} linkTo={linkTo} />
+  ) : null);
+
+  section('stress', 'What if we are wrong', levers.length ? (
+    <StressLab artefacts={artefacts} levers={levers} linkTo={linkTo} />
   ) : null);
 
   section('evidence', 'What is backed up', mix.length ? (

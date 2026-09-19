@@ -153,3 +153,68 @@ export function Radios({ id, name, legend, legendSize = 'm', hint, error, items,
     </FormGroup>
   );
 }
+
+/**
+ * A set of yes/no choices — GOV.UK's checkboxes.
+ *
+ * Written to mirror `Radios` line for line, because they are the same component
+ * with a different input type and the one thing that must not drift between
+ * them is the `aria-describedby` wiring: a hint that is not pointed at from the
+ * input it describes is a hint a screen-reader user never hears.
+ *
+ * The stress test is what this exists for. Failing an assumption is a yes/no
+ * question asked of fourteen assumptions at once, and the alternative — a rail
+ * of bespoke toggle buttons — is three accessibility problems bought to avoid
+ * a component that already exists.
+ */
+export function Checkboxes({ id, name, legend, legendSize = 'm', hint, error, items, values = [], onChange, isPageHeading, small }: {
+  id: string;
+  name?: string;
+  legend: ReactNode;
+  legendSize?: 's' | 'm' | 'l' | 'xl';
+  hint?: ReactNode;
+  error?: string;
+  items: { value: string; text: ReactNode; hint?: ReactNode }[];
+  values?: string[];
+  onChange?: (values: string[]) => void;
+  isPageHeading?: boolean;
+  /** GOV.UK's small variant, for a long list the reader scans rather than answers once. */
+  small?: boolean;
+}) {
+  const selected = new Set(values);
+  const toggle = (value: string) => {
+    const next = new Set(selected);
+    if (next.has(value)) next.delete(value);
+    else next.add(value);
+    // The caller's order, not the click order: a list that reshuffles as it is
+    // ticked is a list nobody can keep their place in.
+    onChange?.(items.map((item) => item.value).filter((v) => next.has(v)));
+  };
+
+  return (
+    <FormGroup error={error}>
+      <fieldset className="govuk-fieldset" aria-describedby={describedBy(id, hint, error)}>
+        <legend className={cx('govuk-fieldset__legend', `govuk-fieldset__legend--${legendSize}`)}>
+          {isPageHeading ? <h1 className="govuk-fieldset__heading">{legend}</h1> : legend}
+        </legend>
+        {hint ? <Hint id={id}>{hint}</Hint> : null}
+        {error ? <ErrorMessage id={id}>{error}</ErrorMessage> : null}
+        <div className={cx('govuk-checkboxes', small && 'govuk-checkboxes--small')} data-module="govuk-checkboxes">
+          {items.map((item) => {
+            const itemId = `${id}-${item.value}`;
+            return (
+              <div className="govuk-checkboxes__item" key={item.value}>
+                <input className="govuk-checkboxes__input" id={itemId} name={name ?? id} type="checkbox"
+                       value={item.value} checked={selected.has(item.value)}
+                       aria-describedby={item.hint ? `${itemId}-hint` : undefined}
+                       onChange={() => toggle(item.value)} />
+                <label className="govuk-label govuk-checkboxes__label" htmlFor={itemId}>{item.text}</label>
+                {item.hint ? <div id={`${itemId}-hint`} className="govuk-hint govuk-checkboxes__hint">{item.hint}</div> : null}
+              </div>
+            );
+          })}
+        </div>
+      </fieldset>
+    </FormGroup>
+  );
+}

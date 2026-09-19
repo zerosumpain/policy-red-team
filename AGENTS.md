@@ -84,6 +84,15 @@ delete.** Do not weaken it.
   reach it.
 - **`network()` is 145ms on a real assessment.** Memoise it wherever it is
   called from a render body — the report re-renders on every stage event.
+- **A GOV.UK checkbox or radio HINT takes its own line.** Putting a per-item
+  figure there doubles the height of the list. The figure goes in the label and
+  the fieldset's own hint says what it means, once — see `client/report/StressLab.tsx`.
+- **`stress.ts` writes two shapes of reason and they compress differently.**
+  "rests on X" / "needs X" names what the reader failed and is the SAME for every
+  row that cited it; "answers Y, which no longer stands" is different for every
+  row. Grouping on the whole string compresses nothing at the second order and
+  took the panel to three screens. `reasonsOf` in `src/lib/stress-view.ts` splits
+  them.
 - **GDS has no modal component, on purpose.** A layer over a page wants a focus
   trap, its own Escape handling and a back stack. The pattern here is a route —
   see `client/pages/Drill.tsx`.

@@ -158,6 +158,57 @@ try {
     failures.push('report: no "How they connect" section at all');
   }
 
+  // 5c — THE STRESS TEST: the one thing on the page you RUN rather than read.
+  //
+  // It simulates, so a gate that only checks it rendered has checked nothing.
+  // This pulls a lever and asserts the page changed, that the two directions
+  // stayed opposite, and that axe is clean on the result — which is a different
+  // DOM from the one at rest.
+  const stress = page.getByRole('heading', { name: 'What if we are wrong' });
+  if (await stress.count()) {
+    await stress.scrollIntoViewIfNeeded();
+    const panel = page.locator('section[aria-labelledby="stress"]');
+    const atRest = await panel.innerText();
+    if (!atRest.includes('Nothing failed yet')) failures.push('stress: does not say it is waiting for a lever');
+
+    const lever = panel.locator('input[type=checkbox]').first();
+    if (!(await lever.count())) {
+      failures.push('stress: rendered with no levers at all');
+    } else {
+      // Every lever must be reachable and labelled, or the panel is unusable
+      // from a keyboard — which is the whole risk of a bespoke control and the
+      // reason this uses GOV.UK's checkboxes.
+      const labelled = await panel.evaluate((el) => [...el.querySelectorAll('input[type=checkbox]')]
+        .every((i) => !!el.querySelector(`label[for="${i.id}"]`)));
+      if (!labelled) failures.push('stress: a lever has no label pointing at it');
+
+      await lever.check();
+      await page.waitForTimeout(200);
+      const pulled = await panel.innerText();
+      if (pulled === atRest) failures.push('stress: pulling a lever changed nothing on the page');
+      if (!/\d+ of \d+ conclusions and results move|Nothing moves/.test(pulled)) {
+        failures.push('stress: does not say how much moved');
+      }
+      // The two directions must never be collapsed: a disarmed play is good
+      // news for the policy and a fallen conclusion is not.
+      if (pulled.includes('Taken off the table') && !pulled.includes('The good news on this page')) {
+        failures.push('stress: a disarmed play is reported without saying it is the opposite direction');
+      }
+      if (!/structural check(s)? (is|are) untouched/.test(pulled)) {
+        failures.push('stress: does not say what cannot move');
+      }
+      await audit('/assessments/:id (stress test, pulled)');
+      await lever.uncheck();
+      await page.waitForTimeout(200);
+      if (!(await panel.innerText()).includes('Nothing failed yet')) {
+        failures.push('stress: unticking the lever did not put it back');
+      }
+      note('the stress test runs, and both directions stay opposite');
+    }
+  } else {
+    failures.push('report: no "What if we are wrong" section at all');
+  }
+
   // 6 — THE DRILL: one artefact, opened out, with its chain back to the paper.
   //
   // Reached by clicking a name in the report, never by typing the URL. A link

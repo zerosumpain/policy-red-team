@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import {
-  Accordion, Button, ButtonGroup, Details, ErrorSummary, FileUpload, Input,
+  Accordion, Button, ButtonGroup, Checkboxes, Details, ErrorSummary, FileUpload, Input,
   InsetText, NotificationBanner, Panel, Radios, Select, SummaryList, Table,
   Tag, TaskList, Textarea, WarningText, type Task,
 } from '../govuk';
@@ -47,6 +47,7 @@ export function Gallery() {
   usePageTitle('Design system');
   const [depth, setDepth] = useState('standard');
   const [showErrors, setShowErrors] = useState(false);
+  const [failing, setFailing] = useState<string[]>([]);
 
   return (
     <>
@@ -239,6 +240,32 @@ export function Gallery() {
             <Button variant="secondary" onClick={() => setShowErrors(true)}>Show the error state</Button>
             <a className="govuk-link" href="#main-content">Cancel</a>
           </ButtonGroup>
+        </div>
+      </div>
+
+      <h2 className="govuk-heading-l govuk-!-margin-top-8">Asking the reader several things at once</h2>
+      <p className="govuk-body">
+        The stress test asks "suppose this turns out to be false" of a dozen assumptions at once,
+        which is a set of yes/no questions and therefore checkboxes. The weight is a figure IN the
+        label rather than a hint below it: a hint takes its own line, and a rail of two-line levers
+        was the tallest thing on the page it belongs to.
+      </p>
+      <div className="govuk-grid-row">
+        <div className="govuk-grid-column-one-half">
+          <Checkboxes
+            id="gallery-stress"
+            small
+            legendSize="s"
+            legend="Suppose these turn out to be false"
+            hint="The figure beside each is how many things rest on it."
+            values={failing}
+            onChange={setFailing}
+            items={[
+              { value: 'a', text: <>Cross-sector coordination <span className="prt-meta">19</span></> },
+              { value: 'b', text: <>Outcome measurement feasibility <span className="prt-meta">18</span></> },
+              { value: 'c', text: <>Statutory targets will improve outcomes <span className="prt-meta">17</span></> },
+            ]}
+          />
         </div>
       </div>
 
