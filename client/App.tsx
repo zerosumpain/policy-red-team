@@ -5,6 +5,7 @@ import { New } from './pages/New';
 import { Assessment } from './pages/Assessment';
 import { Drill } from './pages/Drill';
 import { Personas } from './pages/Personas';
+import { Persona } from './pages/Persona';
 import { Gallery } from './pages/Gallery';
 import { Accessibility } from './pages/Accessibility';
 import { About } from './pages/About';
@@ -20,7 +21,8 @@ export function App() {
           own back button — see client/pages/Drill.tsx for why a drawer was not
           the answer here. */}
       <Route path="/assessments/:id/artefacts/:artefactId" element={<DrillRoute />} />
-      <Route path="/personas" element={<Template backLink={{ href: '/' }}><Personas /></Template>} />
+      <Route path="/personas" element={<Template wide backLink={{ href: '/' }}><Personas /></Template>} />
+      <Route path="/personas/:id" element={<Template wide backLink={{ href: '/personas', text: 'Back to the library' }}><Persona /></Template>} />
       {/* The design system, kept as a route: it is what `npm run a11y` scans and
           the cheapest place to argue about a component before it is spread over
           five pages. */}

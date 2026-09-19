@@ -114,6 +114,15 @@ delete.** Do not weaken it.
   divergence. Its data carries the standing dossier drawn from the owner's other
   assessments, which is the thing `share.ts`'s own header says must not travel;
   upstream withholds stage 13's warnings on that ground and ships its output.
+- **A PERSONA IS CONTEXT, NEVER EVIDENCE**, and the dossier page has to say so.
+  It is drawn from other papers about other policies; importing its conclusions
+  into the assessment in front of the reader is the opposite of a red team. It is
+  also the most sensitive thing this install holds — cross-assessment
+  intelligence by construction, which is why `persona_link` is withheld from
+  everything that leaves and why the dossier has no shareable form.
+- **`POST .../personas/:id/research` SPENDS MONEY** — two model calls plus
+  retrieval. Read-only refuses it, a token bucket caps it at six in a sitting,
+  and the request's abort signal is passed through. Never call it from a run.
 - **GDS has no modal component, on purpose.** A layer over a page wants a focus
   trap, its own Escape handling and a back stack. The pattern here is a route —
   see `client/pages/Drill.tsx`.

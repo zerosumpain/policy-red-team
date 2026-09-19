@@ -411,6 +411,50 @@ try {
   await audit('/ (with a row)');
   note('history lists it');
 
+  // 9b — THE PERSONA LIBRARY, and a dossier opened from it.
+  //
+  // The library only earns its place on the SECOND paper that names a body, so
+  // the walk runs one — without which the page under test is the single case
+  // where a dossier adds nothing the assessment did not already say.
+  await page.goto(`http://127.0.0.1:${PORT}/new`, { waitUntil: 'networkidle' });
+  await page.getByLabel('What is this paper called?', { exact: true }).fill('Walk second paper');
+  await page.getByLabel('The paper', { exact: true }).setInputFiles(path.join(ROOT, 'tests', 'fixtures', 'policy-analysis', 'policy.txt'));
+  await page.getByRole('button', { name: 'Start the assessment' }).click();
+  await page.waitForURL('**/assessments/**', { timeout: 20000 });
+  await page.getByRole('heading', { name: 'What it found' }).waitFor({ timeout: 120000 });
+
+  await page.goto(`http://127.0.0.1:${PORT}/personas`, { waitUntil: 'networkidle' });
+  await page.getByRole('heading', { name: 'Persona library', level: 1 }).waitFor({ timeout: 20000 });
+  const persona = page.locator('#main-content table a').first();
+  if (!(await persona.count())) {
+    failures.push('personas: the library lists nothing after two assessments');
+  } else {
+    const personaName = (await persona.innerText()).trim();
+    await persona.click();
+    await page.waitForURL('**/personas/**');
+    // The library's own h1 is still on screen until React swaps, so waiting for
+    // "any level-1 heading" returns immediately on the wrong one.
+    await page.getByRole('heading', { name: 'Where it has been seen', level: 2 }).waitFor({ timeout: 20000 });
+    const dossierText = await page.locator('#main-content').innerText();
+    if (!dossierText.includes(personaName)) failures.push(`personas: the dossier does not name ${personaName}`);
+    if (!/seen in 2 papers/.test(dossierText)) failures.push('personas: the dossier does not say it was seen twice');
+    for (const expected of ['What the library holds', 'Where it has been seen', 'Enquiries you commissioned']) {
+      if (!dossierText.includes(expected)) failures.push(`personas: the dossier is missing "${expected}"`);
+    }
+    // A persona is CONTEXT, NEVER EVIDENCE, and the page has to say so: it is
+    // drawn from other papers about other policies, and the one thing it must
+    // not read like is a finding about the assessment in front of the reader.
+    if (!/context, not evidence/i.test(dossierText)) {
+      failures.push('personas: the dossier does not say it is context rather than evidence');
+    }
+    if ((await page.locator('#main-content a[href*="/assessments/"]').count()) < 2) {
+      failures.push('personas: the dossier does not link back to both papers that named it');
+    }
+    if (!(await page.title()).startsWith(personaName)) failures.push('personas: the tab does not name the body');
+    await audit('/personas/:id');
+    note(`dossier opens on "${personaName}", seen in two papers`);
+  }
+
   // 10 — the rest of the surface
   for (const [route, heading] of [['/personas', 'Persona library'], ['/design', 'Design system'], ['/accessibility', 'Accessibility statement'], ['/about', 'About this tool']]) {
     await page.goto(`http://127.0.0.1:${PORT}${route}`, { waitUntil: 'networkidle' });

@@ -54,6 +54,54 @@ export interface Detail {
   readOnly: boolean;
 }
 
+/** A trait the library holds about a body, folded across every paper that said it. */
+export interface PersonaTrait {
+  key: string;
+  label: string;
+  value: string;
+  origin: string;
+  confidence: number | null;
+}
+
+/** A row in the library. `listPersonas` computes far more than the list used to show. */
+export interface PersonaSummary {
+  id: string;
+  name: string;
+  entityType: string;
+  aliases: string[];
+  summary: string | null;
+  dossier: PersonaTrait[];
+  sightings: number;
+  researchedAt: string | null;
+  updatedAt: string | null;
+  lastSeen: string | null;
+  worstBand: string | null;
+  plays: number;
+  researchNotes: number;
+}
+
+/** One assessment's or one research pass's contribution to a persona. */
+export interface PersonaObservation {
+  id: string;
+  personaId: string;
+  kind: 'assessment' | 'research';
+  analysisId: string | null;
+  analysisTitle: string | null;
+  actorId: string | null;
+  traits: PersonaTrait[];
+  plays: { label: string; band: string; exposure: number; legality: string }[];
+  sources: { url: string; title: string; quality: string }[];
+  note: string | null;
+  observedAt: string | null;
+}
+
+export interface PersonaDossier {
+  persona: PersonaSummary;
+  observations: PersonaObservation[];
+  analyses: { id: string; title: string; status: string; completedAt: string | null; policyArea: string | null }[];
+  readOnly: boolean;
+}
+
 export interface Landing {
   analyses: AnalysisRow[];
   models: OfferedModel[];
@@ -80,8 +128,12 @@ export const api = {
   act: (id: string, action: 'cancel' | 'resume' | 'restate') =>
     request<{ status: string }>(`/api/policy-analysis/${id}/${action}`, { method: 'POST' }),
   purge: (id: string) => request<{ receipt: unknown }>(`/api/policy-analysis/${id}`, { method: 'DELETE' }),
-  personas: () => request<{ personas: { id: string; name: string; sightings: number; kind: string | null }[] }>('/api/policy-analysis/personas'),
-  persona: (id: string) => request<Record<string, unknown>>(`/api/policy-analysis/personas/${id}`),
+  personas: () => request<{ personas: PersonaSummary[]; readOnly: boolean }>('/api/policy-analysis/personas'),
+  persona: (id: string) => request<PersonaDossier>(`/api/policy-analysis/personas/${id}`),
+  forgetPersona: (id: string) => request<{ removed: boolean }>(`/api/policy-analysis/personas/${id}`, { method: 'DELETE' }),
+  /** Spends: two model calls plus retrieval. Refused outright in a read-only copy. */
+  researchPersona: (id: string) =>
+    request<{ sources: number; traits: number }>(`/api/policy-analysis/personas/${id}/research`, { method: 'POST' }),
 };
 
 /**

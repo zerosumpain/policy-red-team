@@ -16,6 +16,7 @@ import type { IncomingMessage, ServerResponse } from 'node:http';
 import { HttpError, readJson, readMultipart, sendJson } from './http';
 import { getOwnerEmails } from '$lib/server/access';
 import { isReadOnly, READ_ONLY_MESSAGE } from '$lib/server/read-only';
+import { rateLimit } from '$lib/server/rate-limit';
 import { offeredModels } from '$lib/server/models/catalogue';
 import { readSubmission, readMaterial } from '$lib/policy-analysis/server/ingest';
 import {
@@ -120,13 +121,49 @@ export async function handleApi(
   if (segments[0] === 'personas') {
     const { listPersonas, personaDetail, removePersona } = await import('$lib/policy-analysis/server/personas');
     if (segments.length === 1 && method === 'GET') {
-      sendJson(res, 200, { personas: await listPersonas(owner()) });
+      sendJson(res, 200, { personas: await listPersonas(owner()), readOnly: isReadOnly() });
       return true;
     }
     if (segments.length === 2 && method === 'GET') {
       const dossier = await personaDetail(owner(), segments[1]);
       if (!dossier) throw new HttpError(404, 'No such persona.');
-      sendJson(res, 200, dossier);
+      // `readOnly` rides along so the page can decline to draw a control that
+      // would only 403, the same as the assessment detail.
+      sendJson(res, 200, { ...dossier, readOnly: isReadOnly() });
+      return true;
+    }
+
+    /*
+     * POST /api/policy-analysis/personas/:id/research — enrich from public
+     * sources, on the reader's explicit instruction.
+     *
+     * A ROUTE `researchPersona` HAS NEVER HAD. It sat in the copied store with
+     * nothing calling it, which is the same shape of defect as `resolveShare`
+     * one phase ago: a capability that is tested, reachable from nowhere, and
+     * therefore never actually exercised.
+     *
+     * IT SPENDS MONEY — two model calls plus retrieval — so it is a POST, it is
+     * refused outright in a read-only copy by the gate above, and it is rate
+     * limited. Deliberately NOT part of a run: researching every actor of every
+     * assessment would spend on bodies nobody asked about. This is a decision
+     * made against a body the reader cares about.
+     *
+     * The request's own abort signal is passed through, so a reader who closes
+     * the tab stops the work rather than paying for an answer nobody reads.
+     */
+    if (segments.length === 3 && segments[2] === 'research' && method === 'POST') {
+      // A token bucket: six in hand, refilling one every ten minutes. Enough to
+      // work through a handful of bodies in one sitting and not enough to leave
+      // a stuck retry loop spending all night.
+      const limit = rateLimit(`persona-research:${owner()}`, { capacity: 6, refillPerSecond: 1 / 600 });
+      if (!limit.allowed) {
+        throw new HttpError(429, `That is six enrichments in a sitting, which is enough. Another in ${Math.ceil(limit.retryAfterMs / 60000)} minutes.`);
+      }
+      const { researchPersona } = await import('$lib/policy-analysis/server/personas');
+      const controller = new AbortController();
+      req.on('aborted', () => controller.abort());
+      const result = await researchPersona(owner(), segments[1], controller.signal);
+      sendJson(res, 200, result);
       return true;
     }
     if (segments.length === 2 && method === 'DELETE') {
