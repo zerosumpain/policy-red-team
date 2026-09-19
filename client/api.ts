@@ -7,6 +7,7 @@
  * empty panel.
  */
 import type { Artefact } from '$lib/policy-analysis/contracts';
+import type { PassRow } from '$lib/policy-analysis/view';
 
 export interface OfferedModel {
   id: string;
@@ -47,7 +48,13 @@ export interface Detail {
    * writes — see src/lib/provenance.ts.
    */
   artefactMetadata: { id: string; stage: number; updatedAt: string }[];
-  passes: unknown[];
+  /**
+   * Material attached after the report was written, and restatements over it.
+   *
+   * Typed against the copied view layer's own row shape rather than redescribed
+   * here, so `addenda()` and `addendumBanner()` take it unchanged.
+   */
+  passes: PassRow[];
   personas: { actorId: string | null; personaId: string; name: string; sightings: number }[];
   heartbeat: string | null;
   /** True when the server refuses every mutation, so the page can decline to draw a control that would 403. */
@@ -125,6 +132,9 @@ export const api = {
   landing: () => request<Landing>('/api/policy-analysis'),
   detail: (id: string) => request<Detail>(`/api/policy-analysis/${id}`),
   submit: (form: FormData) => request<{ id: string }>('/api/policy-analysis', { method: 'POST', body: form }),
+  /** Attach something read AFTER the report was written. Starts a four-stage pass; spends. */
+  material: (id: string, form: FormData) =>
+    request<{ status: string }>(`/api/policy-analysis/${id}/material`, { method: 'POST', body: form }),
   act: (id: string, action: 'cancel' | 'resume' | 'restate') =>
     request<{ status: string }>(`/api/policy-analysis/${id}/${action}`, { method: 'POST' }),
   purge: (id: string) => request<{ receipt: unknown }>(`/api/policy-analysis/${id}`, { method: 'DELETE' }),

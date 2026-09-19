@@ -33,6 +33,8 @@ export type DossierPlay = {
 
 /** What one assessment contributed. */
 export type Sighting = {
+  /** The observation's own id. A paper can produce more than one, so nothing else is a stable key. */
+  id: string;
   analysisId: string | null;
   title: string;
   observedAt: string | null;
@@ -55,19 +57,43 @@ export type Contested = {
   key: string;
   label: string;
   /** Distinct values, each with every place it was said. */
-  readings: { value: string; where: string[] }[];
+  readings: {
+    value: string;
+    /** How it was arrived at — a document's own words, or a model's inference. */
+    origin: string;
+    /** The papers that said it, each named once however many observations they produced. */
+    where: string[];
+  }[];
 };
+
+/** A trait two or more papers recorded and agreed about. */
+export type Agreed = { key: string; label: string; value: string; where: string[] };
 
 export type Dossier = {
   sightings: Sighting[];
   research: ResearchNote[];
   plays: DossierPlay[];
   contested: Contested[];
+  /**
+   * Traits two or more PAPERS recorded and agreed about.
+   *
+   * Separate from "contested is empty", which is not the same claim and was
+   * being made as if it were: two papers recording DISJOINT trait keys, or no
+   * traits at all, produce an empty `contested` and no agreement whatsoever.
+   * Telling a reader the papers agree on that basis is the page reading like a
+   * finding when there is nothing to find.
+   */
+  agreed: Agreed[];
 };
 
 const BANDS = ['severe', 'significant', 'moderate', 'limited'];
+/**
+ * CASE-FOLDED. `playsFor` stores whatever the model wrote, so a `"Severe"` was
+ * ranked as an unknown word and sank to the bottom of a table captioned "worst
+ * first" — a silent demotion of the worst thing on the page.
+ */
 const bandRank = (band: string) => {
-  const at = BANDS.indexOf(band);
+  const at = BANDS.indexOf(band.trim().toLowerCase());
   return at === -1 ? BANDS.length : at;
 };
 
@@ -93,6 +119,7 @@ export function dossier(observations: PersonaObservation[]): Dossier {
 
   const sightings: Sighting[] = seen
     .map((o) => ({
+      id: o.id,
       analysisId: o.analysisId,
       title: o.analysisTitle ?? 'An assessment no longer in this install',
       observedAt: o.observedAt,
@@ -111,7 +138,28 @@ export function dossier(observations: PersonaObservation[]): Dossier {
     // per-assessment fact to a reader deciding whether to worry about it.
     plays: sightings.flatMap((s) => s.plays).sort((a, b) => bandRank(a.band) - bandRank(b.band) || b.exposure - a.exposure),
     contested: contested(sightings),
+    agreed: agreed(sightings),
   };
+}
+
+/**
+ * One row per PAPER, not per observation.
+ *
+ * `applyPersonaLinks` de-duplicates on `(personaId, analysisId, actorId)`, and
+ * the actor is deliberately in that key — so two actors in one assessment that
+ * both resolve to the same body produce two observation rows for one paper.
+ * Counting those as two papers inflated every figure on the page and let one
+ * paper's internal inconsistency outrank a reading two real papers shared.
+ */
+function papers(sightings: Sighting[]): { title: string; traits: PersonaTrait[] }[] {
+  const grouped = new Map<string, { title: string; traits: PersonaTrait[] }>();
+  for (const sighting of sightings) {
+    const key = sighting.analysisId ?? `title:${sighting.title}`;
+    const found = grouped.get(key);
+    if (found) found.traits.push(...sighting.traits);
+    else grouped.set(key, { title: sighting.title, traits: [...sighting.traits] });
+  }
+  return [...grouped.values()];
 }
 
 /**
@@ -126,29 +174,55 @@ export function dossier(observations: PersonaObservation[]): Dossier {
  * A trait said once, or said identically everywhere, is not here — it is in the
  * dossier proper, which is what `foldTraits` already produced.
  */
-export function contested(sightings: Sighting[]): Contested[] {
-  const byKey = new Map<string, { label: string; values: Map<string, string[]> }>();
+type Readings = Map<string, { origin: string; where: Set<string> }>;
 
-  for (const sighting of sightings) {
-    for (const trait of sighting.traits) {
+function index(sightings: Sighting[]): Map<string, { label: string; values: Readings }> {
+  const byKey = new Map<string, { label: string; values: Readings }>();
+  for (const paper of papers(sightings)) {
+    for (const trait of paper.traits) {
       const value = flat(trait.value);
       if (!value) continue;
-      const entry = byKey.get(trait.key) ?? { label: trait.label, values: new Map<string, string[]>() };
-      entry.values.set(value, [...(entry.values.get(value) ?? []), sighting.title]);
+      const entry = byKey.get(trait.key) ?? { label: trait.label, values: new Map() as Readings };
+      const reading = entry.values.get(value) ?? { origin: trait.origin, where: new Set<string>() };
+      // A SET, so a paper that said the same thing twice is named once.
+      reading.where.add(paper.title);
+      entry.values.set(value, reading);
       byKey.set(trait.key, entry);
     }
   }
+  return byKey;
+}
 
-  return [...byKey]
+export function contested(sightings: Sighting[]): Contested[] {
+  return [...index(sightings)]
     .filter(([, entry]) => entry.values.size > 1)
     .map(([key, entry]) => ({
       key,
       label: entry.label,
       // Most-often-said first: the reading two papers share leads the one only
-      // this paper offers.
+      // this paper offers. The ORIGIN travels with it — "the document said X"
+      // and "a model inferred Y" are not two equal readings, and the list that
+      // leads this page was presenting them as if they were.
       readings: [...entry.values]
-        .map(([value, where]) => ({ value, where }))
+        .map(([value, reading]) => ({ value, origin: reading.origin, where: [...reading.where] }))
         .sort((a, b) => b.where.length - a.where.length || a.value.localeCompare(b.value)),
     }))
     .sort((a, b) => b.readings.length - a.readings.length || a.label.localeCompare(b.label));
+}
+
+/**
+ * What two or more papers recorded AND agreed about.
+ *
+ * The positive claim, made only where it is true. "Nothing contested" covers
+ * papers that recorded disjoint traits and papers that recorded none, neither
+ * of which is agreement.
+ */
+export function agreed(sightings: Sighting[]): Agreed[] {
+  return [...index(sightings)]
+    .filter(([, entry]) => entry.values.size === 1 && [...entry.values.values()][0].where.size > 1)
+    .map(([key, entry]) => {
+      const [value, reading] = [...entry.values][0];
+      return { key, label: entry.label, value, where: [...reading.where] };
+    })
+    .sort((a, b) => b.where.length - a.where.length || a.label.localeCompare(b.label));
 }

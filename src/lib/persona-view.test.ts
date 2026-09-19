@@ -6,7 +6,7 @@
 // the page for.
 import { describe, expect, it } from 'vitest';
 import type { PersonaObservation, PersonaTrait } from '$lib/policy-analysis/personas';
-import { contested, dossier } from './persona-view';
+import { agreed, contested, dossier } from './persona-view';
 
 const trait = (key: string, value: string): PersonaTrait =>
   ({ key, label: key.replace(/([a-z])([A-Z])/g, '$1 $2'), value, origin: 'structural_inference', confidence: null });
@@ -39,6 +39,9 @@ describe('a body met more than once', () => {
     expect(out.contested.map((c) => c.key)).toEqual(['accountableTo']);
     expect(out.contested[0].readings.map((r) => r.value)).toEqual(['A delivery partner', 'Accountable for delivery']);
     expect(out.contested[0].readings[0].where).toEqual(['Post-16 skills']);
+    // The ORIGIN travels with the reading: "the document said X" and "a model
+    // inferred Y" are not two equal readings of the same thing.
+    expect(out.contested[0].readings[0].origin).toBe('structural_inference');
   });
 
   it('does not call a trait contested when the wording only differs in whitespace', () => {
@@ -56,8 +59,8 @@ describe('a body met more than once', () => {
       sighting({ analysisId: 'a3', analysisTitle: 'Three', traits: [trait('capacity', 'Sufficient')] }),
     ];
     const [row] = dossier(observations).contested;
-    expect(row.readings[0]).toEqual({ value: 'Sufficient', where: ['Two', 'Three'] });
-    expect(row.readings[1]).toEqual({ value: 'Stretched', where: ['One'] });
+    expect(row.readings[0]).toMatchObject({ value: 'Sufficient', where: ['Two', 'Three'] });
+    expect(row.readings[1]).toMatchObject({ value: 'Stretched', where: ['One'] });
   });
 
   it('has nothing contested for a body met once, however much it says', () => {
@@ -72,6 +75,76 @@ describe('a body met more than once', () => {
       sighting({ analysisId: 'a2', analysisTitle: 'Another', traits: [trait('capacity', '   ')] }),
     ];
     expect(dossier(observations).contested).toEqual([]);
+  });
+});
+
+describe('two observations from ONE paper', () => {
+  // `applyPersonaLinks` keys on (personaId, analysisId, actorId), so two actors
+  // in one assessment that resolve to the same body make two rows for one paper.
+  const twoActors = [
+    sighting({ id: 'o1', analysisId: 'a1', analysisTitle: 'One paper', actorId: 's2_a', traits: [trait('capacity', 'Stretched')] }),
+    sighting({ id: 'o2', analysisId: 'a1', analysisTitle: 'One paper', actorId: 's2_b', traits: [trait('capacity', 'Sufficient')] }),
+  ];
+
+  it('names that paper once, not twice', () => {
+    const [row] = dossier(twoActors).contested;
+    expect(row.readings.every((r) => r.where.length === 1)).toBe(true);
+    expect(row.readings.flatMap((r) => r.where)).toEqual(['One paper', 'One paper']);
+  });
+
+  it('does not let one paper contradicting itself outrank two papers agreeing', () => {
+    const mixed = [
+      ...twoActors,
+      sighting({ id: 'o3', analysisId: 'a2', analysisTitle: 'Two', traits: [trait('role', 'Commissioner')] }),
+      sighting({ id: 'o4', analysisId: 'a3', analysisTitle: 'Three', traits: [trait('role', 'Commissioner')] }),
+    ];
+    const out = dossier(mixed);
+    // Two real papers agreeing on `role` is agreement, not a disagreement.
+    expect(out.contested.map((c) => c.key)).toEqual(['capacity']);
+    expect(out.agreed.map((a) => a.key)).toEqual(['role']);
+    expect(out.agreed[0].where).toEqual(['Two', 'Three']);
+  });
+
+  it('gives every sighting a key of its own, so two rows from one paper do not collide', () => {
+    expect(dossier(twoActors).sightings.map((s) => s.id)).toEqual(['o1', 'o2']);
+  });
+});
+
+describe('claiming the papers agree', () => {
+  it('is only claimed where two papers recorded the SAME trait and matched', () => {
+    const out = dossier([
+      sighting({ analysisTitle: 'One', traits: [trait('capacity', 'Stretched')] }),
+      sighting({ analysisId: 'a2', analysisTitle: 'Two', traits: [trait('capacity', 'Stretched')] }),
+    ]);
+    expect(out.contested).toEqual([]);
+    expect(out.agreed).toEqual([{ key: 'capacity', label: 'capacity', value: 'Stretched', where: ['One', 'Two'] }]);
+  });
+
+  it('is NOT claimed when two papers recorded disjoint traits', () => {
+    // Nothing contested is not agreement, and the page was making that claim.
+    const out = dossier([
+      sighting({ analysisTitle: 'One', traits: [trait('capacity', 'Stretched')] }),
+      sighting({ analysisId: 'a2', analysisTitle: 'Two', traits: [trait('resources', 'Unfunded')] }),
+    ]);
+    expect(out.contested).toEqual([]);
+    expect(out.agreed).toEqual([]);
+  });
+
+  it('is NOT claimed when the papers recorded no traits at all', () => {
+    const out = dossier([
+      sighting({ analysisTitle: 'One' }),
+      sighting({ analysisId: 'a2', analysisTitle: 'Two' }),
+    ]);
+    expect(out.agreed).toEqual([]);
+    expect(agreed([])).toEqual([]);
+  });
+
+  it('is NOT claimed on one paper saying something twice', () => {
+    const out = dossier([
+      sighting({ id: 'o1', analysisId: 'a1', analysisTitle: 'One', traits: [trait('capacity', 'Stretched')] }),
+      sighting({ id: 'o2', analysisId: 'a1', analysisTitle: 'One', traits: [trait('capacity', 'Stretched')] }),
+    ]);
+    expect(out.agreed).toEqual([]);
   });
 });
 
@@ -98,6 +171,16 @@ describe('the plays a body could run', () => {
       { label: 'Known band', band: 'moderate', exposure: 0.1, legality: 'compliant' },
     ] })];
     expect(dossier(observations).plays.map((p) => p.label)).toEqual(['Known band', 'Unknown band']);
+  });
+
+  it('ranks a band the model happened to capitalise, rather than demoting it', () => {
+    // `playsFor` stores whatever was written. A "Severe" ranked as an unknown
+    // word sank to the bottom of a table captioned "worst first".
+    const observations = [sighting({ plays: [
+      { label: 'Mild', band: 'limited', exposure: 0.1, legality: 'compliant' },
+      { label: 'Shouty', band: 'Severe', exposure: 0.9, legality: 'breach' },
+    ] })];
+    expect(dossier(observations).plays.map((p) => p.label)).toEqual(['Shouty', 'Mild']);
   });
 });
 
@@ -146,7 +229,7 @@ describe('reader-commissioned research', () => {
 
 describe('nothing at all', () => {
   it('returns empty everything rather than throwing', () => {
-    expect(dossier([])).toEqual({ sightings: [], research: [], plays: [], contested: [] });
+    expect(dossier([])).toEqual({ sightings: [], research: [], plays: [], contested: [], agreed: [] });
     expect(contested([])).toEqual([]);
   });
 });

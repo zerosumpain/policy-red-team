@@ -41,7 +41,8 @@ export async function readJson(req: IncomingMessage): Promise<Record<string, unk
 
 export interface Multipart {
   fields: Record<string, string>;
-  file?: { filename: string; mimeType: string; bytes: Buffer };
+  /** `field` is the name the form used, which decides where it goes back. */
+  file?: { field: string; filename: string; mimeType: string; bytes: Buffer };
 }
 
 /**
@@ -63,13 +64,17 @@ export function readMultipart(req: IncomingMessage): Promise<Multipart> {
       result.fields[name] = value;
     });
 
-    parser.on('file', (_name, stream, info) => {
+    // THE FIELD NAME IS KEPT. It was discarded, and `asRequest` then put every
+    // upload back under the name the SUBMISSION form uses — so the material
+    // form, whose field is `material`, arrived at `readMaterial` with no file
+    // at all and was told to attach one. Nothing had ever driven that route.
+    parser.on('file', (name, stream, info) => {
       const chunks: Buffer[] = [];
       stream.on('data', (chunk: Buffer) => chunks.push(chunk));
       stream.on('limit', () => { truncated = true; });
       stream.on('end', () => {
         if (!chunks.length) return;
-        result.file = { filename: info.filename, mimeType: info.mimeType, bytes: Buffer.concat(chunks) };
+        result.file = { field: name, filename: info.filename, mimeType: info.mimeType, bytes: Buffer.concat(chunks) };
       });
     });
 

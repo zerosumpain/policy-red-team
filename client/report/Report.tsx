@@ -12,6 +12,7 @@ import { ExposurePlot } from './ExposurePlot';
 import { NetworkSection } from './Network';
 import { StressLab } from './StressLab';
 import { Shares } from './Shares';
+import { Addenda, AddendumNotice } from './Addenda';
 
 /**
  * The report.
@@ -87,7 +88,17 @@ export type ArtefactLink = (artefact: Artefact, label?: string) => ReactNode;
  * reader the very file they are already reading. Found by looking at a real pack
  * rather than by any test, which is the argument for looking at real output.
  */
-export function Report({ detail, offline, linkTo }: { detail: Detail; offline?: boolean; linkTo?: ArtefactLink }) {
+export function Report({ detail, offline, linkTo, onChanged }: {
+  detail: Detail;
+  offline?: boolean;
+  linkTo?: ArtefactLink;
+  /**
+   * Called when something started a pass, so the page that owns the fetch can
+   * refetch. A pass changes the assessment's own status, so the report is no
+   * longer the thing to show — the progress list is.
+   */
+  onChanged?: () => void;
+}) {
   const { artefacts, analysis, stages } = detail;
   /** The name of a thing, and — where the caller can offer one — the way into it. */
   const name = (artefact: Artefact): ReactNode => (linkTo ? linkTo(artefact) : artefact.label);
@@ -339,6 +350,25 @@ export function Report({ detail, offline, linkTo }: { detail: Detail; offline?: 
    * `offline` suppresses both: a pack's own links would point at a server that
    * is not there.
    */
+  /*
+   * After the report and before the downloads: what came after it was written
+   * is part of reading it, and the copy you send should carry whatever this
+   * says. Suppressed offline for the usual reason — a pack has no server to
+   * attach anything to, and the addenda it does carry are already in its
+   * artefacts.
+   */
+  section('after', 'What came after this was written', offline ? null : (
+    <Addenda
+      analysisId={analysis.id}
+      status={analysis.status}
+      artefacts={artefacts}
+      passes={detail.passes}
+      readOnly={detail.readOnly}
+      linkTo={linkTo}
+      onChanged={onChanged ?? (() => window.location.reload())}
+    />
+  ));
+
   section('send', 'Send it to someone', offline ? null : <Shares analysisId={analysis.id} />);
 
   section('provenance', 'How this was produced',
@@ -357,6 +387,9 @@ export function Report({ detail, offline, linkTo }: { detail: Detail; offline?: 
     <>
       <div className="govuk-grid-row">
         <div className="govuk-grid-column-two-thirds">
+          {/* ABOVE THE VERDICT, because a reader who meets the conclusion first
+              has already formed a view of a report that has been overtaken. */}
+          <AddendumNotice artefacts={artefacts} passes={detail.passes} />
           {headline ? <p className="govuk-body-l">{headline}</p> : null}
           <WarningText>
             This is a red-team read, not an assurance review. Every profile is a hypothesis about

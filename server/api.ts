@@ -17,6 +17,22 @@ import { HttpError, readJson, readMultipart, sendJson } from './http';
 import { getOwnerEmails } from '$lib/server/access';
 import { isReadOnly, READ_ONLY_MESSAGE } from '$lib/server/read-only';
 import { rateLimit } from '$lib/server/rate-limit';
+
+/**
+ * Persona enquiries, serialised per owner.
+ *
+ * A promise chain rather than a lock, because this server is one process and the
+ * thing being protected is a read-modify-write that spans a minute of model
+ * calls. A rejected run must not break the chain for the next caller, hence the
+ * swallowed `catch`.
+ */
+const researchQueues = new Map<string, Promise<unknown>>();
+function queueResearch<T>(owner: string, run: () => Promise<T>): Promise<T> {
+  const previous = researchQueues.get(owner) ?? Promise.resolve();
+  const next = previous.catch(() => undefined).then(run);
+  researchQueues.set(owner, next.catch(() => undefined));
+  return next;
+}
 import { offeredModels } from '$lib/server/models/catalogue';
 import { readSubmission, readMaterial } from '$lib/policy-analysis/server/ingest';
 import {
@@ -61,18 +77,41 @@ async function pipeResponse(response: Response, res: ServerResponse): Promise<vo
  * running. Those are 400s with the message shown as written. Anything else is a
  * fault of ours and says so without leaking its innards.
  */
+/**
+ * A reader closing a tab is not a fault.
+ *
+ * The persona enquiry passes the request's abort through to the model calls so
+ * that closing the tab stops the spend — which is the right behaviour, and which
+ * made every such close log a 500 with a full stack. An `AbortError` is neither
+ * `HttpError` nor `PolicyError`, so it fell to the bottom branch and looked like
+ * a crash in the log of a service whose log is read.
+ */
+const isAbort = (err: unknown) =>
+  err instanceof Error && (err.name === 'AbortError' || err.name === 'TimeoutError');
+
 export function toHttpError(err: unknown): HttpError {
   if (err instanceof HttpError) return err;
   if (err instanceof PolicyError) return new HttpError(400, err.message);
+  // 499 is nginx's "client closed request": nothing is listening for it, and it
+  // keeps a cancellation out of the 5xx that mean something went wrong here.
+  if (isAbort(err)) return new HttpError(499, 'The request was cancelled.');
   return new HttpError(500, 'Something went wrong handling that. The server log has the detail.');
 }
 
-/** A FormData-alike, because `readSubmission` takes a Request and we have a form. */
-function asRequest(fields: Record<string, string>, file?: { filename: string; mimeType: string; bytes: Buffer }): Request {
+/**
+ * A FormData-alike, because `readSubmission` takes a Request and we have a form.
+ *
+ * THE FILE GOES BACK UNDER THE NAME IT ARRIVED WITH. It used to go back as
+ * `document` whatever the form called it, which is right for a submission and
+ * wrong for material — `readMaterial` looks for `material`, found nothing, and
+ * answered "attach a document or paste its text" to a reader who had attached
+ * one. The route had existed since phase 4 with nothing driving it.
+ */
+function asRequest(fields: Record<string, string>, file?: { field: string; filename: string; mimeType: string; bytes: Buffer }): Request {
   const form = new FormData();
   for (const [key, value] of Object.entries(fields)) form.set(key, value);
   if (file) {
-    form.set('document', new Blob([new Uint8Array(file.bytes)], { type: file.mimeType }), file.filename);
+    form.set(file.field || 'document', new Blob([new Uint8Array(file.bytes)], { type: file.mimeType }), file.filename);
   }
   return new Request('http://localhost/api/policy-analysis', { method: 'POST', body: form });
 }
@@ -152,17 +191,78 @@ export async function handleApi(
      * the tab stops the work rather than paying for an answer nobody reads.
      */
     if (segments.length === 3 && segments[2] === 'research' && method === 'POST') {
-      // A token bucket: six in hand, refilling one every ten minutes. Enough to
-      // work through a handful of bodies in one sitting and not enough to leave
-      // a stuck retry loop spending all night.
-      const limit = rateLimit(`persona-research:${owner()}`, { capacity: 6, refillPerSecond: 1 / 600 });
-      if (!limit.allowed) {
-        throw new HttpError(429, `That is six enrichments in a sitting, which is enough. Another in ${Math.ceil(limit.retryAfterMs / 60000)} minutes.`);
+      const { personaDetail, researchPersona } = await import('$lib/policy-analysis/server/personas');
+
+      // VALIDATED BEFORE A TOKEN IS TAKEN. Six requests for an id that does not
+      // exist cost nothing and used to lock the reader out of six that would.
+      const dossier = await personaDetail(owner(), segments[1]);
+      if (!dossier) throw new HttpError(404, 'No such persona.');
+
+      /*
+       * FAIL CLOSED WHERE THE DOCUMENT GUARD CANNOT WORK.
+       *
+       * `researchPersona` will not let a query quote the papers this dossier was
+       * built from — it builds a shingle corpus of their passages and refuses
+       * anything that matches. Two holes make that guard silent rather than
+       * strict, and both are upstream:
+       *
+       *   A SEALED assessment stores its artefacts encrypted, and the corpus is
+       *   read without unsealing. The shingles are then ciphertext, the dossier
+       *   wording is plaintext, and nothing can ever match.
+       *
+       *   A PURGED assessment leaves no passages at all — its observation rows
+       *   cascade away — while the wording it contributed survives in the
+       *   persona's own dossier, which is not sealed and is not purged with it.
+       *
+       * Either way the reader would be sending a model the wording of a paper
+       * whose confidentiality this service promised to keep. So the enquiry is
+       * refused rather than run with a guard that cannot fire. Worth reporting
+       * upstream, like the two in `share.ts`.
+       */
+      const contributing = [...new Set(dossier.observations.map((o) => o.analysisId).filter((a): a is string => !!a))];
+      const present = new Set(dossier.analyses.map((a) => a.id));
+      const missing = contributing.filter((id) => !present.has(id));
+      // `personaDetail` does not select `sealed`, and it is a copied file. A
+      // handful of owned lookups is the cheap way to ask.
+      const rows = await Promise.all(contributing.filter((id) => present.has(id)).map((id) => ownedAnalysis(owner(), id)));
+      const sealed = rows.filter((row) => row?.sealed);
+      if (missing.length || sealed.length) {
+        throw new HttpError(
+          409,
+          sealed.length
+            ? 'This body was profiled from a sealed assessment, so an enquiry about it cannot be checked against the paper it came from. Sealed papers stay sealed.'
+            : 'This body was profiled from an assessment that has since been purged, so an enquiry about it cannot be checked against the paper it came from.',
+        );
       }
-      const { researchPersona } = await import('$lib/policy-analysis/server/personas');
-      const controller = new AbortController();
-      req.on('aborted', () => controller.abort());
-      const result = await researchPersona(owner(), segments[1], controller.signal);
+
+      /*
+       * A BRAKE, NOT A QUOTA, and the difference is worth stating because the
+       * first version of this comment got it wrong. The bucket holds four and
+       * refills one every five minutes — but `rate-limit.ts` forgets a bucket
+       * left untouched for ten, so anyone who waits gets a full four again. It
+       * stops a stuck loop, which is what it is for; it does not cap a
+       * determined reader, and nothing here pretends otherwise.
+       */
+      const limit = rateLimit(`persona-research:${owner()}`, { capacity: 4, refillPerSecond: 1 / 300 });
+      if (!limit.allowed) {
+        throw new HttpError(429, `Four enquiries in a row is enough at once. Another in ${Math.ceil(limit.retryAfterMs / 60000)} minutes.`);
+      }
+
+      /*
+       * ONE AT A TIME PER OWNER. `researchPersona` reads the dossier, spends a
+       * minute on two model calls, then writes `foldTraits(dossier, observed)`.
+       * Two of those in flight both fold against the snapshot they opened with,
+       * and the second silently overwrites the first — `applyPersonaLinks` takes
+       * an advisory lock for exactly this reason and this path takes none.
+       */
+      const result = await queueResearch(owner(), async () => {
+        const controller = new AbortController();
+        // `close` rather than the `aborted` event, which has been deprecated
+        // since Node 17: a cancellation that stops firing is a silent guard
+        // death, and this one is what stops the spend.
+        res.on('close', () => { if (!res.writableFinished) controller.abort(); });
+        return researchPersona(owner(), segments[1], controller.signal);
+      });
       sendJson(res, 200, result);
       return true;
     }

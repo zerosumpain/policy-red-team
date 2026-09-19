@@ -27,24 +27,42 @@ export function Persona() {
   const { id = '' } = useParams();
   const navigate = useNavigate();
   const [detail, setDetail] = useState<PersonaDossier | null>(null);
+  /** The page could not be loaded. This one is allowed to replace the page. */
   const [error, setError] = useState<string | null>(null);
+  /**
+   * An ACTION failed, which is a different thing and used to share the state
+   * above — so a 429 on "look this body up" unmounted the dossier, the play
+   * table and the research section, leaving the reader with nothing but a link
+   * back to the library. Worse, a successful paid-for enquiry followed by a
+   * failing refresh showed the error page and lost the outcome just earned.
+   */
+  const [actionError, setActionError] = useState<string | null>(null);
   const [busy, setBusy] = useState<null | 'research' | 'forget'>(null);
-  const [outcome, setOutcome] = useState<string | null>(null);
+  const [confirming, setConfirming] = useState(false);
+  const [outcome, setOutcome] = useState('');
 
   const load = useCallback(async () => {
     try {
       setDetail(await api.persona(id));
+      setError(null);
     } catch (err) {
       setError((err as Error).message);
     }
   }, [id]);
 
   useEffect(() => {
+    let live = true;
     setError(null);
     setDetail(null);
-    setOutcome(null);
-    void load();
-  }, [id, load]);
+    setOutcome('');
+    setActionError(null);
+    setBusy(null);
+    setConfirming(false);
+    api.persona(id)
+      .then((data) => { if (live) { setDetail(data); setError(null); } })
+      .catch((err: Error) => { if (live) setError(err.message); });
+    return () => { live = false; };
+  }, [id]);
 
   usePageTitle(detail?.persona.name);
 
@@ -78,18 +96,23 @@ export function Persona() {
 
   async function research() {
     setBusy('research');
-    setError(null);
-    setOutcome(null);
+    setActionError(null);
+    // Announced at the START, into a region that was already on the page. The
+    // button takes `disabled` and therefore loses focus, so for a half-minute
+    // action this is the only thing that tells a screen-reader user it began.
+    setOutcome('Reading public sources. This takes a little while.');
     try {
       const result = await api.researchPersona(id);
+      // NO "nothing came back" BRANCH: `researchPersona` throws when it
+      // retrieves nothing, so that branch was unreachable — and it promised a
+      // record of the enquiry that is never written.
       setOutcome(
-        result.sources
-          ? `Read ${result.sources} public ${result.sources === 1 ? 'source' : 'sources'} and recorded ${result.traits} ${result.traits === 1 ? 'trait' : 'traits'}.`
-          : 'Nothing usable came back. The enquiry is recorded below with what it looked for.',
+        `Read ${result.sources} public ${result.sources === 1 ? 'source' : 'sources'} and recorded ${result.traits} ${result.traits === 1 ? 'trait' : 'traits'}.`,
       );
       await load();
     } catch (err) {
-      setError((err as Error).message);
+      setOutcome('');
+      setActionError((err as Error).message);
     } finally {
       setBusy(null);
     }
@@ -97,11 +120,12 @@ export function Persona() {
 
   async function forget() {
     setBusy('forget');
+    setActionError(null);
     try {
       await api.forgetPersona(id);
       void navigate('/personas');
     } catch (err) {
-      setError((err as Error).message);
+      setActionError((err as Error).message);
       setBusy(null);
     }
   }
@@ -146,7 +170,9 @@ export function Persona() {
                     {row.readings.map((reading) => (
                       <li key={reading.value}>
                         {reading.value}{' '}
-                        <span className="prt-meta">— {reading.where.join(', ')}</span>
+                        <span className="prt-meta">
+                          — {reading.where.join(', ')} · {reading.origin.replaceAll('_', ' ')}
+                        </span>
                       </li>
                     ))}
                   </ul>
@@ -155,15 +181,36 @@ export function Persona() {
             </div>
           </div>
         </section>
-      ) : persona.sightings > 1 ? (
-        <div className="govuk-grid-row">
-          <div className="govuk-grid-column-two-thirds">
-            <InsetText>
-              The papers that named this body describe it consistently. That is worth knowing on
-              its own — it is the case where a dossier adds confidence rather than a question.
-            </InsetText>
+      ) : view.agreed.length ? (
+        /* AGREEMENT IS A POSITIVE CLAIM and needs positive evidence. This used
+           to show whenever nothing was contested — which covers papers that
+           recorded DISJOINT traits and papers that recorded none, neither of
+           which is agreement. */
+        <section aria-labelledby="persona-agreed">
+          <h2 className="govuk-heading-m" id="persona-agreed">
+            Where the papers agree — {view.agreed.length}
+          </h2>
+          <div className="govuk-grid-row">
+            <div className="govuk-grid-column-two-thirds">
+              <p className="govuk-body">
+                Recorded by more than one paper, described the same way in each. The case where a
+                dossier adds confidence rather than a question.
+              </p>
+              <SummaryList
+                rows={view.agreed.map((row) => ({
+                  key: row.label,
+                  value: (
+                    <>
+                      {row.value}
+                      <br />
+                      <span className="prt-meta">{row.where.join(', ')}</span>
+                    </>
+                  ),
+                }))}
+              />
+            </div>
           </div>
-        </div>
+        </section>
       ) : null}
 
       <section aria-labelledby="persona-dossier">
@@ -230,7 +277,7 @@ export function Persona() {
         <div className="govuk-grid-row">
           <div className="govuk-grid-column-two-thirds">
             {view.sightings.map((sighting) => (
-              <div key={sighting.analysisId ?? sighting.title} className="govuk-!-margin-bottom-4">
+              <div key={sighting.id} className="govuk-!-margin-bottom-4">
                 <h3 className="govuk-heading-s">
                   {titleOf(sighting.analysisId) ? (
                     <Link className="govuk-link" to={`/assessments/${sighting.analysisId}`}>{sighting.title}</Link>
@@ -269,7 +316,13 @@ export function Persona() {
               said. Not part of any run: researching every body of every paper would spend on
               bodies nobody asked about.
             </p>
-            {outcome ? <InsetText><span role="status">{outcome}</span></InsetText> : null}
+            {/* IN THE DOM FROM FIRST RENDER. A live region inserted together
+                with its content is not reliably announced — the thing that has
+                to change is the text inside a region that was already there. */}
+            <p className="govuk-body" role="status" aria-live="polite">{outcome}</p>
+            {actionError ? (
+              <p className="govuk-body govuk-error-message" role="alert">{actionError}</p>
+            ) : null}
 
             {view.research.map((note) => (
               <div key={note.id} className="govuk-!-margin-bottom-4">
@@ -287,7 +340,7 @@ export function Persona() {
                     {note.sources.map((source) => (
                       <li key={source.url}>
                         <a className="govuk-link" href={source.url} rel="noreferrer noopener external" target="_blank">
-                          {source.title || source.url}
+                          {source.title || source.url} (opens in a new tab)
                         </a>{' '}
                         <span className="prt-meta">{source.quality}</span>
                       </li>
@@ -307,12 +360,15 @@ export function Persona() {
                 {/* IT SPENDS. Said plainly next to the button rather than in a
                     tooltip: two model calls and a handful of retrievals, on a
                     body the reader chose. */}
-                <p className="govuk-body-s prt-meta">
+                <p className="govuk-body-s prt-meta" id="persona-research-cost">
                   This makes two model calls and a few searches, so it costs a little. It asks
                   about statutory powers, capacity and track record — never about individuals.
+                  An enquiry is refused outright for a body profiled from a sealed or purged
+                  paper, because the check that stops a query quoting that paper cannot run.
                 </p>
                 <ButtonGroup>
-                  <Button disabled={busy !== null} onClick={() => void research()}>
+                  <Button disabled={busy !== null} onClick={() => void research()}
+                          aria-describedby="persona-research-cost">
                     {busy === 'research' ? 'Reading public sources…' : 'Look this body up'}
                   </Button>
                 </ButtonGroup>
@@ -327,16 +383,36 @@ export function Persona() {
           <h2 className="govuk-heading-m" id="persona-forget">Forget this body</h2>
           <div className="govuk-grid-row">
             <div className="govuk-grid-column-two-thirds">
-              <p className="govuk-body">
+              <p className="govuk-body" id="persona-forget-what">
                 Removes the dossier and everything the library has recorded about it. The
                 assessments themselves are untouched — it will be recognised again the next time a
                 paper names it, starting from nothing.
               </p>
-              <ButtonGroup>
-                <Button variant="warning" disabled={busy !== null} onClick={() => void forget()}>
-                  {busy === 'forget' ? 'Forgetting…' : 'Forget it'}
-                </Button>
-              </ButtonGroup>
+              {confirming ? (
+                <>
+                  <WarningText>
+                    This cannot be undone. Everything the library has recorded about {persona.name}{' '}
+                    — across {persona.sightings} {persona.sightings === 1 ? 'paper' : 'papers'} — goes.
+                  </WarningText>
+                  <ButtonGroup>
+                    <Button variant="warning" disabled={busy !== null} onClick={() => void forget()}>
+                      {busy === 'forget' ? 'Forgetting…' : `Yes, forget ${persona.name}`}
+                    </Button>
+                    <Button variant="secondary" disabled={busy !== null} onClick={() => setConfirming(false)}>
+                      Keep it
+                    </Button>
+                  </ButtonGroup>
+                </>
+              ) : (
+                /* A CONFIRMATION STEP, because one click destroyed a record
+                   built across several papers with nothing to bring it back. */
+                <ButtonGroup>
+                  <Button variant="warning" disabled={busy !== null} onClick={() => setConfirming(true)}
+                          aria-describedby="persona-forget-what">
+                    Forget it
+                  </Button>
+                </ButtonGroup>
+              )}
             </div>
           </div>
         </section>

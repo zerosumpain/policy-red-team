@@ -70,7 +70,7 @@ export function Personas() {
               columns={[
                 { header: 'Body' }, { header: 'Kind' },
                 { header: 'Papers', numeric: true }, { header: 'Plays', numeric: true },
-                { header: 'Worst band' }, { header: 'Last seen' },
+                { header: 'Worst band' }, { header: 'Enquiries', numeric: true }, { header: 'Last recorded' },
               ]}
               rows={rows.map((row) => [
                 <Link key="n" className="govuk-link" to={`/personas/${row.id}`}>{row.name}</Link>,
@@ -80,6 +80,13 @@ export function Personas() {
                 row.worstBand
                   ? <Tag colour={row.worstBand === 'severe' ? 'red' : row.worstBand === 'significant' ? 'orange' : 'grey'}>{row.worstBand}</Tag>
                   : <span className="prt-meta">None found</span>,
+                String(row.researchNotes),
+                /* "LAST RECORDED", not "last seen in a paper". `listPersonas`
+                   computes it over every observation including the enquiries a
+                   reader commissioned, so an enquiry moves this date for a body
+                   no new paper has named — which the old column heading denied.
+                   The enquiries column beside it is what makes the difference
+                   legible. */
                 row.lastSeen
                   ? new Date(row.lastSeen).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })
                   : <span className="prt-meta">Not recorded</span>,

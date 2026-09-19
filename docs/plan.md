@@ -130,7 +130,8 @@ Phase 4 shipped the interface but not all of it — the surfaces it left are
 listed at the end of `docs/phase-4.md` and are being completed one at a time,
 each with its own record from `docs/phase-7.md` onwards. **7** is the drill, **8** the relationship graph and its table, **9** the stress
 test, **10** the copy you send someone — which also answers the open question
-below — and **11** the persona dossier.
+below — **11** the persona dossier and **12** material and restate, which
+closes the list.
 
 ## 6. Risks
 

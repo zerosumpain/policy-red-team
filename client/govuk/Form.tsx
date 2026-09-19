@@ -119,10 +119,20 @@ export function Radios({ id, name, legend, legendSize = 'm', hint, error, items,
   hint?: ReactNode;
   error?: string;
   items: { value: string; text: ReactNode; hint?: ReactNode }[];
+  /**
+   * Omit for an uncontrolled group, and the browser keeps the selection.
+   *
+   * IT USED TO BE OPTIONAL AND ALWAYS CONTROLLED, which is a trap rather than a
+   * default: with no `value`, `checked` was `false` on every item and React put
+   * it back after every click, so the group silently refused to be answered. A
+   * form read through `FormData` on submit wants the uncontrolled shape, and
+   * asking it to hold state it never reads is ceremony.
+   */
   value?: string;
   onChange?: (value: string) => void;
   isPageHeading?: boolean;
 }) {
+  const controlled = value !== undefined;
   const legendEl = (
     <legend className={cx('govuk-fieldset__legend', `govuk-fieldset__legend--${legendSize}`)}>
       {isPageHeading ? <h1 className="govuk-fieldset__heading">{legend}</h1> : legend}
@@ -140,7 +150,7 @@ export function Radios({ id, name, legend, legendSize = 'm', hint, error, items,
             return (
               <div className="govuk-radios__item" key={item.value}>
                 <input className="govuk-radios__input" id={itemId} name={name ?? id} type="radio"
-                       value={item.value} checked={value === item.value}
+                       value={item.value} {...(controlled ? { checked: value === item.value } : {})}
                        aria-describedby={item.hint ? `${itemId}-hint` : undefined}
                        onChange={(e) => onChange?.(e.currentTarget.value)} />
                 <label className="govuk-label govuk-radios__label" htmlFor={itemId}>{item.text}</label>
@@ -167,7 +177,7 @@ export function Radios({ id, name, legend, legendSize = 'm', hint, error, items,
  * of bespoke toggle buttons — is three accessibility problems bought to avoid
  * a component that already exists.
  */
-export function Checkboxes({ id, name, legend, legendSize = 'm', hint, error, items, values = [], onChange, isPageHeading, small }: {
+export function Checkboxes({ id, name, legend, legendSize = 'm', hint, error, items, values, onChange, isPageHeading, small }: {
   id: string;
   name?: string;
   legend: ReactNode;
@@ -175,13 +185,15 @@ export function Checkboxes({ id, name, legend, legendSize = 'm', hint, error, it
   hint?: ReactNode;
   error?: string;
   items: { value: string; text: ReactNode; hint?: ReactNode }[];
+  /** Omit for an uncontrolled group — see `Radios`, which had the same trap. */
   values?: string[];
   onChange?: (values: string[]) => void;
   isPageHeading?: boolean;
   /** GOV.UK's small variant, for a long list the reader scans rather than answers once. */
   small?: boolean;
 }) {
-  const selected = new Set(values);
+  const controlled = values !== undefined;
+  const selected = new Set(values ?? []);
   const toggle = (value: string) => {
     const next = new Set(selected);
     if (next.has(value)) next.delete(value);
@@ -214,7 +226,7 @@ export function Checkboxes({ id, name, legend, legendSize = 'm', hint, error, it
             return (
               <div className="govuk-checkboxes__item" key={item.value}>
                 <input className="govuk-checkboxes__input" id={itemId} name={name ?? id} type="checkbox"
-                       value={item.value} checked={selected.has(item.value)}
+                       value={item.value} {...(controlled ? { checked: selected.has(item.value) } : {})}
                        aria-describedby={item.hint ? `${itemId}-hint` : undefined}
                        onChange={() => toggle(item.value)} />
                 <label className="govuk-label govuk-checkboxes__label" htmlFor={itemId}>{item.text}</label>

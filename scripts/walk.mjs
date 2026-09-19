@@ -15,7 +15,7 @@
 import { chromium } from 'playwright';
 import JSZip from 'jszip';
 import { spawn } from 'node:child_process';
-import { readFile, rm, mkdtemp } from 'node:fs/promises';
+import { readFile, rm, mkdtemp, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -312,6 +312,86 @@ try {
       failures.push('send: the OWNER pack is missing the paper, so the redaction check proves nothing');
     }
     note(`the copy you send withholds ${payload.withheld.map((w) => `${w.count} ${w.kind}`).join(', ')}`);
+  }
+
+  // 5e — SOMETHING READ AFTER THE REPORT WAS WRITTEN, and the report written again.
+  //
+  // The whole point is that NOTHING IS RE-RUN: a pass owns its own block of
+  // ordinals and appends, so the original report stays exactly as it was. What
+  // this asserts is that the pass ran, that it reached a verdict on an existing
+  // conclusion, and that the banner above the verdict says so — a reader who
+  // meets the conclusion first has already formed a view of a report that has
+  // been overtaken.
+  await page.getByRole('heading', { name: 'What came after this was written' }).scrollIntoViewIfNeeded();
+  const material = path.join(dataRoot, 'walk-rebuttal.txt');
+  await writeFile(material, 'A rebuttal. The Council disputes that it has the capacity assumed, and says the funding line is not committed beyond one year.');
+  await page.getByLabel('A critique or rebuttal').check();
+  await page.getByLabel('The document', { exact: true }).setInputFiles(material);
+  await page.getByLabel('Anything you want the reading to know').fill('Sent by the Council.');
+  await page.getByRole('button', { name: 'Read it against this assessment' }).click();
+
+  /*
+   * WAIT ON THE STATE, NOT ON A HEADING. The report is still on screen for the
+   * moment between the click and the status change, so waiting for "What it
+   * found" matched the page that was already there and every assertion below
+   * then read a report with no addendum in it. Polling the API for the thing
+   * that must become true is the only version of this that cannot race.
+   */
+  await page.waitForFunction(
+    async (a) => {
+      const data = await (await fetch(`/api/policy-analysis/${a}`)).json();
+      return data.passes.some((p) => p.kind === 'addendum' && /completed/.test(p.status));
+    },
+    id,
+    { timeout: 180000, polling: 1000 },
+  );
+  await page.reload({ waitUntil: 'networkidle' });
+  await page.getByRole('heading', { name: 'What came after this was written' }).waitFor({ timeout: 60000 });
+
+  const afterText = await page.locator('section[aria-labelledby="after"]').innerText();
+  if (process.env.WALK_DEBUG) console.log('--- AFTER SECTION ---\n' + afterText.slice(0, 900) + '\n---');
+  if (!/A critique or rebuttal/.test(afterText)) failures.push('material: the pass does not say what was attached');
+  if (!/passage read|passages read/.test(afterText)) failures.push('material: the pass does not say it read anything');
+  if (!/Sent by the Council/.test(afterText)) failures.push('material: the reader\'s own note was dropped');
+  // A verdict on an existing conclusion is the thing a pass exists to produce.
+  const verdicts = await page.locator('section[aria-labelledby="after"] .govuk-tag').allInnerTexts();
+  if (!verdicts.length) failures.push('material: the pass reached no verdict on anything');
+  // And the banner, which must sit ABOVE the verdict rather than in the section.
+  const banners = await page.locator('#main-content .govuk-warning-text').allInnerTexts();
+  if (!banners.some((b) => /overtaken in part/.test(b))) {
+    failures.push('material: nothing above the verdict says the report has been overtaken');
+  }
+  await audit('/assessments/:id (with an addendum)');
+  note(`material read, ${verdicts.length} ${verdicts.length === 1 ? 'verdict' : 'verdicts'} reached`);
+
+  // Writing it again, which the store refuses without a completed addendum —
+  // so this could only ever run after the step above.
+  const rewrite = page.getByRole('button', { name: 'Write it again' });
+  if (!(await rewrite.count())) {
+    failures.push('restate: not offered even with a completed addendum');
+  } else {
+    await rewrite.click();
+    await page.waitForFunction(
+      async (a) => {
+        const data = await (await fetch(`/api/policy-analysis/${a}`)).json();
+        return data.passes.some((p) => p.kind === 'restatement' && /completed/.test(p.status));
+      },
+      id,
+      { timeout: 180000, polling: 1000 },
+    );
+    await page.reload({ waitUntil: 'networkidle' });
+    await page.getByRole('heading', { name: 'What it found' }).waitFor({ timeout: 60000 });
+    const detail = await page.evaluate(async (a) => (await fetch(`/api/policy-analysis/${a}`)).json(), id);
+    if (!detail.passes.some((p) => p.kind === 'restatement' && /completed/.test(p.status))) {
+      failures.push('restate: no completed restatement was recorded');
+    }
+    // NOTHING WAS RE-RUN. The original eighteen stages keep their ordinals and
+    // the passes own their own block, so the report that was superseded is
+    // still stored — which is the property the whole design turns on.
+    if (detail.stages.filter((st) => st.ordinal < 100).length !== 18) {
+      failures.push('restate: the original stages were disturbed');
+    }
+    note('the report was written again, and the original stages were left alone');
   }
 
   // 6 — THE DRILL: one artefact, opened out, with its chain back to the paper.

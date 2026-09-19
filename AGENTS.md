@@ -114,6 +114,18 @@ delete.** Do not weaken it.
   divergence. Its data carries the standing dossier drawn from the owner's other
   assessments, which is the thing `share.ts`'s own header says must not travel;
   upstream withholds stage 13's warnings on that ground and ships its output.
+- **NOTHING IS EVER RE-RUN.** Every late stage cites earlier ids and
+  `persistArtefacts` is a plain insert against an `(analysis_id, id)` primary
+  key, so a stage CANNOT execute twice — the `s<n>_<slot>_` namespace collides.
+  A pass appends into its own block of ordinals (`PASS_BASE * n + k`).
+- **`Radios` and `Checkboxes` are uncontrolled when you omit `value`/`values`.**
+  They used to be always-controlled, so a caller that omitted the prop got a
+  group that silently refused every click. A form read through `FormData` wants
+  the uncontrolled shape.
+- **An upload keeps its own field name through `readMultipart`.** It did not,
+  and `asRequest` put every file back as `document` — so the material route,
+  whose field is `material`, told readers to attach a document they had already
+  attached.
 - **A PERSONA IS CONTEXT, NEVER EVIDENCE**, and the dossier page has to say so.
   It is drawn from other papers about other policies; importing its conclusions
   into the assessment in front of the reader is the opposite of a red team. It is
