@@ -118,13 +118,71 @@ try {
     note('diagram and table both render');
   }
 
-  // 6 — the history now has a row, and it links back
+  // 6 — THE DRILL: one artefact, opened out, with its chain back to the paper.
+  //
+  // Reached by clicking a name in the report, never by typing the URL. A link
+  // that renders and does not navigate is the exact failure this step exists to
+  // catch, and it is invisible to a type check.
+  const playbook = page.getByRole('table', { name: /exploitation playbook/i });
+  const firstPlay = playbook.getByRole('link').first();
+  const playName = (await firstPlay.innerText()).trim();
+  await firstPlay.click();
+  await page.waitForURL('**/artefacts/**', { timeout: 10000 });
+  // WAIT FOR THE HEADING, don't just look for it. The drill fetches the
+  // assessment on mount, so the URL changes a beat before the page has anything
+  // on it — and reading the DOM in that beat reports an empty page, which is
+  // indistinguishable from a broken one.
+  await page.getByRole('heading', { level: 1, name: playName }).waitFor({ timeout: 10000 }).catch(() => {
+    failures.push(`drill: opened ${page.url()} but its heading never became "${playName}"`);
+  });
+  const drill = await page.locator('#main-content').innerText();
+  for (const expected of ['How this would be run', 'Where this stands', 'What it rests on']) {
+    if (!drill.includes(expected)) failures.push(`drill: missing section "${expected}"`);
+  }
+  // The chain is the whole point of the page. Stopping at the assessment's own
+  // middle layers would leave a reader unable to argue with a finding, which is
+  // the thing the drill is FOR.
+  if (!/Followed back \d+ steps?/.test(drill)) failures.push('drill: the chain does not say how far back it went');
+  if (!/Back at the paper/.test(drill)) failures.push('drill: the chain never reaches the paper');
+  await audit('/assessments/:id/artefacts/:artefactId (a play)');
+  note(`drill opens on "${playName}", with its chain`);
+
+  // 7 — follow the chain one hop, then reverse out of it two ways.
+  //
+  // `__spa` is stamped on the window here and checked after the back link: if
+  // either navigation reloaded the document the stamp is gone, which is how a
+  // plain <a href> in a single-page app announces itself.
+  const here = page.url();
+  await page.evaluate(() => { window.__spa = true; });
+  await page.locator('#main-content a[href*="/artefacts/"]').first().click();
+  await page.waitForFunction((was) => location.href !== was, here, { timeout: 10000 });
+  await page.getByRole('heading', { level: 1 }).waitFor({ timeout: 10000 }).catch(() => {
+    failures.push('drill: following the chain landed on a page that never rendered a heading');
+  });
+  await audit('/assessments/:id/artefacts/:artefactId (followed)');
+
+  await page.goBack();
+  await page.waitForURL(here, { timeout: 10000 });
+  await page.getByRole('heading', { level: 1, name: playName }).waitFor({ timeout: 10000 });
+  note('the chain is followable, and the browser back button reverses it');
+
+  await page.getByRole('link', { name: 'Back to the assessment' }).click();
+  await page.waitForURL((url) => /\/assessments\/[^/]+$/.test(url.pathname), { timeout: 10000 });
+  await page.getByRole('heading', { name: 'What it found' }).waitFor({ timeout: 15000 }).catch(() => {
+    failures.push('drill: the back link did not return to the report');
+  });
+  if (!(await page.evaluate(() => window.__spa === true))) {
+    failures.push('drill: leaving the drill reloaded the whole app rather than routing');
+  }
+  note('the back link returns to the report without reloading');
+
+  // 8 — the history now has a row, and it links back
   await page.goto(`http://127.0.0.1:${PORT}/`, { waitUntil: 'networkidle' });
   if (!(await page.getByRole('link', { name: 'Walk fixture paper' }).isVisible())) failures.push('landing: the finished assessment is not listed');
   await audit('/ (with a row)');
   note('history lists it');
 
-  // 7 — the rest of the surface
+  // 9 — the rest of the surface
   for (const [route, heading] of [['/personas', 'Persona library'], ['/design', 'Design system'], ['/accessibility', 'Accessibility statement'], ['/about', 'About this tool']]) {
     await page.goto(`http://127.0.0.1:${PORT}${route}`, { waitUntil: 'networkidle' });
     if (!(await page.getByRole('heading', { name: heading, level: 1 }).isVisible())) failures.push(`${route}: no "${heading}" heading`);

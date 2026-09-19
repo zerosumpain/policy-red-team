@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react';
+import { Link } from 'react-router';
 import { cx } from '../govuk/cx';
 import { PhaseBanner } from '../govuk/Feedback';
 
@@ -61,7 +62,12 @@ export function Template({ children, backLink, wide }: {
             in a landmark and gives a screen-reader user a way to find it. */}
         {backLink ? (
           <nav aria-label="Back">
-            <a href={backLink.href} className="govuk-back-link">{backLink.text ?? 'Back'}</a>
+            {/* The router's Link, not a plain anchor. The drill made this matter:
+                stepping back out of an artefact with an <a href> reloads the whole
+                app and refetches the assessment to render a page the browser was
+                already holding. Every Template is inside the router, so this is
+                always safe here — the offline pack builds its own shell. */}
+            <Link to={backLink.href} className="govuk-back-link">{backLink.text ?? 'Back'}</Link>
           </nav>
         ) : null}
 

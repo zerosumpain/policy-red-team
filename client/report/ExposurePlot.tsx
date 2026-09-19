@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { BAND_FILL, BAND_LABEL, PLOT_SIZE, plotPoints, type Play } from '$lib/policy-analysis/view';
 import { Table } from '../govuk';
+import type { ArtefactLink } from './Report';
 
 /**
  * Ease against impact, as a picture and as a table.
@@ -13,8 +14,13 @@ import { Table } from '../govuk';
  *
  * The geometry comes from `plotPoints` in the copied core, so the picture and the
  * server agree about where a play sits without this file doing arithmetic.
+ *
+ * The TABLE carries the way into each play and the diagram does not, which makes
+ * the accessible reading of this figure the more capable of the two rather than
+ * the lesser. Links inside an SVG are reachable but poorly announced, and the
+ * toggle is one keystroke away.
  */
-export function ExposurePlot({ plays }: { plays: Play[] }) {
+export function ExposurePlot({ plays, linkTo }: { plays: Play[]; linkTo?: ArtefactLink }) {
   const [view, setView] = useState<'diagram' | 'table'>('diagram');
   if (!plays.length) return null;
   const points = plotPoints(plays);
@@ -59,7 +65,7 @@ export function ExposurePlot({ plays }: { plays: Play[] }) {
           scroll
           columns={[{ header: 'Play' }, { header: 'Band' }, { header: 'Ease', numeric: true }, { header: 'Impact', numeric: true }, { header: 'Exposure', numeric: true }]}
           rows={plays.map((play) => [
-            play.artefact.label,
+            linkTo ? linkTo(play.artefact) : play.artefact.label,
             BAND_LABEL[play.band],
             (play.factors.find((f) => f.key === 'ease')?.value ?? 0).toFixed(2),
             (play.factors.find((f) => f.key === 'impact')?.value ?? 0).toFixed(2),

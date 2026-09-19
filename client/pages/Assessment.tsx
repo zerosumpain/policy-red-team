@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { useParams } from 'react-router';
+import { Link, useParams } from 'react-router';
 import { api, watchRun, type Detail } from '../api';
 import { Button, ButtonGroup, NotificationBanner, Tag, TaskList, WarningText, type Task, type TagColour } from '../govuk';
 import { isFinished, isTerminal, statusColour, statusLabel } from '../status';
@@ -105,13 +105,22 @@ export function Assessment() {
         </>
       ) : (
         <>
-          {isFinished(analysis.status) ? <Report detail={detail} /> : null}
+          {isFinished(analysis.status) ? (
+            <Report
+              detail={detail}
+              linkTo={(artefact) => (
+                <Link className="govuk-link" to={`/assessments/${id}/artefacts/${encodeURIComponent(artefact.id)}`}>
+                  {artefact.label}
+                </Link>
+              )}
+            />
+          ) : null}
           {!isFinished(analysis.status) ? <TaskList items={tasks} idPrefix="stages" /> : null}
           <ButtonGroup>
             {analysis.status === 'failed' || analysis.status === 'cancelled' ? (
               <Button disabled={busy} onClick={() => void act('resume')}>Resume the incomplete stages</Button>
             ) : null}
-            <a className="govuk-link" href="/">Back to all assessments</a>
+            <Link className="govuk-link" to="/">Back to all assessments</Link>
           </ButtonGroup>
         </>
       )}

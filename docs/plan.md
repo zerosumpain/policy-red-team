@@ -126,6 +126,10 @@ the CSS classes — which is what Local Plan Navigator does in nunjucks.
 
 Phases 0 to 2 hold the risk and are quick. Phase 4 is most of the time.
 
+Phase 4 shipped the interface but not all of it — the surfaces it left are
+listed at the end of `docs/phase-4.md` and are being completed one at a time,
+each with its own record from `docs/phase-7.md` onwards. **7** is the drill.
+
 ## 6. Risks
 
 - **PGlite advisory locks** are the one unverified assumption, which is why phase

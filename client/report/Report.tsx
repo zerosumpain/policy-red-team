@@ -2,6 +2,8 @@ import {
   BAND_LABEL, actorBoard, bandCounts, checks, evidenceMix, findingsBySection,
   headlineSentence, ledger, plays, recommendations, summarise, tiles,
 } from '$lib/policy-analysis/view';
+import type { Artefact } from '$lib/policy-analysis/contracts';
+import type { ReactNode } from 'react';
 import type { Detail } from '../api';
 import { Accordion, Details, InsetText, SummaryList, Table, Tag, WarningText } from '../govuk';
 import { ExposurePlot } from './ExposurePlot';
@@ -52,6 +54,19 @@ function Contents({ sections }: { sections: Section[] }) {
 }
 
 /**
+ * How an artefact's name is rendered.
+ *
+ * A FUNCTION FROM THE CALLER, not an href, and not react-router imported here.
+ * This component renders twice: once in the app, where every name is a link into
+ * the drill, and once inside the offline pack, where there is no router, no
+ * server and nothing behind a link at all. Taking the renderer as a prop means
+ * the pack cannot render a link even by accident — the machinery to do it is
+ * not in the bundle — rather than relying on a flag being read correctly in
+ * eight places.
+ */
+export type ArtefactLink = (artefact: Artefact) => ReactNode;
+
+/**
  * `offline` suppresses the download section.
  *
  * Its links point at `/api/policy-analysis/:id/export`, which in a pack opened
@@ -59,8 +74,10 @@ function Contents({ sections }: { sections: Section[] }) {
  * reader the very file they are already reading. Found by looking at a real pack
  * rather than by any test, which is the argument for looking at real output.
  */
-export function Report({ detail, offline }: { detail: Detail; offline?: boolean }) {
+export function Report({ detail, offline, linkTo }: { detail: Detail; offline?: boolean; linkTo?: ArtefactLink }) {
   const { artefacts, analysis, stages } = detail;
+  /** The name of a thing, and — where the caller can offer one — the way into it. */
+  const name = (artefact: Artefact): ReactNode => (linkTo ? linkTo(artefact) : artefact.label);
   const list = plays(artefacts);
   const board = actorBoard(artefacts, list);
   const warnings = stages.flatMap((s) => s.warnings);
@@ -111,15 +128,15 @@ export function Report({ detail, offline }: { detail: Detail; offline?: boolean 
           { header: 'Exposure', numeric: true }, { header: 'Legality' },
         ]}
         rows={list.slice(0, 20).map((play) => [
-          play.artefact.label,
-          play.actor?.label ?? '—',
+          name(play.artefact),
+          play.actor ? name(play.actor) : '—',
           BAND_LABEL[play.band],
           play.exposure.toFixed(2),
           String(play.artefact.data.legality ?? '—'),
         ])}
       />
       <h3 className="govuk-heading-m">Ease against impact</h3>
-      <ExposurePlot plays={list} />
+      <ExposurePlot plays={list} linkTo={linkTo} />
     </>
   ) : null);
 
@@ -128,7 +145,7 @@ export function Report({ detail, offline }: { detail: Detail; offline?: boolean 
       caption="Bodies profiled, worst play first"
       captionSize="s"
       columns={[{ header: 'Body' }, { header: 'Plays', numeric: true }, { header: 'Worst exposure', numeric: true }]}
-      rows={board.map((actor) => [actor.actor.label, String(actor.plays.length), actor.worst.toFixed(2)])}
+      rows={board.map((actor) => [name(actor.actor), String(actor.plays.length), actor.worst.toFixed(2)])}
     />
   ) : null);
 
@@ -147,7 +164,7 @@ export function Report({ detail, offline }: { detail: Detail; offline?: boolean 
       caption="What the policy's own wiring was tested against"
       captionSize="s"
       columns={[{ header: 'Check' }, { header: 'Result' }]}
-      rows={structural.slice(0, 20).map((check) => [check.label, String(check.data.result ?? '—')])}
+      rows={structural.slice(0, 20).map((check) => [name(check), String(check.data.result ?? '—')])}
     />
   ) : null);
 
@@ -163,7 +180,7 @@ export function Report({ detail, offline }: { detail: Detail; offline?: boolean 
               const { lead, rest } = summarise(item.statement);
               return (
                 <div key={item.id} className="govuk-!-margin-bottom-4">
-                  <h3 className="govuk-heading-s">{item.label}</h3>
+                  <h3 className="govuk-heading-s">{name(item)}</h3>
                   <p className="govuk-body">{lead}</p>
                   {rest ? <Details summary="Read the rest"><p className="govuk-body">{rest}</p></Details> : null}
                 </div>
@@ -177,7 +194,12 @@ export function Report({ detail, offline }: { detail: Detail; offline?: boolean 
 
   section('suggests', 'What it suggests', recs.length ? (
     <ol className="govuk-list govuk-list--number">
-      {recs.map((rec) => <li key={rec.id}>{rec.statement}</li>)}
+      {recs.map((rec) => (
+        <li key={rec.id}>
+          {rec.statement}
+          {linkTo ? <> <span className="prt-meta">— {linkTo(rec)}</span></> : null}
+        </li>
+      ))}
     </ol>
   ) : null);
 

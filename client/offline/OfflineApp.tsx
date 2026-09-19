@@ -48,6 +48,9 @@ export function OfflineApp({ payload }: { payload: OfflinePayload }) {
       error: null,
     })),
     artefacts: payload.artefacts,
+    // A pack carries no per-row metadata and does not render the drill, which is
+    // the only thing that reads it.
+    artefactMetadata: [],
     passes: [],
     personas: [],
     heartbeat: null,

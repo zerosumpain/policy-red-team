@@ -39,6 +39,14 @@ export interface Detail {
   analysis: AnalysisRow & { model: string | null; thinkingLevel: string | null; depth: string; sealed: boolean; error: string | null; context: string | null };
   stages: StageRow[];
   artefacts: Artefact[];
+  /**
+   * The stage and timestamp of every artefact, read off the row rather than
+   * inferred from its id. `detail()` has always sent this; nothing described it
+   * until the drill needed to say when a thing was produced, and an id-derived
+   * stage was quietly wrong for everything the pipeline computes rather than
+   * writes — see src/lib/provenance.ts.
+   */
+  artefactMetadata: { id: string; stage: number; updatedAt: string }[];
   passes: unknown[];
   personas: { actorId: string | null; personaId: string; name: string; sightings: number }[];
   heartbeat: string | null;

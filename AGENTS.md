@@ -56,6 +56,22 @@ delete.** Do not weaken it.
 - **Read component markup from `node_modules/govuk-frontend/dist/govuk/components/*/template.njk`**,
   not the published documentation. The docs omit the `aria-describedby` wiring
   that makes a task list mean anything to a screen reader.
+- **An artefact's stage is NOT reliably in its id.** `stageOfId` reads the
+  `s<n>_` namespace, which everything a model writes carries and everything the
+  pipeline computes does not — the twelve structural checks are `test_adaptability`
+  and read as stage 0, i.e. document ingestion. The true figure is on the wire in
+  `detail().artefactMetadata`; use that and fall back to the id.
+- **The paper's own words live in two fields.** An ingested passage carries the
+  document text in `statement`; everything downstream quotes a span of one into
+  `sourceQuote`. Read only one and a provenance walk stops short of the paper.
+  `paperWording()` in `src/lib/provenance.ts` is the one place that knows.
+- **`<Report>` renders inside the offline pack, where there is no router.**
+  Rendering a react-router `Link` there throws. That is why it takes a `linkTo`
+  render function from its caller rather than an href and a flag: the pack
+  cannot render a link because the machinery is not in its bundle.
+- **GDS has no modal component, on purpose.** A layer over a page wants a focus
+  trap, its own Escape handling and a back stack. The pattern here is a route —
+  see `client/pages/Drill.tsx`.
 - **Node must be 22.23.2 or newer.** `pdfjs-dist` calls `Promise.try` and
   `Uint8Array.toHex`, both ES2025. `src/lib/polyfills.ts` carries them for older
   Node; if a THIRD one appears, upgrade rather than adding to that file.
