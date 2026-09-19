@@ -23,12 +23,12 @@ import {
 } from '$lib/policy-analysis/server/store';
 import { census } from '$lib/policy-analysis/server/census';
 import { buildReceipt } from '$lib/policy-analysis/receipt';
-import { createShare, listShares, revokeShare } from '$lib/policy-analysis/server/shares';
 import { keyDir } from '$lib/policy-analysis/server/seal';
 import { PolicyError } from '$lib/policy-analysis/validation';
 import { assessmentDocument, isDownloadFormat, isExportFormat } from '$lib/policy-analysis/server/export';
 import { assessmentBundle } from '$lib/policy-analysis/server/bundle';
 import { ownerPayload, sharedPayload } from '$lib/policy-analysis/offline/payload';
+import { shareableReport } from '$lib/policy-analysis/share';
 import { STAGES } from '$lib/policy-analysis/contracts';
 import { analysisStatus } from '$lib/worker';
 
@@ -137,57 +137,6 @@ export async function handleApi(
     return false;
   }
 
-  /*
-   * THE RECIPIENT'S END OF A SHARE LINK. Before the /:id routes, or "shared" is
-   * read as an assessment id — the same reason `personas` sits above.
-   *
-   * THE ONLY UNOWNED ROUTE IN THE API. Everything else answers as the local
-   * owner; this answers to whoever holds the token, so it must never reach
-   * anything `resolveShare` has not already redacted. `shareableReport` is that
-   * redactor and there is exactly one of it: a second implementation of "what
-   * may leave this account" is how the two eventually disagree.
-   *
-   * `resolveShare` returns null for unknown, revoked, expired and deleted
-   * alike, and all four get the same 404 — a link that says "this was revoked"
-   * confirms the assessment existed.
-   */
-  if (segments[0] === 'shared') {
-    const token = segments[1];
-    if (!token || method !== 'GET') return false;
-    const { resolveShare } = await import('$lib/policy-analysis/server/shares');
-    const shared = await resolveShare(token);
-    if (!shared) throw new HttpError(404, 'That link is not valid. It may have been revoked, or it may have expired.');
-
-    if (segments.length === 2) {
-      sendJson(res, 200, shared);
-      return true;
-    }
-
-    // The same three downloads the owner gets, built from the REDACTED
-    // artefacts — `sharedPayload` takes a report that has already been through
-    // the redactor rather than redacting a second time.
-    if (segments.length === 3 && segments[2] === 'export') {
-      const format = url.searchParams.get('format') ?? 'docx';
-      if (!isDownloadFormat(format)) throw new HttpError(400, 'Ask for docx, md or bundle.');
-      const meta = {
-        title: shared.title,
-        jurisdiction: shared.jurisdiction,
-        policyArea: shared.policyArea,
-        status: shared.status,
-        completedAt: shared.completedAt,
-      };
-      const response = isExportFormat(format)
-        ? await assessmentDocument(shared.artefacts, meta, format)
-        : await assessmentBundle({
-            payload: sharedPayload({ ...meta, artefacts: shared.artefacts, warnings: shared.warnings, withheld: shared.withheld }),
-            meta,
-          });
-      await pipeResponse(response, res);
-      return true;
-    }
-    return false;
-  }
-
   const id = segments[0];
   if (!id) return false;
 
@@ -244,12 +193,6 @@ export async function handleApi(
       sendJson(res, 200, { status: await analysisStatus(id) });
       return true;
     }
-    if (action === 'shares') {
-      const body = await readJson(req);
-      const created = await createShare(owner(), id, { label: typeof body.label === 'string' ? body.label : null });
-      sendJson(res, 201, created);
-      return true;
-    }
     return false;
   }
 
@@ -261,6 +204,25 @@ export async function handleApi(
   if (segments.length === 2 && segments[1] === 'export' && method === 'GET') {
     const format = url.searchParams.get('format') ?? 'docx';
     if (!isDownloadFormat(format)) throw new HttpError(400, 'Ask for docx, md or bundle.');
+    /*
+     * `scope=shared` IS HOW A REDACTED COPY LEAVES THIS SERVICE, and it leaves
+     * as a FILE.
+     *
+     * There was a token route here that handed a redacted copy to whoever held
+     * a URL. It was removed, because on this architecture the promise it made
+     * was false: every owner route is unauthenticated by design — the server
+     * binds to loopback and everything it serves belongs to whoever reaches the
+     * port — so a recipient who could use the link could also call
+     * `GET /api/policy-analysis/:id` and read the whole paper two requests
+     * later. Advertising a redaction the deployment does not enforce is worse
+     * than not offering one.
+     *
+     * A file has no such hole. It carries exactly what `shareableReport` left
+     * in it, needs no server, cannot be walked sideways, does not expire, has
+     * nothing to revoke, and still works behind a Cloudflare Access policy that
+     * would refuse a recipient outright. See docs/phase-10.md.
+     */
+    const shared = url.searchParams.get('scope') === 'shared';
     const result = await detail(owner(), id);
     if (!result) throw new HttpError(404, 'No such assessment.');
 
@@ -272,33 +234,27 @@ export async function handleApi(
       completedAt: result.analysis.completedAt,
     };
 
+    // ONE REDACTOR, and the documents and the pack are rendered from its output
+    // rather than each filtering for themselves.
+    const redacted = shared ? shareableReport({ artefacts: result.artefacts, stages: result.stages }) : null;
+    const artefacts = redacted ? redacted.artefacts : result.artefacts;
+
     const response = isExportFormat(format)
-      ? await assessmentDocument(result.artefacts, meta, format)
+      ? await assessmentDocument(artefacts, meta, format)
       : await assessmentBundle({
-          payload: ownerPayload({
-            ...meta,
-            sealed: result.analysis.sealed,
-            documentSha256: result.documents?.[0]?.sha256 ?? null,
-            artefacts: result.artefacts,
-            stages: result.stages,
-          }),
+          payload: redacted
+            ? sharedPayload({ ...meta, artefacts, warnings: redacted.warnings, withheld: redacted.withheld })
+            : ownerPayload({
+                ...meta,
+                sealed: result.analysis.sealed,
+                documentSha256: result.documents?.[0]?.sha256 ?? null,
+                artefacts,
+                stages: result.stages,
+              }),
           meta,
         });
 
     await pipeResponse(response, res);
-    return true;
-  }
-
-  if (segments.length === 2 && segments[1] === 'shares' && method === 'GET') {
-    const shares = await listShares(owner(), id);
-    if (!shares) throw new HttpError(404, 'No such assessment.');
-    sendJson(res, 200, { shares });
-    return true;
-  }
-
-  if (segments.length === 3 && segments[1] === 'shares' && method === 'DELETE') {
-    await revokeShare(owner(), id, segments[2]);
-    sendJson(res, 200, { revoked: true });
     return true;
   }
 

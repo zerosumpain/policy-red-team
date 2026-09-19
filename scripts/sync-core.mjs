@@ -73,6 +73,55 @@ async function resolveAll(manifest) {
  * instead of passing quietly.
  */
 const DIVERGENCES = {
+  // ── The redactor, and an upstream leak ───────────────────────────────────
+  //
+  // TWO UPSTREAM BUGS, both found by a security review of this fork's share UI
+  // on 2026-09-19 and both worth reporting back.
+  //
+  // FIRST: `persona_link` is not withheld. Stage 13 mints those artefacts and
+  // their `data` carries the MERGED standing dossier — `traits` updated from
+  // priors, `continuity` ("what this assessment adds to what was already held")
+  // and `divergence` ("where this policy's evidence CONTRADICTS the standing
+  // dossier"). Those priors come from the owner's OTHER assessments via
+  // `priorsFor`, which is the one thing `share.ts`'s own header says must never
+  // travel. The file contradicts itself about it: `WITHHELD_STAGES` withholds
+  // stage 13's WARNINGS on exactly that ground while its OUTPUT goes in full.
+  // Measured here: 10 such artefacts in a shared copy of a real assessment.
+  //
+  // SECOND: the `fromId`/`toId` pruning is a no-op — both branches of the
+  // ternary return the same value, where the two lines above it prune `refs`
+  // and `sourceId` correctly. It leaks withheld identifiers rather than
+  // content, and it means the function does not make the guarantee it claims.
+  'src/lib/policy-analysis/share.ts': (s) => {
+    const kinds = "export const WITHHELD_KINDS = ['passage', 'cross_policy'] as const;";
+    if (!s.includes(kinds)) throw new Error('share.ts: WITHHELD_KINDS moved');
+    let out = s.replace(
+      kinds,
+      `// DIVERGENCE: \`persona_link\` is withheld too. Its data carries the merged
+// standing dossier — traits, continuity and divergence — drawn from the owner's
+// OTHER assessments, which is the thing this module's own header says must not
+// leave the account. Upstream withholds stage 13's warnings on that ground and
+// ships its output.
+export const WITHHELD_KINDS = ['passage', 'cross_policy', 'persona_link'] as const;`,
+    );
+    // Two plain replaces rather than one regex: the pair sits on adjacent lines
+    // and a pattern spanning them is a pattern that breaks on reindentation.
+    for (const field of ['fromId', 'toId']) {
+      const was = `${field}: a.${field} && alive.has(a.${field}) ? a.${field} : a.${field},`;
+      if (!out.includes(was)) throw new Error(`share.ts: the ${field} pruning moved, or was fixed upstream`);
+      out = out.replace(was, `${field}: a.${field} && alive.has(a.${field}) ? a.${field} : null,`);
+    }
+    return out;
+  },
+
+  // The test pins the list it is asserting, so the divergence above needs it.
+  // Everything else in the file derives from `WITHHELD_KINDS` and adapts.
+  'src/lib/policy-analysis/share.test.ts': (s) => {
+    const pin = "expect([...WITHHELD_KINDS]).toEqual(['passage', 'cross_policy']);";
+    if (!s.includes(pin)) throw new Error('share.test.ts: the WITHHELD_KINDS assertion moved');
+    return s.replace(pin, "expect([...WITHHELD_KINDS]).toEqual(['passage', 'cross_policy', 'persona_link']);");
+  },
+
   // ── The offline pack ─────────────────────────────────────────────────────
   //
   // The pack embeds the fonts the SITE's design system sets text in — Archivo

@@ -335,14 +335,11 @@ export function Report({ detail, offline, linkTo }: { detail: Detail; offline?: 
   ));
 
   /*
-   * Beside "take it away", because a link is the fourth way of handing this to
-   * someone and they belong together. `offline` suppresses both: a pack and a
-   * shared copy have no server to mint against, and the pack's own links would
-   * point at one that is not there.
+   * Beside "take it away", because it is the same act with one thing left out.
+   * `offline` suppresses both: a pack's own links would point at a server that
+   * is not there.
    */
-  section('send', 'Send it to someone', offline ? null : (
-    <Shares analysisId={analysis.id} readOnly={detail.readOnly} />
-  ));
+  section('send', 'Send it to someone', offline ? null : <Shares analysisId={analysis.id} />);
 
   section('provenance', 'How this was produced',
     <SummaryList

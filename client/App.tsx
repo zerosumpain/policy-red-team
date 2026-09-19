@@ -5,7 +5,6 @@ import { New } from './pages/New';
 import { Assessment } from './pages/Assessment';
 import { Drill } from './pages/Drill';
 import { Personas } from './pages/Personas';
-import { Shared } from './pages/Shared';
 import { Gallery } from './pages/Gallery';
 import { Accessibility } from './pages/Accessibility';
 import { About } from './pages/About';
@@ -21,9 +20,6 @@ export function App() {
           own back button — see client/pages/Drill.tsx for why a drawer was not
           the answer here. */}
       <Route path="/assessments/:id/artefacts/:artefactId" element={<DrillRoute />} />
-      {/* The one route that answers to somebody who is not the owner. No back
-          link: there is nowhere in this service a link-holder came from. */}
-      <Route path="/shared/:token" element={<Template wide><Shared /></Template>} />
       <Route path="/personas" element={<Template backLink={{ href: '/' }}><Personas /></Template>} />
       {/* The design system, kept as a route: it is what `npm run a11y` scans and
           the cheapest place to argue about a component before it is spread over

@@ -88,7 +88,19 @@ export function Drill() {
       </div>
     );
   }
-  if (!detail) return <p className="govuk-body" aria-live="polite">Loading…</p>;
+  // A HEADING WHILE IT LOADS. Returning only a paragraph left the page with no
+  // h1 at all until the fetch resolved, so a reader who followed a link and
+  // pressed "next heading" found nothing to tell them where they had arrived.
+  if (!detail) {
+    return (
+      <div className="govuk-grid-row">
+        <div className="govuk-grid-column-two-thirds">
+          <h1 className="govuk-heading-l">Loading this artefact</h1>
+          <p className="govuk-body">Fetching the assessment it belongs to.</p>
+        </div>
+      </div>
+    );
+  }
 
   const all = detail.artefacts;
 

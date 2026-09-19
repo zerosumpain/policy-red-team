@@ -25,7 +25,12 @@ import { STAGES, type Artefact } from './contracts';
  */
 
 /** Kinds that never leave the owner's account. */
-export const WITHHELD_KINDS = ['passage', 'cross_policy'] as const;
+// DIVERGENCE: `persona_link` is withheld too. Its data carries the merged
+// standing dossier — traits, continuity and divergence — drawn from the owner's
+// OTHER assessments, which is the thing this module's own header says must not
+// leave the account. Upstream withholds stage 13's warnings on that ground and
+// ships its output.
+export const WITHHELD_KINDS = ['passage', 'cross_policy', 'persona_link'] as const;
 
 /**
  * Stages whose WARNINGS are withheld along with their output.
@@ -71,8 +76,8 @@ export function shareableReport(input: { artefacts: Artefact[]; stages: { ordina
       data,
       refs: a.refs.filter((id) => alive.has(id)),
       sourceId: a.sourceId && alive.has(a.sourceId) ? a.sourceId : null,
-      fromId: a.fromId && alive.has(a.fromId) ? a.fromId : a.fromId,
-      toId: a.toId && alive.has(a.toId) ? a.toId : a.toId,
+      fromId: a.fromId && alive.has(a.fromId) ? a.fromId : null,
+      toId: a.toId && alive.has(a.toId) ? a.toId : null,
     };
   });
 

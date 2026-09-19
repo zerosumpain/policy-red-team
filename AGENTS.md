@@ -9,6 +9,13 @@ cost you an hour if nobody says them.
 `src/lib/policy-analysis/**` and most of `src/lib/**` are copied verbatim from
 `zerosumpain/SR-Policy-Analysis`. `docs/upstream.json` names every copied file.
 
+- **`node scripts/sync-core.mjs` RE-COPIES EVERYTHING.** There is no way to
+  apply a new divergence without also pulling every upstream change that has
+  landed since the last sync — which nearly put an unevaluated pipeline rewrite
+  into a UI commit on 2026-09-19. After running it, check `git status` for files
+  you did not mean to move, `git restore` them, and put their old hash back in
+  `docs/upstream.json` or `sync:check` will report an upstream change as a local
+  edit.
 - **Do not edit a copied file directly.** Add a divergence to the `DIVERGENCES`
   map in `scripts/sync-core.mjs` and describe it in `docs/upstream.json`, then run
   `npm run sync`. A hand edit is silently reverted by the next sync.
@@ -93,17 +100,20 @@ delete.** Do not weaken it.
   row. Grouping on the whole string compresses nothing at the second order and
   took the panel to three screens. `reasonsOf` in `src/lib/stress-view.ts` splits
   them.
+- **THERE IS NO SHARE LINK, and do not add one.** Every owner route here is
+  unauthenticated by design, so a URL a recipient could use would also serve
+  them `GET /api/policy-analysis/:id` — the whole paper, two requests later. A
+  redacted copy leaves as a FILE: `?scope=shared` on the owner's own export.
+  Making a link safe means authenticating the API, which is the login phase 4
+  decided against. See `docs/phase-10.md`.
 - **`shareableReport` is the ONLY redactor, and it runs on the server.** The
-  shared page, the shared Word/markdown export and the shared offline pack all
-  take a report that has already been through it. Never redact a second time in
-  the browser: two implementations of "what may leave this account" is how a
-  chapter goes missing from one of them.
-- **The shared page renders `<Report>` WITHOUT `linkTo`.** That is the
-  enforcement — every artefact page is an owner route that would 404 for a
-  link-holder, and the absence of the prop means the machinery to render such a
-  link is not there rather than guarded by a flag somebody must remember.
-- **Unknown, revoked, expired and deleted share tokens all answer 404.** A link
-  that says "this was revoked" confirms the assessment exists.
+  shared documents and the shared pack all take a report that has already been
+  through it. Never redact a second time: two implementations of "what may leave
+  this account" is how a chapter goes missing from one of them.
+- **`persona_link` IS withheld here and is not upstream** — a recorded
+  divergence. Its data carries the standing dossier drawn from the owner's other
+  assessments, which is the thing `share.ts`'s own header says must not travel;
+  upstream withholds stage 13's warnings on that ground and ships its output.
 - **GDS has no modal component, on purpose.** A layer over a page wants a focus
   trap, its own Escape handling and a back stack. The pattern here is a route —
   see `client/pages/Drill.tsx`.

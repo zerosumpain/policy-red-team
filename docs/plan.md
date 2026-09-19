@@ -129,7 +129,7 @@ Phases 0 to 2 hold the risk and are quick. Phase 4 is most of the time.
 Phase 4 shipped the interface but not all of it — the surfaces it left are
 listed at the end of `docs/phase-4.md` and are being completed one at a time,
 each with its own record from `docs/phase-7.md` onwards. **7** is the drill, **8** the relationship graph and its table, **9** the stress
-test, **10** share links — which also answers the open question below.
+test, **10** the copy you send someone — which also answers the open question below.
 
 ## 6. Risks
 
@@ -164,6 +164,7 @@ point at which the thing is real and everything after it is interface.
 | Repository name | `policy-red-team`. |
 
 ~~Still open: whether share links earn their place in a single-user local tool.~~
-**Answered in phase 10: built.** The token is the questionable half; the
-redaction is not, and until that phase nothing could reach it — `resolveShare`
-sat in the repository with no route calling it. See `docs/phase-10.md`.
+**Answered in phase 10: no link, and the redaction ships as a file.** A URL a
+recipient could use would also serve them the whole paper from an owner route
+two requests later, because this API has no front door — by a decision phase 4
+took deliberately. See `docs/phase-10.md`.

@@ -13,6 +13,7 @@
  *   node scripts/walk.mjs
  */
 import { chromium } from 'playwright';
+import JSZip from 'jszip';
 import { spawn } from 'node:child_process';
 import { readFile, rm, mkdtemp } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -250,67 +251,67 @@ try {
     failures.push('report: no "What if we are wrong" section at all');
   }
 
-  // 5d — A SHARE LINK, minted and then taken back.
+  // 5d — THE COPY YOU SEND SOMEONE, and what is not in it.
   //
-  // The one route in this service that answers to somebody who is not the
-  // owner, so the assertions are about what does NOT come down it. A leak here
-  // is not a rendering bug: it is the policy paper itself, handed to whoever
-  // holds a URL.
+  // There is no share LINK: every owner route here is unauthenticated by
+  // design, so a URL that worked for a recipient would also hand them the whole
+  // paper two requests later. The redacted copy leaves as a FILE, and these are
+  // the assertions that matter — not that the page rendered, but that three
+  // kinds of thing are absent from what a recipient receives.
   await page.getByRole('heading', { name: 'Send it to someone' }).scrollIntoViewIfNeeded();
-  await page.getByLabel('Who is this link for?').fill('Walk recipient');
-  await page.getByRole('button', { name: 'Create a link' }).click();
-  await page.locator('.prt-token').waitFor({ timeout: 10000 });
-  const shareUrl = (await page.locator('.prt-token').innerText()).trim();
-  const token = shareUrl.split('/shared/')[1];
-  if (!token) {
-    failures.push('share: minting produced no token');
+  const panelText = await page.locator('section[aria-labelledby="send"]').innerText();
+  if (!/no link to send/i.test(panelText)) failures.push('send: does not say why there is no link');
+  // In-page anchors excluded: `Report` appends "Back to contents" to every section.
+  if (await page.locator('section[aria-labelledby="send"] a[href]:not([href*="scope=shared"]):not([href^="#"])').count()) {
+    failures.push('send: offers a download that is not the redacted one');
+  }
+
+  const owned = await page.evaluate(async (a) => (await fetch(`/api/policy-analysis/${a}`)).json(), id);
+  const sharedZip = Buffer.from(await (await fetch(`http://127.0.0.1:${PORT}/api/policy-analysis/${id}/export?format=bundle&scope=shared`)).arrayBuffer());
+  const zip = await JSZip.loadAsync(sharedZip);
+  const sharedHtml = await zip.file(Object.keys(zip.files).find((f) => f.endsWith('index.html'))).async('string');
+  const island = /<script type="application\/json" id="[^"]*">([\s\S]*?)<\/script>/.exec(sharedHtml);
+  const payload = island ? JSON.parse(island[1]) : null;
+  if (!payload) {
+    failures.push('send: the shared pack carries no payload to check');
   } else {
-    const ownerSide = await page.evaluate(async (a) => (await fetch(`/api/policy-analysis/${a}`)).json(), id);
-    const linkSide = await page.evaluate(async (t) => (await fetch(`/api/policy-analysis/shared/${t}`)).json(), token);
+    // The three kinds a recipient must never receive. `persona_link` is the one
+    // upstream does not withhold — its data carries the standing dossier drawn
+    // from the owner's OTHER assessments — and is a recorded divergence.
+    for (const kind of ['passage', 'cross_policy', 'persona_link']) {
+      if (payload.artefacts.some((a) => a.kind === kind)) failures.push(`send: the shared pack carries ${kind} artefacts`);
+    }
+    if (!payload.withheld?.length) failures.push('send: the shared pack does not say anything was withheld');
+    if (payload.documentSha256 !== null) failures.push('send: the shared pack carries the document digest, which is a confirmation oracle');
+    // And the paper's own words are not in what the file carries.
+    //
+    // Searched in the PARSED payload rather than the raw HTML: the payload is a
+    // JSON island, so a newline inside a passage arrives as the two characters
+    // `\` `n` and a substring search over the markup silently matches nothing.
+    // That made this assertion vacuous until the control below caught it.
+    const flat = (v) => v.replace(/\s+/g, ' ');
+    const words = (p) => flat(p.artefacts.map((a) => `${a.statement} ${a.sourceQuote ?? ''}`).join(' '));
+    const passage = owned.artefacts.find((a) => a.kind === 'passage' && a.statement.length > 120);
+    const needle = passage ? flat(passage.statement).slice(40, 110) : null;
+    if (needle && words(payload).includes(needle)) {
+      failures.push('send: a span of the paper survived into the shared pack');
+    }
 
-    // The two kinds `shareableReport` withholds, asserted on the wire.
-    for (const kind of ['passage', 'cross_policy']) {
-      if (linkSide.artefacts.some((a) => a.kind === kind)) failures.push(`share: the link carries ${kind} artefacts`);
+    // THE OWNER'S OWN PACK IS THE CONTROL. Without it the check above passes
+    // just as happily against a pack that carries nothing at all — and it did.
+    const ownZip = await JSZip.loadAsync(Buffer.from(await (await fetch(`http://127.0.0.1:${PORT}/api/policy-analysis/${id}/export?format=bundle`)).arrayBuffer()));
+    const ownHtml = await ownZip.file(Object.keys(ownZip.files).find((f) => f.endsWith('index.html'))).async('string');
+    const ownIsland = /<script type="application\/json" id="[^"]*">([\s\S]*?)<\/script>/.exec(ownHtml);
+    const ownPayload = ownIsland ? JSON.parse(ownIsland[1]) : { artefacts: [] };
+    for (const kind of ['passage', 'persona_link']) {
+      if (!ownPayload.artefacts.some((a) => a.kind === kind)) {
+        failures.push(`send: the OWNER pack has no ${kind} either, so the redaction check proves nothing`);
+      }
     }
-    if (!linkSide.withheld?.length) failures.push('share: the copy does not say anything was withheld');
-    if (linkSide.artefacts.length >= ownerSide.artefacts.length) {
-      failures.push('share: the link carries as much as the owner sees');
+    if (needle && !words(ownPayload).includes(needle)) {
+      failures.push('send: the OWNER pack is missing the paper, so the redaction check proves nothing');
     }
-    // A span of the paper's own text must not survive into it.
-    const passage = ownerSide.artefacts.find((a) => a.kind === 'passage' && a.statement.length > 120);
-    if (passage && JSON.stringify(linkSide).includes(passage.statement.slice(40, 110))) {
-      failures.push('share: a span of the paper survived into the shared copy');
-    }
-    // The token is shown once and never listed: only its hash is stored.
-    const listed = await page.evaluate(async (a) => (await fetch(`/api/policy-analysis/${a}/shares`)).json(), id);
-    if (JSON.stringify(listed).includes(token)) failures.push('share: the listing hands the token back out');
-
-    // The recipient's page: renders, says what is missing, and offers no route
-    // into an owner page.
-    await page.goto(shareUrl, { waitUntil: 'networkidle' });
-    await page.getByRole('heading', { level: 1 }).waitFor({ timeout: 20000 });
-    const recipient = await page.locator('#main-content').innerText();
-    if (!recipient.includes('This is a shared copy, and it is not everything')) {
-      failures.push('share: the recipient is not told the copy is partial');
-    }
-    if (await page.locator('#main-content a[href*="/artefacts/"]').count()) {
-      failures.push('share: the shared page links into the drill, which would 404 for the holder');
-    }
-    if (await page.locator('#main-content a[href$="/export?format=docx"]:not([href*="shared"])').count()) {
-      failures.push('share: the shared page offers an owner download');
-    }
-    await audit('/shared/:token');
-    note('a share link withholds the paper, and says so');
-
-    // And taken back, it stops working — with the same answer an unknown token
-    // gets, because "this was revoked" confirms the assessment exists.
-    await page.goto(`http://127.0.0.1:${PORT}/assessments/${id}`, { waitUntil: 'networkidle' });
-    await page.getByRole('heading', { name: 'Send it to someone' }).scrollIntoViewIfNeeded();
-    await page.getByRole('button', { name: /^Withdraw/ }).first().click();
-    await page.waitForTimeout(400);
-    const gone = await page.evaluate(async (t) => (await fetch(`/api/policy-analysis/shared/${t}`)).status, token);
-    if (gone !== 404) failures.push(`share: a withdrawn link still answers ${gone}`);
-    note('withdrawing a link stops it');
+    note(`the copy you send withholds ${payload.withheld.map((w) => `${w.count} ${w.kind}`).join(', ')}`);
   }
 
   // 6 — THE DRILL: one artefact, opened out, with its chain back to the paper.

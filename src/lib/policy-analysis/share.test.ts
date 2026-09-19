@@ -63,7 +63,7 @@ describe('a shared copy carries the report and nothing around it', () => {
     // If a future kind must not be shared, it goes in WITHHELD_KINDS and this
     // test changes with it. The failure mode this guards is the opposite one: a
     // kind added to the contract and silently shipped to anonymous readers.
-    expect([...WITHHELD_KINDS]).toEqual(['passage', 'cross_policy']);
+    expect([...WITHHELD_KINDS]).toEqual(['passage', 'cross_policy', 'persona_link']);
     for (const kind of WITHHELD_KINDS) expect(KINDS).toContain(kind);
   });
 

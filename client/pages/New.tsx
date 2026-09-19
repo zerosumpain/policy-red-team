@@ -1,5 +1,5 @@
 import { useEffect, useState, type FormEvent } from 'react';
-import { useNavigate } from 'react-router';
+import { Link, useNavigate } from 'react-router';
 import { api, type OfferedModel } from '../api';
 import { Button, ButtonGroup, ErrorSummary, FileUpload, Input, Radios, Select, Textarea, WarningText } from '../govuk';
 import { usePageTitle } from '../layout/Template';
@@ -24,6 +24,10 @@ import { usePageTitle } from '../layout/Template';
 export function New() {
   usePageTitle('Assess a paper');
   const navigate = useNavigate();
+  // The landing page hides the way in; this page is still directly addressable,
+  // and a full form that can only 403 on submit is the control that argument
+  // was made against.
+  const [readOnly, setReadOnly] = useState(false);
   const [models, setModels] = useState<OfferedModel[]>([]);
   const [depth, setDepth] = useState('standard');
   const [sealed, setSealed] = useState(false);
@@ -31,7 +35,9 @@ export function New() {
   const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
-    api.landing().then((data) => setModels(data.models)).catch(() => setModels([]));
+    api.landing()
+      .then((data) => { setModels(data.models); setReadOnly(data.readOnly); })
+      .catch(() => setModels([]));
   }, []);
 
   async function onSubmit(event: FormEvent<HTMLFormElement>) {
@@ -58,6 +64,23 @@ export function New() {
       setErrors([{ text: (err as Error).message, href: '#document' }]);
       setSubmitting(false);
     }
+  }
+
+  if (readOnly) {
+    return (
+      <div className="govuk-grid-row">
+        <div className="govuk-grid-column-two-thirds">
+          <h1 className="govuk-heading-xl">Assess a paper</h1>
+          <p className="govuk-body-l">
+            Not from this copy. It is read-only: you can open, drill into and download every
+            assessment here, but nothing new can be started.
+          </p>
+          <p className="govuk-body">
+            <Link className="govuk-link" to="/">Go back to the assessments</Link>
+          </p>
+        </div>
+      </div>
+    );
   }
 
   return (
