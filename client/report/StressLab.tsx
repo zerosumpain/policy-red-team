@@ -1,4 +1,4 @@
-import { useMemo, useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import type { Artefact } from '$lib/policy-analysis/contracts';
 import { stress } from '$lib/policy-analysis/stress';
 import type { leverage } from '$lib/policy-analysis/stress';
@@ -49,8 +49,36 @@ export function StressLab({ artefacts, levers, linkTo }: {
   /** Drawn before the list asks to be opened, and after. Upstream's figures. */
   const RAIL = 9;
   const ALL = 24;
-  const shown = levers.slice(0, allLevers ? ALL : RAIL);
+  const offered = levers.slice(0, ALL);
+
+  /*
+   * A TICKED LEVER IS ALWAYS ON SCREEN.
+   *
+   * Slicing the list plainly left a reader who ticked lever fifteen and then
+   * collapsed the rail with a full results panel, no ticked box anywhere on it,
+   * and no way to untick the thing driving it. Keeping the ticked ones in view
+   * removes the state rather than explaining it.
+   */
+  const failing = new Set(failed);
+  const head = offered.slice(0, allLevers ? ALL : RAIL);
+  const shown = allLevers ? head : [...head, ...offered.slice(RAIL).filter((l) => failing.has(l.artefact.id))];
   const machinery = result.lost.filter((group) => !group.primary);
+
+  /*
+   * And a selection is pruned to what is still offerable.
+   *
+   * `stress()` would simply not match an id that is no longer in the inventory,
+   * which leaves the panel showing a results block with nothing ticked and the
+   * "nothing failed yet" note hidden — the same dead end, reached by the
+   * artefacts changing underneath rather than by the rail collapsing.
+   */
+  useEffect(() => {
+    const offerable = new Set(offered.map((lever) => lever.artefact.id));
+    setFailed((current) => {
+      const kept = current.filter((id) => offerable.has(id));
+      return kept.length === current.length ? current : kept;
+    });
+  }, [levers]);
   const name = (artefact: Artefact): ReactNode => (linkTo ? linkTo(artefact) : artefact.label);
 
   return (
@@ -74,11 +102,19 @@ export function StressLab({ artefacts, levers, linkTo }: {
       <div className="govuk-grid-row">
         <div className="govuk-grid-column-one-half">
           <Checkboxes
-            id="stress"
+            id="stress-lever"
             small
             legendSize="s"
             legend="Suppose these turn out to be false"
-            hint={`The figure beside each is how many things rest on it, and they are ordered by it. Only assumptions something actually rests on are offered — ${levers.length} of them.`}
+            /* THE TWO NUMBERS HAVE TO AGREE. The hint said 111 assumptions were
+               offered while the button said "show all 24", and levers 25 to 111
+               had no route to the screen at all. The cap is upstream's and is
+               deliberate; claiming it was everything was not. */
+            hint={
+              levers.length > ALL
+                ? `${levers.length} assumptions have something resting on them. The figure beside each is how many, and the ${ALL} most rested on are offered here.`
+                : `The figure beside each is how many things rest on it, and they are ordered by it. Only assumptions something actually rests on are offered — ${levers.length} of them.`
+            }
             values={failed}
             onChange={setFailed}
             /*
@@ -101,8 +137,13 @@ export function StressLab({ artefacts, levers, linkTo }: {
           />
           {levers.length > RAIL ? (
             <p className="govuk-body-s">
-              <button type="button" className="govuk-link prt-linkbutton" onClick={() => setAllLevers(!allLevers)}>
-                {allLevers ? `Show the ${RAIL} that carry most` : `Show all ${Math.min(levers.length, ALL)} assumptions`}
+              {/* A disclosure, so it says so. GOV.UK's own show-all carries
+                  `aria-expanded` and the changing label alone does not. */}
+              <button type="button" className="govuk-link prt-linkbutton" aria-expanded={allLevers}
+                      onClick={() => setAllLevers(!allLevers)}>
+                {allLevers
+                  ? `Show the ${RAIL} most rested on`
+                  : `Show the ${offered.length} most rested on`}
               </button>
             </p>
           ) : null}
@@ -116,16 +157,26 @@ export function StressLab({ artefacts, levers, linkTo }: {
             </InsetText>
           ) : (
             <>
-              <p className="govuk-body-l">
+              {/* TWO SENTENCES, because there are two directions and one figure
+                  cannot carry both. This used to print `counts.total`, which
+                  sums all five kinds including plays — so a lever that only
+                  took threats off the table reported them as conclusions that
+                  fell, which is the one place the tool could lie outright. */}
+              <p className="govuk-body-l" role="status">
                 {result.moved
-                  ? `${result.moved} of ${result.population} conclusions and results move.`
-                  : `Nothing moves. All ${result.population} conclusions and results stand without ${failed.length === 1 ? 'that assumption' : 'those assumptions'}.`}
+                  ? `${result.moved} of ${result.population} conclusions and results lose their footing.`
+                  : `No conclusion loses its footing. All ${result.population} stand without ${failed.length === 1 ? 'that assumption' : 'those assumptions'}.`}
+                {result.disarmed.length
+                  ? ` ${result.disarmed.length} of ${result.plays} ways to beat the policy are taken off the table.`
+                  : ''}
               </p>
-              <p className="govuk-body-s prt-meta">
-                The {result.unmovable} structural {result.unmovable === 1 ? 'check is' : 'checks are'} untouched
-                whatever is failed here: they walk the relationships the policy itself states, so
-                they are the part of the assessment that does not move when a hypothesis does.
-              </p>
+              {result.unmovable ? (
+                <p className="govuk-body-s prt-meta">
+                  The {result.unmovable} structural {result.unmovable === 1 ? 'check is' : 'checks are'} untouched
+                  whatever is failed here: they walk the relationships the policy itself states, so
+                  they are the part of the assessment that does not move when a hypothesis does.
+                </p>
+              ) : null}
             </>
           )}
         </div>
@@ -141,8 +192,9 @@ export function StressLab({ artefacts, levers, linkTo }: {
               <h3 className="govuk-heading-s" id={`stress-${group.key}`}>
                 {group.label} — {group.rows.length} of {group.population}
               </h3>
-              {byCause(group.rows).map((cause, i) => (
-                <Cause key={i} group={cause} fallback="What they rest on no longer stands." name={name} />
+              {byCause(group.rows).map((cause) => (
+                <Cause key={cause.direct.join('|') || 'consequential'} group={cause}
+                       fallback="What they rest on no longer stands." name={name} />
               ))}
             </section>
           ))}
@@ -160,8 +212,9 @@ export function StressLab({ artefacts, levers, linkTo }: {
                   <h4 className="govuk-heading-s">
                     {group.label} — {group.rows.length} of {group.population}
                   </h4>
-                  {byCause(group.rows).map((cause, i) => (
-                    <Cause key={i} group={cause} fallback="What they rest on no longer stands." name={name} />
+                  {byCause(group.rows).map((cause) => (
+                    <Cause key={cause.direct.join('|') || 'consequential'} group={cause}
+                           fallback="What they rest on no longer stands." name={name} />
                   ))}
                 </div>
               ))}
@@ -174,19 +227,46 @@ export function StressLab({ artefacts, levers, linkTo }: {
           {result.disarmed.length ? (
             <section aria-labelledby="stress-disarmed">
               <h3 className="govuk-heading-s" id="stress-disarmed">
-                Taken off the table — {result.disarmed.length}
+                Taken off the table — {result.disarmed.length} of {result.plays}
               </h3>
               <p className="govuk-body-s prt-meta">
                 The good news on this page. An actor needed the failed assumption to be true to run
                 these, so they are not available if it is false.
               </p>
-              {byCause(result.disarmed).map((cause, i) => (
-                <Cause key={i} group={cause} fallback="A precondition they needed is gone." name={name} />
+              {byCause(result.disarmed).map((cause) => (
+                <Cause key={cause.direct.join('|') || 'consequential'} group={cause}
+                       fallback="A precondition they needed is gone." name={name} />
               ))}
             </section>
           ) : null}
 
-          {!result.moved ? (
+          {/* A CONCLUSION ABOUT A THREAT THAT HAS GONE HAS NOT BEEN UNDERMINED.
+              It no longer applies. These used to sit in the lost lists carrying
+              a red "nothing left supporting it" three inches above the same
+              event reported as good news — see `eased` in $lib/stress-view. */}
+          {result.eased.length ? (
+            <section aria-labelledby="stress-eased">
+              <h3 className="govuk-heading-s" id="stress-eased">
+                No longer applies — {result.eased.length}
+              </h3>
+              <p className="govuk-body-s prt-meta">
+                Everything these rested on that stopped standing was a threat taken off the table.
+                They have not been undermined; what they were about is gone.
+              </p>
+              <ul className="govuk-list govuk-list--bullet">
+                {result.eased.map((row) => (
+                  <li key={row.artefact.id}>
+                    {name(row.artefact)} <Tag colour="green">No longer applies</Tag>
+                  </li>
+                ))}
+              </ul>
+            </section>
+          ) : null}
+
+          {!result.lost.length ? (
+            /* Gated on what FELL. Gating it on "anything moved" suppressed the
+               sentence in exactly the case where it is true: a lever that only
+               disarms threats moves plenty and undermines nothing. */
             <p className="govuk-body">
               That is worth knowing on its own: nothing the assessment concluded was resting on
               {failed.length === 1 ? ' it' : ' them'}.

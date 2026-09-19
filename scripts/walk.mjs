@@ -186,18 +186,59 @@ try {
       await page.waitForTimeout(200);
       const pulled = await panel.innerText();
       if (pulled === atRest) failures.push('stress: pulling a lever changed nothing on the page');
-      if (!/\d+ of \d+ conclusions and results move|Nothing moves/.test(pulled)) {
-        failures.push('stress: does not say how much moved');
+      if (!/\d+ of \d+ conclusions and results lose their footing|No conclusion loses its footing/.test(pulled)) {
+        failures.push('stress: does not say how much lost its footing');
       }
-      // The two directions must never be collapsed: a disarmed play is good
-      // news for the policy and a fallen conclusion is not.
-      if (pulled.includes('Taken off the table') && !pulled.includes('The good news on this page')) {
-        failures.push('stress: a disarmed play is reported without saying it is the opposite direction');
+      // THE TWO DIRECTIONS MUST NEVER BE COLLAPSED, and this asserts it against
+      // the DOM rather than against two adjacent string literals — which is what
+      // it did before, and which could not fail. A disarmed play is good news
+      // for the policy; a conclusion that lost its footing is not, and a review
+      // found one being printed in red under the other's heading.
+      const mixed = await panel.evaluate(() => {
+        const bad = [];
+        for (const section of document.querySelectorAll('section[aria-labelledby^="stress-"]')) {
+          const id = section.getAttribute('aria-labelledby');
+          const tags = [...section.querySelectorAll('.govuk-tag')].map((t) => t.textContent.trim());
+          const good = id === 'stress-disarmed' || id === 'stress-eased';
+          if (!good && tags.some((t) => /Taken off the table|No longer applies/.test(t))) bad.push(`${id}: ${tags.join(', ')}`);
+          if (id === 'stress-disarmed' && tags.some((t) => /Nothing left supporting it|Partly undercut/.test(t))) {
+            bad.push(`${id}: ${tags.join(', ')}`);
+          }
+        }
+        return bad;
+      });
+      for (const bad of mixed) failures.push(`stress: the two directions are mixed — ${bad}`);
+      // And the figure has to be about what FELL, never about everything that moved.
+      if (/conclusions and results move/.test(pulled)) {
+        failures.push('stress: the headline counts both directions as one figure');
       }
       if (!/structural check(s)? (is|are) untouched/.test(pulled)) {
         failures.push('stress: does not say what cannot move');
       }
       await audit('/assessments/:id (stress test, pulled)');
+
+      // THE SHOW-ALL PATH, where a ticked lever used to vanish. Expanding and
+      // collapsing the rail must never silently drop what the reader chose, nor
+      // leave a results panel driven by a lever with no box on screen.
+      const showAll = panel.getByRole('button', { name: /most rested on/ });
+      if (await showAll.count()) {
+        await showAll.click();
+        const expanded = panel.locator('input[type=checkbox]');
+        const last = expanded.nth((await expanded.count()) - 1);
+        const lastId = await last.getAttribute('id');
+        await last.check();
+        await showAll.click();
+        await page.waitForTimeout(200);
+        const still = panel.locator(`input[type=checkbox]#${lastId}`);
+        if (!(await still.count())) {
+          failures.push('stress: collapsing the rail hid a ticked lever, leaving no way to untick it');
+        } else if (!(await still.isChecked())) {
+          failures.push('stress: collapsing the rail silently unticked a lever');
+        }
+        await still.uncheck().catch(() => {});
+        note('a ticked lever survives the rail collapsing');
+      }
+
       await lever.uncheck();
       await page.waitForTimeout(200);
       if (!(await panel.innerText()).includes('Nothing failed yet')) {

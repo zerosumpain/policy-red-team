@@ -86,7 +86,11 @@ export function byCause(rows: StressRow[]): CauseGroup[] {
   const groups = new Map<string, CauseGroup>();
   for (const row of rows) {
     const { direct, knockOn } = reasonsOf(row);
-    const key = direct.join(' ');
+    // SORTED FOR THE KEY, not for display. The reasons arrive in whatever order
+    // the model wrote `assumptions` or `hypothesisIds`, so two rows undone by
+    // the same two assumptions in opposite order made two groups printing the
+    // same two sentences — the exact duplication this exists to remove.
+    const key = [...direct].sort().join(' ');
     const found = groups.get(key);
     if (found) found.rows.push({ row, knockOn });
     else groups.set(key, { direct, rows: [{ row, knockOn }] });
@@ -122,10 +126,35 @@ export type Reading = {
    * the only good news on the page.
    */
   disarmed: StressRow[];
-  /** Everything the test could move. */
+  /**
+   * Conclusions that stopped standing ONLY because a threat they cited was
+   * disarmed — the good direction wearing the wrong clothes.
+   *
+   * `RESULT_KINDS` includes `exploit`, so a finding may legitimately cite an
+   * exploitation play as a result, and in an adversarial assessment that is the
+   * expected shape rather than an odd one. `stress.ts`'s own test for whether a
+   * cited result still stands is standing-BLIND, so a disarmed play counts
+   * against the finding that cited it and the page reported "nothing left
+   * supporting it" three inches above the same event listed as good news.
+   *
+   * Nothing in the copied module changes. The rows are recognised here and told
+   * apart, because a conclusion about a threat that has gone has not been
+   * undermined — it no longer applies.
+   */
+  eased: StressRow[];
+  /** Conclusions and the machinery under them — how many there are at all. */
   population: number;
-  /** Everything it did move, in either direction. */
+  /**
+   * How many of THOSE lost their footing.
+   *
+   * NOT `counts.total`, which sums all five kinds including plays. Printing that
+   * as "N of M conclusions move" counted a disarmed play — the good news — as a
+   * conclusion that fell, and it is the one number on the page where the two
+   * directions could get collapsed.
+   */
   moved: number;
+  /** Exploitation plays the assessment found at all, for framing how many were removed. */
+  plays: number;
   /** Deterministic checks, which no hypothesis can move. Saying so is part of the answer. */
   unmovable: number;
 };
@@ -149,18 +178,60 @@ const ORDER = [
 const BY_SEVERITY: Standing[] = ['unsupported', 'weakened', 'disarmed', 'holds'];
 const severity = (row: StressRow) => BY_SEVERITY.indexOf(row.standing);
 
+const ids = (v: unknown): string[] => (Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string') : []);
+/** What a row rested on directly — the fields a lever can fail. */
+const RESTS_ON = ['hypothesisIds', 'assumptions', 'preconditions'];
+/** What a row cited — the fields whose own standing can drag it down. */
+const CITES = ['resultIds', 'findingIds'];
+
 export function reading(result: StressResult): Reading {
+  const failed = new Set(result.failed);
+  const standing = new Map<string, Standing>();
+  for (const row of [...result.plays, ...result.models, ...result.scenarios, ...result.findings, ...result.recommendations]) {
+    standing.set(row.artefact.id, row.standing);
+  }
+
+  /*
+   * A row is EASED rather than undermined when nothing it rested on failed and
+   * everything it cited that stopped standing was a threat taken off the table.
+   * Walked in dependency order, so a recommendation answering an eased finding
+   * is itself eased.
+   */
+  const eased = new Set<string>();
+  for (const row of [...result.models, ...result.scenarios, ...result.findings, ...result.recommendations]) {
+    if (row.standing === 'holds') continue;
+    if (RESTS_ON.some((field) => ids(row.artefact.data[field]).some((id) => failed.has(id)))) continue;
+    const broken = CITES.flatMap((field) => ids(row.artefact.data[field]))
+      .filter((id) => (standing.get(id) ?? 'holds') !== 'holds');
+    if (broken.length && broken.every((id) => standing.get(id) === 'disarmed' || eased.has(id))) {
+      eased.add(row.artefact.id);
+    }
+  }
+
   const lost: LostGroup[] = [];
   for (const [key, label, primary] of ORDER) {
     const all = result[key];
-    const rows = all.filter((row) => row.standing !== 'holds').sort((a, b) => severity(a) - severity(b));
+    const rows = all
+      .filter((row) => row.standing !== 'holds' && !eased.has(row.artefact.id))
+      .sort((a, b) => severity(a) - severity(b));
     if (rows.length) lost.push({ key, label, rows, population: all.length, primary });
   }
 
   const disarmed = result.plays.filter((row) => row.standing === 'disarmed');
+  const easedRows = [...result.models, ...result.scenarios, ...result.findings, ...result.recommendations]
+    .filter((row) => eased.has(row.artefact.id));
+  // PLAYS ARE NOT IN THIS POPULATION. They move in the opposite direction and
+  // are framed against their own total beside the good news.
   const population =
-    result.plays.length + result.models.length + result.scenarios.length +
-    result.findings.length + result.recommendations.length;
+    result.models.length + result.scenarios.length + result.findings.length + result.recommendations.length;
 
-  return { lost, disarmed, population, moved: result.counts.total, unmovable: result.checksHeld };
+  return {
+    lost,
+    disarmed,
+    eased: easedRows,
+    population,
+    moved: lost.reduce((n, group) => n + group.rows.length, 0),
+    plays: result.plays.length,
+    unmovable: result.checksHeld,
+  };
 }

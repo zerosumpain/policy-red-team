@@ -45,8 +45,62 @@ describe('the reading', () => {
     for (const group of result.lost) {
       expect(group.rows.some((r) => r.standing === 'disarmed')).toBe(false);
     }
-    // It is still counted as moved: something happened to it.
-    expect(result.moved).toBeGreaterThan(result.lost.reduce((n, g) => n + g.rows.length, 0));
+    // `moved` is the things that LOST FOOTING and nothing else. It used to be
+    // `counts.total`, which sums all five kinds including plays — so a lever
+    // that only disarmed threats reported them as conclusions that fell.
+    expect(result.moved).toBe(result.lost.reduce((n, g) => n + g.rows.length, 0));
+    expect(result.population).toBe(5);
+    expect(result.plays).toBe(2);
+  });
+
+  it('says nothing fell when a lever ONLY takes threats off the table', () => {
+    // An assumption cited solely as a play precondition is entirely normal —
+    // `leverage()` counts preconditions, so it is offered as a lever. The panel
+    // reported "2 of 4 conclusions and results move" and suppressed the one
+    // sentence that would have told the reader nothing they concluded moved.
+    const items = [
+      assumption('a1'),
+      make('x1', 'exploit', { preconditions: ['a1'] }),
+      make('x2', 'exploit', { preconditions: ['a1'] }),
+      make('f1', 'finding', { hypothesisIds: [], resultIds: [] }),
+    ];
+    const result = reading(stress(items, ['a1']));
+    expect(result.moved).toBe(0);
+    expect(result.lost).toEqual([]);
+    expect(result.disarmed).toHaveLength(2);
+  });
+
+  it('does NOT report a conclusion as undermined when the threat it cited was removed', () => {
+    // `RESULT_KINDS` includes `exploit`, so a finding may cite a play as a
+    // result — the expected shape in an adversarial assessment. `stress.ts`'s
+    // own test for a lost result is standing-blind, so a DISARMED play counted
+    // against the finding, and the page said "nothing left supporting it" three
+    // inches above the same event listed as good news.
+    const items = [
+      assumption('a1'),
+      make('x1', 'exploit', { preconditions: ['a1'] }),
+      make('f1', 'finding', { hypothesisIds: [], resultIds: ['x1'] }),
+      make('r1', 'recommendation', { findingIds: ['f1'] }),
+    ];
+    const result = reading(stress(items, ['a1']));
+    expect(result.lost).toEqual([]);
+    expect(result.disarmed.map((r) => r.artefact.id)).toEqual(['x1']);
+    // The finding AND the recommendation answering it: eased, not undermined.
+    expect(result.eased.map((r) => r.artefact.id).sort()).toEqual(['f1', 'r1']);
+    expect(result.moved).toBe(0);
+  });
+
+  it('still reports a conclusion as undermined when it ALSO rested on the failed assumption', () => {
+    // The easing rule must not launder a real loss: if the lever hit the row
+    // directly, a disarmed citation alongside it changes nothing.
+    const items = [
+      assumption('a1'),
+      make('x1', 'exploit', { preconditions: ['a1'] }),
+      make('f1', 'finding', { hypothesisIds: ['a1'], resultIds: ['x1'] }),
+    ];
+    const result = reading(stress(items, ['a1']));
+    expect(result.eased).toEqual([]);
+    expect(result.lost.find((g) => g.key === 'findings')?.rows.map((r) => r.artefact.id)).toEqual(['f1']);
   });
 
   it('leads with the conclusion that has nothing left, not the one partly undercut', () => {
@@ -73,8 +127,9 @@ describe('the reading', () => {
     const result = reading(stress(world(), []));
     expect(result.lost).toEqual([]);
     expect(result.disarmed).toEqual([]);
+    expect(result.eased).toEqual([]);
     expect(result.moved).toBe(0);
-    expect(result.population).toBe(7);
+    expect(result.population).toBe(5);
   });
 });
 
@@ -127,6 +182,20 @@ describe('saying the cause once', () => {
     const groups = byCause(stress(items, ['a1']).models);
     expect(groups).toHaveLength(1);
     expect(groups[0].rows).toHaveLength(3);
+  });
+
+  it('groups two rows undone by the same reasons in a different order', () => {
+    // The reasons arrive in whatever order the model wrote the field, so keying
+    // on the join made two groups printing the same two sentences.
+    const items = [
+      assumption('a1'),
+      assumption('a2'),
+      make('m1', 'model', { assumptions: ['a1', 'a2'] }),
+      make('m2', 'model', { assumptions: ['a2', 'a1'] }),
+    ];
+    const groups = byCause(stress(items, ['a1', 'a2']).models);
+    expect(groups).toHaveLength(1);
+    expect(groups[0].rows).toHaveLength(2);
   });
 
   it('returns nothing for nothing', () => {

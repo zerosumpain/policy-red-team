@@ -100,6 +100,50 @@ real pack            the simulation RUNS from file:// with every request
                      aborted: 33 of 83 move, no server, no model
 ```
 
+## What the review found
+
+Two criticals, both about the one thing this panel must never do — collapse the
+two directions — and both live on the real assessment rather than theoretical.
+
+**The headline counted a disarmed play as a conclusion that fell.** `moved` was
+`counts.total`, which sums all five kinds including plays. So a lever that only
+took threats off the table printed *"2 of 4 conclusions and results move"* — and
+because the reassurance sentence was gated on the same figure, it suppressed
+*"nothing the assessment concluded was resting on it"* in exactly the case where
+that is true. Two sentences now, two denominators:
+
+```
+26 of 38 conclusions and results lose their footing.
+5 of 45 ways to beat the policy are taken off the table.
+```
+
+**And a conclusion whose only loss was a threat being removed was printed in red
+as "Nothing left supporting it".** `RESULT_KINDS` includes `exploit`, so a
+finding may cite an exploitation play as a result — the expected shape in an
+adversarial assessment, not an odd one — and `stress.ts`'s test for whether a
+cited result still stands is standing-blind. The page reported a conclusion as
+undermined three inches above the same event listed as good news. `reading()`
+now recognises those rows and says what is true of them: **No longer applies.**
+On the real paper there are two, and they were in the red list before this.
+
+| | also fixed |
+|---|---|
+| `Checkboxes` | filtered the selection through the RENDERED items, so anything ticked but off-screen was silently dropped on the next click — a reader who expanded the rail, ticked lever fifteen, collapsed it and ticked another lost the first without being told |
+| the rail | collapsing it left a full results panel with no ticked box anywhere and no way to untick the lever driving it. A ticked lever is now always on screen |
+| the hint | said 111 assumptions were offered while the button said "show all 24" |
+| `byCause` | keyed on the join, so the same two reasons in the order the model happened to write them made two groups printing the same two sentences |
+| the summary | had no `role="status"`, on the one control whose whole purpose is that you pull it and the answer changes. axe cannot see a missing live region, so the gate passed |
+| the show-all | had no `aria-expanded` |
+| `Cause` | keyed on the index, so an open `<details>` stayed open over rows from a different cause |
+| the rail's ids | could collide with the panel's own section anchors |
+| the link-button | omitted `-webkit-appearance: none`, which the mixin it cites does not |
+
+**And the gate assertion for the thing that matters could not fail.** It tested
+that two adjacent string literals were still adjacent. It now walks the DOM and
+asserts that no row under a lost heading carries a good-news tag — which is the
+check that would have caught the second critical — and it exercises the
+show-all path, where two of the fixes above live.
+
 ## Decision log
 
 | Fork | Options | Chosen | Why | Reversible? |

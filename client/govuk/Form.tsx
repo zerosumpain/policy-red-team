@@ -188,7 +188,16 @@ export function Checkboxes({ id, name, legend, legendSize = 'm', hint, error, it
     else next.add(value);
     // The caller's order, not the click order: a list that reshuffles as it is
     // ticked is a list nobody can keep their place in.
-    onChange?.(items.map((item) => item.value).filter((v) => next.has(v)));
+    //
+    // AND `items` IS THE ORDER, NOT THE UNIVERSE. Filtering the selection
+    // through the rendered items silently dropped anything ticked that was not
+    // on screen — so a caller showing nine of twenty-four lost the reader's
+    // choice the moment they ticked a tenth, and the answer changed for a reason
+    // nothing on the page stated. What is not rendered is kept, at the end.
+    const known = items.map((item) => item.value);
+    const shown = known.filter((v) => next.has(v));
+    const offscreen = [...next].filter((v) => !known.includes(v));
+    onChange?.([...shown, ...offscreen]);
   };
 
   return (

@@ -61,13 +61,19 @@
 
 // A control that READS as a link and IS a button.
 //
-// "Show all 24 assumptions" changes what is on the page; it goes nowhere, so it
-// must be a button or a keyboard user gets a link that does not behave like one.
-// But at the weight of a real GOV.UK button it would outrank the thing it
-// reveals. govuk-frontend ships exactly this reset for the accordion's own
-// "Show all sections" — `.govuk-accordion__show-all` — and this is that rule,
-// unscoped, for the two places outside an accordion that need it.
+// The stress test's "show more assumptions" changes what is on the page; it goes
+// nowhere, so it must be a button or a keyboard user gets a link that does not
+// behave like one. But at the weight of a real GOV.UK button it would outrank
+// the thing it reveals. govuk-frontend ships exactly this reset for the
+// accordion's own "Show all sections" — `.govuk-accordion__show-all` — and this
+// is that rule, unscoped, for the one place outside an accordion that needs it.
+//
+// `-webkit-appearance` is in that mixin and is not optional: without it iOS
+// Safari keeps its own button chrome, which `background: none` alone does not
+// remove.
 .prt-linkbutton {
+  -webkit-appearance: none;
+  appearance: none;
   background: none;
   border: 0;
   padding: 0;
