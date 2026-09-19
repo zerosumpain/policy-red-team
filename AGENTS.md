@@ -93,6 +93,17 @@ delete.** Do not weaken it.
   row. Grouping on the whole string compresses nothing at the second order and
   took the panel to three screens. `reasonsOf` in `src/lib/stress-view.ts` splits
   them.
+- **`shareableReport` is the ONLY redactor, and it runs on the server.** The
+  shared page, the shared Word/markdown export and the shared offline pack all
+  take a report that has already been through it. Never redact a second time in
+  the browser: two implementations of "what may leave this account" is how a
+  chapter goes missing from one of them.
+- **The shared page renders `<Report>` WITHOUT `linkTo`.** That is the
+  enforcement — every artefact page is an owner route that would 404 for a
+  link-holder, and the absence of the prop means the machinery to render such a
+  link is not there rather than guarded by a flag somebody must remember.
+- **Unknown, revoked, expired and deleted share tokens all answer 404.** A link
+  that says "this was revoked" confirms the assessment exists.
 - **GDS has no modal component, on purpose.** A layer over a page wants a focus
   trap, its own Escape handling and a back stack. The pattern here is a route —
   see `client/pages/Drill.tsx`.

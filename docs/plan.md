@@ -128,7 +128,8 @@ Phases 0 to 2 hold the risk and are quick. Phase 4 is most of the time.
 
 Phase 4 shipped the interface but not all of it — the surfaces it left are
 listed at the end of `docs/phase-4.md` and are being completed one at a time,
-each with its own record from `docs/phase-7.md` onwards. **7** is the drill, **8** the relationship graph and its table, **9** the stress test.
+each with its own record from `docs/phase-7.md` onwards. **7** is the drill, **8** the relationship graph and its table, **9** the stress
+test, **10** share links — which also answers the open question below.
 
 ## 6. Risks
 
@@ -162,6 +163,7 @@ point at which the thing is real and everything after it is interface.
 | Model access | **One OpenRouter key in `.env`.** No gateway, no settings table, no Codex bridge. |
 | Repository name | `policy-red-team`. |
 
-Still open: whether share links earn their place in a single-user local tool. The
-read-only view is a clean way to hand someone a report; the token is what is in
-question. Parity builds it; a later decision may retire it.
+~~Still open: whether share links earn their place in a single-user local tool.~~
+**Answered in phase 10: built.** The token is the questionable half; the
+redaction is not, and until that phase nothing could reach it — `resolveShare`
+sat in the repository with no route calling it. See `docs/phase-10.md`.

@@ -11,6 +11,7 @@ import { Accordion, Details, InsetText, SummaryList, Table, Tag, WarningText } f
 import { ExposurePlot } from './ExposurePlot';
 import { NetworkSection } from './Network';
 import { StressLab } from './StressLab';
+import { Shares } from './Shares';
 
 /**
  * The report.
@@ -331,6 +332,16 @@ export function Report({ detail, offline, linkTo }: { detail: Detail; offline?: 
         </InsetText>
       ) : null}
     </>
+  ));
+
+  /*
+   * Beside "take it away", because a link is the fourth way of handing this to
+   * someone and they belong together. `offline` suppresses both: a pack and a
+   * shared copy have no server to mint against, and the pack's own links would
+   * point at one that is not there.
+   */
+  section('send', 'Send it to someone', offline ? null : (
+    <Shares analysisId={analysis.id} readOnly={detail.readOnly} />
   ));
 
   section('provenance', 'How this was produced',

@@ -54,6 +54,9 @@ export function OfflineApp({ payload }: { payload: OfflinePayload }) {
     passes: [],
     personas: [],
     heartbeat: null,
+    // A pack has no server to refuse anything. Every control it would gate is
+    // suppressed by `offline` already.
+    readOnly: true,
   };
 
   return (

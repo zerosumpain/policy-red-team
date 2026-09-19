@@ -81,6 +81,16 @@
   cursor: pointer;
 }
 
+// A share link, which is one unbreakable string by construction — a base64url
+// token has no space in it to break at. `#main-content` already wraps anywhere,
+// but a `<code>` inherits a monospace measure that overflows its inset box
+// before the page does, so this pins the behaviour where it is needed rather
+// than relying on the page-level rule to be enough.
+.prt-token {
+  word-break: break-all;
+  font-size: 0.9em;
+}
+
 // The one thing GOV.UK has no pattern for and this product cannot do without: a
 // wide table that must scroll inside its own box rather than push the page
 // sideways. `tabindex` and the label are what make it reachable from a keyboard;

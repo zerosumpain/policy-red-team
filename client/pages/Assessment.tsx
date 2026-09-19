@@ -101,9 +101,14 @@ export function Assessment() {
             This runs to the end on its own. You can close the page — it does not stop.
           </p>
           <TaskList items={tasks} idPrefix="stages" />
-          <ButtonGroup>
-            <Button variant="warning" disabled={busy} onClick={() => void act('cancel')}>Cancel this run</Button>
-          </ButtonGroup>
+          {/* A control that would only 403 is not drawn. The landing page has
+              made this argument since phase 4; the flag needed to make it here
+              only arrived with the share panel. */}
+          {detail.readOnly ? null : (
+            <ButtonGroup>
+              <Button variant="warning" disabled={busy} onClick={() => void act('cancel')}>Cancel this run</Button>
+            </ButtonGroup>
+          )}
         </>
       ) : (
         <>
@@ -119,7 +124,7 @@ export function Assessment() {
           ) : null}
           {!isFinished(analysis.status) ? <TaskList items={tasks} idPrefix="stages" /> : null}
           <ButtonGroup>
-            {analysis.status === 'failed' || analysis.status === 'cancelled' ? (
+            {(analysis.status === 'failed' || analysis.status === 'cancelled') && !detail.readOnly ? (
               <Button disabled={busy} onClick={() => void act('resume')}>Resume the incomplete stages</Button>
             ) : null}
             <Link className="govuk-link" to="/">Back to all assessments</Link>

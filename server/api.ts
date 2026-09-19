@@ -28,7 +28,7 @@ import { keyDir } from '$lib/policy-analysis/server/seal';
 import { PolicyError } from '$lib/policy-analysis/validation';
 import { assessmentDocument, isDownloadFormat, isExportFormat } from '$lib/policy-analysis/server/export';
 import { assessmentBundle } from '$lib/policy-analysis/server/bundle';
-import { ownerPayload } from '$lib/policy-analysis/offline/payload';
+import { ownerPayload, sharedPayload } from '$lib/policy-analysis/offline/payload';
 import { STAGES } from '$lib/policy-analysis/contracts';
 import { analysisStatus } from '$lib/worker';
 
@@ -137,6 +137,57 @@ export async function handleApi(
     return false;
   }
 
+  /*
+   * THE RECIPIENT'S END OF A SHARE LINK. Before the /:id routes, or "shared" is
+   * read as an assessment id — the same reason `personas` sits above.
+   *
+   * THE ONLY UNOWNED ROUTE IN THE API. Everything else answers as the local
+   * owner; this answers to whoever holds the token, so it must never reach
+   * anything `resolveShare` has not already redacted. `shareableReport` is that
+   * redactor and there is exactly one of it: a second implementation of "what
+   * may leave this account" is how the two eventually disagree.
+   *
+   * `resolveShare` returns null for unknown, revoked, expired and deleted
+   * alike, and all four get the same 404 — a link that says "this was revoked"
+   * confirms the assessment existed.
+   */
+  if (segments[0] === 'shared') {
+    const token = segments[1];
+    if (!token || method !== 'GET') return false;
+    const { resolveShare } = await import('$lib/policy-analysis/server/shares');
+    const shared = await resolveShare(token);
+    if (!shared) throw new HttpError(404, 'That link is not valid. It may have been revoked, or it may have expired.');
+
+    if (segments.length === 2) {
+      sendJson(res, 200, shared);
+      return true;
+    }
+
+    // The same three downloads the owner gets, built from the REDACTED
+    // artefacts — `sharedPayload` takes a report that has already been through
+    // the redactor rather than redacting a second time.
+    if (segments.length === 3 && segments[2] === 'export') {
+      const format = url.searchParams.get('format') ?? 'docx';
+      if (!isDownloadFormat(format)) throw new HttpError(400, 'Ask for docx, md or bundle.');
+      const meta = {
+        title: shared.title,
+        jurisdiction: shared.jurisdiction,
+        policyArea: shared.policyArea,
+        status: shared.status,
+        completedAt: shared.completedAt,
+      };
+      const response = isExportFormat(format)
+        ? await assessmentDocument(shared.artefacts, meta, format)
+        : await assessmentBundle({
+            payload: sharedPayload({ ...meta, artefacts: shared.artefacts, warnings: shared.warnings, withheld: shared.withheld }),
+            meta,
+          });
+      await pipeResponse(response, res);
+      return true;
+    }
+    return false;
+  }
+
   const id = segments[0];
   if (!id) return false;
 
@@ -146,7 +197,11 @@ export async function handleApi(
     if (!result) throw new HttpError(404, 'No such assessment.');
     // `detail()` already carries the artefacts, unsealed. Loading them again
     // was a second query whose only effect was to overwrite its own field.
-    sendJson(res, 200, result);
+    // `readOnly` rides along so the page can decline to draw a control that
+    // would only 403 — the same argument the landing page already makes. It is
+    // read from the server rather than guessed, because the flag can change
+    // under a running browser.
+    sendJson(res, 200, { ...result, readOnly: isReadOnly() });
     return true;
   }
 

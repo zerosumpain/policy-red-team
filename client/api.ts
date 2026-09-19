@@ -50,6 +50,42 @@ export interface Detail {
   passes: unknown[];
   personas: { actorId: string | null; personaId: string; name: string; sightings: number }[];
   heartbeat: string | null;
+  /** True when the server refuses every mutation, so the page can decline to draw a control that would 403. */
+  readOnly: boolean;
+}
+
+/** A link handed out, as its owner sees it. The token itself is shown ONCE, when it is minted. */
+export interface ShareRow {
+  id: string;
+  label: string | null;
+  createdAt: string;
+  expiresAt: string;
+  revokedAt: string | null;
+  lastUsedAt: string | null;
+  useCount: number;
+  live: boolean;
+}
+
+/**
+ * What the holder of a link gets.
+ *
+ * `shareableReport` has already been through it: the policy document's own
+ * passages and any comparison with the reader's other assessments are gone, and
+ * `withheld` says so in figures so the page can report the absence rather than
+ * look complete.
+ */
+export interface SharedAssessment {
+  title: string;
+  jurisdiction: string | null;
+  policyArea: string | null;
+  status: string;
+  completedAt: string | null;
+  sharedLabel: string | null;
+  expiresAt: string;
+  artefacts: Artefact[];
+  withheld: { kind: string; count: number }[];
+  warnings: { stage: string; text: string }[];
+  passes: unknown[];
 }
 
 export interface Landing {
@@ -80,6 +116,16 @@ export const api = {
   purge: (id: string) => request<{ receipt: unknown }>(`/api/policy-analysis/${id}`, { method: 'DELETE' }),
   personas: () => request<{ personas: { id: string; name: string; sightings: number; kind: string | null }[] }>('/api/policy-analysis/personas'),
   persona: (id: string) => request<Record<string, unknown>>(`/api/policy-analysis/personas/${id}`),
+  shares: (id: string) => request<{ shares: ShareRow[] }>(`/api/policy-analysis/${id}/shares`),
+  share: (id: string, label: string | null) =>
+    request<{ id: string; token: string; expiresAt: string }>(`/api/policy-analysis/${id}/shares`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ label }),
+    }),
+  revoke: (id: string, shareId: string) =>
+    request<{ revoked: boolean }>(`/api/policy-analysis/${id}/shares/${shareId}`, { method: 'DELETE' }),
+  sharedAssessment: (token: string) => request<SharedAssessment>(`/api/policy-analysis/shared/${encodeURIComponent(token)}`),
 };
 
 /**
