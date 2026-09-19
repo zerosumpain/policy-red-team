@@ -69,6 +69,21 @@ delete.** Do not weaken it.
   Rendering a react-router `Link` there throws. That is why it takes a `linkTo`
   render function from its caller rather than an href and a flag: the pack
   cannot render a link because the machinery is not in its bundle.
+- **A POLICY GRAPH IS A STAR — measure before you draw it.** ~79% of stated
+  relationships run body→machinery and the degree distribution is FLAT: on a
+  real 452-edge assessment, a node-link picture of the busiest ends places ten
+  of them. `matrix.ts` encodes the same finding for the grid as `legible` /
+  `MIN_GRID_EDGES`. Never count a bodies-against-bodies figure against ALL
+  edges — "0 of 452" reads as a failed extraction where "32 of 452 run between
+  two bodies" is the fact. The numbers are in `src/lib/relationships.ts`.
+- **Every word on these pages came out of a document, and a document is not
+  copy.** Footnote runs (`childcare.32,33`), bare URLs and identifiers with no
+  space push the whole page sideways at 320px. `#main-content` carries
+  `overflow-wrap: anywhere` and `npm run a11y` asserts it in the BUILT CSS,
+  because the fixture's text is written in normal words and no browser gate can
+  reach it.
+- **`network()` is 145ms on a real assessment.** Memoise it wherever it is
+  called from a render body — the report re-renders on every stage event.
 - **GDS has no modal component, on purpose.** A layer over a page wants a focus
   trap, its own Escape handling and a back stack. The pattern here is a route —
   see `client/pages/Drill.tsx`.

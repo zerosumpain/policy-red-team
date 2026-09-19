@@ -35,6 +35,23 @@
   vertical-align: middle;
 }
 
+// EVERY WORD ON THIS PAGE CAME OUT OF A DOCUMENT, and a document is not copy.
+//
+// The paper's own passages carry footnote runs like `childcare.32,33`, bare
+// URLs and identifiers with no space in them, and a model describing them quotes
+// all three back. One such token is wider than a phone, and a word that cannot
+// break pushes the WHOLE PAGE sideways — which is WCAG 2.2's reflow failure and
+// is invisible to a synthetic fixture, whose text is written in normal words.
+// Measured on a real assessment at 320px: the page scrolled 831 pixels, all of
+// it one quoted passage.
+//
+// `anywhere` rather than `break-word` on purpose: only `anywhere` also shrinks
+// the element's min-content width, which is what lets a table cell holding a
+// long identifier narrow instead of forcing its column open.
+#main-content {
+  overflow-wrap: anywhere;
+}
+
 // A stage row's elapsed time and call count, set beside the status tag. Tabular
 // figures so the column does not jitter as a run advances.
 .prt-meta {

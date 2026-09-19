@@ -85,6 +85,17 @@ for (const css of files.filter((f) => f.endsWith('.css'))) {
   if (!/Helvetica Neue,\s*arial,\s*sans-serif/i.test(source)) {
     failures.push(`${path.basename(css)} does not use the off-GOV.UK font stack`);
   }
+  // REFLOW, asserted in the stylesheet because no fixture can reach it.
+  // Every word on these pages came out of a document: footnote runs like
+  // `childcare.32,33`, bare URLs, identifiers with no space in them. One such
+  // token is wider than a phone and pushes the whole page sideways — WCAG 2.2
+  // 1.4.10. Measured on a real assessment at 320px before the rule existed: 831
+  // pixels of horizontal scroll, all of it one quoted passage. The browser gates
+  // run against a synthetic fixture whose text is written in normal words, so
+  // they cannot see it; this can.
+  if (!/#main-content\{[^}]*overflow-wrap:\s*anywhere/.test(source)) {
+    failures.push(`${path.basename(css)} does not let a long unbreakable token wrap inside #main-content`);
+  }
 }
 
 // ── Accessibility ──────────────────────────────────────────────────────────

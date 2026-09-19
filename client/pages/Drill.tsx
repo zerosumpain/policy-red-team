@@ -1,14 +1,17 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Link, useParams } from 'react-router';
 import type { Artefact } from '$lib/policy-analysis/contracts';
 import { explain } from '$lib/policy-analysis/glossary';
 import { BAND_LABEL, confidenceJudgement, plays, stageOfId, type Band } from '$lib/policy-analysis/view';
 import { STAGES, isPassStage } from '$lib/policy-analysis/contracts';
+import { network } from '$lib/policy-analysis/network';
 import { citedBy, paperWording, provenance, type StageOf } from '$lib/provenance';
+import { egoOf } from '$lib/relationships';
 import { api, type Detail } from '../api';
 import { Details, InsetText, SummaryList, Table, Tag, WarningText } from '../govuk';
 import { usePageTitle } from '../layout/Template';
 import { ArtefactValue, fieldLabel } from '../report/ArtefactValue';
+import { EgoMap } from '../report/EgoMap';
 
 /**
  * THE DRILL — one artefact, opened out, with the chain back to the paper.
@@ -54,6 +57,9 @@ export function Drill() {
   // "Policy Red Team" is that argument not actually working.
   const artefact = detail?.artefacts.find((a) => a.id === artefactId) ?? null;
   usePageTitle(artefact?.label);
+  // 145ms on a 3,100-artefact assessment, for the same reason the report
+  // memoises it: it resolves duplicate bodies across the whole inventory.
+  const net = useMemo(() => (detail ? network(detail.artefacts) : null), [detail]);
 
   // A PAGE, not a red sentence. `govuk-error-message` is the field-level class;
   // used alone it left <main> with no h1 at all, nothing announced, and a
@@ -94,6 +100,11 @@ export function Drill() {
 
   const to = (target: Artefact) => `/assessments/${id}/artefacts/${encodeURIComponent(target.id)}`;
   const link = (target: Artefact) => <Link className="govuk-link" to={to(target)}>{target.label}</Link>;
+  const byId = new Map(all.map((a) => [a.id, a]));
+  const linkById = (target: string) => {
+    const found = byId.get(target);
+    return found ? link(found) : nodeLabel(target);
+  };
 
   // The stage off the ROW, not off the id. The twelve structural checks are
   // minted as `test_adaptability` with no `s<n>_` prefix, so an id-derived stage
@@ -123,6 +134,10 @@ export function Drill() {
   const rankOf = (playId: string) => list.findIndex((p) => p.artefact.id === playId) + 1;
 
   const origin = explain(artefact.origin);
+  // Most artefacts are not in the graph at all — a finding, a play and a passage
+  // have no stated relationships — so this section simply does not appear for them.
+  const ego = net ? egoOf(net, artefact.id) : { node: null, out: [], in: [] };
+  const nodeLabel = (target: string) => net?.nodes.find((n) => n.id === target)?.label ?? byId.get(target)?.label ?? target;
   // A passage IS the document's text; everything downstream quotes a span of
   // one. The section reads differently depending on which of those this is.
   const wording = paperWording(artefact);
@@ -174,6 +189,26 @@ export function Drill() {
               p.exposure.toFixed(2),
             ])}
           />
+        </section>
+      ) : null}
+
+      {ego.node && (ego.in.length || ego.out.length) ? (
+        <section aria-labelledby="connects">
+          <h2 className="govuk-heading-m" id="connects">
+            What connects to this — {ego.in.length + ego.out.length}{' '}
+            {ego.in.length + ego.out.length === 1 ? 'relationship' : 'relationships'} the paper states
+          </h2>
+          {!ego.in.length && ego.out.length > 2 ? (
+            <div className="govuk-grid-row">
+              <div className="govuk-grid-column-two-thirds">
+                <WarningText>
+                  The paper gives this {ego.out.length} things to do and points nothing back at it. A
+                  duty nobody is wired to is a duty nobody is holding.
+                </WarningText>
+              </div>
+            </div>
+          ) : null}
+          <EgoMap node={ego.node} incoming={ego.in} outgoing={ego.out} labelOf={nodeLabel} linkFor={linkById} />
         </section>
       ) : null}
 

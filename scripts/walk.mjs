@@ -108,14 +108,54 @@ try {
 
   // 5 — the diagram and its table are both reachable, which the accessibility
   // statement promises and which nothing else checks.
-  const tableToggle = page.getByRole('button', { name: 'Table', exact: true });
+  // Each toggle names its own figure — three of them on this page now, and
+  // three buttons all announcing "Table" would tell a screen-reader user
+  // nothing about which table.
+  const tableToggle = page.getByRole('button', { name: 'Table of ease against impact' });
   if (await tableToggle.count()) {
     await tableToggle.click();
     await page.getByRole('table', { name: /ease and impact/i }).waitFor({ timeout: 5000 }).catch(() => {
       failures.push('report: the exposure plot has no table view');
     });
+    // The pressed view must be visible and not merely announced: two identical
+    // grey buttons over a chart leave a sighted reader no way to know which one
+    // they are looking at.
+    const pressed = await tableToggle.evaluate((el) => ({
+      pressed: el.getAttribute('aria-pressed'),
+      secondary: el.className.includes('govuk-button--secondary'),
+    }));
+    if (pressed.pressed !== 'true' || pressed.secondary) {
+      failures.push('report: the selected view is not marked pressed, or does not look it');
+    }
     await audit('/assessments/:id (table view)');
-    note('diagram and table both render');
+    note('diagram and table both render, and the pressed one looks pressed');
+  }
+
+  // 5b — THE RELATIONSHIP GRAPH. Present only when the paper states
+  // relationships; the fixture states one, which is enough to prove the section
+  // renders, counts and links.
+  const connect = page.getByRole('heading', { name: 'How they connect' });
+  if (await connect.count()) {
+    await connect.scrollIntoViewIfNeeded();
+    const netText = await page.locator('section[aria-labelledby="network"]').innerText();
+    for (const expected of ['Where the relationships run', 'What kind of relationship', 'Bodies against bodies', 'What the connections show']) {
+      if (!netText.includes(expected)) failures.push(`network: missing "${expected}"`);
+    }
+    // Either branch is a real answer, and the fixture takes the second: its one
+    // stated relationship runs from a body to machinery, so there is no
+    // body-to-body mesh — which is the shape of a real policy paper too, and the
+    // reason the section says so in words rather than drawing an empty grid.
+    if (!/(\d+ of the \d+ stated relationships run between two bodies|no relationship between two bodies at all)/.test(netText)) {
+      failures.push('network: does not say how the bodies relate to each other');
+    }
+    await page.getByRole('button', { name: 'Table of where the relationships run' }).click();
+    await page.getByRole('table', { name: /kind of thing at each end/i }).waitFor({ timeout: 5000 }).catch(() => {
+      failures.push('network: the shape figure has no table view');
+    });
+    await audit('/assessments/:id (relationships)');
+    note('the relationship section renders, with its tables');
+  } else {
+    failures.push('report: no "How they connect" section at all');
   }
 
   // 6 — THE DRILL: one artefact, opened out, with its chain back to the paper.

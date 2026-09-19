@@ -1,7 +1,7 @@
-import { useState } from 'react';
 import { BAND_FILL, BAND_LABEL, PLOT_SIZE, plotPoints, type Play } from '$lib/policy-analysis/view';
 import { Table } from '../govuk';
 import type { ArtefactLink } from './Report';
+import { Figure } from './Figure';
 
 /**
  * Ease against impact, as a picture and as a table.
@@ -21,24 +21,13 @@ import type { ArtefactLink } from './Report';
  * toggle is one keystroke away.
  */
 export function ExposurePlot({ plays, linkTo }: { plays: Play[]; linkTo?: ArtefactLink }) {
-  const [view, setView] = useState<'diagram' | 'table'>('diagram');
   if (!plays.length) return null;
   const points = plotPoints(plays);
 
   return (
-    <>
-      <div className="govuk-button-group govuk-!-margin-bottom-2">
-        <button type="button" className="govuk-button govuk-button--secondary"
-                aria-pressed={view === 'diagram'} onClick={() => setView('diagram')}>
-          Diagram
-        </button>
-        <button type="button" className="govuk-button govuk-button--secondary"
-                aria-pressed={view === 'table'} onClick={() => setView('table')}>
-          Table
-        </button>
-      </div>
-
-      {view === 'diagram' ? (
+    <Figure
+      label="ease against impact"
+      diagram={(
         <figure className="govuk-!-margin-0">
           <svg viewBox={`0 0 ${PLOT_SIZE} ${PLOT_SIZE}`} width="100%" style={{ maxWidth: 480 }} role="img"
                aria-label={`Scatter plot of ${plays.length} plays: how easy each is against how much damage it does. ${plays.filter((p) => p.band === 'severe').length} are in the severe band. The same figures are available as a table.`}>
@@ -58,7 +47,8 @@ export function ExposurePlot({ plays, linkTo }: { plays: Play[]; linkTo?: Artefa
             it costs. Switch to the table for the figures.
           </figcaption>
         </figure>
-      ) : (
+      )}
+      table={(
         <Table
           caption="Every play, by ease and impact"
           captionSize="s"
@@ -73,6 +63,6 @@ export function ExposurePlot({ plays, linkTo }: { plays: Play[]; linkTo?: Artefa
           ])}
         />
       )}
-    </>
+    />
   );
 }

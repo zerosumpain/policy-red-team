@@ -3,10 +3,12 @@ import {
   headlineSentence, ledger, plays, recommendations, summarise, tiles,
 } from '$lib/policy-analysis/view';
 import type { Artefact } from '$lib/policy-analysis/contracts';
-import type { ReactNode } from 'react';
+import { useMemo, type ReactNode } from 'react';
+import { network } from '$lib/policy-analysis/network';
 import type { Detail } from '../api';
 import { Accordion, Details, InsetText, SummaryList, Table, Tag, WarningText } from '../govuk';
 import { ExposurePlot } from './ExposurePlot';
+import { NetworkSection } from './Network';
 
 /**
  * The report.
@@ -88,6 +90,14 @@ export function Report({ detail, offline, linkTo }: { detail: Detail; offline?: 
   const bands = bandCounts(list);
   const mix = evidenceMix(artefacts);
   const structural = checks(artefacts);
+  /**
+   * MEMOISED, and not for tidiness. `network()` is 145ms on a 3,100-artefact
+   * assessment — it resolves duplicate bodies across every actor in the
+   * inventory — and this component re-renders on every stage event while a run
+   * is in flight. The rest of the shaping above is a few milliseconds and does
+   * not need it.
+   */
+  const net = useMemo(() => network(artefacts), [artefacts]);
 
   const sections: Section[] = [];
   const section = (id: string, title: string, body: React.ReactNode) => {
@@ -148,6 +158,10 @@ export function Report({ detail, offline, linkTo }: { detail: Detail; offline?: 
       columns={[{ header: 'Body' }, { header: 'Plays', numeric: true }, { header: 'Worst exposure', numeric: true }]}
       rows={board.map((actor) => [name(actor.actor), String(actor.plays.length), actor.worst.toFixed(2)])}
     />
+  ) : null);
+
+  section('network', 'How they connect', net.edges.length ? (
+    <NetworkSection net={net} artefacts={artefacts} linkTo={linkTo} />
   ) : null);
 
   section('evidence', 'What is backed up', mix.length ? (

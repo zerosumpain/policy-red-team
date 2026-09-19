@@ -54,10 +54,34 @@ export function Accessibility() {
 
         <h3 className="govuk-heading-m">Diagrams have a table</h3>
         <p className="govuk-body">
-          The relationship map and the exposure plot are pictures of data. Each is paired with
-          the same data as a table, which is the version that works with a screen reader,
-          survives being printed, and can be copied. Neither view is the "accessible
-          alternative" to the other; they are two ways of reading one thing.
+          The exposure plot, the two relationship charts and the map of what connects to one
+          body are pictures of data. Each is paired with the same data as a table, which is the
+          version that works with a screen reader, survives being printed, and can be copied.
+          Neither view is the "accessible alternative" to the other; they are two ways of
+          reading one thing, and the control that swaps them is offered to everyone.
+        </p>
+        <p className="govuk-body">
+          Where the two differ, it is the table that carries more: the exposure plot draws
+          twenty plays and the table beside it links into every one of them. A link inside a
+          drawing is reachable but poorly announced, so the drawings do not carry any.
+        </p>
+
+        <h3 className="govuk-heading-m">There is no map of the whole graph</h3>
+        <p className="govuk-body">
+          The version of this tool built into its author's own site draws the policy's
+          relationships as a three-dimensional network you can turn around. This one does not,
+          and the reason is not that the picture would be hard to describe — it is that it
+          would not be true. Measured on a real assessment of 452 stated relationships, a
+          node-link picture of the busiest bodies and the busiest machinery places ten of them;
+          widened until it is no longer legible, forty-three. A policy paper names hundreds of
+          bodies that each touch one or two things, so a map of it is a shape that flatters the
+          reading rather than showing it.
+        </p>
+        <p className="govuk-body">
+          What replaces it is the two figures that are true at any size — where the
+          relationships run, and what kind they are — the bodies-against-bodies list, and a
+          drawing of the relationships around a single body, which is the one scale at which a
+          network picture answers a question.
         </p>
 
         <h2 className="govuk-heading-l">Known problems</h2>
