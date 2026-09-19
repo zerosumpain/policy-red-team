@@ -43,8 +43,16 @@ export function Metrics({ metrics, columns }: { metrics: Metric[]; columns?: 2 |
          * report — and axe cannot see it: `structuredDlitemsEvaluate` walks the
          * `dl`'s direct children, which are these `div`s, so it never inspects
          * the ordering and the rule passes. A green gate on an invalid list.
+         *
+         * AND NO MODIFIER WHERE THERE IS NO TONE. This emitted
+         * `prt-metric--neutral` on every untoned card and the stylesheet has
+         * never defined it — it rendered correctly only because `.prt-metric`'s
+         * own black rule is what "neutral" was meant to mean. A class the markup
+         * asks for and the stylesheet has never heard of is a vocabulary with a
+         * hole in it, and the hole is invisible precisely because the default is
+         * right.
          */
-        <div key={metric.label} className={`prt-metric prt-metric--${metric.tone ?? 'neutral'}`}>
+        <div key={metric.label} className={`prt-metric${metric.tone ? ` prt-metric--${metric.tone}` : ''}`}>
           <dt className="prt-metric__label">{metric.label}</dt>
           <dd className="prt-metric__value">{metric.value}</dd>
           {metric.note ? <dd className="prt-metric__note">{metric.note}</dd> : null}

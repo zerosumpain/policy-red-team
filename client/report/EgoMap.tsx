@@ -43,6 +43,15 @@ import { Figure } from './Figure';
  * than a slot in a fixed-height viewBox — but still capped, because a body with
  * forty-one outgoing duties makes a picture nobody reads, and the table below
  * carries every one of them either way.
+ *
+ * IT HAS NEVER BITTEN. Measured over the real run's 120 graph entities, the
+ * busiest side of any of them is 9 outgoing (Office for Students, Higher
+ * education providers) and 6 incoming — so `hidden` below is always 0 and the
+ * "N more relationships are in the table" sentence has never rendered. Whoever
+ * raises or lowers this should argue from that rather than from the number.
+ * (`relationships.ts` used to carry a second, retired cap of eight, in the
+ * geometry of the SVG this replaced. It said "eight a side" long after the live
+ * answer was twelve, and it is gone.)
  */
 const DRAWN = 12;
 

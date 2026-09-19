@@ -4,7 +4,7 @@ import type { Artefact } from '$lib/policy-analysis/contracts';
 import { explain } from '$lib/policy-analysis/glossary';
 import { BAND_LABEL, confidenceJudgement, plays, stageOfId } from '$lib/policy-analysis/view';
 import { STAGES, isPassStage } from '$lib/policy-analysis/contracts';
-import { network } from '$lib/policy-analysis/network';
+import { edgesOf, nodesOf } from '$lib/policy-analysis/network';
 import { citedBy, paperWording, provenance, type StageOf } from '$lib/provenance';
 import { linkRecommendation, TIER_LABEL, TIER_RULE, type Tier } from '$lib/recommendation';
 import { egoOf, labelIndex } from '$lib/relationships';
@@ -83,7 +83,26 @@ export function Drill() {
     () => !!detail?.artefacts.some((a) => a.kind === 'edge' && (a.fromId === artefactId || a.toId === artefactId)),
     [detail, artefactId],
   );
-  const net = useMemo(() => (detail && inGraph ? network(detail.artefacts) : null), [detail, inGraph]);
+  /*
+   * ONLY THE GRAPH, NOT THE WHOLE NETWORK.
+   *
+   * `network()` returns nodes and edges plus the family panels and the eight
+   * structural insights — seven `edges.filter` passes, an `ends()` walk over
+   * every edge five times, and a duplicate-body union-find — and the two things
+   * this page asks it for, `labelIndex` and `egoOf`, read nodes and edges and
+   * nothing else. Timed against the real 2,265-artefact run: `network()` is
+   * 43.5ms on the first call where `edgesOf` + `nodesOf` are 0.78ms.
+   *
+   * The two cannot disagree, because `network()` is itself these two plus the
+   * parts nobody here wanted. And it stays in this file rather than becoming a
+   * `graphOf()` in `network.ts`, which is a verbatim upstream copy where a hand
+   * edit is reverted by the next sync.
+   */
+  const net = useMemo(() => {
+    if (!detail || !inGraph) return null;
+    const edges = edgesOf(detail.artefacts);
+    return { edges, nodes: nodesOf(detail.artefacts, edges) };
+  }, [detail, inGraph]);
 
   // A PAGE, not a red sentence. `govuk-error-message` is the field-level class;
   // used alone it left <main> with no h1 at all, nothing announced, and a
@@ -357,7 +376,7 @@ export function Drill() {
       <section aria-labelledby="fields">
         <h2 className="govuk-heading-m" id="fields">Everything recorded about it</h2>
         <Details summary="Every structured field">
-          <ArtefactValue value={artefact.data} all={all} linkTo={link} />
+          <ArtefactValue value={artefact.data} byId={byId} linkTo={link} />
         </Details>
         <p className="govuk-body-s prt-meta">Identified in this assessment as {artefact.id}.</p>
       </section>

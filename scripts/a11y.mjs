@@ -96,6 +96,34 @@ for (const css of files.filter((f) => f.endsWith('.css'))) {
   if (!/#main-content\{[^}]*overflow-wrap:\s*anywhere/.test(source)) {
     failures.push(`${path.basename(css)} does not let a long unbreakable token wrap inside #main-content`);
   }
+
+  /*
+   * A RULE NOTHING CLAIMS IS A RULE NOBODY MAINTAINS.
+   *
+   * `.prt-profile` — thirty lines for the exposure bar, with its four band
+   * modifiers and a touch-target comment — outlived the markup that used it by
+   * three phases, and `.prt-writeup__more` was a colour written for a control
+   * that never asked for it. Both were invisible: the stylesheet compiles, the
+   * page renders, and nothing anywhere says a class has no claimant.
+   *
+   * MATCHED BY STEM, NOT BY WHOLE NAME. Nineteen of these classes are composed in
+   * template literals — `prt-band--${band}`, `prt-metric--${tone}` — so a check
+   * for the literal string would call every band variant dead. A modifier counts
+   * as claimed when the part before its `--` appears in a source; an element
+   * (`__foo`) has to appear in full, because that is the half that actually rots.
+   */
+  const declared = new Set([...source.matchAll(/\.(prt-[A-Za-z0-9_-]+)/g)].map((m) => m[1]));
+  const sources = (await Promise.all(
+    (await listFiles(path.join(ROOT, 'client'))).filter((f) => /\.tsx?$/.test(f)).map((f) => readFile(f, 'utf8')),
+  )).join('\n');
+  const orphans = [...declared].filter((name) => {
+    if (sources.includes(name)) return false;
+    const stem = name.split('--')[0];
+    return stem === name || !sources.includes(stem);
+  });
+  if (orphans.length) {
+    failures.push(`${path.basename(css)} declares ${orphans.length} class(es) nothing renders: ${orphans.sort().join(', ')}`);
+  }
 }
 
 // ── Accessibility ──────────────────────────────────────────────────────────

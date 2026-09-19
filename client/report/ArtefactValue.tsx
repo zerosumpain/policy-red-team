@@ -68,9 +68,19 @@ const rank = (key: string) => {
 
 const Nothing = ({ text }: { text: string }) => <span className="prt-meta">{text}</span>;
 
-export function ArtefactValue({ value, all, linkTo, fieldKey = '' }: {
+export function ArtefactValue({ value, byId, linkTo, fieldKey = '' }: {
   value: unknown;
-  all: Artefact[];
+  /**
+   * Every artefact of the run, by id.
+   *
+   * A MAP RATHER THAN THE ARRAY, because this runs on every string leaf at every
+   * depth: the worst target on the real run is a profile with 175 of them, and
+   * scanning 2,265 rows for each — most of them prose that never matches, so the
+   * scan never short-circuits — is 396,375 comparisons and 2.3ms to render one
+   * disclosure, whether or not the reader opens it. `Drill` already builds this
+   * map two hundred lines above the call site and was passing the array.
+   */
+  byId: Map<string, Artefact>;
   /** How an id that resolves to another artefact is rendered. Omitted — in the offline pack — it is its label. */
   linkTo?: (artefact: Artefact) => ReactNode;
   fieldKey?: string;
@@ -79,7 +89,7 @@ export function ArtefactValue({ value, all, linkTo, fieldKey = '' }: {
 
   if (typeof value === 'string') {
     if (!value) return <Nothing text="Not established" />;
-    const ref = all.find((a) => a.id === value);
+    const ref = byId.get(value);
     if (ref) return linkTo ? linkTo(ref) : ref.label;
     return VOCABULARY.has(value) ? sentence(value) : value;
   }
@@ -96,7 +106,7 @@ export function ArtefactValue({ value, all, linkTo, fieldKey = '' }: {
     return (
       <ul className="govuk-list govuk-list--bullet">
         {value.map((item, i) => (
-          <li key={i}><ArtefactValue value={item} all={all} linkTo={linkTo} fieldKey={fieldKey} /></li>
+          <li key={i}><ArtefactValue value={item} byId={byId} linkTo={linkTo} fieldKey={fieldKey} /></li>
         ))}
       </ul>
     );
@@ -110,7 +120,7 @@ export function ArtefactValue({ value, all, linkTo, fieldKey = '' }: {
         noBorder
         rows={entries.map(([key, item]) => ({
           key: fieldLabel(key),
-          value: <ArtefactValue value={item} all={all} linkTo={linkTo} fieldKey={key} />,
+          value: <ArtefactValue value={item} byId={byId} linkTo={linkTo} fieldKey={key} />,
         }))}
       />
     );

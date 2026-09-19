@@ -10,7 +10,7 @@ import { describe, expect, it } from 'vitest';
 import { artefact, RELATIONS, type Artefact } from '$lib/policy-analysis/contracts';
 import { network } from '$lib/policy-analysis/network';
 import { adjacency, MIN_GRID_EDGES } from '$lib/policy-analysis/matrix';
-import { bars, barsHeight, EGO_BOX, EGO_ROW, egoLayout, egoOf, kindColour, kindLabel, shapeOf } from './relationships';
+import { bars, barsHeight, egoOf, kindColour, kindLabel, shapeOf } from './relationships';
 
 const actor = (id: string) => artefact(id, 'actor', `Body ${id}`, 'A body.', { entityType: 'department' });
 const mechanism = (id: string) => artefact(id, 'mechanism', `Machinery ${id}`, 'Machinery.', {});
@@ -123,56 +123,6 @@ describe("one entity's own relationships", () => {
   });
 });
 
-describe('ego layout', () => {
-  /** Everything the drawing puts on the canvas, against the box it declares. */
-  const fits = (inCount: number, outCount: number) => {
-    const { height, centreY, left, right } = egoLayout(inCount, outCount);
-    const spokes = [...left, ...right];
-    return {
-      box: centreY - EGO_BOX / 2 >= 0 && centreY + EGO_BOX / 2 <= height,
-      // Each spoke carries a second line 17 below its centre — the relation,
-      // set under the name.
-      labels: spokes.every((y) => y - 8 >= 0 && y + 17 <= height),
-    };
-  };
-
-  it('leaves room for the subject box, which is taller than a row', () => {
-    // THE DEFECT THIS PINS: one row per spoke and nothing else gave a body with
-    // a single relationship a 30-unit picture holding a 40-unit box, and SVG
-    // clipped the subject off its own diagram. 183 of 267 bodies on a real
-    // assessment have one relationship or none.
-    for (const [i, o] of [[0, 0], [0, 1], [1, 0], [1, 1], [3, 1], [0, 6], [2, 6], [8, 8]]) {
-      const check = fits(i, o);
-      expect(`${i}x${o} box ${check.box}`).toBe(`${i}x${o} box true`);
-      expect(`${i}x${o} labels ${check.labels}`).toBe(`${i}x${o} labels true`);
-    }
-    expect(egoLayout(0, 0).height).toBeGreaterThanOrEqual(EGO_BOX);
-  });
-
-  it('centres the subject against the taller side, so the asymmetry is the picture', () => {
-    // A body with nothing pointing at it is the reading this drawing exists for.
-    const lopsided = egoLayout(0, 6);
-    expect(lopsided.left).toEqual([]);
-    expect(lopsided.right).toHaveLength(6);
-    expect(lopsided.centreY).toBe(lopsided.height / 2);
-  });
-
-  it('centres the shorter side within the taller, rather than starting both at the top', () => {
-    const { left, right } = egoLayout(2, 6);
-    expect(right).toHaveLength(6);
-    // The two incoming spokes sit either side of the middle of the six.
-    expect(left).toHaveLength(2);
-    expect(left[0]).toBeCloseTo(right[2], 6);
-    expect(left[1]).toBeCloseTo(right[3], 6);
-  });
-
-  it('never collapses to a zero-height box when an entity has no relationships', () => {
-    const empty = egoLayout(0, 0);
-    expect(empty.height).toBeGreaterThan(0);
-    expect(empty.left).toEqual([]);
-    expect(empty.right).toEqual([]);
-  });
-});
 
 describe('bar geometry', () => {
   it('is proportional to the largest bar, which fills the box', () => {

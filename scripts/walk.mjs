@@ -140,6 +140,7 @@ try {
    */
   await page.getByRole('tab', { name: /verdict/i }).click();
   // The four exposure boxes are one segmented bar now: `.prt-profile` is gone
+  // from the markup and, since the dead-rule sweep, from the stylesheet too.
   // and the segments are the control. The walk went green on a selector that
   // matched nothing, reporting "no exposure band to select" rather than passing
   // — which is the right failure, and is why this is a walk and not a unit test.

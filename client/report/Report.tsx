@@ -1,6 +1,6 @@
 import {
   BAND_LABEL, actorBoard, bandCounts, checks, evidenceMix, findingsBySection,
-  headlineSentence, ledger, plays, recommendations, summarise, tiles,
+  headlineSentence, interplay, ledger, personaBoard, plays, recommendations, summarise, tiles,
 } from '$lib/policy-analysis/view';
 import type { Artefact } from '$lib/policy-analysis/contracts';
 import { Fragment, useEffect, useMemo, useState, type ReactNode } from 'react';
@@ -19,6 +19,7 @@ import { VerdictLead } from './moves/VerdictLead';
 import { CausalityLead } from './moves/CausalityLead';
 import { ThreatsLead } from './moves/ThreatsLead';
 import { ProvenanceLead } from './moves/ProvenanceLead';
+import { ActorsLead } from './moves/ActorsLead';
 import { ExposurePlot } from './ExposurePlot';
 import { NetworkSection } from './Network';
 import { StressLab } from './StressLab';
@@ -247,7 +248,21 @@ export function Report({ detail, offline, linkTo, onChanged }: {
   }, [move, selection, offline]);
   const mechanismIds = useMemo(() => mechanismIdsOf(artefacts), [artefacts]);
 
-  const list = plays(artefacts);
+  /*
+   * MEMOISED AT THE ROOT, so the two memos below can actually hit.
+   *
+   * `plays()` maps a fresh array, so a bare call changed identity on every
+   * render — which made `boardPlays` recompute, which changed ITS identity, which
+   * made `board` recompute. Two memos documented as protecting the shaping,
+   * protecting nothing. `ThreatsLead` carries a comment about this exact failure
+   * ("a dependency on `shown` changed identity every render and the sort re-ran
+   * every time"); this file had the same bug unfixed.
+   *
+   * `artefacts` is a stable prop between fetches, so all three are now stable.
+   * The shaping is milliseconds either way — what was wrong was claiming it was
+   * guarded.
+   */
+  const list = useMemo(() => plays(artefacts), [artefacts]);
   /*
    * NARROWED, EXCEPT BY A BODY. The board is how a reader picks a body, so it
    * keeps every row when a body is selected — but a band or mechanism selection
@@ -259,6 +274,13 @@ export function Report({ detail, offline, linkTo, onChanged }: {
     [list, selection, mechanismIds],
   );
   const board = useMemo(() => actorBoard(artefacts, boardPlays), [artefacts, boardPlays]);
+  /*
+   * The join between the board and the playbook, and the library's view of the
+   * bodies on it — both narrowed by the same plays the board is, so Move 4 is one
+   * answer rather than three that disagree about what is selected.
+   */
+  const interplayMap = useMemo(() => interplay(artefacts, boardPlays), [artefacts, boardPlays]);
+  const personaGroups = useMemo(() => personaBoard(board, detail.personas), [board, detail.personas]);
   const warnings = useMemo(() => stages.flatMap((s) => s.warnings), [stages]);
   /*
    * ONE REPORT, ONE NUMBER FOR ONE WORD.
@@ -326,6 +348,14 @@ export function Report({ detail, offline, linkTo, onChanged }: {
     <CausalityLead artefacts={artefacts} list={list} selection={selection} onSelect={setSelection} mechanismIds={mechanismIds} linkTo={linkTo} />);
   lead('weights', 'Rank by what you care about', 'threats',
     <ThreatsLead list={list} selection={selection} mechanismIds={mechanismIds} linkTo={linkTo} />);
+  /*
+   * MOVE 4 GETS THE LEAD IT NEVER HAD. The other three each open with one; this
+   * one opened with a twelve-row table, which is why its panel measured 919px
+   * against Threats' 6,104px. See `ActorsLead` for what was already written and
+   * connected to nothing.
+   */
+  lead('interplay', 'Who is coming for what', 'actors',
+    <ActorsLead interplay={interplayMap} personas={personaGroups} linkTo={linkTo} />);
   lead('discarded', 'What was discarded, and why', 'provenance',
     <ProvenanceLead stages={stages} />);
 

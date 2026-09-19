@@ -127,7 +127,20 @@ export type Ego = {
   in: Edge[];
 };
 
-export function egoOf(net: Network, id: string): Ego {
+/**
+ * THE HALF OF A `Network` THESE TWO ACTUALLY READ.
+ *
+ * `network()` returns nodes and edges plus the family panels and the eight
+ * structural insights — including the duplicate-body union-find — and neither of
+ * the functions below touches any of that. Taking the narrower type lets a caller
+ * that only wants an ego map build only what an ego map needs: `edgesOf` and
+ * `nodesOf` are 0.8ms on a real assessment against 43ms for the whole pipeline.
+ *
+ * A `Network` still satisfies it, so nothing that already had one has to change.
+ */
+export type Graph = Pick<Network, 'nodes' | 'edges'>;
+
+export function egoOf(net: Graph, id: string): Ego {
   return {
     node: net.nodes.find((n) => n.id === id) ?? null,
     out: net.edges.filter((e) => e.fromId === id),
@@ -141,7 +154,7 @@ export function egoOf(net: Network, id: string): Ego {
 }
 
 /** Node labels by id, for drawing the far end of an edge. */
-export function labelIndex(net: Network): Map<string, EntityNode> {
+export function labelIndex(net: Graph): Map<string, EntityNode> {
   return new Map(net.nodes.map((n) => [n.id, n]));
 }
 
@@ -168,49 +181,3 @@ export function bars(values: number[], width: number): { y: number; length: numb
 
 export const barsHeight = (count: number) => Math.max(0, count * (BAR_HEIGHT + BAR_GAP) - BAR_GAP);
 
-/**
- * How many spokes an ego picture draws before it stops being a picture.
- *
- * Eight a side is two more than the busiest end of a real assessment needs on
- * all but a handful of bodies, and past that the labels collide. The remainder
- * is counted and the table carries all of it.
- */
-export const EGO_SPOKES = 8;
-export const EGO_ROW = 30;
-/** The subject's own box. It is drawn centred, so the picture can never be shorter than it. */
-export const EGO_BOX = 40;
-/** Room below the last spoke for its second line — the relation, set under the name. */
-export const EGO_TAIL = 22;
-
-/**
- * Where the spokes of an ego picture sit.
- *
- * The one reading this drawing exists for is the ASYMMETRY — a body with
- * eighteen outgoing duties and nothing incoming is visible in a second and takes
- * a paragraph to say. So the two sides are laid out independently and the
- * subject is centred against the taller of them, rather than each side being
- * centred on its own, which would hide exactly that.
- *
- * THE BOX HAS TO FIT. The first version sized the picture at one row per spoke
- * and nothing else, so a body with a single relationship — 183 of 267 on a real
- * assessment have one or none — got a 30-unit viewBox holding a 40-unit box
- * centred in it, and SVG clipped the subject off its own diagram top and bottom.
- * The last spoke's second line was clipped at every count for the same reason.
- * The height now carries both.
- */
-export function egoLayout(inCount: number, outCount: number): {
-  height: number;
-  centreY: number;
-  left: number[];
-  right: number[];
-} {
-  const rows = Math.max(inCount, outCount, 1);
-  const height = Math.max(rows * EGO_ROW + EGO_TAIL, EGO_BOX);
-  const centreY = height / 2;
-  // The shorter side is centred within the taller, and both sit against the top
-  // of the row band — whose own offset is whatever the box needed.
-  const top = (height - EGO_TAIL - rows * EGO_ROW) / 2;
-  const at = (count: number) =>
-    Array.from({ length: count }, (_, i) => top + (i + 0.5) * EGO_ROW + ((rows - count) * EGO_ROW) / 2);
-  return { height, centreY, left: at(inCount), right: at(outCount) };
-}
