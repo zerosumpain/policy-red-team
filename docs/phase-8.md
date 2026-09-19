@@ -115,6 +115,15 @@ The last two are not gates and cannot be: they need a real assessment, and the
 repository has a fixture. They were run by hand, and between them they found the
 reflow failure, the mismatched figures and the invisible toggle state.
 
+**The written exports already had this.** `report-doc.ts` — copied, untouched —
+has carried `## The policy as a network` all along, with the same insights and
+the same placeable-against-total framing. Checked against the real assessment,
+the Word file and the page say the same thing to the digit (267 bodies, 452
+relationships, 32 between two bodies), because both derive from `network()`.
+That is the whole argument for having copied the view layer rather than
+reimplementing it: two pictures of one graph cannot disagree about what is in
+it.
+
 ## Decision log
 
 | Fork | Options | Chosen | Why | Reversible? |
