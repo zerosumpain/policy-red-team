@@ -131,7 +131,7 @@ export function ActorsLead({ interplay, personas, linkTo }: {
             ]}
             rows={personas.map((group) => [
               group.here.length && linkTo ? linkTo(group.here[0].actor, group.name) : group.name,
-              `${group.records.reduce((n, r) => n + r.sightings, 0)} papers`,
+              papers(group.records.reduce((n, r) => n + r.sightings, 0)),
               String(group.plays.length),
               group.worst
                 ? <span className={`prt-band prt-band--${bandOf(group.worst, group)}`}>{BAND_LABEL[bandOf(group.worst, group)]}</span>
@@ -143,6 +143,9 @@ export function ActorsLead({ interplay, personas, linkTo }: {
     </section>
   );
 }
+
+/** "1 paper", "5 papers" — a sightings count reads as English or it reads as a bug. */
+const papers = (n: number) => `${n} ${n === 1 ? 'paper' : 'papers'}`;
 
 /**
  * The band of a group's worst play, read off the play rather than recomputed.
