@@ -1,4 +1,60 @@
 @use "../govuk" as govuk;
 @use "../tokens" as *;
 
-// Reserved for the "composition" change. Empty until it lands.
+// ── Where the causal reading lands ────────────────────────────────────────
+//
+// Three figures with a narrowing at the end: 151 pieces of machinery a chain
+// runs through, 710 assumption citations across 150 chains, 8 conclusions.
+//
+// EQUAL WIDTHS, AND THAT IS THE WHOLE ARGUMENT. Drawn to scale the last stage
+// would be about one pixel against 710; drawn to a decreasing width that is not
+// to scale it would be a chart lying about a length, which is the one thing
+// this build does not do. The narrowing is in the numbers and in the reading
+// order, and a step number makes the order a signal rather than an assumption
+// about how the reader scans.
+//
+// On `.prt-metric`'s vocabulary — a 4px rule above a large tabular figure with
+// its label under it — because these ARE metric cards with a sequence, and a
+// second card vocabulary on the same panel would be a second answer to "what
+// does a figure look like here".
+.prt-chainflow {
+  counter-reset: prt-chainflow;
+  display: flex;
+  flex-wrap: wrap;
+  gap: govuk.govuk-spacing(3);
+  list-style: none;
+  margin: 0 0 govuk.govuk-spacing(3);
+  padding: 0;
+}
+
+.prt-chainflow__stage {
+  flex: 1 1 14rem;
+  min-width: 0;
+  border-top: 4px solid govuk.govuk-colour("black");
+  padding-top: govuk.govuk-spacing(2);
+}
+
+// The step number, before the figure. Generated content rather than markup
+// because it is the list's own ordinal: the element is an `<ol>`, so a screen
+// reader has the sequence from the semantics whether or not it announces this.
+.prt-chainflow__stage::before {
+  counter-increment: prt-chainflow;
+  content: "Step " counter(prt-chainflow);
+  display: block;
+  @include govuk.govuk-font($size: 16);
+  color: govuk.govuk-colour("black", $variant: "tint-25");
+}
+
+.prt-chainflow__n {
+  display: block;
+  @include govuk.govuk-font($size: 36, $weight: bold);
+  font-variant-numeric: tabular-nums;
+  line-height: 1.1;
+}
+
+.prt-chainflow__label {
+  display: block;
+  @include govuk.govuk-font($size: 16);
+  color: govuk.govuk-colour("black", $variant: "tint-25");
+  max-width: $prt-measure;
+}

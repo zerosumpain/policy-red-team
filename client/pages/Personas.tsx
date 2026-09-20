@@ -1,7 +1,9 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router';
 import { api, type PersonaSummary } from '../api';
-import { Table, Tag } from '../govuk';
+import { Table, type Column } from '../govuk';
+import { BandMark } from '../BandMark';
+import { Bar } from '../report/Metrics';
 import { usePageTitle } from '../layout/Template';
 
 /**
@@ -63,37 +65,98 @@ export function Personas() {
       {rows?.length ? (
         <div className="govuk-grid-row">
           <div className="govuk-grid-column-full">
-            <Table
-              caption="Most-seen first"
-              captionSize="s"
-              scroll
-              columns={[
-                { header: 'Body' }, { header: 'Kind' },
-                { header: 'Papers', numeric: true }, { header: 'Plays', numeric: true },
-                { header: 'Worst band' }, { header: 'Enquiries', numeric: true }, { header: 'Last recorded' },
-              ]}
-              rows={rows.map((row) => [
-                <Link key="n" className="govuk-link" to={`/personas/${row.id}`}>{row.name}</Link>,
-                row.entityType.replaceAll('_', ' ') || '—',
-                String(row.sightings),
-                String(row.plays),
-                row.worstBand
-                  ? <Tag colour={row.worstBand === 'severe' ? 'red' : row.worstBand === 'significant' ? 'orange' : 'grey'}>{row.worstBand}</Tag>
-                  : <span className="prt-meta">None found</span>,
-                String(row.researchNotes),
-                /* "LAST RECORDED", not "last seen in a paper". `listPersonas`
-                   computes it over every observation including the enquiries a
-                   reader commissioned, so an enquiry moves this date for a body
-                   no new paper has named — which the old column heading denied.
-                   The enquiries column beside it is what makes the difference
-                   legible. */
-                row.lastSeen
-                  ? new Date(row.lastSeen).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })
-                  : <span className="prt-meta">Not recorded</span>,
-              ])}
-            />
+            <Library rows={rows} />
           </div>
         </div>
+      ) : null}
+    </>
+  );
+}
+
+/** The date a row was last recorded, as the column printed it. */
+const recorded = (iso: string | null) => (iso
+  ? new Date(iso).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })
+  : null);
+
+/**
+ * THREE OF SEVEN COLUMNS WERE THE SAME VALUE TWELVE TIMES.
+ *
+ * Measured on the live library: `Papers` is 1 on every row, `Enquiries` is 0 on
+ * every row and `Last recorded` is "19 Sept 2026" on every row — 43% of the
+ * table carrying no information, in a table whose whole purpose is telling the
+ * rows apart. They are not deleted: a column is rendered where it VARIES and
+ * folded into one sentence where it does not, so the moment a second assessment
+ * runs, or one enquiry is commissioned, the column comes back on its own.
+ *
+ * `Plays` GETS A LENGTH. 6 against 1 read as two digits; it is the column that
+ * actually orders the table, and Move 4 already draws its "Worst play" column
+ * this way. The bar is normalised to the row maximum, which is what `scale`
+ * tells a screen-reader user so that this table's lengths are not mistaken for
+ * another's.
+ */
+function Library({ rows }: { rows: PersonaSummary[] }) {
+  const varies = <T,>(pick: (row: PersonaSummary) => T) => new Set(rows.map(pick)).size > 1;
+  const showPapers = varies((row) => row.sightings);
+  const showEnquiries = varies((row) => row.researchNotes);
+  const showLastSeen = varies((row) => recorded(row.lastSeen));
+  const mostPlays = Math.max(1, ...rows.map((row) => row.plays));
+
+  const columns: Column[] = [
+    { header: 'Body' }, { header: 'Kind' },
+    ...(showPapers ? [{ header: 'Papers', numeric: true }] : []),
+    { header: 'Plays', numeric: true },
+    { header: 'Worst band' },
+    ...(showEnquiries ? [{ header: 'Enquiries', numeric: true }] : []),
+    ...(showLastSeen ? [{ header: 'Last recorded' }] : []),
+  ];
+
+  /* The constants, said once. Only the ones that are actually constant, so with
+     a second assessment or one commissioned enquiry this sentence shortens on
+     its own and then disappears. Two sentences rather than one list, because
+     "has been seen in one paper, no enquiries, last recorded on 19 Sept" is a
+     verb doing three incompatible jobs. */
+  const held: string[] = [];
+  if (!showPapers) {
+    held.push(`been seen in ${rows[0].sightings === 1 ? 'one paper' : `${rows[0].sightings} papers`}`);
+  }
+  if (!showEnquiries) {
+    held.push(rows[0].researchNotes === 0
+      ? 'had no commissioned enquiries'
+      : `had ${rows[0].researchNotes} commissioned ${rows[0].researchNotes === 1 ? 'enquiry' : 'enquiries'}`);
+  }
+  const sameDate = !showLastSeen ? recorded(rows[0].lastSeen) : null;
+
+  return (
+    <>
+      <Table
+        caption="Most-seen first"
+        captionSize="s"
+        scroll
+        columns={columns}
+        rows={rows.map((row) => [
+          <Link key="n" className="govuk-link" to={`/personas/${row.id}`}>{row.name}</Link>,
+          row.entityType.replaceAll('_', ' ') || '—',
+          ...(showPapers ? [String(row.sightings)] : []),
+          <Bar key="p" value={row.plays} max={mostPlays} digits={0} scale={`plays, 0 to ${mostPlays} on this table`} />,
+          <BandMark key="b" band={row.worstBand} />,
+          ...(showEnquiries ? [String(row.researchNotes)] : []),
+          /* "LAST RECORDED", not "last seen in a paper". `listPersonas`
+             computes it over every observation including the enquiries a
+             reader commissioned, so an enquiry moves this date for a body
+             no new paper has named — which the old column heading denied.
+             The enquiries column beside it is what makes the difference
+             legible. */
+          ...(showLastSeen
+            ? [recorded(row.lastSeen) ?? <span key="l" className="prt-meta">Not recorded</span>]
+            : []),
+        ])}
+      />
+      {held.length || sameDate ? (
+        <p className="govuk-body-s prt-meta">
+          {held.length ? `Every body here has ${held.join(' and ')}.` : ''}
+          {held.length && sameDate ? ' ' : ''}
+          {sameDate ? `All ${rows.length} were last recorded on ${sameDate}.` : ''}
+        </p>
       ) : null}
     </>
   );

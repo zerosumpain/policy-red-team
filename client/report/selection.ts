@@ -102,7 +102,22 @@ export function filterPlays(list: Play[], selection: Selection, mechanismIds: Se
   if (!selection) return list;
   if (selection.kind === 'band') return list.filter((p) => p.band === selection.id);
   if (selection.kind === 'actor') return list.filter((p) => p.actor?.id === selection.id);
-  return list.filter((p) => mechanismOf(p, mechanismIds) === selection.id);
+  /*
+   * MEMBERSHIP, NOT THE FIRST REF, and the two disagree on most of this run.
+   *
+   * This asked `mechanismOf(p) === id` — the first mechanism a play names — so
+   * a mechanism that is never any play's FIRST reference narrowed the whole
+   * report to nothing. The mechanism chart above it had already moved to
+   * `mechanismsOf`: measured on the Post-16 run it draws 41 rows over 96
+   * play-mechanism pairs, while 42 plays have a first ref, so a reader could
+   * press a bar reading "3 plays" and watch Threats and Actors empty. Move 2
+   * was answering its own bars locally to hide the contradiction; it no longer
+   * has to.
+   *
+   * `mechanismsOf` is the same de-duplicated join the chart counts with, so the
+   * bar and everything the bar narrows now come from one definition.
+   */
+  return list.filter((p) => mechanismsOf(p, mechanismIds).includes(selection.id));
 }
 
 /** Mechanism ids, as a set, for the two functions above. */

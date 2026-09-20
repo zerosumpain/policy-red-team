@@ -10,7 +10,7 @@ import { describe, expect, it } from 'vitest';
 import { artefact, RELATIONS, type Artefact } from '$lib/policy-analysis/contracts';
 import { network } from '$lib/policy-analysis/network';
 import { adjacency, MIN_GRID_EDGES } from '$lib/policy-analysis/matrix';
-import { bars, barsHeight, egoOf, kindColour, kindLabel, shapeOf } from './relationships';
+import { barShares, degreeRows, depthOf, egoOf, insightPopulations, kindColour, kindLabel, originSplit, sharedTail, shapeOf } from './relationships';
 
 const actor = (id: string) => artefact(id, 'actor', `Body ${id}`, 'A body.', { entityType: 'department' });
 const mechanism = (id: string) => artefact(id, 'mechanism', `Machinery ${id}`, 'Machinery.', {});
@@ -125,17 +125,116 @@ describe("one entity's own relationships", () => {
 
 
 describe('bar geometry', () => {
-  it('is proportional to the largest bar, which fills the box', () => {
-    const [big, half, none] = bars([100, 50, 0], 400);
-    expect(big.length).toBe(400);
-    expect(half.length).toBe(200);
-    expect(none.length).toBe(0);
-    expect(half.y).toBeGreaterThan(big.y);
+  it('is proportional to the largest bar, which fills the track', () => {
+    expect(barShares([100, 50, 0])).toEqual([100, 50, 0]);
   });
 
   it('draws zero-length bars rather than dividing by a zero peak', () => {
-    expect(bars([0, 0], 400).map((b) => b.length)).toEqual([0, 0]);
-    expect(bars([], 400)).toEqual([]);
-    expect(barsHeight(0)).toBe(0);
+    expect(barShares([0, 0])).toEqual([0, 0]);
+    expect(barShares([])).toEqual([]);
+  });
+});
+
+describe('how much of the reading the paper actually said', () => {
+  it('splits relationships into read and inferred, and counts the ones that name a page', () => {
+    // The live run is 21 read against 85 inferred with 50 naming a page. The
+    // fixture is the same shape at a size a reader of this test can hold.
+    const net = network([
+      actor('a'), mechanism('m1'), mechanism('m2'), mechanism('m3'),
+      { ...edge('e1', 'a', 'm1', 'funds'), origin: 'extracted_fact', page: 4 },
+      { ...edge('e2', 'a', 'm2', 'has_authority_over'), origin: 'structural_inference' },
+      { ...edge('e3', 'a', 'm3', 'has_authority_over'), origin: 'behavioural_hypothesis', page: 9 },
+    ]);
+    const split = originSplit(net);
+    expect(split).toMatchObject({ total: 3, read: 1, inferred: 2, withPage: 2 });
+    // The cross-tab is the finding: a family can be entirely inferred while the
+    // chart above it invites a reader to weigh it against one that is not.
+    expect(split.byFamily.authority).toEqual({ read: 0, inferred: 2 });
+    expect(split.byFamily.money).toEqual({ read: 1, inferred: 0 });
+  });
+
+  it('treats every origin that is not `extracted_fact` as inferred', () => {
+    // Seven origins in the contract, one question a reader is asking. If a new
+    // origin is added upstream it lands on the honest side of that question.
+    const net = network([
+      actor('a'), mechanism('m'),
+      { ...edge('e', 'a', 'm'), origin: 'normative_judgement' },
+    ]);
+    expect(originSplit(net)).toMatchObject({ read: 0, inferred: 1 });
+  });
+});
+
+describe('how deep the wiring goes', () => {
+  it('counts the entities at one end of an arrow only, which on a star is nearly all of them', () => {
+    // 40 bodies each pointing at their own piece of machinery, plus one body
+    // pointing at another: the second body is the only entity at both ends,
+    // which is the live run's shape (119 of 120 at one end only).
+    const net = star(40, 1);
+    const depth = depthOf(net);
+    expect(depth.total).toBe(80);
+    expect(depth.both).toBe(1);
+    expect(depth.bothNodes.map((n) => n.id)).toEqual(['a1']);
+    expect(depth.outOnly + depth.inOnly + depth.both + depth.isolated).toBe(depth.total);
+  });
+
+  it('counts two-step paths and refuses to count a step straight back as one', () => {
+    // A → B → C is depth. A → B → A is one relationship read backwards, and
+    // counting it would make every reciprocal pair look like a chain.
+    const chain = network([actor('a'), actor('b'), mechanism('c'), edge('e1', 'a', 'b', 'funds'), edge('e2', 'b', 'c')]);
+    expect(depthOf(chain).twoHop).toBe(1);
+
+    const both = network([actor('a'), actor('b'), edge('e1', 'a', 'b', 'funds'), edge('e2', 'b', 'a', 'funds')]);
+    expect(depthOf(both).twoHop).toBe(0);
+  });
+
+  it('reports the degree tail ascending, which is what makes it a tail', () => {
+    const net = star(3, 0);
+    // Six entities, every one of them holding exactly one relationship.
+    expect(depthOf(net).degrees).toEqual([{ degree: 1, count: 6 }]);
+  });
+});
+
+describe('the numbers behind an insight row', () => {
+  it('joins a subject to its node and returns the direction split as numbers', () => {
+    const net = network([actor('a'), mechanism('m1'), mechanism('m2'), edge('e1', 'a', 'm1'), edge('e2', 'a', 'm2')]);
+    expect(degreeRows(net, [{ id: 'a', label: 'Body a' }])).toEqual([{ id: 'a', label: 'Body a', out: 2, in: 0, degree: 2 }]);
+  });
+
+  it('drops a subject that is not a node, because the one-way insight names edges', () => {
+    // `insights()` sets the one-way subjects' ids to the EDGE's. Fed here they
+    // would otherwise draw as rows of two zeroes.
+    const net = network([actor('a'), mechanism('m'), edge('e1', 'a', 'm')]);
+    expect(degreeRows(net, [{ id: 'e1', label: 'Body a → Machinery m' }])).toEqual([]);
+  });
+
+  it('states the population a capped insight list was capped out of', () => {
+    const net = star(6, 2);
+    const populations = insightPopulations(net);
+    // `star` wires every body to its own machinery with `funds` — the money
+    // family — so every one of those pairs is one-way authority or money.
+    expect(populations['one-way']).toBe(6);
+    expect(populations['load-bearing']).toBe(6);
+    expect(populations['load-bearing-machinery']).toBe(6);
+  });
+});
+
+describe('the clause every insight row repeats', () => {
+  it('lifts the shared tail out of notes that differ only in their prefix', () => {
+    // The live "Carries duties the paper never wires up" block, verbatim.
+    expect(sharedTail([
+      '9 duties attributed; nothing in the paper points back at it',
+      '6 duties attributed, all from pages 17–71; nothing in the paper points back at it',
+      '3 duties attributed, all from pages 33–67; nothing in the paper points back at it',
+    ])).toBe('nothing in the paper points back at it');
+  });
+
+  it('refuses a shared suffix that is not a clause', () => {
+    // "s and applicants" is a real common suffix of these two and is not a
+    // sentence. Without the boundary rule it would be printed as one.
+    expect(sharedTail(['Students and applicants', 'Learners and applicants'])).toBe('');
+  });
+
+  it('has nothing to lift from a single row', () => {
+    expect(sharedTail(['bears a cost; no benefit recorded'])).toBe('');
   });
 });

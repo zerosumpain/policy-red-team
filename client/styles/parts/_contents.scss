@@ -1,4 +1,61 @@
 @use "../govuk" as govuk;
 @use "../tokens" as *;
 
-// Reserved for the "contents" change. Empty until it lands.
+// ── The contents list, as a map of the panel's weight ─────────────────────
+//
+// Six identical blue links at the head of an 8,668px panel gave a reader nothing
+// to choose on. The two things this part draws are what makes the difference:
+// the figure behind each link, and the four headings inside the one section that
+// is itself several screens long.
+
+.prt-contents {
+  // A CONTENTS LIST IS A LIST OF NAMES, NOT PROSE. Left unmeasured its rows run
+  // the full width of a wide report, so "The write-up 19 findings" puts its
+  // figure 900px from the title it belongs to and the eye has to travel the
+  // whole line to pair them.
+  max-width: $prt-measure;
+
+  // The figure sits on the link's own line and must not be pulled onto a line of
+  // its own by a long title; `.prt-denom` is already tabular and quiet, so all
+  // this owes it is the gap.
+  .prt-denom {
+    white-space: nowrap;
+  }
+
+  // ── The headings inside a section ───────────────────────────────────────
+  //
+  // LOWER-ALPHA, BECAUSE A NESTED DECIMAL LIES ABOUT RANK. `govuk-list--number`
+  // is `list-style-type: decimal`, so nesting one inside another gives a panel
+  // an entry "1" inside its own entry "1" — two different things with the same
+  // number, at two different levels, four lines apart. A letter says "part of
+  // the one above" without a word.
+  &__sub {
+    list-style-type: lower-alpha;
+    @include govuk.govuk-font($size: 16);
+    // The framework's spaced list puts 10px under every item, which is right
+    // between sections and too much between four headings of one section.
+    margin-top: govuk.govuk-spacing(1);
+    margin-bottom: 0;
+
+    li {
+      margin-bottom: 0;
+    }
+
+    // 24px, BECAUSE WCAG 2.2 MEASURES THE LINK AND NOT THE LINE.
+    //
+    // At 16px in a list with the framework's spacing removed, an inline anchor's
+    // box is about 19px tall and its neighbour sits directly under it — which is
+    // 2.5.8 Target Size (Minimum) at level AA, and the walk's axe pass called it
+    // serious on five of these. The inline exception does not apply: these are
+    // list rows, not links inside a sentence.
+    //
+    // `inline-block` so the box is the anchor's own rather than the line's, and
+    // the line-height matched to it so the row does not grow taller than the
+    // target it exists to make reachable.
+    a {
+      display: inline-block;
+      min-height: 24px;
+      line-height: 24px;
+    }
+  }
+}

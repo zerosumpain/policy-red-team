@@ -44,6 +44,22 @@ export type Tab = {
    * not been given a definition of.
    */
   hint?: string;
+  /**
+   * How much is behind this tab — "47 plays · 20 severe".
+   *
+   * The third addition, and the one a reader asked for by scrolling. Measured at
+   * 1280 on this run, the five panels are 919px to 10,137px and the five tabs
+   * were pixel-identical three-line boxes, so the only way to find out that
+   * Causality is five screens and Actors is one was to open both. A size is not
+   * a summary — it is the one thing a reader can use to decide where to spend
+   * the next five minutes.
+   *
+   * A STRING, NOT A NUMBER, because the five moves are counted in different
+   * units and a single figure would have to be re-labelled by the caller anyway.
+   * It is built by `moveCounts` in `client/report/tabcounts.ts`, which has the
+   * pluralisation and the test.
+   */
+  count?: string;
   panel: ReactNode;
 };
 
@@ -58,15 +74,56 @@ export type Tab = {
  */
 const TABLET = 641;
 
-export function Tabs({ id, label, tabs, current, onSelect }: {
+/**
+ * Which tab is actually showing, which is not always the one that was asked for.
+ *
+ * `?move=do` is a live URL on the report — `do` is a real move, deliberately not
+ * a tab — and it rendered five panels all carrying `hidden`, five tabs none of
+ * which held `tabIndex=0`, and no `aria-selected="true"` anywhere. Measured on
+ * the deployed report: {panels: 5, visible: 0, tabs: 5, tabbable: 0}. A tab list
+ * is a single tab stop and nothing in it held the stop, so a keyboard user had
+ * no route back into the report and the address bar kept the URL that did it, so
+ * reloading did not recover either.
+ *
+ * The caller can still validate its own URLs, and should. This makes the
+ * component structurally unable to render nothing whatever it is handed: the
+ * index is clamped to a real tab and every comparison is made against the tab at
+ * that index rather than against the raw `current`.
+ */
+export function activeTabId(tabs: Tab[], current: string): string {
+  const index = Math.max(0, tabs.findIndex((t) => t.id === current));
+  return tabs[index]?.id ?? current;
+}
+
+export function Tabs({ id, label, tabs, current, onSelect, above }: {
   id: string;
   /** Names the tab list for anyone not looking at it. */
   label: string;
   tabs: Tab[];
   current: string;
   onSelect: (id: string) => void;
+  /**
+   * Rendered immediately above the strip, inside the sticky block.
+   *
+   * THE SPINE IS ONE STICKY THING NOW, and this prop is what makes that
+   * possible. The report's selection banner and this strip were siblings and
+   * both `position: sticky; top: 0`, so they pinned to the same line: measured
+   * at 1280×900 scrolled to y=3000 under `?sel=band:severe`, the banner's box
+   * top was 0 and `elementFromPoint` at the banner's own centre returned
+   * `govuk-tabs__tab` — the 113px strip, higher z-index and opaque white,
+   * covering the 58px banner for the whole scroll. Stacking them in one sticky
+   * wrapper is the only arrangement in which both survive; an offset on the
+   * strip has to be measured at runtime and is wrong at every width where the
+   * banner wraps.
+   *
+   * It sits OUTSIDE the `<ul>`, so the roving tabindex and the arrow-key
+   * handling below are untouched by it.
+   */
+  above?: ReactNode;
 }) {
   const index = Math.max(0, tabs.findIndex((t) => t.id === current));
+  /** The tab that is really showing. See `activeTabId` for the URL that needed it. */
+  const activeId = activeTabId(tabs, current);
 
   /*
    * BELOW TABLET THIS IS A DOCUMENT, NOT A TAB STRIP — the same decision the
@@ -161,85 +218,97 @@ export function Tabs({ id, label, tabs, current, onSelect }: {
   return (
     <div className="govuk-tabs" ref={root}>
       <h2 className="govuk-tabs__title">{label}</h2>
-      <ul
-        className="govuk-tabs__list"
-        {...(stripped ? {} : { role: 'tablist', 'aria-label': label, onKeyDown })}
-      >
-        {tabs.map((tab) => {
-          const selected = tab.id === current;
-          /*
-           * THE NAME IS THE LINK; THE STEP AND THE QUESTION ARE NOT.
-           *
-           * `text-decoration` propagates from an ancestor to its in-flow block
-           * children and a child cannot cancel it — so `text-decoration: none` on
-           * the step was a dead declaration, and adding the question underneath
-           * gave every tab three underlined lines reading as one long link. The
-           * decoration comes off the control and goes on the label, which is the
-           * part that names where you are going.
-           */
-          const inside = (
-            <>
-              {tab.step ? <span className="prt-tab__step">{tab.step}</span> : null}
-              <span className="prt-tab__label">{tab.label}</span>
-              {tab.hint ? <span className="prt-tab__hint">{tab.hint}</span> : null}
-            </>
-          );
-          return (
-            <li
-              key={tab.id}
-              className={`govuk-tabs__list-item${selected ? ' govuk-tabs__list-item--selected' : ''}`}
-              // ONLY WHILE IT IS A TAB LIST. `presentation` strips the `<li>` of
-              // its list semantics, which is right for a tablist and wrong for
-              // the plain index this becomes on a phone — axe reports the
-              // stripped list as a `list` violation, correctly, because every
-              // child has had its role taken away.
-              {...(stripped ? {} : { role: 'presentation' })}
-            >
-              {stripped ? (
-                /*
-                 * AN ANCHOR ON A PHONE, WHICH IS THE FRAMEWORK'S OWN MARKUP.
-                 *
-                 * Torn down, every panel is on the page and the list is an index
-                 * of them — so the control has to move the reader, and a button
-                 * setting state nobody renders cannot. Measured at 390×844 on the
-                 * real run: the document is 55,644px, tapping "Move 3 / Threats"
-                 * moved the scroll 0px, and the panel it names begins 18,918px
-                 * down — twenty-two screens from the reader who asked for it.
-                 * The underline and the blue were already there, promising a jump
-                 * the button never made.
-                 *
-                 * `onClick` stays so the selection survives a rotation back above
-                 * TABLET, where the strip becomes a tab strip again.
-                 */
-                <a
-                  id={`${id}-tab-${tab.id}`}
-                  className="govuk-tabs__tab prt-tab"
-                  href={`#${id}-panel-${tab.id}`}
-                  onClick={() => onSelect(tab.id)}
-                >
-                  {inside}
-                </a>
-              ) : (
-                <button
-                  type="button"
-                  id={`${id}-tab-${tab.id}`}
-                  className="govuk-tabs__tab prt-tab"
-                  role="tab"
-                  aria-controls={`${id}-panel-${tab.id}`}
-                  aria-selected={selected}
-                  // ONE STOP FOR THE WHOLE LIST. A tab list is a single tab stop;
-                  // the arrow keys move within it. Without this every tab is a
-                  // stop and the spine becomes six presses to get past.
-                  tabIndex={selected ? 0 : -1}
-                  onClick={() => select(tab.id)}
-                >
-                  {inside}
-                </button>
-              )}
-            </li>
-          );
-        })}
-      </ul>
+      {/*
+        ONE STICKY BLOCK, NOT TWO THAT PIN TO THE SAME LINE. The wrapper exists
+        so `above` and the strip travel together; see the `above` prop for the
+        measurement that made it necessary. It is always rendered, with or
+        without a node in it, because `parts/_spine.scss` moves the sticky
+        declaration onto it and a conditional wrapper would mean two stylesheets
+        for one strip.
+      */}
+      <div className="prt-spine">
+        {above}
+        <ul
+          className="govuk-tabs__list"
+          {...(stripped ? {} : { role: 'tablist', 'aria-label': label, onKeyDown })}
+        >
+          {tabs.map((tab) => {
+            const selected = tab.id === activeId;
+            /*
+             * THE NAME IS THE LINK; THE STEP AND THE QUESTION ARE NOT.
+             *
+             * `text-decoration` propagates from an ancestor to its in-flow block
+             * children and a child cannot cancel it — so `text-decoration: none` on
+             * the step was a dead declaration, and adding the question underneath
+             * gave every tab three underlined lines reading as one long link. The
+             * decoration comes off the control and goes on the label, which is the
+             * part that names where you are going.
+             */
+            const inside = (
+              <>
+                {tab.step ? <span className="prt-tab__step">{tab.step}</span> : null}
+                <span className="prt-tab__label">{tab.label}</span>
+                {tab.hint ? <span className="prt-tab__hint">{tab.hint}</span> : null}
+                {tab.count ? <span className="prt-tab__count">{tab.count}</span> : null}
+              </>
+            );
+            return (
+              <li
+                key={tab.id}
+                className={`govuk-tabs__list-item${selected ? ' govuk-tabs__list-item--selected' : ''}`}
+                // ONLY WHILE IT IS A TAB LIST. `presentation` strips the `<li>` of
+                // its list semantics, which is right for a tablist and wrong for
+                // the plain index this becomes on a phone — axe reports the
+                // stripped list as a `list` violation, correctly, because every
+                // child has had its role taken away.
+                {...(stripped ? {} : { role: 'presentation' })}
+              >
+                {stripped ? (
+                  /*
+                   * AN ANCHOR ON A PHONE, WHICH IS THE FRAMEWORK'S OWN MARKUP.
+                   *
+                   * Torn down, every panel is on the page and the list is an index
+                   * of them — so the control has to move the reader, and a button
+                   * setting state nobody renders cannot. Measured at 390×844 on the
+                   * real run: the document is 55,644px, tapping "Move 3 / Threats"
+                   * moved the scroll 0px, and the panel it names begins 18,918px
+                   * down — twenty-two screens from the reader who asked for it.
+                   * The underline and the blue were already there, promising a jump
+                   * the button never made.
+                   *
+                   * `onClick` stays so the selection survives a rotation back above
+                   * TABLET, where the strip becomes a tab strip again.
+                   */
+                  <a
+                    id={`${id}-tab-${tab.id}`}
+                    className="govuk-tabs__tab prt-tab"
+                    href={`#${id}-panel-${tab.id}`}
+                    onClick={() => onSelect(tab.id)}
+                  >
+                    {inside}
+                  </a>
+                ) : (
+                  <button
+                    type="button"
+                    id={`${id}-tab-${tab.id}`}
+                    className="govuk-tabs__tab prt-tab"
+                    role="tab"
+                    aria-controls={`${id}-panel-${tab.id}`}
+                    aria-selected={selected}
+                    // ONE STOP FOR THE WHOLE LIST. A tab list is a single tab stop;
+                    // the arrow keys move within it. Without this every tab is a
+                    // stop and the spine becomes six presses to get past.
+                    tabIndex={selected ? 0 : -1}
+                    onClick={() => select(tab.id)}
+                  >
+                    {inside}
+                  </button>
+                )}
+              </li>
+            );
+          })}
+        </ul>
+      </div>
       {tabs.map((tab) => (
         <section
           key={tab.id}
@@ -250,7 +319,7 @@ export function Tabs({ id, label, tabs, current, onSelect }: {
             : {
                 role: 'tabpanel',
                 'aria-labelledby': `${id}-tab-${tab.id}`,
-                hidden: tab.id !== current,
+                hidden: tab.id !== activeId,
               })}
         >
           {/*
@@ -263,7 +332,16 @@ export function Tabs({ id, label, tabs, current, onSelect }: {
             * the page for the same reason. Hidden above `tablet`, where the
             * selected tab is the heading and a second one would only repeat it.
             */}
-          <h2 className="prt-movehead">{tab.step ? `${tab.step} — ` : ''}{tab.label}</h2>
+          <h2 className="prt-movehead">
+            {tab.step ? `${tab.step} — ` : ''}{tab.label}
+            {/* THE SIZE HAS TO SURVIVE THE TEARDOWN. `.prt-tab__count` is drawn
+                only from 1260px, where the five columns are wide enough for it,
+                and below `tablet` there is no strip at all — so on a phone and on
+                paper, the two readings where every panel is simply present, the
+                count would be the one thing about a move a reader could not see.
+                It rides on the heading those two readings already use. */}
+            {tab.count ? <span className="prt-movehead__count">{tab.count}</span> : null}
+          </h2>
           {tab.panel}
         </section>
       ))}

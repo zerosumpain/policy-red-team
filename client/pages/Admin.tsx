@@ -3,6 +3,7 @@ import { admin, type AdminConfig, type ProviderView } from '../api';
 import { ModelMenu } from './ModelMenu';
 import { Button, ButtonGroup, Details, ErrorSummary, InsetText, Input, Radios, SummaryList, Tag, WarningText } from '../govuk';
 import { usePageTitle } from '../layout/Template';
+import { MEASURED_SCALE } from '../measured';
 
 /**
  * WHERE THIS INSTALL IS CONFIGURED, AND THE ONLY PAGE BEHIND A PASSWORD.
@@ -234,9 +235,15 @@ export function Admin() {
               wrong. This does. A run that passes the ceiling is stopped where it stands and keeps
               the stages it finished — you can raise this and resume.
             </p>
+            {/* ONE MEASUREMENT, NOT THREE. This sentence, the Standard depth
+                hint on `/assessments/new` and the landing table's "Ran for"
+                column all describe the same run, and the three disagreed: this
+                page and the commissioning page each froze their own copy of the
+                token figure, and the commissioning page's duration was out by a
+                factor of four. `client/measured.ts` holds it once, with the
+                arithmetic that produced it. */}
             <p className="govuk-body-s prt-meta">
-              For scale: a complete eighteen-stage assessment of a 72-passage paper used about
-              61 million tokens. Leave it at 0 for no ceiling.
+              {MEASURED_SCALE} Leave it at 0 for no ceiling.
             </p>
             <form
               onSubmit={(e) => {

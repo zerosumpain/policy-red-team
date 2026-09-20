@@ -1,4 +1,87 @@
 @use "../govuk" as govuk;
 @use "../tokens" as *;
 
-// Reserved for the "writeup-judgement" change. Empty until it lands.
+// ── How much of this the assessment will stand behind ─────────────────────
+//
+// Every finding carries `data.judgement` and, until the write-up was rebuilt,
+// the only place in the app that read it was the drill — one artefact per page
+// load. Measured on the Post-16 run: of the nineteen assured findings, four are
+// well supported, eleven are supported with limits and four are provisional. A
+// fifth of the write-up is flagged provisional by the report itself, and
+// eighteen identical grey cards said none of it.
+//
+// NOT THE EXPOSURE RAMP. The four pink steps mean MAGNITUDE on every other
+// surface in this report — how bad a play is — and this is epistemic status,
+// which is a different question with a different answer. Two meanings on one
+// set of colours, in one panel, would make both unreadable.
+//
+// SO IT IS A RAMP OF SOLIDITY INSTEAD: filled for the strongest claim, a plain
+// outline for the middle, a dotted outline for provisional. It survives a
+// monochrome print and every form of colour vision, and it is never carrying
+// the meaning on its own — the word is inside the box in all four cases, which
+// is also what a screen reader reads.
+.prt-judgement {
+  @include govuk.govuk-font($size: 16);
+  display: inline-block;
+  border: 1px solid govuk.govuk-colour("black", $variant: "tint-50");
+  padding: 0 govuk.govuk-spacing(1);
+  margin: 0;
+  // The word is short and breaking "Supported with" from "limits" across two
+  // lines inside a box reads as two chips.
+  white-space: nowrap;
+  color: govuk.govuk-colour("black", $variant: "tint-25");
+
+  // A card is 366px wide at desktop and "Supported with limits" is the longest
+  // of the four words; below tablet the card is the full page and the chip has
+  // room either way, so the wrap is released rather than the text clipped.
+  @include govuk.govuk-media-query($until: tablet) {
+    white-space: normal;
+  }
+
+  &--well_supported {
+    background: govuk.govuk-colour("black");
+    border-color: govuk.govuk-colour("black");
+    color: govuk.govuk-colour("white");
+    font-weight: 700;
+  }
+
+  &--supported_with_limits {
+    border-color: govuk.govuk-colour("black");
+    color: govuk.govuk-colour("black");
+  }
+
+  // Dotted, not lighter: a lighter outline says "less important" and a
+  // provisional conclusion is not less important, it is less settled.
+  &--provisional {
+    border-style: dotted;
+    border-color: govuk.govuk-colour("black");
+    color: govuk.govuk-colour("black");
+  }
+
+  // Absent from this run, and defined anyway: without it a contested finding
+  // would draw the same box as a supported one, which is the failure the whole
+  // chip exists to end. Two rules of ink is the loudest outline available
+  // without borrowing a hue that means something else here.
+  &--contested {
+    border: 3px double govuk.govuk-colour("black");
+    color: govuk.govuk-colour("black");
+    font-weight: 700;
+  }
+
+  // The standfirst's chip sits under 27px prose rather than beside a 19px
+  // heading, so it needs the gap the card's grid gives the others.
+  &--lead {
+    margin-top: govuk.govuk-spacing(2);
+  }
+}
+
+@media print {
+  // The filled chip is a fill, and a browser prints no fills unless asked — the
+  // same rule `.prt-chips__chip[aria-pressed]` carries for the same reason. A
+  // "Well supported" that prints as black on white is indistinguishable from
+  // the "Supported with limits" beside it.
+  .prt-judgement--well_supported {
+    print-color-adjust: exact;
+    -webkit-print-color-adjust: exact;
+  }
+}

@@ -1,7 +1,9 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import { Link, useNavigate } from 'react-router';
-import { api, type OfferedModel } from '../api';
-import { Button, ButtonGroup, ErrorSummary, FileUpload, Input, Radios, Select, Textarea, WarningText } from '../govuk';
+import { api, type AnalysisRow, type OfferedModel } from '../api';
+import { Button, ButtonGroup, Details, ErrorSummary, FileUpload, Input, Radios, Select, Textarea, WarningText } from '../govuk';
+import { MEASURED_RUN, MEASURED_STANDARD_HINT } from '../measured';
+import { isFinished, spent } from '../status';
 import { usePageTitle } from '../layout/Template';
 
 /**
@@ -29,6 +31,14 @@ export function New() {
   // was made against.
   const [readOnly, setReadOnly] = useState(false);
   const [models, setModels] = useState<OfferedModel[]>([]);
+  /**
+   * Every run this install holds, only so the hint can point at the one it
+   * describes. `AnalysisRow` carries no depth, no call count and no token
+   * total — see `client/measured.ts` for why the figures themselves are
+   * constants — but it does carry the two timestamps, so the DURATION the
+   * reader is being quoted is one they can check for themselves in a click.
+   */
+  const [runs, setRuns] = useState<AnalysisRow[]>([]);
   const [depth, setDepth] = useState('standard');
   const [sealed, setSealed] = useState(false);
   const [errors, setErrors] = useState<{ text: string; href: string }[]>([]);
@@ -36,7 +46,7 @@ export function New() {
 
   useEffect(() => {
     api.landing()
-      .then((data) => { setModels(data.models); setReadOnly(data.readOnly); })
+      .then((data) => { setModels(data.models); setRuns(data.analyses); setReadOnly(data.readOnly); })
       .catch(() => setModels([]));
   }, []);
 
@@ -83,6 +93,15 @@ export function New() {
     );
   }
 
+  /** The longest finished run — which is the one the Standard figures describe. */
+  const longest = runs
+    .filter((row) => isFinished(row.status))
+    .reduce<AnalysisRow | null>((best, row) => {
+      const ran = new Date(row.updatedAt).getTime() - new Date(row.createdAt).getTime();
+      const bestRan = best ? new Date(best.updatedAt).getTime() - new Date(best.createdAt).getTime() : -1;
+      return Number.isFinite(ran) && ran > bestRan ? row : best;
+    }, null);
+
   return (
     <div className="govuk-grid-row">
       <div className="govuk-grid-column-two-thirds">
@@ -118,7 +137,16 @@ export function New() {
               {
                 value: 'standard',
                 text: 'Standard',
-                hint: 'One pass over every passage. The last full run of a 72-passage paper made 419 model calls, used about 61 million tokens and took two and a half hours.',
+                /*
+                  THIS SAID "took two and a half hours" AND THE LANDING TABLE
+                  SAID 10h 23m OF THE SAME RUN. The 2.5 hours is stages 1 to 17;
+                  the missing 8h 18m is the final synthesis alone, and the
+                  figure a reader was shown before spending the money was the
+                  smaller one. `client/measured.ts` holds the measurement once,
+                  for this hint and for the ceiling page that quoted it a third
+                  way.
+                */
+                hint: MEASURED_STANDARD_HINT,
               },
               {
                 value: 'deep',
@@ -127,6 +155,35 @@ export function New() {
               },
             ]}
           />
+
+          {/*
+            WHERE THE FIGURES COME FROM, because a figure a reader cannot check
+            is a figure they have to take on trust — the same argument `RunClock`
+            makes about showing its working. The run is found rather than named
+            by id: a hard-coded assessment id would 404 on any install but this
+            one, and the longest finished run IS the one the figures describe.
+          */}
+          <Details summary="Where these figures come from">
+            <p className="govuk-body-s">
+              They were read off one assessment: {MEASURED_RUN.passages} passages,{' '}
+              {MEASURED_RUN.stages} stages, {MEASURED_RUN.calls} model calls and about{' '}
+              {MEASURED_RUN.tokensAbout} tokens, run on {MEASURED_RUN.when}. The call and token
+              totals are not on this page&rsquo;s response and are written down rather than
+              computed here.
+            </p>
+            {longest ? (
+              <p className="govuk-body-s">
+                <Link className="govuk-link" to={`/assessments/${longest.id}`}>{longest.title}</Link>{' '}
+                <span className="prt-meta">
+                  ran for {spent(longest.createdAt, longest.updatedAt)}
+                </span>
+              </p>
+            ) : (
+              <p className="govuk-body-s prt-meta">
+                That run is not in this copy, so the duration above cannot be checked here.
+              </p>
+            )}
+          </Details>
 
           {models.length ? (
             <Select

@@ -1,4 +1,32 @@
 @use "../govuk" as govuk;
 @use "../tokens" as *;
 
-// Reserved for the "selection-pack" change. Empty until it lands.
+// ── The banner in the offline pack ────────────────────────────────────────
+//
+// THE PACK NARROWED SILENTLY. Measured on a real pack — the bundle downloaded
+// from `/export?format=bundle`, unzipped, driven from `file://` — the document
+// is 88,333px and holds 4 band segments and 22 mechanism pickers and ZERO
+// selection banners. Pressing the first band dropped the mechanism list from 22
+// rows to 12 and changed a heading to "Read these first, under this selection",
+// and the number of controls reading "Clear the selection" on the whole 88,333px
+// page was zero. The only way out was to find the same 44px segment again and
+// press it a second time.
+//
+// The banner is now rendered in the pack branch too, and repeated at each move,
+// so a reader is never more than one move from the control.
+//
+// STATIC, NOT STICKY. `_base.scss` makes the banner sticky from tablet up for
+// the service, where it has a tab strip to travel with and a panel to sit over.
+// A pack is one document of about 98 screens: a bar pinned to the top of it
+// would spend 58px of every one of them, and the reason the service needs it —
+// that a panel can be swapped underneath the reader — does not exist here.
+// Repetition does the same job for a document and costs nothing between moves.
+.prt-pack .prt-selection {
+  position: static;
+
+  // REPEATED, SO IT NEEDS AIR ABOVE IT. Every copy after the first opens a move
+  // — it is the last thing a reader passes before a new question — and the
+  // component carries a bottom margin only. Without this it butts against the
+  // closing line of the move before it and reads as part of it.
+  margin-top: govuk.govuk-spacing(6);
+}

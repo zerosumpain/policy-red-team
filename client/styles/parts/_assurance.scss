@@ -1,4 +1,94 @@
 @use "../govuk" as govuk;
 @use "../tokens" as *;
 
-// Reserved for the "assurance" change. Empty until it lands.
+// ── What survived challenge ────────────────────────────────────────────────
+//
+// Seven challenges, each a heading, a chip, what changed and what is still not
+// covered. The list is numbered in the markup because the order is the run's
+// own; the numbers are suppressed here because they are not a ranking and a
+// reader who sees "1." beside "Critical delivery and control actors are
+// omitted" reads it as the worst of the seven. Kept as an `<ol>` all the same:
+// the sequence is meaningful to anyone reading the run's record, and a `<ul>`
+// would assert it is not.
+.prt-assurance {
+  list-style: none;
+  margin: govuk.govuk-spacing(4) 0 govuk.govuk-spacing(6);
+  padding: 0;
+
+  // A LEFT RULE, NOT A BOX. Seven bordered cards in one section is seven
+  // frames a reader has to look past; a 4px black edge on the left is the
+  // treatment `.prt-writeup__lead` already uses for "this is one piece of the
+  // argument", and it costs nothing in print.
+  &__item {
+    // `tint-50` at 3.65:1 rather than `tint-80` at 1.57. The base layer
+    // measures both and calls `tint-80` right for a rule between rows and
+    // `tint-50` right for a graphical object that has to be seen; this is the
+    // second, because it is what says where one challenge ends and the next
+    // begins.
+    border-left: 4px solid govuk.govuk-colour("black", $variant: "tint-50");
+    padding-left: govuk.govuk-spacing(4);
+    margin-bottom: govuk.govuk-spacing(6);
+
+    &:last-child { margin-bottom: 0; }
+  }
+
+  // The challenge itself. It is a full sentence — the challenges are stubbed
+  // and the label is all there is — so it has to be allowed a measure rather
+  // than run the width of the panel.
+  &__head {
+    max-width: $prt-measure;
+    margin-bottom: govuk.govuk-spacing(2);
+  }
+
+  &__disposition { margin: 0 0 govuk.govuk-spacing(2); }
+
+  // The two chips over the standfirst: what the review may be used for, and
+  // what it judged. A row, so they read as one statement rather than two.
+  &__strap {
+    display: flex;
+    flex-wrap: wrap;
+    gap: govuk.govuk-spacing(2);
+    margin: 0 0 govuk.govuk-spacing(3);
+  }
+
+  // "Still not covered", inside the inset. Without it the inset is an
+  // unattributed second paragraph, and what makes it worth its own block is
+  // precisely that it is a different KIND of sentence from the one above it.
+  &__label {
+    @include govuk.govuk-font($size: 16, $weight: bold);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: govuk.govuk-colour("black", $variant: "tint-25");
+    margin-bottom: govuk.govuk-spacing(1);
+  }
+}
+
+// ── How you would know ─────────────────────────────────────────────────────
+//
+// Three stacked lists whose items are 105 to 275 characters each.
+//
+// THE BASE RELEASES EVERY LIST FROM THE MEASURE ON PURPOSE, and its reason is
+// right for the lists it had: "a list runs to the page; a paragraph runs to a
+// measure … the release is kept for the things that are NOT prose — lists of
+// links, rows, captions under a full-width table". These are none of those.
+// They are nine sentences of policy prose that happen to be bulleted, and
+// released they set to about 130 characters a line — measured at 960px — under
+// a paragraph in the same section set to 68. That is the width the base's own
+// comment says the eye stops reliably finding the start of the next line at.
+//
+// Paired with `.govuk-tabs__panel` and `.prt-pack` because the rule it has to
+// beat is, and because these render in both.
+.govuk-tabs__panel,
+.prt-pack {
+  .prt-plan__list { max-width: $prt-measure; }
+}
+
+.prt-plan__list li { margin-bottom: govuk.govuk-spacing(2); }
+
+// The group heading inside the questions disclosure. Three groups of five, and
+// without a label the fifteen are one list of things asked in no particular
+// order — which is not what the plan says.
+.prt-plan__label {
+  @include govuk.govuk-font($size: 16, $weight: bold);
+  margin: 0 0 govuk.govuk-spacing(1);
+}

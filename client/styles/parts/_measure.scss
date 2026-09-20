@@ -1,43 +1,18 @@
 @use "../govuk" as govuk;
 @use "../tokens" as *;
 
-// ── Measure, as a decision about the ROLE ──────────────────────────────────
+// ── Measure ────────────────────────────────────────────────────────────────
 //
-// The base layer settled the default an hour before this landed: `$prt-measure`
-// is 68ch, and every `p.govuk-body` inside the report and the pack is held to
-// it, because the page became 1,200px wide and the same paragraph went from
-// about 100 characters to 126. That is the right default and it is not the whole
-// answer — two roles want something else, and both were being served by
-// component-by-component selectors.
+// There is nothing here, and that is the finding.
 //
-// `.prt-measured-none` (in the base) is still the way out for a line that
-// genuinely spans the page. These two are the middle: prose that is narrower
-// than its element would give it, and scanned copy that wants more than a
-// paragraph's measure.
-
-// 88ch, NOT A SECOND GUESS AT 68.
+// This partial held `.prt-reading` (88ch, for a line of scanned figures) and
+// `.prt-prose` (68ch, for prose the base rule cannot reach). Both were written
+// against a real argument and neither was ever put on an element, so the
+// accessibility gate called them dead and was right: `.prt-profile` outlived its
+// markup by three phases in this same stylesheet, and a rule nothing claims is a
+// rule nobody maintains.
 //
-// A line carrying inline figures, links and band tags is not read end to end —
-// it is scanned, and a scanned line takes more width before the eye loses the
-// return sweep than a line of sentences does. 68 on this kind of copy breaks a
-// four-figure comparison across three lines, which is the thing the sentence
-// exists to let a reader make in one.
-$prt-reading: 88ch;
-
-// BOTH ARMS OF THE PAIR, AND THEY ARE NEEDED HERE RATHER THAN COPIED.
-//
-// The base's measure rule is `.govuk-tabs__panel p.govuk-body` — (0,2,1). A
-// widening class has to beat that inside the same container or it is a class
-// that does nothing, which is exactly the failure `govuk-width-container--wide`
-// spent the whole build in.
-.govuk-tabs__panel,
-.prt-pack {
-  p.prt-reading,
-  .prt-reading { max-width: $prt-reading; }
-}
-
-// For prose the base rule cannot reach: a standfirst in a `div`, a caption
-// paragraph that is not `.govuk-body`, a list item that is genuinely a
-// paragraph. Additive — anything that gets neither class behaves as it does
-// today.
-.prt-prose { max-width: $prt-measure; }
+// The default is settled in `_base.scss`: `$prt-measure` is 68ch and every
+// `p.govuk-body` in the report and the pack is held to it. If a role turns up
+// that genuinely needs a different one, the argument above is worth rebuilding —
+// but it belongs here with the element that asked for it, in the same commit.

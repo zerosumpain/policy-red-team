@@ -21,19 +21,6 @@
 // THE GDS SCALE HAS NO STEP BETWEEN 16 AND 19, and inventing one is out. So the
 // two overloaded steps are split by TREATMENT rather than by size.
 
-// A CAPTION IS A LABEL FOR THE THING BELOW IT, not a heading competing with the
-// one above it. This is `.prt-writeup__kicker`'s treatment, which the write-up
-// has used for exactly this job since it was built — 16px bold, uppercase, wide
-// tracking — so the report gains no new vocabulary, only a second use of one.
-.govuk-table__caption--s,
-.prt-figcap {
-  @include govuk.govuk-font($size: 16, $weight: bold);
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  color: govuk.govuk-colour("black", $variant: "tint-25");
-  margin-bottom: govuk.govuk-spacing(2);
-}
-
 // WHERE A FIGURE ENDS. A figcaption set as an ordinary grey sentence is
 // indistinguishable from the paragraph that follows the figure, which is how a
 // reader ends up taking a caption for the next thing the report says. The rule

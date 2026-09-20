@@ -1,4 +1,20 @@
 @use "../govuk" as govuk;
 @use "../tokens" as *;
 
-// Reserved for the "funnel" change. Empty until it lands.
+// ── The selection funnel, and the names the resolver could not pin down ───
+//
+// THIS PARTIAL IS DELIBERATELY EMPTY, and saying so is worth more than the rule
+// somebody would otherwise add to it.
+//
+// `ActorFunnel` is three `Metrics` tiles, a `prt-meta` sentence and a
+// `<Details>` holding a `Table`; `Resolution` is a `Figure` wrapping the
+// `BarChart` Move 2 already draws twice, a `Table` and two paragraphs. Every
+// one of those is existing vocabulary sized by rules that were measured on the
+// report, and the whole point of the change was that four facts had been set in
+// the smallest grey type on the page — the fix is which components carry them,
+// not a new appearance for a new one.
+//
+// The stylesheet stays registered because the section exists and the next
+// measurement of it may need somewhere to go. A rule here that restated
+// `.prt-metrics` with a different name would be the kind of second vocabulary
+// `app.scss` splits this directory up to prevent.

@@ -26,39 +26,28 @@ import { InsetText, WarningText } from '../govuk';
  * The redaction itself is unchanged and runs where it always did: on the
  * server, in `shareableReport`, once.
  */
-export function Shares({ analysisId }: { analysisId: string }) {
-  const at = (format: string) => `/api/policy-analysis/${analysisId}/export?format=${format}&scope=shared`;
-
+/**
+ * WHAT IS LEFT HERE IS THE TWO LIMITS ON ACTION.
+ *
+ * The six download links and the two paragraphs describing them are one
+ * `DownloadGrid` now — three formats by two scopes, which is a table, and was
+ * 97 words of prose a reader had to hold in their head to compare.
+ *
+ * These two blocks are NOT descriptions of data and do not compress. One says
+ * there is no link to send and why; the other says that sending cannot be
+ * undone. Both are arguments about what the reader is about to do, and both
+ * would be equally true of a different assessment — which is the test for
+ * whether a sentence is standing argument or this run's numbers.
+ *
+ * `analysisId` IS ACCEPTED AND UNUSED, DELIBERATELY AND TEMPORARILY. It was the
+ * six export URLs and they are `DownloadGrid`'s now; `Report.tsx` still passes
+ * it, and that call site is the integrator's to change when the two sections
+ * merge into one. Typed optional so it can go without a second edit here.
+ */
+export function Shares(_props: { analysisId?: string } = {}) {
   return (
     <div className="govuk-grid-row">
       <div className="govuk-grid-column-two-thirds">
-        <p className="govuk-body">
-          A copy that leaves out the paper. Every conclusion, every play, every check and every
-          structural finding is in it; the policy document's own passages are not, and neither is
-          any comparison with your other assessments or anything the persona library holds about a
-          body from a different paper.
-        </p>
-        <ul className="govuk-list govuk-list--spaced">
-          <li>
-            <a className="govuk-link" href={at('bundle')} download>
-              Download a copy to send
-            </a>{' '}
-            <span className="prt-meta">.zip — the whole assessment as one page, plus both documents</span>
-          </li>
-          <li>
-            <a className="govuk-link" href={at('docx')} download>
-              Just the written report, as Word
-            </a>{' '}
-            <span className="prt-meta">.docx</span>
-          </li>
-          <li>
-            <a className="govuk-link" href={at('md')} download>
-              Just the written report, as markdown
-            </a>{' '}
-            <span className="prt-meta">.md</span>
-          </li>
-        </ul>
-
         <InsetText>
           Send the file. There is no link to send: this service has no sign-in, so a URL that
           worked for your recipient would also let them read everything it withholds. A file

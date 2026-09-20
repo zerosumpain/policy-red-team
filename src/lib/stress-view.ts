@@ -23,6 +23,8 @@
  * one panel and good news in the next. Collapsing them into one "affected"
  * count would be worse than not offering the tool at all.
  */
+import type { Artefact } from '$lib/policy-analysis/contracts';
+import { stress } from '$lib/policy-analysis/stress';
 import type { StressResult, StressRow, Standing } from '$lib/policy-analysis/stress';
 
 /** What a standing means, in the reader's words rather than the model's. */
@@ -234,4 +236,106 @@ export function reading(result: StressResult): Reading {
     plays: result.plays.length,
     unmovable: result.checksHeld,
   };
+}
+
+/**
+ * WHAT A LEVER WOULD DO, WORKED OUT BEFORE IT IS PULLED.
+ *
+ * The rail is ordered by `dependants` — a raw count of every artefact of any
+ * kind citing the assumption — and prints that count as grey text after the
+ * label. Measured against the real simulation for all 29 offered levers, that
+ * number predicts NEITHER outcome. The top-ranked lever, "Implementation
+ * details are sufficient for delivery" (30 dependants), takes 3 of 47 plays off
+ * the table; the two that take the most, 9 each, rank 7th and 9th. In the other
+ * direction rank 1 moves 38 of 60 conclusions, but rank 26 moves 1 and rank 27
+ * moves 23, so it is not monotonic there either. A reader comparing 30 against
+ * 17 in grey 16px at the end of two variable-length labels is comparing a
+ * number that answers neither of the questions the panel exists to ask.
+ *
+ * Every one of those answers is knowable before anything is ticked: `stress()`
+ * walks citations the assessment already made, costs no model call and takes
+ * 0.5ms. All 29 previews together were measured at 30ms.
+ *
+ * ONE `reading()` CALL PER LEVER, not a shortcut. The disarmed count is exactly
+ * the number of exploits whose `preconditions` name the assumption — verified
+ * to match for all 29 — but counting it that way would put a second definition
+ * of "taken off the table" in the codebase, one of which would eventually stop
+ * agreeing with the panel it labels.
+ */
+export type LeverPreview = {
+  /** Plays a failed assumption would take off the table. */
+  disarms: number;
+  /** Conclusions and the machinery under them that would lose their footing. */
+  moves: number;
+};
+
+export type LeverPreviews = {
+  by: Map<string, LeverPreview>;
+  /** The largest of each, so two bars can be drawn on two stated scales. */
+  most: LeverPreview;
+  /** What each is out of. */
+  population: { plays: number; conclusions: number };
+};
+
+export function leverPreviews(artefacts: Artefact[], levers: { artefact: Artefact }[]): LeverPreviews {
+  const by = new Map<string, LeverPreview>();
+  let most: LeverPreview = { disarms: 0, moves: 0 };
+  let population = { plays: 0, conclusions: 0 };
+  for (const lever of levers) {
+    const result = reading(stress(artefacts, [lever.artefact.id]));
+    const preview = { disarms: result.disarmed.length, moves: result.moved };
+    by.set(lever.artefact.id, preview);
+    most = { disarms: Math.max(most.disarms, preview.disarms), moves: Math.max(most.moves, preview.moves) };
+    population = { plays: result.plays, conclusions: result.population };
+  }
+  return { by, most, population };
+}
+
+/**
+ * HOW MUCH OF THE ASSESSMENT IS STILL STANDING, drawn before anything is ticked.
+ *
+ * The panel showed one sentence — "Nothing failed yet. Tick an assumption and
+ * this becomes a list…" — and nothing else, so a reader scrolling past the one
+ * section whose whole point is that you pull a lever and SEE the answer learnt
+ * only that a feature exists. At zero levers this reads 100% Unchanged across
+ * all five populations, which teaches the instrument before anything is
+ * touched; each tick moves the bars.
+ *
+ * FIVE POPULATIONS, AND PLAYS ARE NOT ONE OF THE FOUR. A disarmed play is good
+ * news and a fallen conclusion is bad news, and `Reading` already refuses to
+ * add them together; the meter keeps them apart the same way, by ordering plays
+ * last and letting the caller set it aside.
+ */
+export type MeterRow = {
+  key: string;
+  label: string;
+  total: number;
+  /** Non-empty standings only, worst news first. */
+  counts: { standing: Standing; count: number }[];
+  /** How many are not `holds` — the length of the bar that is not grey. */
+  moved: number;
+};
+
+const METER = [
+  ['recommendations', 'Recommendations'],
+  ['findings', 'Conclusions'],
+  ['scenarios', 'Scenarios'],
+  ['models', 'Interaction models'],
+  ['plays', 'Plays'],
+] as const;
+
+export function standingMeter(result: StressResult): MeterRow[] {
+  return METER.map(([key, label]) => {
+    const rows = result[key];
+    const counts = BY_SEVERITY
+      .map((standing) => ({ standing, count: rows.filter((row) => row.standing === standing).length }))
+      .filter((entry) => entry.count);
+    return {
+      key,
+      label,
+      total: rows.length,
+      counts,
+      moved: rows.filter((row) => row.standing !== 'holds').length,
+    };
+  });
 }

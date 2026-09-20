@@ -9,3 +9,4 @@ export { ErrorSummary, NotificationBanner, Panel, PhaseBanner, InsetText, Warnin
 export { Details, Accordion } from './Disclosure';
 export { FormGroup, Input, Textarea, Select, FileUpload, Radios, Checkboxes, type FieldProps } from './Form';
 export { Tabs, type Tab } from './Tabs';
+export { Pagination, type PaginationLink } from './Pagination';

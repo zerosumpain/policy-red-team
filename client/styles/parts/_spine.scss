@@ -1,4 +1,93 @@
 @use "../govuk" as govuk;
 @use "../tokens" as *;
 
-// Reserved for the "spine" change. Empty until it lands.
+// ── The spine is one sticky block ─────────────────────────────────────────
+//
+// THE BANNER WAS PAINTED UNDER THE STRIP FOR THE WHOLE SCROLL.
+//
+// `.prt-selection` and `.govuk-tabs__list` were siblings and both
+// `position: sticky; top: 0` inside the same containing block, so they pinned to
+// the same line. Measured on the deployed report at 1280×900, scrolled to
+// y=3000 under `?sel=band:severe`: the banner's bounding box top was 0, its
+// height 58px and its z-index 10; the list's top was 0, its height 113px, its
+// z-index 20, over an opaque white ground. `document.elementFromPoint()` at the
+// banner's own centre returned `govuk-tabs__tab`. The banner's own rationale in
+// `_base.scss` — choose a mechanism 1,061px down and the filter is named 512px
+// above the viewport — was therefore describing a fix that had never once
+// fired.
+//
+// TWO THINGS CANNOT BOTH BE AT top: 0. The alternative, offsetting the strip by
+// the banner's height, needs that height measured at runtime: the banner is 58px
+// at 1280 and wraps to two lines with its button at tablet widths, so any fixed
+// offset re-opens the overlap at exactly the width where it matters. Stacking
+// them inside one sticky wrapper needs no measurement and cannot drift.
+//
+// FROM TABLET, which is where the strip exists at all. Below it the framework
+// tears the tabs down into an index, every panel is simply present, and there is
+// nothing to stick.
+.prt-spine {
+  @include govuk.govuk-media-query($from: tablet) {
+    position: sticky;
+    top: 0;
+    // Above the report, and above the 10 the banner used to carry.
+    z-index: 20;
+    // Its own ground, or the report scrolls up through it. The strip already
+    // carried this; the wrapper needs it now that the wrapper is what sticks.
+    background: govuk.govuk-colour("white");
+  }
+
+  // NOT STUCK ON PAPER. Print un-hides every panel and hides both the strip and
+  // the banner, so this is an empty box there — but a sticky empty box is the
+  // kind of thing a print engine paints on every page.
+  @media print {
+    position: static;
+  }
+}
+
+// THE TWO STICKY RULES THIS REPLACES, TURNED OFF RATHER THAN DELETED.
+//
+// Both live in `_base.scss`, which is the layer this directory exists to refine
+// — `app.scss` says so in its own header. The declarations that made the strip
+// and the banner work as furniture, its opaque ground and the box-shadow that
+// covers the panel's top border, are untouched: only the positioning moves up to
+// the wrapper.
+@include govuk.govuk-media-query($from: tablet) {
+  .govuk-tabs__list {
+    position: static;
+  }
+}
+
+// ── The banner, compact until there is something to say ───────────────────
+//
+// THE SPINE NOW COSTS WHAT BOTH HALVES COST. The strip is 113px at desktop and
+// the banner 58px, which is 171px of a 900px viewport spent on furniture before
+// a word of the report. But "Showing everything. Select a band, a mechanism or a
+// body to narrow every view." is an instruction, not a state — it is true on
+// every unfiltered read of every assessment, and it does not need a 19px line
+// and 15px of padding to say so.
+//
+// So the resting banner is one small line and a live selection gets the full
+// row. `:has()` is the right test because the Clear button is the difference: it
+// is rendered only when something is selected, which is the same condition, read
+// off the markup rather than duplicated as a class. Where `:has()` is not
+// supported the banner stays compact with its button in it — smaller than it
+// should be, never invisible.
+.prt-spine .prt-selection {
+  // `govuk-!-margin-bottom-4` is on the component itself and the framework's
+  // override classes are `!important`, so this is the one place in the file that
+  // has to answer in kind: inside the spine the gap would be 20px of sticky
+  // white between the banner and the strip it is attached to.
+  margin-bottom: 0 !important;
+  position: static;
+  padding: govuk.govuk-spacing(1) govuk.govuk-spacing(3);
+
+  p {
+    @include govuk.govuk-font($size: 16);
+  }
+
+  &:has(.govuk-button) {
+    padding: govuk.govuk-spacing(2) govuk.govuk-spacing(3);
+
+    p { @include govuk.govuk-font($size: 19); }
+  }
+}

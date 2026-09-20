@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { Artefact } from './policy-analysis/contracts';
 import { leverage } from './policy-analysis/stress';
-import { forProgress, forTheReport, modelsUsed, RUN_INDEX_CAP } from './detail-views';
+import { costSegments, forProgress, forTheReport, keptByStage, modelsUsed, reportCost, RUN_INDEX_CAP } from './detail-views';
 
 const a = (id: string, kind: string, extra: Partial<Artefact> = {}): Artefact => ({
   id,
@@ -144,5 +144,84 @@ describe('which models a run was made of', () => {
     expect(modelsUsed([])).toEqual([]);
     // A call that never reached a provider carries no model and is not a model.
     expect(modelsUsed([call('codex', null)])).toEqual([]);
+  });
+});
+
+describe('what each stage minted', () => {
+  it('tallies the rows by the stage that wrote them', () => {
+    // The real distribution is the point: stage 2 minted 1,275 of the run's
+    // 2,296 artefacts and stage 12 minted none.
+    const counts = keptByStage([{ stage: 1 }, { stage: 1 }, { stage: 3 }]);
+    expect(counts.get(1)).toBe(2);
+    expect(counts.get(3)).toBe(1);
+  });
+
+  it('gives a stage that minted nothing no entry, so the caller says zero', () => {
+    expect(keptByStage([{ stage: 1 }]).has(2)).toBe(false);
+  });
+
+  it('ignores a row with no stage on it rather than counting it as stage zero', () => {
+    expect(keptByStage([{}, { stage: 0 }]).get(0)).toBe(1);
+  });
+
+  it('is attached to every stage the report view sends', () => {
+    const view = forTheReport({ ...full, stages: [{ ordinal: 0 }, { ordinal: 1 }] });
+    expect(view.stages.map((stage) => stage.kept)).toEqual([1, 1]);
+  });
+});
+
+describe('what the run cost', () => {
+  const usage = (input: number, output: number, extra: Record<string, unknown> = {}) =>
+    ({ provider: 'codex', model: 'gpt-5.6-luna', usage: [{ tokensInput: input, tokensOutput: output, ...extra }] });
+
+  it('reads the usage array `Call` now declares', () => {
+    // THE FAILURE THIS GUARDS. `Call` was `{ provider; model }` with no `usage`,
+    // and `runCost`'s parameter is `{ model?; usage?: unknown }[]` — so passing
+    // the old array typechecked perfectly and returned all zeros.
+    const cost = reportCost([usage(1_000, 100), usage(2_000, 200)])!;
+    expect(cost.input).toBe(3_000);
+    expect(cost.output).toBe(300);
+    expect(cost.total).toBe(3_300);
+    expect(cost.calls).toBe(2);
+  });
+
+  it('says nothing rather than drawing a run that spent nothing', () => {
+    expect(reportCost(undefined)).toBeNull();
+    expect(reportCost([])).toBeNull();
+    // Calls with no usage reported are not a run that cost zero.
+    expect(reportCost([{ provider: 'codex', model: 'gpt-5.6-luna' }])).toBeNull();
+  });
+
+  it('keeps a null price null, because subscription quota is not free money', () => {
+    expect(reportCost([usage(10, 1)])!.cash).toBeNull();
+    expect(reportCost([usage(10, 1, { costUsd: 0.5 })])!.cash).toBe(0.5);
+  });
+});
+
+describe('the token split, which is nested and not four categories', () => {
+  const cost = reportCost([
+    { provider: 'codex', model: 'm', usage: [{ tokensInput: 1_000, tokensOutput: 400, cacheReadTokens: 900, reasoningTokens: 300 }] },
+  ])!;
+
+  it('partitions the total exactly, rather than summing overlapping figures', () => {
+    // cached is inside input and reasoning is inside output, so adding all four
+    // would claim 2,600 tokens for a 1,400-token run.
+    const segments = costSegments(cost);
+    expect(segments.reduce((n, s) => n + s.tokens, 0)).toBe(cost.total);
+    expect(segments.map((s) => s.tokens)).toEqual([900, 100, 300, 100]);
+  });
+
+  it('draws no segment for a share that is zero', () => {
+    const none = reportCost([{ provider: 'codex', model: 'm', usage: [{ tokensInput: 10, tokensOutput: 0 }] }])!;
+    expect(costSegments(none).map((s) => s.key)).toEqual(['fresh']);
+  });
+
+  it('clamps a provider figure that overruns the one it sits inside', () => {
+    // A `cached` larger than `input` would otherwise draw a negative segment,
+    // which is a bar that lies quietly.
+    const odd = reportCost([{ provider: 'codex', model: 'm', usage: [{ tokensInput: 100, tokensOutput: 10, cacheReadTokens: 999 }] }])!;
+    const segments = costSegments(odd);
+    expect(segments.every((s) => s.tokens >= 0)).toBe(true);
+    expect(segments.reduce((n, s) => n + s.tokens, 0)).toBe(odd.total);
   });
 });

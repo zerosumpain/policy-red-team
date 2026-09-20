@@ -1,4 +1,58 @@
 @use "../govuk" as govuk;
 @use "../tokens" as *;
 
-// Reserved for the "legality" change. Empty until it lands.
+// ── The legality pill, and the two modifiers that are deliberately dead ────
+//
+// `PlayList` emits `prt-legality prt-legality--{compliant|grey|breach|unknown}`
+// on every play row and the base layer defines the four modifiers nowhere, so
+// "Inside the rules" and "Grey area" render as pixel-identical grey pills. The
+// codebase already documents this class of defect for `prt-metric--neutral`:
+// "a class the markup asks for and the stylesheet has never heard of is a
+// vocabulary with a hole in it, and the hole is invisible precisely because the
+// default is right".
+//
+// TWO OF THE FOUR SHOULD STAY IDENTICAL, AND THE BASE IS RIGHT ABOUT WHY.
+// `_base.scss:1274` argues it: "not a colour ramp — 'inside the rules' is the
+// assessment's sharpest claim and is not the safe-looking end of a scale". A
+// heavier `--compliant` would rank it against `--grey`, and legality is a
+// nominal vocabulary, not an ordering: a play nobody forbids and a play nobody
+// has ruled on are two different situations, neither worse than the other. So
+// `--compliant` and `--grey` get no rule here ON PURPOSE, and this paragraph is
+// what a grep for `legality--compliant` in the stylesheet now finds instead of
+// nothing. If the emission itself is to go, it goes at PlayList.tsx:144 the way
+// `Metrics` stopped emitting `--neutral`; it is not a stylesheet decision.
+//
+// THE OTHER TWO ARE NOT POINTS ON THAT SCALE AND MUST NOT LOOK LIKE IT.
+// "Breaks a rule" is a categorically different statement from the other two —
+// it is the one legality value with an enforcement answer — and "—" is the
+// absence of a value rather than a value. Both are zero on this assessment,
+// which is exactly why they were never noticed.
+
+.prt-legality {
+  // INK, NOT `tint-25`. The base set the pill in the framework's secondary
+  // grey, which is 9:1 and perfectly legible and still reads as a footnote —
+  // so the sentence the assessment is sharpest about was the quietest thing on
+  // the card, beside a bold coloured band tag and a tabular figure. Black
+  // costs no weight and no colour; it only stops the claim being set as an
+  // aside. The border stays the hairline it was.
+  color: govuk.govuk-colour("black");
+
+  // A RULE-BREAK IS NOT A DARKER SHADE OF A GREY AREA. The red is the border
+  // only and the text stays black, so the pill still passes as a word in a box
+  // and the colour is doing what GOV.UK's red does everywhere else — marking
+  // the one thing that is not merely a judgement. 2px rather than a hue change
+  // on the hairline, because border weight is the half of this that survives a
+  // greyscale print, and the word "Breaks a rule" survives everything.
+  &--breach {
+    border: 2px solid govuk.govuk-colour("red");
+  }
+
+  // NO VALUE IS NOT A VALUE. `PlayList` falls back to an em dash when the
+  // legality is missing or unrecognised, and a solid box around an em dash
+  // reads as a fourth category. Dashed says the box is empty, and the grey
+  // puts it behind the three that say something.
+  &--unknown {
+    border-style: dashed;
+    color: govuk.govuk-colour("black", $variant: "tint-25");
+  }
+}

@@ -1,19 +1,23 @@
 import {
   actorBoard, bandCounts, checks, evidenceMix, findingsBySection,
-  headlineSentence, interplay, ledger, personaBoard, plays, recommendations, summarise, tiles,
+  headlineSentence, interplay, ledger, personaBoard, plays, recommendations,
 } from '$lib/policy-analysis/view';
 import type { Artefact } from '$lib/policy-analysis/contracts';
 import { Fragment, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { network } from '$lib/policy-analysis/network';
 import { leverage } from '$lib/policy-analysis/stress';
 import { stageFacts } from '$lib/policy-analysis/stage-facts';
+import { mechanismChart } from '$lib/mechanisms';
+import { scenarioViews } from '$lib/scenario-view';
 import type { Detail } from '../api';
-import { Details, InsetText, SummaryList, Table, Tabs } from '../govuk';
-import { mechanismIdsOf, narrowExcept, parseSelection, selectionParam, type Selection } from './selection';
-import { byReason, readable } from './warnings';
-import { Bar, Metrics } from './Metrics';
+import { InsetText, Tabs } from '../govuk';
+import { MOVES } from '../moves';
+import {
+  mechanismIdsOf, mechanismsOf, narrowExcept, parseSelection, selectionParam, type Selection,
+} from './selection';
+import { byReason, groupLimits, truncations } from './warnings';
+import { Metrics } from './Metrics';
 import { WriteUp } from './WriteUp';
-import { TestResult } from './TestResult';
 import { SelectionBanner } from './moves/SelectionBanner';
 import { VerdictLead } from './moves/VerdictLead';
 import { CausalityLead } from './moves/CausalityLead';
@@ -29,6 +33,33 @@ import { ExposureRail } from './ExposureRail';
 import { ExposureSpread } from './ExposureSpread';
 import { Counters } from './Counters';
 import { NoneUnder, ScopeNote } from './moves/NoneUnder';
+import { Contents, type ContentsEntry } from './Contents';
+import { moveCounts } from './tabcounts';
+/* Move 1: the four figures, the legality shape, the challenge round and the
+   evaluation plan — every one of them already in the payload and drawn nowhere. */
+import { FactorProfile } from './FactorProfile';
+import { Legality, LegalityLead } from './Legality';
+import { EvidenceCoverage } from './EvidenceCoverage';
+import { CheckLedger } from './CheckLedger';
+import { Assurance } from './Assurance';
+import { Options } from './Options';
+import { Fragile } from './Fragile';
+import { Recommendations } from './Recommendations';
+import { BurdenBars } from './BurdenBars';
+import { ChallengeNote, DroppedRecs, RecCoverage } from './RecCoverage';
+/* Move 2, 3 and 4: what the paper is made of, the conditions it has to survive,
+   and the three sections Move 4's one table used to stand in for. */
+import { Composition } from './Composition';
+import { Scenarios } from './Scenarios';
+import { ActorFunnel } from './ActorFunnel';
+import { CastGrid } from './CastGrid';
+import { Models } from './Models';
+import { Resolution } from './Resolution';
+/* Provenance: the run itself, what it could not see, and what it could not establish. */
+import { RunProfile } from './RunProfile';
+import { Withheld } from './Withheld';
+import { Limits } from './Limits';
+import { DownloadGrid } from './DownloadGrid';
 
 /**
  * The report.
@@ -68,9 +99,7 @@ type Move = 'verdict' | 'causality' | 'threats' | 'actors' | 'provenance' | 'do'
  */
 const ACTIONS: Move = 'do';
 
-interface Section {
-  id: string;
-  title: string;
+interface Section extends ContentsEntry {
   body: React.ReactNode;
   /**
    * Which of the four questions this section answers.
@@ -107,50 +136,32 @@ interface Section {
 const MOVE_ORDER: Move[] = ['verdict', 'causality', 'threats', 'actors', 'provenance', 'do'];
 
 /**
- * `id` IS A PARAMETER BECAUSE THIS RENDERS MORE THAN ONCE NOW.
+ * The moves that are tabs, which is not all of them.
  *
- * The pack has one of these at the top of one long document. The service renders
- * one per panel — and every panel is in the DOM at once, `hidden` or not, so a
- * hard-coded `id="contents"` would ship five elements with the same id on a page
- * whose gate is axe-clean.
- *
- * The `< 3` guard stays deliberately: at two sections in Causality and one in
- * Actors, a contents list is longer than the thing it indexes.
+ * `?move=do` was a live URL that rendered nothing: `do` is in `MOVE_ORDER`, both
+ * URL readers accepted it, and `Tabs` was handed a `current` no tab matches.
+ * Measured on the deployed report: 5 panels, 0 visible, 5 tabs, 0 holding the
+ * tab stop, and `?move=do` still in the address bar afterwards, so a reload did
+ * not recover it either. `Tabs` is now structurally unable to render nothing,
+ * and this stops the URL producing the state in the first place — between them
+ * the address bar heals itself, because `move` stays `verdict` and the writing
+ * effect drops the parameter.
  */
-function Contents({ sections, id = 'contents', of }: { sections: Section[]; id?: string; of?: string }) {
-  /*
-   * TWO, NOT THREE — the guard counts the wrong thing and was set against the
-   * wrong scale.
-   *
-   * It asks how many SECTIONS a panel has, and what a reader needs an index for
-   * is how much PAGE there is. Causality and Actors are the two longest panels
-   * in the report — 5,491px and 3,990px measured at 1280 — and each registers
-   * exactly two top-level sections, so the panels that most need a contents list
-   * were the only two denied one. Causality carries eleven headings inside those
-   * two sections.
-   *
-   * Two entries is a short index and still a useful one at five thousand pixels.
-   */
-  if (sections.length < 2) return null;
-  return (
-    /*
-     * NAMED BY WHAT IT INDEXES. Below the tablet breakpoint every panel is on the
-     * page at once, so five `<nav aria-label="Contents">` elements are five
-     * landmarks a screen-reader user cannot tell apart — axe's `landmark-unique`,
-     * which the walk caught at 320px the moment it started auditing there.
-     */
-    <nav className="govuk-!-margin-bottom-6" aria-label={of ? `Contents of ${of}` : 'Contents'}>
-      <h2 className="govuk-heading-s" id={id}>Contents</h2>
-      <ol className="govuk-list govuk-list--number govuk-list--spaced">
-        {sections.map((section) => (
-          <li key={section.id}>
-            <a className="govuk-link" href={`#${section.id}`}>{section.title}</a>
-          </li>
-        ))}
-      </ol>
-    </nav>
-  );
-}
+const TABS: Move[] = MOVE_ORDER.filter((move) => move !== ACTIONS);
+
+/**
+ * What a move is called, for anything that has to say its name rather than use
+ * its key. `Contents of causality` is an internal id read aloud to a screen
+ * reader; `Contents of Move 2, Causality` is the name on the tab that opens it.
+ */
+const MOVE_LABEL: Record<Move, string> = {
+  verdict: 'Move 1, Verdict',
+  causality: 'Move 2, Causality',
+  threats: 'Move 3, Threats',
+  actors: 'Move 4, Actors',
+  provenance: 'Provenance',
+  do: 'What you can do with this',
+};
 
 /**
  * How an artefact's name is rendered.
@@ -171,7 +182,15 @@ function Contents({ sections, id = 'contents', of }: { sections: Section[]; id?:
  * not say which direction the insight is about. The offline pack, which has no
  * renderer at all, was printing it correctly the whole time.
  */
-export type ArtefactLink = (artefact: Artefact, label?: string) => ReactNode;
+/**
+ * `at` IS THE READER'S POSITION IN THE REPORT, and it is an opaque query string
+ * rather than a route — nothing in this tree learns what a URL looks like. It is
+ * a parameter at all because the `replaceState` effect below runs AFTER the
+ * render that built a link's closure: a renderer reading `window.location.search`
+ * for itself carries the position as it was before the reader's last selection,
+ * and sends them back to the wrong place in silence.
+ */
+export type ArtefactLink = (artefact: Artefact, label?: string, at?: string) => ReactNode;
 
 /**
  * `offline` suppresses the download section.
@@ -193,8 +212,6 @@ export function Report({ detail, offline, linkTo, onChanged }: {
   onChanged?: () => void;
 }) {
   const { artefacts, analysis, stages } = detail;
-  /** The name of a thing, and — where the caller can offer one — the way into it. */
-  const name = (artefact: Artefact): ReactNode => (linkTo ? linkTo(artefact) : artefact.label);
 
   /*
    * Declared before the shaping, because the board and the leads all narrow by
@@ -203,6 +220,62 @@ export function Report({ detail, offline, linkTo, onChanged }: {
    */
   const [move, setMove] = useState<Move>('verdict');
   const [selection, setSelection] = useState<Selection>(null);
+  /*
+   * THE SCENARIO, HELD HERE SO IT CAN GO IN THE URL. It was plain state inside
+   * `StressLab` — the only thing on the page you RUN, and the only state a
+   * drill-and-back destroyed. `StressLab` keeps its own copy when this is not
+   * passed, which is what the offline pack wants.
+   */
+  const [failed, setFailed] = useState<string[]>([]);
+
+  /**
+   * WHERE THE READER IS, HANDED TO EVERY LINK OUT OF THE REPORT.
+   *
+   * The drill is a separate route and its back link reset the move and cleared
+   * the selection, so following a play out of Threats under a mechanism and
+   * pressing the one visible way back landed on Move 1 showing everything —
+   * while the browser's own Back, which nobody is looking at, preserved the
+   * position perfectly.
+   *
+   * IT COMES FROM STATE, NEVER FROM THE URL, for the reason `ArtefactLink` now
+   * records: the effect that writes the URL has not run yet when this renders.
+   *
+   * THE SCENARIO TRAVELS WITH IT. `fail` is carried for the same reason `sel`
+   * is and was added here at integration: the lab's own result lists are drill
+   * links, so a three-lever scenario followed out of the report and back would
+   * otherwise be the one piece of reading position the fix left behind. The
+   * drill treats `from` as opaque and hands the whole string back, so this needs
+   * nothing on the other side.
+   */
+  const at = useMemo(() => {
+    const params = new URLSearchParams();
+    if (move !== 'verdict') params.set('move', move);
+    const sel = selectionParam(selection);
+    if (sel) params.set('sel', sel);
+    if (failed.length) params.set('fail', failed.join(','));
+    return params.toString();
+  }, [move, selection, failed]);
+
+  /*
+   * UNDEFINED STAYS UNDEFINED. The pack passes no `linkTo` at all and a dozen
+   * components branch on its absence to render a plain label; wrapping it into a
+   * function that is always defined would put link machinery into the one bundle
+   * that must not have any.
+   */
+  const link = useMemo<ArtefactLink | undefined>(
+    () => (linkTo ? (artefact, label) => linkTo(artefact, label, at) : undefined),
+    [linkTo, at],
+  );
+
+  /**
+   * The name of a thing, and — where the caller can offer one — the way into it.
+   *
+   * DECLARED AFTER `link`, which is the pack's rule rather than a style choice:
+   * a function a closure calls is declared before the closure is built, because
+   * the pack's minifier once hoisted a `const` past its use and left a reader
+   * offline on a dead control with no console to see it in.
+   */
+  const name = (artefact: Artefact): ReactNode => (link ? link(artefact) : artefact.label);
 
   /*
    * THE URL IS WHERE YOU ARE IN THE REPORT.
@@ -233,12 +306,16 @@ export function Report({ detail, offline, linkTo, onChanged }: {
     const apply = () => {
       const params = new URLSearchParams(window.location.search);
       const named = params.get('move') as Move | null;
-      if (named && MOVE_ORDER.includes(named)) setMove(named);
+      if (named && TABS.includes(named)) setMove(named);
       setSelection(parseSelection(params.get('sel'), artefacts));
+      // Validated on the way in by `StressLab`'s existing prune-to-offerable
+      // effect, so a pasted id that is no longer a lever is dropped rather
+      // than producing a results panel with nothing ticked.
+      setFailed((params.get('fail') ?? '').split(',').filter(Boolean));
 
       const hash = /^#report-(?:tab|panel)-([a-z]+)$/.exec(window.location.hash);
       const fromHash = hash?.[1] as Move | undefined;
-      if (fromHash && MOVE_ORDER.includes(fromHash)) setMove(fromHash);
+      if (fromHash && TABS.includes(fromHash)) setMove(fromHash);
     };
     apply();
     window.addEventListener('popstate', apply);
@@ -257,12 +334,16 @@ export function Report({ detail, offline, linkTo, onChanged }: {
     if (move === 'verdict') params.delete('move'); else params.set('move', move);
     const sel = selectionParam(selection);
     if (sel) params.set('sel', sel); else params.delete('sel');
+    // Ids are ~28 characters, so a three-lever scenario costs about 90 of
+    // query string. Under the same `offline` guard as `move` and `sel`: a
+    // `file://` document has no URL worth keeping.
+    if (failed.length) params.set('fail', failed.join(',')); else params.delete('fail');
     const query = params.toString();
     const next = `${window.location.pathname}${query ? `?${query}` : ''}${window.location.hash}`;
     if (next !== `${window.location.pathname}${window.location.search}${window.location.hash}`) {
       window.history.replaceState(window.history.state, '', next);
     }
-  }, [move, selection, offline]);
+  }, [move, selection, failed, offline]);
   const mechanismIds = useMemo(() => mechanismIdsOf(artefacts), [artefacts]);
 
   /*
@@ -393,12 +474,21 @@ export function Report({ detail, offline, linkTo, onChanged }: {
   };
 
   const sections: Section[] = [];
-  const section = (id: string, title: string, move: Move, body: React.ReactNode) => {
-    if (body) sections.push({ id, title, body, move });
+  /**
+   * The last argument is what the CONTENTS says about the section, and it is
+   * optional because most sections have nothing to add to their own title.
+   *
+   * A count passed here must come from the array that already decided the
+   * section exists — every call below pushes only `if (body)` — so the index and
+   * the section cannot drift apart without the body changing too.
+   */
+  type Index = Pick<ContentsEntry, 'count' | 'anchors'>;
+  const section = (id: string, title: string, move: Move, body: React.ReactNode, index?: Index) => {
+    if (body) sections.push({ id, title, body, move, ...index });
   };
   /** A lead: same list, same contents entry, but it draws its own heading. */
-  const lead = (id: string, title: string, move: Move, body: React.ReactNode) => {
-    if (body) sections.push({ id, title, body, move, bare: true });
+  const lead = (id: string, title: string, move: Move, body: React.ReactNode, index?: Index) => {
+    if (body) sections.push({ id, title, body, move, bare: true, ...index });
   };
 
   /*
@@ -415,7 +505,7 @@ export function Report({ detail, offline, linkTo, onChanged }: {
    * the lead is the head of its panel.
    */
   lead('exposure-profile', 'Read these first', 'verdict',
-    <VerdictLead list={list} bands={bands} selection={selection} onSelect={setSelection} mechanismIds={mechanismIds} linkTo={linkTo} />);
+    <VerdictLead list={list} bands={bands} selection={selection} onSelect={setSelection} mechanismIds={mechanismIds} linkTo={link} />);
   /*
    * THE SHAPE UNDERNEATH THE FOUR BANDS. The rail says twenty of the forty-seven
    * plays are severe; measured on this run the cut it used has 0.0039 between
@@ -424,15 +514,52 @@ export function Report({ detail, offline, linkTo, onChanged }: {
    * selection of its own — the rail keeps that job.
    */
   section('spread', 'How the exposure is spread', 'verdict', <ExposureSpread list={list} />);
+  /*
+   * EVERY SECTION BELOW IS GATED ON ITS OWN INPUT, and six of tonight's were
+   * handed over ungated. `section()` keeps any TRUTHY body and a JSX element is
+   * always truthy, so a component that returns `null` for a run it has nothing
+   * to say about still registers its heading — and, now, a numbered entry in the
+   * contents list pointing at an empty one. Each gate here is a NECESSARY
+   * condition of the component's own guard, read off the same field, so it can
+   * only drop the empty case and can never hide a section that would have drawn.
+   */
+  /*
+   * WHY THE EXPOSURE IS WHERE IT IS. `factorProfile()` has been in the view
+   * layer since the fork was made, documented as a figure the verdict shows
+   * beside the headline, and its only caller was its own test.
+   */
+  section('factors', 'What makes them work', 'verdict',
+    list.length ? <FactorProfile list={list} linkTo={link} /> : null);
+  /*
+   * THE SHARPEST CLAIM, WITH A MAGNITUDE ON IT. Band and legality are both on
+   * every play and the report drew each of them alone — the bar at the top of
+   * the page, the pill 1,400px below it on three cards.
+   */
+  section('legality', 'Nothing here breaks a rule', 'verdict',
+    list.length ? <Legality list={list} /> : null);
+  /*
+   * TWO RANKINGS OF THE SAME 444 ASSUMPTIONS THAT DO NOT OVERLAP. `leverage()`
+   * is already computed for the stress lab and is passed rather than re-run.
+   * `onStress` rather than `goTo` so `Fragile` knows nothing about moves — it
+   * renders in the pack, where there is no router and no spine.
+   *
+   * AFTER `legality`, which is where its own author asked for it: the change
+   * said "after the legality section" and there was no legality section to put
+   * it after until this merge. The three together read as the claim, the rule it
+   * does not break, and what the claim rests on.
+   */
+  section('rests', 'What the conclusion rests on', 'verdict', levers.length ? (
+    <Fragile artefacts={artefacts} levers={levers} onStress={() => goTo('threats', 'stress')} />
+  ) : null);
 
   lead('mechanisms', 'The mechanisms that generate the most plays', 'causality',
-    <CausalityLead artefacts={artefacts} list={list} selection={selection} onSelect={setSelection} mechanismIds={mechanismIds} linkTo={linkTo} />);
+    <CausalityLead artefacts={artefacts} list={list} selection={selection} onSelect={setSelection} mechanismIds={mechanismIds} linkTo={link} />);
   lead('weights', 'Ways to beat it', 'threats',
     <ThreatsLead
       list={list}
       selection={selection}
       mechanismIds={mechanismIds}
-      linkTo={linkTo}
+      linkTo={link}
       onClear={() => setSelection(null)}
       written={playsWritten}
       onProvenance={() => goTo('provenance', 'discarded')}
@@ -444,14 +571,23 @@ export function Report({ detail, offline, linkTo, onChanged }: {
    * connected to nothing.
    */
   lead('interplay', 'Who is coming for what', 'actors',
-    <ActorsLead interplay={interplayMap} personas={personaGroups} linkTo={linkTo} />);
+    <ActorsLead
+      artefacts={artefacts}
+      plays={boardPlays}
+      interplay={interplayMap}
+      personas={personaGroups}
+      selection={selection}
+      onSelect={setSelection}
+      mechanismIds={mechanismIds}
+      linkTo={link}
+    />);
   lead('discarded', 'What was discarded, and why', 'provenance',
     <>
       {/* The one panel that is about the RUN and not the paper, under a banner
           that says the whole report is narrowed. It wraps rather than edits
           because `ProvenanceLead` belongs to another change tonight. */}
       <ScopeNote selection={selection} subject="the run, not the paper" />
-      <ProvenanceLead stages={stages} />
+      <ProvenanceLead stages={stages} playsKept={list.length} />
     </>);
 
   /*
@@ -486,8 +622,13 @@ export function Report({ detail, offline, linkTo, onChanged }: {
    */
   section('plays', 'Ease against impact', 'threats', list.length ? (
     <>
+      {/* Move 3 never counted its own sharpest claim: the legality pill is on
+          each of the ten cards it shows and the shape of the whole 47 is on no
+          panel. The figure stays in the Verdict move; this is the consequence,
+          printed where the threats are. */}
+      <LegalityLead list={list} />
       {shownPlays.length
-        ? <ExposurePlot plays={shownPlays} linkTo={linkTo} />
+        ? <ExposurePlot plays={shownPlays} linkTo={link} />
         : <NoneUnder selection={selection} onClear={() => setSelection(null)} />}
       <Counters
         list={list}
@@ -495,36 +636,40 @@ export function Report({ detail, offline, linkTo, onChanged }: {
         mechanismIds={mechanismIds}
         selection={selection}
         onSelect={setSelection}
-        linkTo={linkTo}
+        linkTo={link}
       />
     </>
-  ) : null);
+  ) : null, { count: { n: list.length, noun: 'plays' } });
 
   /*
-   * CAPPED, like the playbook beside it.
+   * MOVE 3'S SECOND SECTION, and the first time anything has called
+   * `scenarioBeats()`. The tracked view layer has carried that renderer since it
+   * was copied, under a nine-line comment arguing for its own existence, and a
+   * grep across client, src, server, tests and packages found exactly one
+   * occurrence — its own definition. Measured on this run it holds 8 scenarios,
+   * 104 beats and 58 downstream effects that reached the reader as one sentence
+   * inside a Verdict write-up card.
    *
-   * MEASURED on a real assessment: this table rendered 511 rows and stood
-   * 23,717 pixels tall — twenty-six screens for one section of a report that
-   * came to seventy-nine. `actorBoard` is already sorted worst-play-first, so
-   * the cap keeps the bodies a reader came for; the rest are counted, and the
-   * drill holds every one of them either way.
-   *
-   * 511 is also inflated: entity resolution splits an ambiguous body into
-   * candidate rows rather than merging them, which is a deliberate choice and is
-   * reported as a finding by "How they connect" two sections above.
+   * SHAPED HERE RATHER THAN INSIDE THE COMPONENT, so that a run with no
+   * scenarios registers no section at all — `section()` keeps any truthy body,
+   * and a component returning null behind a registered heading is an empty
+   * heading in the contents list.
    */
-  const ACTORS_SHOWN = 20;
+  const scenarios = useMemo(() => scenarioViews(artefacts), [artefacts]);
+  section('scenarios', 'Conditions the policy has to survive', 'threats',
+    scenarios.length ? <Scenarios views={scenarios} linkTo={link} /> : null,
+    { count: { n: scenarios.length, noun: 'conditions' } });
+
   /*
-   * A BODY THAT RUNS NO PLAY IS NOT "THE WORST 20". The board is sorted worst
-   * first and then sliced, so on a run where only twelve bodies carry a play the
-   * remaining eight rows were 0 plays / 0.00 exposure — padding a table headed
-   * "worst play first" with bodies that have no play at all, three of them
-   * spelled "Department for Education" one after another. That is a reader's
-   * first sight of the Actors move and it reads as a broken table.
+   * A BODY THAT RUNS NO PLAY IS NOT ONE OF "THE WORST". The board is sorted
+   * worst first, so on a run where only twelve bodies carry a play the rest are
+   * 0 plays / 0.00 exposure — bodies with no play at all under a heading reading
+   * "worst play first", three of them spelled "Department for Education" one
+   * after another.
    *
-   * So the table is the bodies that actually run something, and the rest are
-   * counted in a sentence. Nothing is lost: every profile is still reachable
-   * from the relationships section and from any play it could run.
+   * The twelve that run something are the body table on the lead now; what is
+   * left here is the count of them, and the funnel that says which bodies reach
+   * a play at all.
    */
   const active = board.filter((a) => a.plays.length);
   /*
@@ -552,14 +697,6 @@ export function Report({ detail, offline, linkTo, onChanged }: {
   const names = (rows: typeof board) => new Set(rows.map(nameOf)).size;
   const namedAll = names(board);
   const namedActive = names(active);
-  /** The names with no play, split by whether the name was profiled at all. */
-  const idle = [...new Set(board.filter((a) => !a.plays.length).map(nameOf))]
-    .filter((label) => !active.some((a) => nameOf(a) === label));
-  const profiledNames = new Set(board.filter((a) => a.profile).map(nameOf));
-  const idleProfiled = idle.filter((label) => profiledNames.has(label)).length;
-  const idleUnprofiled = idle.length - idleProfiled;
-  /** Candidate rows that are a second record of a name already on the board. */
-  const duplicates = board.length - namedAll;
   section('actors', 'Who is involved', 'actors', board.length ? (
     <>
       {/*
@@ -571,93 +708,108 @@ export function Report({ detail, offline, linkTo, onChanged }: {
       */}
       <p className="govuk-body">
         {namedActive} of the {namedAll} distinct bodies the paper names are positioned to run at
-        least one play — named, whether or not the paper connects them to anything. The figure is the
-        worst single play each one could run, on the same 0–1 exposure scale as the playbook.
+        least one play — named, whether or not the paper connects them to anything. Every one of
+        them is in the body table on &ldquo;Who is coming for what&rdquo;, with what it can reach,
+        the worst play it could run and whether that play breaks a rule.
       </p>
-      <Table
-        caption={`Bodies that could run a play, worst first${active.length > ACTORS_SHOWN ? ` — the worst ${ACTORS_SHOWN} of ${active.length}` : ''}`}
-        captionSize="s"
-        scroll
-        columns={[{ header: 'Body' }, { header: 'Plays', numeric: true }, { header: 'Worst exposure', numeric: true, width: '11rem' }]}
-        rows={active.slice(0, ACTORS_SHOWN).map((actor) => [
-          name(actor.actor),
-          String(actor.plays.length),
-          /* The number alone gives a reader nothing to compare: 0.77 against
-             0.05 is a fifteen-fold difference that reads as two similar
-             decimals. The bar is the comparison and the number stays exact. */
-          <Bar value={actor.worst} />,
-        ])}
-      />
-      {active.length > ACTORS_SHOWN ? (
-        <p className="govuk-body-s prt-meta">
-          {active.length - ACTORS_SHOWN} more bodies run a play. Every one is reachable from the
-          relationships section and from any play it could run.
-        </p>
-      ) : null}
-      {idleProfiled || idleUnprofiled ? (
-        <p className="govuk-body-s prt-meta">
-          {idleProfiled ? `${idleProfiled} further ${idleProfiled === 1 ? 'body is' : 'bodies are'} profiled but run no play in this assessment. ` : ''}
-          {idleUnprofiled
-            ? `${idleUnprofiled} ${idleUnprofiled === 1 ? 'was' : 'were'} named and never profiled. `
-            : 'Every body the paper names is profiled. '}
-          {duplicates} of the {board.length} candidate records are a second record of a name
-          already here — entity resolution keeps candidates apart rather than merging them, which{' '}
-          {/*
-            A CROSS-MOVE MENTION IS A CONTROL, NOT PROSE. "How they connect" is a
-            section in the Causality panel: one click sideways, named in a
-            sentence, with nothing to click and no hint that it was anywhere at
-            all. A button rather than an anchor, because following it changes what
-            is on the page rather than going to a new one — and a bare `href`
-            would be a full reload of a single-page app.
-          */}
-          <button type="button" className="prt-linkbutton" onClick={() => goTo('causality', 'network')}>
-            How they connect
-          </button>{' '}
-          reports as a finding.
-        </p>
-      ) : null}
-    </>
-  ) : null);
-
-  section('network', 'How they connect', 'causality', net.edges.length ? (
-    <>
-      <ScopeNote selection={selection} subject="the whole assessment" />
-      <NetworkSection net={net} artefacts={artefacts} linkTo={linkTo} />
-    </>
-  ) : null);
-
-  section('stress', 'What if we are wrong', 'threats', levers.length ? (
-    <>
-      <ScopeNote selection={selection} subject="the whole assessment" />
-      <StressLab artefacts={artefacts} levers={levers} linkTo={linkTo} />
+      {/*
+        THE TABLE THAT WAS HERE IS THE TABLE IN THE LEAD. Move 4 printed the same
+        twelve bodies in three consecutive tables — reach, priors, worst exposure
+        — and two of the three carried an identical Body column and an identical
+        Plays column. The lead's body table now carries every column all three
+        had, plus the kind, the legality split and the selection control, so what
+        belongs here is the funnel that decides which bodies reach it at all: the
+        four figures that used to close this move in the smallest grey type on
+        the page.
+      */}
+      <ActorFunnel board={board} onNetwork={() => goTo('causality', 'network')} />
     </>
   ) : null);
 
   /*
-   * FOUR FIGURES, NOT A TWO-COLUMN LIST. This was a summary list: the label in
-   * a 30% key column and the number in the value cell, leaving two thirds of
-   * the row empty and the figure at the same weight as the word. The tone tints
-   * the rule only, and only in agreement with the label — "contradicts" is not
-   * an alarm, it is the thing a red team is looking for.
+   * THE CAST, AS A GRID. `traitGrid`, `TRAIT_COLUMNS` and `traitCoverage` have
+   * been in `matrix.ts` since the grid rebuild, arguing this move's case in
+   * their own header, and nothing in `client/` has ever called them — 330
+   * profile sentences in the payload and a move that showed a play count and an
+   * exposure. See `CastGrid` for why the caption cannot use `traitCoverage`.
    */
-  const EVIDENCE_TONE: Record<string, 'good' | 'severe' | 'moderate' | 'limited'> = {
-    supports: 'good', contradicts: 'severe', mixed: 'moderate', insufficient: 'limited',
-  };
-  section('evidence', 'What is backed up', 'verdict', mix.length ? (
+  section('cast', 'What moves each body', 'actors', board.some((a) => a.profile) ? (
+    <CastGrid board={board} personas={detail.personas} linkTo={link} />
+  ) : null);
+
+  /*
+   * TEN MODELS THE REPORT REASONED FROM AND NEVER SHOWED. Two of the four
+   * assured recommendations cite one in their refs.
+   */
+  section('models', 'The games the policy sets up', 'actors', artefacts.some((a) => a.kind === 'model') ? (
+    <Models artefacts={artefacts} linkTo={link} />
+  ) : null);
+
+  section('resolution', 'Bodies the paper does not pin down', 'actors',
+    artefacts.some((a) => a.kind === 'resolution_candidate') ? (
+      <Resolution artefacts={artefacts} linkTo={link} />
+    ) : null);
+
+  /*
+   * WHAT THE PAPER IS MADE OF, before how they connect. Three things the run
+   * computed and the report never showed: the 536 claims sorted into 13
+   * categories, how much of the 151-piece machinery has anybody stated to run
+   * it, and where the 150 causal chains land. Every figure is derived from
+   * `refs` and `data.category`, so nothing is un-stubbed and nothing is added
+   * to the payload.
+   */
+  section('composition', 'What the paper is made of', 'causality',
+    artefacts.some((a) => a.kind === 'claim' || a.kind === 'mechanism') ? (
+      <Composition artefacts={artefacts} list={list} mechanismIds={mechanismIds} />
+    ) : null);
+
+  section('network', 'How they connect', 'causality', net.edges.length ? (
     <>
-      <Metrics
-        columns={4}
-        metrics={mix.map((entry) => ({
-          label: entry.label,
-          value: entry.count.toLocaleString(),
-          tone: EVIDENCE_TONE[entry.key] ?? 'neutral',
-        }))}
+      {/*
+        A MECHANISM SELECTION IS ANSWERED HERE, so `ScopeNote` must not say it is
+        not. The note tells a reader what the panel below ignores; with a
+        mechanism chosen, `NetworkSection` now renders the dossier for it, and a
+        line reading "the selection does not narrow it" directly above an answer
+        to the selection is the only false sentence on the section.
+      */}
+      <ScopeNote selection={selection?.kind === 'mechanism' ? null : selection} subject="the whole assessment" />
+      <NetworkSection
+        net={net}
+        artefacts={artefacts}
+        linkTo={link}
+        selection={selection}
+        onClearSelection={() => setSelection(null)}
       />
-      <InsetText>
-        A search excerpt is weak evidence and is labelled as one. A retrieval date is not a
-        publication date.
-      </InsetText>
     </>
+  ) : null, {
+    /*
+     * THE FIVE HEADINGS INSIDE THIS ONE SECTION. Causality registers two
+     * sections and renders eleven headings across 5,491px, so the index it got
+     * named two things for five screens. These ids are on the `h3`s in
+     * `Network.tsx` already and have been since it was written. `net-selected`
+     * is deliberately not here: it exists only while a mechanism is chosen, and
+     * an index entry pointing at nothing is worse than no index at all.
+     */
+    count: { n: net.edges.length, noun: 'relationships' },
+    anchors: [
+      { id: 'net-depth', title: 'How deep the wiring goes' },
+      { id: 'net-shape', title: 'Where the relationships run' },
+      { id: 'net-families', title: 'What kind of relationship' },
+      { id: 'net-bodies', title: 'Bodies against bodies' },
+      { id: 'net-insights', title: 'What the connections show' },
+    ],
+  });
+
+  section('stress', 'What if we are wrong', 'threats', levers.length ? (
+    <>
+      <ScopeNote selection={selection} subject="the whole assessment" />
+      <StressLab artefacts={artefacts} levers={levers} linkTo={link}
+                 failed={failed} onFailedChange={setFailed} />
+    </>
+  ) : null);
+
+  section('evidence', 'What is backed up', 'verdict', mix.length ? (
+    <EvidenceCoverage artefacts={artefacts} mix={mix} linkTo={link} />
   ) : null);
 
   /*
@@ -668,185 +820,113 @@ export function Report({ detail, offline, linkTo, onChanged }: {
    * rather than green, because "the test could not decide" is not a pass.
    */
   section('checks', 'Structural checks', 'verdict', structural.length ? (
-    <Table
-      caption="What the policy's own wiring was tested against"
-      captionSize="s"
-      scroll
-      columns={[{ header: 'Check' }, { header: 'Result', width: '11rem' }]}
-      rows={structural.slice(0, 20).map((check) => [name(check), <TestResult value={check.data.result} />])}
-    />
-  ) : null);
+    <CheckLedger checks={structural} net={net} linkTo={link} />
+  ) : null, { count: { n: structural.length, noun: 'checks' } });
 
   section('writeup', 'The write-up', 'verdict', sectionFindings.length ? (
-    <WriteUp groups={sectionFindings} name={name} offline={offline} />
-  ) : null);
+    <WriteUp groups={sectionFindings} name={name} offline={offline} echoed={headline} />
+  ) : null, { count: { n: sectionFindings.length, noun: 'sections' } });
 
   /*
-   * A RECOMMENDATION IS AN ITEM, NOT A PARAGRAPH IN A RUN-ON LIST.
+   * THE STAGE THAT ATTACKS THE ASSESSMENT, ON A PAGE. Seven challenges, seven
+   * responses and a review summary were in the payload and referenced nowhere
+   * in the client outside the drill route's kind list.
+   */
+  section('assurance', 'What survived challenge', 'verdict',
+    artefacts.some((a) => a.kind === 'assurance_challenge' || a.kind === 'assurance_response' || a.kind === 'review_summary') ? (
+      <Assurance artefacts={artefacts} />
+    ) : null);
+
+  /*
+   * A RECOMMENDATION IS AN ITEM, AND THE ITEM IS THE WHOLE RECORD.
    *
-   * These are 400–900 characters each — a sentence saying what to do, then
-   * three or four saying how and against what. Printed whole in a numbered
-   * list they became nine grey slabs in which the actual instruction was
-   * indistinguishable from the caveats attached to it, and a reader scanning
-   * for "what should I do" had to read all nine in full to find out.
+   * This split each statement with `summarise()` and opened the remainder in a
+   * disclosure. Measured against the real assessment: the four assured
+   * statements are 321, 401, 366 and 452 characters, none holds a paragraph
+   * break, and `LEAD_FLOOR = 320` means the boundary search runs only over the
+   * tail — so `rest` was empty on all four and the disclosure never rendered.
+   * The apparatus was inert, and while it was inert `data.change`,
+   * `data.tradeoffs` and `data.validationNeeded` — populated on all four, and
+   * printed into the .docx by `report-doc.ts:290-296` — were on the page
+   * nowhere. The Word file a reader downloaded from here was a better document
+   * than the page it came from, in the one section they are meant to act on.
    *
-   * The lead sentence is the instruction and it is set as one. Everything after
-   * it is the working, and it opens on request, and `summarise()` does the split.
-   *
-   * (It used to say "the same one the write-up uses". That stopped being true
-   * when the write-up became a grid of fixed-height cards: it clamps in CSS and
-   * splits nothing. Measured on the real run, `summarise()` declines to split ten
-   * of its twelve sections, which is why it is not used there.)
+   * `summarise()` is not wrong, it is just not what these needed; it is still
+   * the right split elsewhere. The three blocks under the list are the three
+   * readings the assessment had already written and never drew: who each
+   * recommendation says gains and who carries it, which of the forty-seven
+   * plays the four together answer, and what the challenge round removed.
    */
   section('suggests', 'What it suggests', 'verdict', recs.length ? (
-    <ol className="prt-recs">
-      {recs.map((rec) => {
-        const { lead, rest } = summarise(rec.statement);
-        return (
-          <li key={rec.id} className="prt-rec">
-            {/* The artefact's own name is the card's title, the way a play's is
-                — it was set as a grey footnote UNDER the instruction, where a
-                shorter restatement of the sentence above it reads as an
-                afterthought rather than as the thing it names. */}
-            {linkTo ? <p className="prt-rec__title">{linkTo(rec)}</p> : null}
-            <p className="prt-rec__lead">{lead}</p>
-            {rest ? (
-              <Details summary="How, and against what">
-                <p className="govuk-body-s">{rest}</p>
-              </Details>
-            ) : null}
-          </li>
-        );
-      })}
-    </ol>
-  ) : null);
-
-  /*
-   * THE SAME WARNING, SAID ONCE, AND THE TAIL ON REQUEST.
-   *
-   * MEASURED on a real assessment: 376 warnings across fourteen stages, 356 of
-   * them distinct, the longest 6,387 characters — 30,010 pixels, which was 42%
-   * of the whole report. Most of the repetition is one stage reporting the same
-   * clipped-context message once per call.
-   *
-   * Identical text is collapsed with a count, the first handful stay in the
-   * flow, and the rest go behind a disclosure. Nothing is dropped: this is the
-   * section that records what the assessment could NOT do, and quietly
-   * truncating it would be the worst possible place to save room.
-   */
-  const GAPS_SHOWN = 8;
-  const gaps = [...warnings.reduce((seen, warning) => seen.set(warning, (seen.get(warning) ?? 0) + 1), new Map<string, number>())]
-    .sort((a, b) => b[1] - a[1]);
-  /*
-   * A LIMIT LEADS WITH ITS FIRST SENTENCE, and keeps the rest behind a control.
-   *
-   * These run to six lines each and several open identically — "This call
-   * exceeded the model's context window, so its input was reduced…" — followed
-   * by a different list of what was withheld. Printed whole and stacked, the
-   * page became a wall in which the differences were invisible, which is the
-   * opposite of what a record of what a run could not do is for.
-   *
-   * `summarise()` is the split the recommendations use, so one definition of
-   * "the first sentence" serves both.
-   */
-  /*
-   * `summarise()` IS THE WRONG SPLIT FOR THESE, and the rendered page said so.
-   *
-   * It trusts one boundary — a full stop followed by a space and a CAPITAL —
-   * because policy prose is full of abbreviations and decimals. These sentences
-   * are not policy prose, they are the pipeline's own: "…so its input was
-   * reduced. 18 long items clipped to 250 characters for this call. 484 items
-   * were withheld…". Every boundary is followed by a DIGIT, so it found none and
-   * printed all six lines as the lead — which is exactly the wall this section
-   * was meant to stop being.
-   *
-   * A machine-written limit always opens with the fact and continues with the
-   * inventory, so the first full stop is the split. The floor keeps a two-word
-   * opener from becoming a lead of its own.
-   */
-  const LIMIT_FLOOR = 24;
-  const limitLead = (text: string): { lead: string; rest: string } => {
-    const boundary = text.slice(LIMIT_FLOOR).search(/[.!?]\s/);
-    if (boundary < 0) return { lead: text, rest: '' };
-    const at = LIMIT_FLOOR + boundary + 1;
-    return { lead: text.slice(0, at).trim(), rest: text.slice(at).trim() };
-  };
-  const gapLine = ([text, count]: [string, number]) => {
-    // `readable` repairs one ungrammatical template on its way to the page; see
-    // the note on it for why it is not repaired where it is written.
-    const { lead, rest } = limitLead(readable(text));
-    return (
-      <li key={text} className="prt-gap">
-        <p className="prt-gap__lead">
-          {lead}
-          {count > 1 ? <span className="prt-meta"> — recorded {count} times</span> : null}
-        </p>
-        {rest ? (
-          <Details summary="What it withheld">
-            <p className="govuk-body-s">{rest}</p>
-          </Details>
-        ) : null}
-      </li>
-    );
-  };
-  section('gaps', 'What it could not establish', 'provenance', gaps.length ? (
     <>
-      <p className="govuk-body">
-        {warnings.length} {warnings.length === 1 ? 'limit was' : 'limits were'} recorded across the
-        stages{gaps.length !== warnings.length ? `, ${gaps.length} of them distinct` : ''}. Nothing
-        here is dropped — this is the record of what the assessment could not do.
-      </p>
-      <ul className="prt-gaps">{gaps.slice(0, GAPS_SHOWN).map(gapLine)}</ul>
-      {gaps.length > GAPS_SHOWN ? (
-        <Details summary={`The other ${gaps.length - GAPS_SHOWN}`}>
-          <ul className="prt-gaps">{gaps.slice(GAPS_SHOWN).map(gapLine)}</ul>
-        </Details>
-      ) : null}
+      <ChallengeNote recs={recs} artefacts={artefacts} />
+      <Recommendations recs={recs} linkTo={link} />
+      <BurdenBars recs={recs} />
+      <RecCoverage recs={recs} artefacts={artefacts} list={list} linkTo={link} />
+      <DroppedRecs recs={recs} artefacts={artefacts} linkTo={link} />
     </>
-  ) : null);
+  ) : null, { count: { n: recs.length, noun: 'suggestions' } });
 
+  /*
+   * FORTY-THREE STRUCTURED ITEMS THAT PRINTED AS ONE PARAGRAPH. The single
+   * `evaluation_plan` carries nine indicators, nine decision rules, ten data
+   * gaps, fifteen questions and a counterfactual; none of those keys was
+   * matched by any grep in `client/`.
+   */
+  section('howyoudknow', 'How you would know', 'verdict',
+    artefacts.some((a) => a.kind === 'evaluation_plan') ? (
+      <Options artefacts={artefacts} onGaps={() => goTo('provenance', 'gaps')} />
+    ) : null);
+
+  /*
+   * WHERE THE MODEL COULD NOT SEE EVERYTHING, ahead of what it could not
+   * establish: 10 of the 18 stages made at least one call the model could not be
+   * given the whole assessment for, and three carry the run's own instruction to
+   * read them as partial. That was five grey rows behind a disclosure.
+   */
+  const cutShort = useMemo(() => truncations(stages), [stages]);
+  section('withheld', 'Where the model could not see everything', 'provenance',
+    cutShort.length ? <Withheld stages={stages} /> : null,
+    { count: { n: cutShort.length, noun: 'stages' } });
+
+  /*
+   * THE SAME LIMIT, SAID ONCE. The dedupe key was the whole warning while the
+   * row rendered only its first sentence, so five of the eight visible rows were
+   * one sentence and 223 went behind one disclosure. `Limits` keys on the lead
+   * and keeps the stage the flatMap threw away — see its own note.
+   *
+   * THE CONTENTS COUNT IS `groupLimits`, NOT THE OLD DEDUPE. The section used to
+   * collapse identical warning TEXT — 89 groups on this run — and the index was
+   * written against that figure while it still existed. `Limits` groups on the
+   * lead sentence and reports 181, so the index reads the same function the
+   * section does rather than a number that was true of the block it replaced.
+   */
+  const limitGroups = useMemo(() => groupLimits(stages), [stages]);
+  section('gaps', 'What it could not establish', 'provenance',
+    limitGroups.length ? <Limits stages={stages} /> : null,
+    { count: { n: limitGroups.length, noun: 'distinct limits' } });
+
+  /*
+   * ONE SECTION, BECAUSE THE DIFFERENCE BETWEEN SIX DOWNLOADS IS TWO FACTS.
+   * "Take it away" and "Send it to someone" opened with 48 and 49 words over
+   * three links each, and the only way to learn what separated them was to hold
+   * two paragraphs in your head. Three formats by two scopes is a table.
+   * What is left in prose is the three blocks that are limits on ACTION rather
+   * than descriptions of data — sealed, no-link-to-send, and cannot-be-undone.
+   */
   section('take', 'Take it away', ACTIONS, offline ? null : (
     <>
-      <p className="govuk-body">
-        Three copies, and they are not the same thing. The Word file is the one
-        somebody marks up. The markdown is the same text, for pasting into your own
-        template. The pack is this page — everything on it — in a folder that needs
-        no network at all.
-      </p>
-      <ul className="govuk-list govuk-list--spaced">
-        <li>
-          <a className="govuk-link" href={`/api/policy-analysis/${analysis.id}/export?format=docx`} download>
-            Download the report as Word
-          </a>{' '}
-          <span className="prt-meta">.docx</span>
-        </li>
-        <li>
-          <a className="govuk-link" href={`/api/policy-analysis/${analysis.id}/export?format=md`} download>
-            Download the report as markdown
-          </a>{' '}
-          <span className="prt-meta">.md</span>
-        </li>
-        <li>
-          <a className="govuk-link" href={`/api/policy-analysis/${analysis.id}/export?format=bundle`} download>
-            Download the offline pack
-          </a>{' '}
-          <span className="prt-meta">.zip — open index.html by double-clicking it</span>
-        </li>
-      </ul>
+      <DownloadGrid analysisId={analysis.id} artefacts={artefacts} />
       {analysis.sealed ? (
         <InsetText>
           This assessment is sealed. A pack made from it is the paper in the clear, in your
           Downloads folder — handle it like the document it came from.
         </InsetText>
       ) : null}
+      <Shares />
     </>
   ));
 
-  /*
-   * Beside "take it away", because it is the same act with one thing left out.
-   * `offline` suppresses both: a pack's own links would point at a server that
-   * is not there.
-   */
   /*
    * After the report and before the downloads: what came after it was written
    * is part of reading it, and the copy you send should carry whatever this
@@ -861,89 +941,27 @@ export function Report({ detail, offline, linkTo, onChanged }: {
       artefacts={artefacts}
       passes={detail.passes}
       readOnly={detail.readOnly}
-      linkTo={linkTo}
+      linkTo={link}
       onChanged={onChanged ?? (() => window.location.reload())}
     />
   ));
 
-  section('send', 'Send it to someone', ACTIONS, offline ? null : <Shares analysisId={analysis.id} />);
-
   /*
-   * A ROW IS DROPPED RATHER THAN GUESSED AT.
+   * HOW THIS WAS PRODUCED — the whole section is `RunProfile` now.
    *
-   * "the configured default" and "the provider default" are true statements on
-   * the service, where a null column means the run took whatever was configured.
-   * In a pack made before the run's own facts travelled with it they were
-   * guesses, printed with the same confidence as a fact — and the stage row was
-   * worse than a guess, because a pack that knows no statuses counts none of them
-   * completed. A pack that cannot say stays quiet; the service is unchanged.
+   * It was six summary-list rows ending "Stages — 18 of 18 completed", which was
+   * the entire visual account of a 10h 23m run in which one stage took 8h 18m.
+   * Those six rows are unchanged and still here, under the ladder, inside the
+   * component; `known`, `ranOn` and `stopped` moved with them.
    */
-  const known = stages.some((stage) => stage.status !== 'unknown');
-  /** The models the run was made of. Absent on an unfiltered read; see `detail-views`. */
-  const ranOn = detail.models ?? [];
-  /*
-   * WHAT STOPPED, IN THE MOVE THAT EXISTS FOR WHAT THE RUN DID TO ITSELF.
-   *
-   * `stage.error` was in the payload and read by nothing: the assessment page
-   * suppressed its own task list once a report existed, and `ProvenanceLead`
-   * takes `{ warnings }` alone, so a failed stage left no trace anywhere a reader
-   * could find it. A run that stopped is a fact about the report's completeness,
-   * which is the one thing this section is for.
-   */
-  const stopped = stages.filter((stage) => stage.status === 'failed');
-  section('provenance', 'How this was produced', 'provenance', <>
-    {stopped.length ? (
-      <InsetText>
-        <p className="govuk-body">
-          {stopped.length === 1 ? 'One stage did not finish' : `${stopped.length} stages did not finish`}
-          {': '}
-          {stopped.map((stage) => `${stage.name.toLowerCase()} (stage ${stage.ordinal + 1})`).join(', ')}.
-          {' '}Everything below is what the run produced before that, and the work those stages
-          would have written is absent rather than filled in.
-        </p>
-        {stopped.map((stage) => (stage.error ? (
-          <p className="govuk-body" key={stage.ordinal}>{stage.error}</p>
-        ) : null))}
-      </InsetText>
-    ) : null}
-    <SummaryList
-      rows={[
-        ...(analysis.model || !offline ? [{ key: 'Commissioned', value: analysis.model ?? 'the configured default' }] : []),
-        /*
-         * WHAT ACTUALLY RAN, WHERE IT IS NOT WHAT WAS ASKED FOR.
-         *
-         * `analysis.model` is the model the submission commissioned, and this
-         * section presented it as the model the assessment was made with. On
-         * 2026-09-20 a stage of the real run was resumed after a restart and went
-         * out on `gpt-5.6-sol`, while the other 419 calls had been
-         * `gpt-5.6-luna` — so one assessment had been made by two models and the
-         * report named one of them.
-         *
-         * Shown only when the two disagree. On the ordinary run they say the same
-         * thing, and a row repeating the row above it is noise.
-         */
-        ...(ranOn.length && !(ranOn.length === 1 && ranOn[0].id === analysis.model)
-          ? [{
-              key: 'Ran on',
-              value: ranOn
-                .map((use) => `${use.id} (${use.calls.toLocaleString()} ${use.calls === 1 ? 'call' : 'calls'})`)
-                .join(', '),
-            }]
-          : []),
-        ...(analysis.thinkingLevel || !offline
-          ? [{ key: 'Reasoning effort', value: analysis.thinkingLevel ?? 'the provider default' }]
-          : []),
-        { key: 'Depth', value: analysis.depth },
-        { key: 'Sealed', value: analysis.sealed ? 'Yes — none of the paper is stored in the clear' : 'No' },
-        ...(known
-          ? [{
-              key: 'Stages',
-              value: `${stages.filter((s) => s.status === 'completed').length} of ${stages.length} completed`,
-            }]
-          : []),
-      ]}
-    />
-  </>);
+  section('provenance', 'How this was produced', 'provenance',
+    <RunProfile
+      analysis={analysis}
+      stages={stages}
+      models={detail.models}
+      cost={detail.cost}
+      offline={offline}
+    />);
 
   /*
    * THE PAPER ITSELF, IN THE PACK, WHERE A READER CAN FIND IT.
@@ -1018,8 +1036,37 @@ export function Report({ detail, offline, linkTo, onChanged }: {
    * position, after everything that is named, so adding a section never
    * silently reorders the page.
    */
+  /*
+   * SEVEN ENTRIES BECAME TWELVE TONIGHT, so the argument for each new one:
+   *
+   * `factors` and `legality` go straight after `spread`, because the three are
+   * one reading — how the exposure is spread, what makes the plays work, and the
+   * rule none of them breaks. Each answers the question the one before it
+   * raises, and `legality` is the sharpest claim the assessment makes.
+   *
+   * `suggests` keeps the position it was moved into: it is the only section a
+   * reader can act on, and it was 5,400px down the panel every reader lands on.
+   * `howyoudknow` follows it, because the evaluation plan is how you would tell
+   * whether the advice above it worked — act, then measure.
+   *
+   * `rests` is the caveat on all of that, and it belongs after the advice rather
+   * than before it: what the conclusion rests on is a reason to re-read the
+   * advice, not a reason to skip it.
+   *
+   * `writeup` then `assurance`: the conclusions in full, then the round that
+   * attacked them. Reversing them would print the challenge to an argument the
+   * reader has not met.
+   *
+   * `checks` and `evidence` are the supporting apparatus and stay where they
+   * were, and `found` stays last — it is the figures, and a reader who has read
+   * this far has met every one of them in context.
+   */
   const READING_ORDER: Partial<Record<Move, string[]>> = {
-    verdict: ['exposure-profile', 'spread', 'suggests', 'writeup', 'checks', 'evidence', 'found'],
+    verdict: [
+      'exposure-profile', 'spread', 'factors', 'legality',
+      'suggests', 'howyoudknow', 'rests',
+      'writeup', 'assurance', 'checks', 'evidence', 'found',
+    ],
   };
   const inMove = (move: Move) => {
     const rows = sections.filter((entry) => entry.move === move);
@@ -1063,41 +1110,97 @@ export function Report({ detail, offline, linkTo, onChanged }: {
         {/* THE PACK GETS THE RAIL TOO, or the pack loses the bar outright — the
             one figure that says how much of this there is. */}
         <ExposureRail bands={bands} total={list.length} selection={selection} onSelect={setSelection} />
-        <Contents sections={ordered} />
-        {ordered.map((entry) => (entry.bare ? (
-          /* It draws its own section and its own heading; a wrapper here would
-             print both titles. The way back to the contents still follows it,
-             because a pack is one very long page and that link is how a reader
-             gets out of the middle of it.
+        {/* THE PACK COULD NARROW ITSELF AND NOT SAY SO. Measured on a real pack
+            driven from `file://`: 88,333px of document, 26 selection controls, 0
+            banners and 0 controls reading "Clear the selection" — press a band
+            and the mechanism list drops from 22 rows to 12 with nothing on the
+            page saying why and no way back but pressing the same 44px segment
+            again. It is markup and a Button: no router, no fetch, no server.
 
-             A FRAGMENT, NOT A DIV — the service branch below has always used one,
-             and the difference was invisible until it wasn't. Every density rule
-             is written as a pair, `.govuk-tabs__panel > section` and
-             `.prt-pack > section`, and a wrapping div breaks the child combinator
-             on the pack's half. Measured on a real pack: the eleven sections that
-             are direct children get their bottom margin and the rule under their
-             heading; these four — where the exposure sits, the mechanisms, the
-             weighting, what was discarded, the heads of all four moves — got
-             none, and read as a different level of heading than the same heading
-             on the service. */
+            AFTER THE RAIL, NOT BEFORE IT: the rail is the band picker, and a
+            banner directly beneath it is where a press is answered. */}
+        <SelectionBanner selection={selection} onClear={() => setSelection(null)} />
+        <Contents sections={ordered} />
+        {ordered.map((entry, at) => (
           <Fragment key={entry.id}>
-            {entry.body}
-            <p className="govuk-body-s govuk-!-margin-top-2">
-              <a className="govuk-link" href="#contents">Back to contents</a>
-            </p>
+            {/* REPEATED AT EACH MOVE, BUT ONLY WHILE SOMETHING IS SELECTED. A
+                pack is one document of about 98 screens, so one banner at the
+                top is one a reader has scrolled past for good; a copy at each
+                move boundary is never more than a move away. "Showing
+                everything" repeated five times is furniture, so the repeats are
+                the live state only — an unfiltered pack reads exactly as it
+                does today. */}
+            {selection && at > 0 && ordered[at - 1].move !== entry.move ? (
+              <SelectionBanner selection={selection} onClear={() => setSelection(null)} />
+            ) : null}
+            {entry.bare ? (
+              /* It draws its own section and its own heading; a wrapper here
+                 would print both titles. The way back to the contents still
+                 follows it, because a pack is one very long page and that link
+                 is how a reader gets out of the middle of it.
+
+                 FRAGMENTS, NOT DIVS, all the way down — every density rule is
+                 written as a pair, `.govuk-tabs__panel > section` and
+                 `.prt-pack > section`, and a wrapping div breaks the child
+                 combinator on the pack's half. A Fragment emits no element, so
+                 each `<section>` below is still a direct child of `.prt-pack`. */
+              <>
+                {entry.body}
+                <p className="govuk-body-s govuk-!-margin-top-2">
+                  <a className="govuk-link" href="#contents">Back to contents</a>
+                </p>
+              </>
+            ) : (
+              <section aria-labelledby={entry.id}>
+                <h2 className="govuk-heading-l" id={entry.id}>{entry.title}</h2>
+                {entry.body}
+                <p className="govuk-body-s govuk-!-margin-top-2">
+                  <a className="govuk-link" href="#contents">Back to contents</a>
+                </p>
+              </section>
+            )}
           </Fragment>
-        ) : (
-          <section key={entry.id} aria-labelledby={entry.id}>
-            <h2 className="govuk-heading-l" id={entry.id}>{entry.title}</h2>
-            {entry.body}
-            <p className="govuk-body-s govuk-!-margin-top-2">
-              <a className="govuk-link" href="#contents">Back to contents</a>
-            </p>
-          </section>
-        )))}
+        ))}
       </div>
     );
   }
+
+  /*
+   * HOW BIG EACH MOVE IS, SAID IN THE TAB THAT OPENS IT.
+   *
+   * Every figure here is one a panel already prints: the findings the write-up
+   * renders, the recommendations the assured filter keeps, the rows the
+   * mechanism chart draws, the relationships the network resolves, the playbook
+   * and its severe band, the bodies "Who is involved" counts BY NAME, the parts
+   * under pressure drawn and hidden, and every stage warning. Nothing is counted
+   * a second way, and three of the obvious raw counts are wrong for this: 32
+   * finding artefacts against the 19 the write-up shows, 151 mechanisms against
+   * the 41 that generate a play, 171 board rows against 12 bodies.
+   *
+   * THE ROW COUNT IS RE-DERIVED FROM `mechanismChart`, the same function
+   * `CausalityLead` builds its bars from, given the same inputs — so the tab and
+   * the chart cannot disagree unless the shared function changes under both.
+   * Plain, not memoised: it walks 47 plays.
+   *
+   * AFTER THE PACK'S `return`, so the pack does none of this work — and plain
+   * `const`s rather than hooks for the same reason, since a hook below a
+   * conditional return is a hook that runs on one branch only.
+   */
+  const mechanismRows = mechanismChart(
+    narrowExcept(list, selection, mechanismIds, 'mechanism'),
+    (play) => mechanismsOf(play, mechanismIds),
+  ).rows.length;
+  const counts = moveCounts({
+    findings: sectionFindings.reduce((n, group) => n + group.items.length, 0),
+    suggestions: recs.length,
+    mechanisms: mechanismRows,
+    relationships: net.edges.length,
+    plays: list.length,
+    severe: bands.find((band) => band.band === 'severe')?.count ?? 0,
+    bodies: namedActive,
+    targets: interplayMap.targets.length + interplayMap.hidden,
+    limits: warnings.length,
+  });
 
   const panel = (move: Move) => (
     <>
@@ -1108,7 +1211,7 @@ export function Report({ detail, offline, linkTo, onChanged }: {
         reader lands on, with nothing naming it. The component and every anchor
         already existed; only the pack was getting them.
       */}
-      <Contents sections={inMove(move)} id={`contents-${move}`} of={move} />
+      <Contents sections={inMove(move)} id={`contents-${move}`} of={MOVE_LABEL[move]} />
       {inMove(move).map((entry) => (entry.bare ? (
         <Fragment key={entry.id}>{entry.body}</Fragment>
       ) : (
@@ -1148,15 +1251,21 @@ export function Report({ detail, offline, linkTo, onChanged }: {
       */}
       <ExposureRail bands={bands} total={list.length} selection={selection} onSelect={setSelection} />
 
-      <SelectionBanner selection={selection} onClear={() => setSelection(null)} />
-
       <Tabs
         id="report"
         label="Report sections"
         current={move}
         onSelect={(id) => setMove(id as Move)}
         /*
-         * THE QUESTION EACH MOVE ANSWERS, ON THE SCREEN.
+         * THE BANNER TRAVELS WITH THE STRIP, because it could not be seen
+         * otherwise. Both were `position: sticky; top: 0` as siblings, so they
+         * pinned to the same line: measured at 1280×900 scrolled to y=3000 under
+         * `?sel=band:severe`, `elementFromPoint` at the banner's own centre
+         * returned a tab. See `Tabs`' `above` prop and `parts/_spine.scss`.
+         */
+        above={<SelectionBanner selection={selection} onClear={() => setSelection(null)} />}
+        /*
+         * THE QUESTION EACH MOVE ANSWERS, AND HOW MUCH OF IT THERE IS.
          *
          * The four questions are what the whole structure is for and they were
          * written down twice — in the comment at the head of this file and in
@@ -1166,37 +1275,17 @@ export function Report({ detail, offline, linkTo, onChanged }: {
          * "Verdict / Causality / Threats / Actors", which are an analyst's words
          * for four things a reader has not been told the shape of yet.
          *
-         * The fifth entry also used to put a noun in the step slot and a sentence
-         * in the label slot, which broke the one cue that says the first four are
-         * an order. It is "Last" now, and it is a hint like the others.
+         * The five triples live in `client/moves.ts` now, because the landing
+         * page shows the same five and a second hand-typed copy is two surfaces
+         * that drift the first time a move is renamed. A LEAF MODULE rather than
+         * an export from here: `Home` is the one route `App.tsx` imports
+         * eagerly, and importing anything from this file into it would pull the
+         * whole report tree, and zod behind it, into the entry chunk.
+         *
+         * The size comes from `counts` and not from `moves.ts`, because it is
+         * this assessment's and the landing page has no assessment.
          */
-        tabs={[
-          {
-            id: 'verdict', step: 'Move 1', label: 'Verdict',
-            hint: 'What did it conclude',
-            panel: panel('verdict'),
-          },
-          {
-            id: 'causality', step: 'Move 2', label: 'Causality',
-            hint: 'Why is any of it possible',
-            panel: panel('causality'),
-          },
-          {
-            id: 'threats', step: 'Move 3', label: 'Threats',
-            hint: 'What could be done to it',
-            panel: panel('threats'),
-          },
-          {
-            id: 'actors', step: 'Move 4', label: 'Actors',
-            hint: 'Who would do it',
-            panel: panel('actors'),
-          },
-          {
-            id: 'provenance', step: 'Last', label: 'Provenance',
-            hint: 'What the run discarded',
-            panel: panel('provenance'),
-          },
-        ]}
+        tabs={MOVES.map((entry) => ({ ...entry, count: counts[entry.id], panel: panel(entry.id) }))}
       />
 
       {/*

@@ -1,4 +1,54 @@
 @use "../govuk" as govuk;
 @use "../tokens" as *;
 
-// Reserved for the "acts" change. Empty until it lands.
+// ── Five acts, not eighteen tiles ─────────────────────────────────────────
+//
+// `REPORT_ACTS` has been in the view layer the whole time, with a fifteen-line
+// comment making the case for itself, and `report-doc.ts` uses it: the .docx and
+// the .md a reader downloads FROM THIS PAGE are grouped into five acts, each
+// under its own title and strap. The page they were downloaded from was
+// eighteen equal cards in storage-contract order, so its first row read "Scope
+// methodology / Objectives / Actors" — one section from the verdict act and two
+// from intent — and its second split intent across a row boundary and mixed in
+// a section from the response.
+//
+// A BAND IS A HEADING, A STRAP AND A GRID, and nothing else: no box, no tint, no
+// rule of its own. The cards already carry hairlines and the act title is set
+// large enough to own the space beneath it, so a container would be a second
+// frame around things that are already framed.
+.prt-act {
+  margin-bottom: govuk.govuk-spacing(7);
+
+  &:last-child { margin-bottom: 0; }
+
+  // 24px bold sits below the section's own `govuk-heading-l` and above the
+  // card's 19px claim, which is the order the three headings are read in.
+  &__title {
+    @include govuk.govuk-font($size: 24, $weight: bold);
+    margin: 0 0 govuk.govuk-spacing(1);
+  }
+
+  // The act's own one-line description, from `REPORT_ACTS`. Measured, because
+  // it is a sentence: the write-up's container is the full panel width, which
+  // would set this single line at about 120 characters.
+  &__strap {
+    max-width: $prt-measure;
+    margin: 0 0 govuk.govuk-spacing(4);
+  }
+
+  // The contract-drift band. It draws nothing on this assessment — every
+  // section the run wrote is claimed by an act — and when it does draw, the
+  // thing that has gone wrong is a contract change, so it is marked as an
+  // exception rather than presented as a sixth act.
+  &--unplaced {
+    border-top: 5px solid govuk.govuk-colour("black");
+    padding-top: govuk.govuk-spacing(3);
+  }
+}
+
+@media print {
+  // An act title stranded at the foot of a page, with its first card overleaf,
+  // is the one thing grouping the write-up was meant to stop.
+  .prt-act__title,
+  .prt-act__strap { break-after: avoid; }
+}

@@ -41,15 +41,27 @@ export function OfflineApp({ payload }: { payload: PackPayload }) {
     byStage.set(warning.stage, [...(byStage.get(warning.stage) ?? []), warning.text]);
   }
 
+  /*
+   * THE TIMINGS AND THE COUNTS TRAVEL NOW, so the pack draws the same ladder.
+   *
+   * Both of these were hard-nulled here. `startedAt`/`completedAt` were written
+   * as `null` in both branches — the only five references to either field
+   * anywhere in `client/` — so the pack could never have said that one of the
+   * eighteen stages took eight of the run's ten hours, and `kept` had nowhere to
+   * come from at all, because a pack carries no `artefactMetadata`. Both are on
+   * `payload.run` now; where a pack predates them they are still null and the
+   * ladder drops those columns, which is this file's own rule.
+   */
   const stages: Detail['stages'] = run
     ? run.stages.map((stage) => ({
         ordinal: stage.ordinal,
         name: stage.name,
         status: stage.status,
         warnings: byStage.get(stage.name) ?? [],
-        startedAt: null,
-        completedAt: null,
+        startedAt: stage.startedAt ?? null,
+        completedAt: stage.completedAt ?? null,
         error: stage.error,
+        kept: stage.kept,
       }))
     : payload.warnings.map((warning, i) => ({
         ordinal: i,
@@ -83,6 +95,9 @@ export function OfflineApp({ payload }: { payload: PackPayload }) {
     stages,
     // The pack names both too — see `RunFacts.models`.
     models: run?.models ?? [],
+    // And what it spent. A pack made before this travelled says nothing, which
+    // is what `null` means everywhere else in this payload.
+    cost: run?.cost ?? null,
     artefacts: payload.artefacts,
     // A pack carries no per-row metadata and does not render the drill, which is
     // the only thing that reads it.

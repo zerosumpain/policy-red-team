@@ -100,9 +100,43 @@
     }
   }
 
+  /*
+   * A COUNT NEEDS ITS OWN ROOM, AND THE BAR MUST NOT PAY FOR IT.
+   *
+   * The fill's width is a percentage of the half it sits in, so on the peak row
+   * the fill IS the half and the number beside it had nowhere to go: measured at
+   * 320px it sat 0.91px past the edge of the page, which is the whole page
+   * scrolling sideways and a WCAG 1.4.10 failure.
+   *
+   * The gutter is reserved as padding on the half's OUTER edge and the number is
+   * pulled back into it with a negative margin, so it occupies no width in the
+   * flex line. Capping the fill instead would have taken the length off the
+   * longest bar only — which is the one bar whose length defines the scale every
+   * other bar is read against.
+   *
+   * `4ch` on `tabular-nums` is three digits and a little air; a four-digit count
+   * in one of these would need it widening, and would be a different figure.
+   */
   &__n {
     @include govuk.govuk-font($size: 16, $weight: bold);
     font-variant-numeric: tabular-nums;
+    flex: none;
+    width: 4ch;
+    text-align: right;
+    margin-left: -4ch;
+  }
+
+  &__half { padding-left: 4ch; }
+
+  &__half--right {
+    padding-left: govuk.govuk-spacing(1);
+    padding-right: 4ch;
+
+    .prt-diverge__n {
+      text-align: left;
+      margin-left: 0;
+      margin-right: -4ch;
+    }
   }
 
   // Below tablet `Figure` shows the table instead, so this is for a caller that

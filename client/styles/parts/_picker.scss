@@ -1,4 +1,96 @@
 @use "../govuk" as govuk;
 @use "../tokens" as *;
 
-// Reserved for the "picker" change. Empty until it lands.
+// ── The pickers get their own ink ─────────────────────────────────────────
+//
+// A CONTROL THAT STAYS WAS DRAWN AS A CONTROL THAT LEAVES.
+//
+// Measured with computed styles on the deployed Causality panel: an unpressed
+// `.prt-nodebar__name` is `rgb(26, 101, 166)`, `text-decoration-line: underline`,
+// 19px/400 — and the `.govuk-link` reading "Governance registration conditions"
+// 880px further down the SAME panel is `rgb(26, 101, 166)`, underlined, 19px.
+// Identical. One of them narrows all five moves and stays where it is; the other
+// leaves the report for the drill page. There was no way to tell them apart
+// before pressing one.
+//
+// The pressed state was never the problem — `_base.scss` already draws it black
+// and bold. The RESTING state was, and so was the absence of any cue before the
+// press: `grep -n hover` over the base returns four rules and not one of them is
+// on a picker, so the stacked bar in Move 1 reads as a plain chart whose
+// pressability is stated only in a sentence above it.
+//
+// The vocabulary, then: black rather than link blue, a dotted underline rather
+// than a solid one, and a box in front of the name that fills when it is on.
+// Three signals, none of them colour — the state survives greyscale, a print-out
+// and a monochrome display, which is what rule 4 asks of anything that carries
+// meaning.
+
+// `[aria-pressed]` IS THE SELECTOR, NOT THE CLASS. `.prt-nodebar__name` is worn
+// by a `<span>` too — the counters list renders the same row with no picker when
+// no `onSelect` is passed — and dressing that span as a control would be the
+// original defect with the colours swapped.
+.prt-nodebar__name[aria-pressed] {
+  color: govuk.govuk-colour("black");
+  text-decoration: underline dotted;
+  text-decoration-thickness: 2px;
+  text-underline-offset: 3px;
+
+  // THE BOX IS DECORATION AND SAYS SO. It is generated content on the control
+  // itself rather than an element in the markup, so there is nothing for a
+  // screen reader to read and nothing for `aria-pressed` to fight: the state is
+  // already announced by the attribute, and this draws it for everyone else.
+  //
+  // `inline-block` is load-bearing twice: it makes the empty box occupy 16px,
+  // and text-decoration does not propagate into an atomic inline, so the dotted
+  // underline stops at the box rather than running under it.
+  &::before {
+    content: "";
+    display: inline-block;
+    width: 16px;
+    height: 16px;
+    margin-right: govuk.govuk-spacing(1);
+    // Sits on the text's own baseline-ish line rather than the box's bottom.
+    vertical-align: -2px;
+    border: 2px solid govuk.govuk-colour("black");
+  }
+
+  // ON. The fill is the third signal; the bold the base already sets is the
+  // fourth. A reader who cannot see either still has `aria-pressed`.
+  &[aria-pressed="true"] {
+    text-decoration-style: solid;
+
+    &::before { background: govuk.govuk-colour("black"); }
+  }
+
+  // The same thickening the tab strip uses for the same purpose — see
+  // `.prt-tab:hover &__label` in the base. One hover language, not two.
+  &:hover {
+    text-decoration-thickness: 3px;
+  }
+}
+
+// ── The stacked bar is a control ──────────────────────────────────────────
+//
+// `.prt-stack__seg` has a pointer cursor, a focus ring and a black
+// `.is-selected` inset — and had nothing at all before the press, so a mouse
+// reader learned it was pressable by accident.
+//
+// INSET, BECAUSE THE BAR CLIPS. `.prt-stack__bar` is `overflow: hidden` and each
+// segment's border box is exactly the bar's padding box, so anything drawn
+// outside the segment is cut away entirely — the trap the focus ring documents
+// in the base with a negative outline offset. A box-shadow drawn inward cannot
+// be clipped.
+//
+// 2px AGAINST THE SELECTED 3px, so hovering the band that is already selected
+// does not look like selecting it again.
+.prt-stack__seg:hover {
+  box-shadow: inset 0 0 0 2px govuk.govuk-colour("black");
+}
+
+// ON PAPER NOTHING IS PRESSABLE, so an empty box in front of every mechanism
+// reads as a form to tick. The FILLED box stays: print hides `.prt-selection`,
+// so a report printed under a selection has no other mark anywhere on it saying
+// which control narrowed it.
+@media print {
+  .prt-nodebar__name[aria-pressed="false"]::before { display: none; }
+}

@@ -1,4 +1,33 @@
 @use "../govuk" as govuk;
 @use "../tokens" as *;
 
-// Reserved for the "models" change. Empty until it lands.
+// ── The games the policy sets up ──────────────────────────────────────────
+//
+// The grid itself is `.prt-matrix`, which already carries the sticky row label,
+// the numbered headers and the print rules a thirteen-by-ten incidence grid
+// needs. Two things are this section's own.
+
+// HOW MANY OF THE TEN A BODY PLAYS IN, on the row rather than in an eleventh
+// column. The grid is numbered — ten patterns is past the six where clipped
+// names stop fitting on paper — and a trailing total column would take number
+// eleven in the key, where it is not a pattern and reads as one.
+.prt-models__count {
+  display: block;
+  @include govuk.govuk-font($size: 16, $tabular: true);
+  font-weight: 400;
+  color: govuk.govuk-colour("black", $variant: "tint-25");
+  margin-top: 2px;
+}
+
+// TEN DISCLOSURES ARE A LIST, and a list of them needs no bullets and no
+// double margin: `govuk-details` already carries its own bottom spacing, and
+// `govuk-list` already removes the marker. This is the gap the two leave
+// between the grid and the first summary.
+.prt-models__list {
+  margin-top: govuk.govuk-spacing(4);
+  margin-bottom: 0;
+
+  > li {
+    margin-bottom: 0;
+  }
+}

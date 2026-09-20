@@ -1,13 +1,17 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link, useParams } from 'react-router';
-import { api, watchRun, type Detail, type DetailView, type RunProgress } from '../api';
+import type { Artefact } from '$lib/policy-analysis/contracts';
+import { api, watchRun, type Detail, type DetailView, type RunProgress, type StageRow } from '../api';
 import { RunClock } from './RunClock';
 import { RunFindings } from './RunFindings';
 import { Button, ButtonGroup, NotificationBanner, Tag, TaskList, WarningText, type Task, type TagColour } from '../govuk';
-import { isFinished, isTerminal, statusColour, statusLabel } from '../status';
+import { isFinished, isTerminal, spent, statusColour, statusLabel } from '../status';
 import { Report } from '../report/Report';
+import { Metrics, type Metric } from '../report/Metrics';
 import { ProvenanceLead } from '../report/moves/ProvenanceLead';
 import { usePageTitle } from '../layout/Template';
+import { bandCounts, interplay, plays } from '$lib/policy-analysis/view';
+import { stageFacts } from '$lib/policy-analysis/stage-facts';
 
 /**
  * One assessment: its progress while it runs, its report when it is done.
@@ -107,6 +111,56 @@ export function Assessment() {
     return () => { live = false; clearInterval(timer); };
   }, [id, running]);
 
+  /*
+   * THE SIZE AND SHAPE OF WHAT YOU ARE ABOUT TO READ.
+   *
+   * The header said "18 of 18 stages · codex/gpt-5.6-luna" and nothing else.
+   * Measured off the live page at 1280px: the h1 sits at y≈268 and the first
+   * figure on the page — the stacked exposure bar — at y≈1393, so a reader met
+   * about 1,125px of chrome and prose before one number about the assessment
+   * itself. Every figure below was already in the payload: 2,296 artefacts, 47
+   * plays over four bands, 12 bodies, 99 parts of the policy under pressure, 72
+   * passages and 10h 23m of running.
+   *
+   * NO CELL IS A LINK. The obvious next step is to make each label jump to the
+   * move that expands it, and the tab strip is 200px below — a reader can make
+   * that jump by eye, and `Metrics` has no link slot, so buying it means a new
+   * prop on a component used in seven places.
+   *
+   * MEMOISED because `plays()`, `interplay()` and `bandCounts()` walk the whole
+   * inventory and this component re-renders on every stage event of a live run.
+   */
+  const overview = useMemo<Metric[]>(() => {
+    if (!detail) return [];
+    const list = plays(detail.artefacts);
+    const bands = bandCounts(list);
+    const worst = bands[0];
+    const pressure = interplay(detail.artefacts, list);
+    const bodies = new Set(list.map((p) => p.actor?.id).filter(Boolean)).size;
+    const passages = detail.artefacts.filter((a) => a.kind === 'passage').length;
+    return [
+      { label: 'Artefacts held', value: detail.artefacts.length.toLocaleString() },
+      {
+        label: 'Ways to beat it',
+        value: list.length.toLocaleString(),
+        // The tone agrees with the note and never carries it alone — the note
+        // says the word "severe" whatever the border does.
+        note: worst?.count ? `${worst.count} severe` : undefined,
+        tone: worst?.count ? 'severe' : undefined,
+      },
+      { label: 'Bodies positioned to run one', value: String(bodies) },
+      {
+        label: 'Parts under pressure',
+        // `interplay` draws the worst twelve and reports the rest as `hidden`;
+        // the header wants the whole count, which is the sum of the two. The
+        // Actors move states the same 99 in words ("the worst 12 of 99").
+        value: String(pressure.targets.length + pressure.hidden),
+      },
+      { label: 'Passages of the paper', value: String(passages) },
+      { label: 'Ran for', value: spent(detail.analysis.createdAt, detail.analysis.updatedAt) },
+    ];
+  }, [detail]);
+
   async function act(action: 'cancel' | 'resume' | 'restate') {
     setBusy(true);
     try {
@@ -173,6 +227,23 @@ export function Assessment() {
       </header>
 
       {/*
+        THE FIGURES, DIRECTLY UNDER THE STATUS LINE AND ONLY ONCE THERE IS A
+        REPORT TO DESCRIBE.
+
+        A run still going has `RunClock` immediately below, which answers the
+        one question a reader watching has — how much longer — and a six-cell
+        strip of counts that are still being written would compete with it and
+        be wrong within the minute. When the run is terminal the clock is gone
+        and these are the figures the page has always had and never shown.
+
+        `.prt-metrics` is a TOP-LEVEL rule, unlike the density rules scoped to
+        `.govuk-tabs__panel`, so it is correct here outside a tab panel; six
+        cells is a shipped configuration and falls to 3×2 at 960px and 2×3 on a
+        phone without anything being said here.
+      */}
+      {showReport ? <Metrics metrics={overview} /> : null}
+
+      {/*
         A FAILED RUN SAYS WHY IT FAILED.
         `analysis.error` — "1 independent challenge has no response in the revised
         assessment." — was in the payload and rendered nowhere: the page used it
@@ -205,10 +276,7 @@ export function Assessment() {
 
       {analysis.status === 'completed_with_gaps' ? (
         <NotificationBanner title="Finished, with gaps">
-          <p className="govuk-body">
-            Some stages recorded warnings — most often that a source could not be retrieved. The
-            report is complete and the gaps are marked where they fall.
-          </p>
+          <GapsBanner stages={stages} />
         </NotificationBanner>
       ) : null}
 
@@ -286,8 +354,35 @@ export function Assessment() {
             <Report
               detail={detail}
               onChanged={() => void load()}
-              linkTo={(artefact, label) => (
-                <Link className="govuk-link" to={`/assessments/${id}/artefacts/${encodeURIComponent(artefact.id)}`}>
+              /*
+                THE READING POSITION TRAVELS WITH THE LINK, AND IT COMES FROM
+                `Report` RATHER THAN FROM THE URL.
+
+                `Report` keeps `?move=…&sel=…` up to date with
+                `history.replaceState` in an effect — and an effect runs AFTER
+                the render in which this closure was built, so reading
+                `window.location.search` here returns the position as it was
+                before the reader's last selection. Select a mechanism, click a
+                play, and the href would carry the previous state: worse than
+                dropping it, because it sends the reader back to the wrong
+                place in silence.
+
+                So `at` is handed in as the third argument, from the state
+                `Report` is holding at the moment it renders the link. It is an
+                opaque query string, never a route — nothing in the report tree
+                learns what a URL looks like.
+
+                THE THIRD PARAMETER IS OPTIONAL, which is what lets this compile
+                against an `ArtefactLink` that has not been widened yet: a
+                function with extra optional parameters is assignable to one
+                without them, and the link simply carries no position until
+                `Report` starts passing one.
+              */
+              linkTo={(artefact: Artefact, label?: string, at?: string) => (
+                <Link
+                  className="govuk-link"
+                  to={`/assessments/${id}/artefacts/${encodeURIComponent(artefact.id)}${at ? `?from=${encodeURIComponent(at)}` : ''}`}
+                >
                   {label ?? artefact.label}
                 </Link>
               )}
@@ -311,6 +406,88 @@ export function Assessment() {
           </ButtonGroup>
         </>
       )}
+    </>
+  );
+}
+
+/**
+ * WHAT THE WARNINGS ACTUALLY WERE, not what somebody assumed they would be.
+ *
+ * This banner read "Some stages recorded warnings — most often that a source
+ * could not be retrieved" on every `completed_with_gaps` run ever produced. It
+ * was a string literal, and on the live run it is wrong by an order of
+ * magnitude: `stageFacts()` over the 270 warnings returns not_covered 227,
+ * open 164, discarded 162, reference_dropped 144, unavailable 22, no_text 4 —
+ * so "a source could not be retrieved" is 22 items, 8% of the total and fifth
+ * of six groups, and the sentence pointed every reader away from the two
+ * things that did happen.
+ *
+ * It also had no figure and nowhere to go, while the `failed` banner sixteen
+ * lines above prints the error verbatim, names the stage, counts the artefacts
+ * and links into Provenance. This gives it the same shape as its sibling.
+ *
+ * THE FALLBACK REMOVES THE CHARACTERISATION RATHER THAN GUESSING IT. A shared
+ * copy or a pack with no stage rows classifies nothing, and the honest
+ * sentence there is the short one.
+ */
+function GapsBanner({ stages }: { stages: StageRow[] }) {
+  const facts = stageFacts(stages.flatMap((stage) => stage.warnings ?? []));
+  /*
+   * Largest two by the warnings' OWN figures — "49 groups were discarded" is
+   * forty-nine items in one sentence, which is what `count` sums and what a
+   * reader means by "how much".
+   *
+   * `open` IS EXCLUDED FROM THE PAIR, and it would otherwise win second place
+   * on this run at 164 against discarded's 162. It is the classifier's
+   * residual: `stage-facts.ts` says so in writing — most of it is the model's
+   * own caveats carried on individual artefacts, each unique prose about one
+   * artefact in one document. "Most often, an open question" characterises
+   * nothing, which is the failure this banner is being fixed for. The count
+   * still appears, in the sentence below, where it is a figure rather than a
+   * description.
+   */
+  const ranked = facts.filter((fact) => fact.kind !== 'open').sort((a, b) => b.count - a.count);
+  const open = facts.find((fact) => fact.kind === 'open');
+  const discarded = facts.find((fact) => fact.kind === 'discarded');
+  const done = stages.filter((stage) => stage.status === 'completed').length;
+
+  const describe = (kind: string, count: number) => {
+    const n = count.toLocaleString();
+    switch (kind) {
+      case 'not_covered': return `something was not covered (${n} items)`;
+      case 'discarded': return `model output was discarded (${n})`;
+      case 'reference_dropped': return `a reference was dropped and the item kept (${n})`;
+      case 'unavailable': return `something was not available (${n})`;
+      case 'no_text': return `a page carried no policy text (${n})`;
+      case 'cut_short': return `something was cut short by a limit (${n})`;
+      case 'sealed': return `a step was skipped because the run is sealed (${n})`;
+      default: return `the run recorded an open question (${n})`;
+    }
+  };
+
+  const top = ranked.slice(0, 2).map((fact) => describe(fact.kind, fact.count));
+
+  return (
+    <>
+      <p className="govuk-body">
+        {top.length
+          ? <>Some stages recorded warnings — most often that {top.join(' or that ')}.</>
+          : 'Some stages recorded warnings.'}
+      </p>
+      <p className="govuk-body">
+        {/* "All 18 stages finished" is read off the rows, not asserted: a run
+            can reach `completed_with_gaps` with a cancelled stage behind it. */}
+        {done === stages.length
+          ? `All ${stages.length} stages finished.`
+          : `${done} of ${stages.length} stages finished.`}
+        {open ? ` ${open.count.toLocaleString()} open ${open.count === 1 ? 'question' : 'questions'}` : ''}
+        {open && discarded ? ' and' : ''}
+        {discarded ? ` ${discarded.count.toLocaleString()} discarded ${discarded.count === 1 ? 'item' : 'items'}` : ''}
+        {open || discarded ? ` ${open && discarded ? 'are' : 'is'} recorded where they fall. ` : ' The gaps are marked where they fall. '}
+        <a className="govuk-link" href="#report-tab-provenance">
+          What it kept and what it lost
+        </a>
+      </p>
     </>
   );
 }

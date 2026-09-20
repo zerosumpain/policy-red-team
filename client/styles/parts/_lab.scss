@@ -1,4 +1,99 @@
 @use "../govuk" as govuk;
 @use "../tokens" as *;
 
-// Reserved for the "lab" change. Empty until it lands.
+// ── The stress lab's two columns ──────────────────────────────────────────
+//
+// THE TWO-COLUMN LAYOUT THE COMPONENT'S OWN COMMENT DESCRIBED DID NOT EXIST.
+// `StressLab` built a `govuk-grid-row` with the lever rail in a
+// `govuk-grid-column-one-half` and the answer in the other half. `_base.scss`
+// then forces every `govuk-grid-column-*` inside `.govuk-tabs__panel`,
+// `.prt-pack` and `.prt-actions` to `width: 100%; float: none` — a rule written
+// to stop three standalone GDS pages setting their prose at two-thirds inside a
+// report panel, and correct for those three. So the lab stacked, in the service
+// AND in the pack, since the rule names `.prt-pack` too.
+//
+// Measured on the live page at 1280px: the first checkbox at y=857 and the
+// answer at y=1316, 459px apart in the DEFAULT nine-lever state. With all
+// twenty-nine shown the rail is 29 × 44px = 1,276px tall, so a reader ticking a
+// lever near the bottom got a result a screen and a half above them, off the
+// top of the window, with only the `role="status"` region to say so — announced
+// to a screen reader and invisible to everybody else.
+//
+// The fix is NOT to relax the 1233 rule. It is doing correct work. The lab
+// stops using the framework grid and owns its own two columns here.
+.prt-lab {
+  display: grid;
+  // One column until there is room for two. At 320px a 24rem rail beside
+  // anything is two columns of nothing.
+  grid-template-columns: minmax(0, 1fr);
+  gap: govuk.govuk-spacing(6);
+  align-items: start;
+  margin-bottom: govuk.govuk-spacing(6);
+
+  @include govuk.govuk-media-query($from: tablet) {
+    // 32rem rather than the 24 first drawn: each lever carries its label and
+    // two figure columns on ONE line — the GOV.UK checkbox hint slot renders on
+    // its own line and doubling the rail's height is the defect this panel was
+    // rebuilt to escape — and at 24rem a fifty-character assumption wrapped to
+    // four lines and gave it straight back. At 32rem the longest of the
+    // twenty-nine takes two.
+    grid-template-columns: minmax(0, 32rem) minmax(0, 1fr);
+
+    &__answer {
+      // A 1,276px rail always has its result beside it. `top` clears the tab
+      // strip, which is itself `position: sticky; top: 0` from tablet up — at
+      // `spacing(3)` the answer slid underneath it and was read through the
+      // panel's own header.
+      position: sticky;
+      top: govuk.govuk-spacing(8);
+      align-self: start;
+    }
+  }
+
+  // Grid items refuse to shrink below their content by default, and a
+  // 29-row checkbox rail has some long labels in it.
+  &__levers { min-width: 0; }
+  &__answer { min-width: 0; }
+
+  // The paper copy of the panel, off the screen entirely — `display: none`
+  // rather than `govuk-visually-hidden`, because a 29-row table read out to a
+  // screen-reader user on every visit would repeat the rail four cells at a
+  // time. On screen the same four figures are in each lever's own label.
+  &__static { display: none; }
+}
+
+// ── Paper, and the pack printed from it ───────────────────────────────────
+//
+// The printed copy of "What if we are wrong" was nine dead checkboxes and, in
+// 24px `govuk-body-l`, "Nothing failed yet. Tick an assumption and this becomes
+// a list of what the assessment would lose". That state was true in 100% of
+// printed copies and 100% of offline packs, because `failed` starts empty and
+// nothing on paper can change it — so the one section whose entire payload is
+// the simulation contributed nothing at all to the two artefacts a policy
+// reader is most likely to be handed.
+//
+// Nothing in the base's print block reached it: it hides `.prt-weights`,
+// `.govuk-button` and `form`, and `Checkboxes` renders a `<fieldset>` inside a
+// plain `div`, so `form` never matched.
+@media print {
+  .prt-lab {
+    display: block;
+
+    &__answer { position: static; }
+
+    // The answer the section was always computing, for all 29 levers. 30ms,
+    // measured, with no server and no model call — which is the same reason
+    // the panel works in the pack at all.
+    &__static { display: block; }
+
+    // "Tick an assumption" is an instruction nobody on paper can follow.
+    &__empty { display: none !important; }
+  }
+
+  // THE RAIL PRINTS ONLY IF SOMEBODY PULLED SOMETHING. A reader who ran a
+  // three-lever scenario and then printed it needs to see which three; a reader
+  // who printed the page untouched needs the table instead of nine boxes they
+  // cannot tick. The state is on the container because CSS cannot ask whether
+  // any descendant is checked.
+  .prt-lab.is-untouched .govuk-form-group { display: none !important; }
+}

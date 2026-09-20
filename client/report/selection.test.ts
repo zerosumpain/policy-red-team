@@ -47,6 +47,27 @@ describe('narrowing every view to one object', () => {
     expect(filterPlays(list, { kind: 'mechanism', id: 'm1', label: 'M' }, ids).map((p) => p.artefact.id)).toEqual(['p1', 'p3']);
   });
 
+  it('filters by mechanism on MEMBERSHIP, not on the play’s first mechanism', () => {
+    /*
+     * THE DEFECT: this read `mechanismOf(p) === id`, so a mechanism that is
+     * never any play's first reference narrowed every view to nothing — while
+     * the chart that offers it as a bar counts with `mechanismsOf` and drew it
+     * with plays against it. Measured on the Post-16 run: 41 mechanisms carry a
+     * bar over 96 pairs, and only 42 plays have a first ref at all, so pressing
+     * a bar reading "3 plays" could empty Threats and Actors.
+     *
+     * `p7` cites m1 first and m2 second, which is the case the two rules
+     * disagree about.
+     */
+    const both = play('p7', 'severe', 'a3', ['m1', 'm2']);
+    const withBoth = [...list, both];
+    expect(filterPlays(withBoth, { kind: 'mechanism', id: 'm2', label: 'M' }, ids).map((p) => p.artefact.id))
+      .toEqual(['p2', 'p7']);
+    // And the first-ref reading still works, so nothing that used to match stops.
+    expect(filterPlays(withBoth, { kind: 'mechanism', id: 'm1', label: 'M' }, ids).map((p) => p.artefact.id))
+      .toEqual(['p1', 'p3', 'p7']);
+  });
+
   it('returns the SAME array when nothing is selected', () => {
     // Identity, so a view can tell "unfiltered" from "filtered to everything"
     // without re-deriving the predicate.

@@ -1,4 +1,87 @@
 @use "../govuk" as govuk;
 @use "../tokens" as *;
 
-// Reserved for the "legality-bar" change. Empty until it lands.
+// ── Band against legality, as a divided bar ────────────────────────────────
+//
+// Two rows on one 0–47 scale. `.prt-stack` is the precedent and most of this is
+// its geometry; what differs is that these rows are NOT controls — the exposure
+// rail above the tab strip owns the band selection — so there is no target
+// floor to meet and no focus ring to draw.
+.prt-legalitybar {
+  list-style: none;
+  margin: 0 0 govuk.govuk-spacing(3);
+  padding: 0;
+
+  &__row { margin-bottom: govuk.govuk-spacing(3); }
+
+  &__label {
+    @include govuk.govuk-font($size: 19, $weight: bold);
+    margin: 0 0 govuk.govuk-spacing(1);
+  }
+
+  // THE TRACK IS THE WHOLE RUN, AND ITS EDGE HAS TO BE VISIBLE. A row that
+  // fills 36% of the width says "17 of 47" only if a reader can see where the
+  // other 64% ends. `tint-50` is the base layer's own figure for a graphical
+  // edge that has to carry 3:1; the unfilled part is the page, deliberately,
+  // because an empty track tinted grey reads as a fifth category.
+  &__track {
+    display: flex;
+    width: 100%;
+    // 34px rather than `.prt-stack`'s 44: nothing here is a touch target, and
+    // two rows at 44 plus their labels came to 190px for a figure that is two
+    // numbers and a division.
+    height: 34px;
+    border: 1px solid govuk.govuk-colour("black", $variant: "tint-50");
+    overflow: hidden;
+  }
+
+  &__seg {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-right: 1px solid govuk.govuk-colour("black");
+    // A FLOOR, FOR THE SAME REASON `.prt-stack__seg` HAS ONE. The smallest cell
+    // on the real run is one play of forty-seven — 2.1% of the track, about
+    // 19px on a 920px page — which is narrower than the digit printed in it.
+    // The cost is at most a few pixels of proportional accuracy across the
+    // widest segments, and every count is printed in the table twin exactly.
+    min-width: 1.75rem;
+
+    &:last-child { border-right: 0; }
+  }
+
+  &__n {
+    @include govuk.govuk-font($size: 16, $weight: bold);
+    font-variant-numeric: tabular-nums;
+  }
+}
+
+@media print {
+  // A BAND IS A FILL, AND A BROWSER PRINTS NO FILLS UNLESS ASKED.
+  //
+  // `parts/_metrics` asks for `.prt-band`, `.prt-stack__seg` and
+  // `.prt-stack__swatch`; `parts/_nodebar-track` had to ask again for its own
+  // segments because they carry `prt-band--severe` and not `prt-band`, so the
+  // selector list in the first file never reached them. These segments are the
+  // third place with that shape, and they are the worst one to get wrong: the
+  // counts printed on the two darkest bands are `--band-ink-dark`, which is
+  // white, so with background graphics off — Chrome's default — "13" and "9"
+  // would print as white text on white paper.
+  .prt-legalitybar__seg {
+    print-color-adjust: exact;
+    -webkit-print-color-adjust: exact;
+  }
+}
+
+// AT 320px THE FLOORS ADD UP TO MORE THAN THE TRACK. Seven segments across two
+// rows at 28px each is 196px of a 288px content box, so the proportions stop
+// being proportions and the digits collide. Below tablet the rows keep their
+// division and drop the printed digits, which the key and the table twin both
+// still carry — `Figure` is one press from the full cross-tab either way.
+@include govuk.govuk-media-query($until: tablet) {
+  .prt-legalitybar {
+    &__track { height: 24px; }
+    &__seg { min-width: 6px; }
+    &__n { display: none; }
+  }
+}

@@ -1,4 +1,45 @@
 @use "../govuk" as govuk;
 @use "../tokens" as *;
 
-// Reserved for the "evidence" change. Empty until it lands.
+// ── Every evidence link, and what it does not establish ────────────────────
+//
+// A four-column table whose last column is a sentence. Left to the browser,
+// auto table layout gives the widest max-content column the room it asks for:
+// the disputes run 79 to 148 characters and the "what it backs" cells are full
+// claim titles, so the two of them together asked for about 1,350px inside a
+// 920px panel and the table scrolled horizontally on a desktop screen for a
+// section that is mostly prose.
+//
+// A measure on the three text columns is what fixes it, and it is set on a
+// block inside each cell rather than on the cell: auto layout treats
+// `max-width` on a `td` inconsistently, and a block-level child is constrained
+// everywhere. `.prt-scroll` is still there and still does its job at 320px; it
+// should just not be doing it at 1,280px.
+.prt-evidence {
+  // The claim a link backs. About four words per line on the longest of them,
+  // which is where a two-line cell stops becoming three.
+  &__backs {
+    display: block;
+    max-width: 26ch;
+  }
+
+  // The dispute. Widest of the three, because it is a sentence and the whole
+  // point of the section is that it is read rather than counted.
+  &__dispute {
+    display: block;
+    max-width: 42ch;
+  }
+
+  // Nine of the fifteen read "policy-text extraction" and the other six are
+  // one-off variants up to 46 characters; uncapped, the column sizes to the
+  // longest and takes the room off the dispute beside it.
+  &__kind {
+    display: block;
+    max-width: 16ch;
+  }
+}
+
+// The caps are kept at every width on purpose. At 320px the table scrolls
+// inside `.prt-scroll` whatever happens; capped it asks for about 760px and
+// uncapped about 1,350, so the reader scrolls half as far for the same rows.
+

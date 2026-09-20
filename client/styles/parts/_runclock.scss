@@ -1,4 +1,157 @@
 @use "../govuk" as govuk;
 @use "../tokens" as *;
 
-// Reserved for the "runclock" change. Empty until it lands.
+// ── The page that watches a ten-hour run ──────────────────────────────────
+//
+// Two figures inside the existing inset. Both are plain HTML — a track of
+// spans and a key of real text — for the reason `EgoMap.tsx` and
+// `PlayFlow.tsx` set out at length: SVG cannot wrap a stage name, cannot hold
+// a link, and does not grow when the reader enlarges their type.
+//
+// NEITHER USES THE BAND RAMP. `--band-severe` through `--band-limited` is the
+// exposure ramp, taught across five moves of the report, and it means
+// magnitude of harm. A run's progress is not harm. These are greys: the
+// finished stages take the ink, the running one is hatched so it reads as
+// motion without a colour, and the waiting ones are the track's own tint.
+
+.prt-runbar {
+  margin: 0 0 govuk.govuk-spacing(3);
+}
+
+.prt-runbar__track {
+  display: flex;
+  // Taller than `.prt-bar`'s 6px because this one carries figures inside it.
+  height: govuk.govuk-spacing(5);
+  background: govuk.govuk-colour("black", $variant: "tint-95");
+  border: 1px solid govuk.govuk-colour("black", $variant: "tint-80");
+}
+
+.prt-runbar__seg {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  min-width: 0;
+}
+
+.prt-runbar__n {
+  @include govuk.govuk-font($size: 16, $weight: bold, $tabular: true);
+  // The figure inside a segment is a convenience for a wide bar; the key below
+  // always carries it, which is why a segment too narrow to hold it simply
+  // clips rather than shrinking the type.
+  padding: 0 govuk.govuk-spacing(1);
+  white-space: nowrap;
+}
+
+.prt-runbar__seg--done {
+  background: govuk.govuk-colour("black", $variant: "tint-25");
+  color: govuk.govuk-colour("white");
+}
+
+// HATCHED, NOT COLOURED. "In flight" is the one state that is neither done nor
+// waiting, and a third grey between the two is a distinction nobody can make
+// at 12px. The stripe reads as texture at any contrast and survives print.
+.prt-runbar__seg--running {
+  background: repeating-linear-gradient(
+    45deg,
+    govuk.govuk-colour("black", $variant: "tint-25"),
+    govuk.govuk-colour("black", $variant: "tint-25") 3px,
+    govuk.govuk-colour("black", $variant: "tint-80") 3px,
+    govuk.govuk-colour("black", $variant: "tint-80") 6px
+  );
+}
+
+.prt-runbar__seg--waiting {
+  color: govuk.govuk-colour("black", $variant: "tint-25");
+}
+
+.prt-runbar__key {
+  list-style: none;
+  margin: govuk.govuk-spacing(1) 0 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: govuk.govuk-spacing(1) govuk.govuk-spacing(4);
+  @include govuk.govuk-font($size: 16);
+
+  li {
+    display: flex;
+    align-items: baseline;
+    gap: govuk.govuk-spacing(1);
+  }
+}
+
+.prt-runbar__swatch {
+  display: inline-block;
+  width: 0.75em;
+  height: 0.75em;
+  flex: 0 0 auto;
+  border: 1px solid govuk.govuk-colour("black", $variant: "tint-80");
+
+  &--done { background: govuk.govuk-colour("black", $variant: "tint-25"); }
+  &--running {
+    background: repeating-linear-gradient(
+      45deg,
+      govuk.govuk-colour("black", $variant: "tint-25"),
+      govuk.govuk-colour("black", $variant: "tint-25") 2px,
+      govuk.govuk-colour("black", $variant: "tint-80") 2px,
+      govuk.govuk-colour("black", $variant: "tint-80") 4px
+    );
+  }
+  &--waiting { background: govuk.govuk-colour("black", $variant: "tint-95"); }
+}
+
+// ── Tokens spent, against where the run is heading ────────────────────────
+
+.prt-meter {
+  margin: 0 0 govuk.govuk-spacing(3);
+  // The track is a length being read against a sentence; at the full width of
+  // a wide page the eye cannot hold the two ends of it at once.
+  max-width: $prt-measure;
+}
+
+.prt-meter__track {
+  position: relative;
+  height: 10px;
+  background: govuk.govuk-colour("black", $variant: "tint-95");
+  border: 1px solid govuk.govuk-colour("black", $variant: "tint-80");
+
+  // The cached share is a proportion of input rather than a slice of the
+  // spend, so it gets its own thinner track — the difference in weight is the
+  // cue that the two are not on the same axis.
+  &--thin { height: 5px; margin-top: govuk.govuk-spacing(2); }
+}
+
+.prt-meter__fill {
+  display: block;
+  height: 100%;
+  background: govuk.govuk-colour("black", $variant: "tint-25");
+
+  &--cached { background: govuk.govuk-colour("black", $variant: "tint-50"); }
+}
+
+// A TICK, NOT A SECOND FILL. An allowance is a threshold on the axis, not a
+// quantity stacked on it, and drawing it as a band would invite the reader to
+// add it to the spend. It is `position: absolute` on the track and carries its
+// figure in the sentence underneath, never in colour alone.
+.prt-meter__tick {
+  position: absolute;
+  top: -3px;
+  bottom: -3px;
+  width: 2px;
+  background: govuk.govuk-colour("black");
+}
+
+.prt-meter__key {
+  margin: govuk.govuk-spacing(1) 0 0;
+  max-width: $prt-measure;
+}
+
+// PRINT: a run in flight is not a thing anybody prints, but the inset can be
+// caught inside a printed assessment page. The tracks have borders and the
+// fills are greys, so they survive a printer that drops backgrounds badly —
+// and the key states every figure in words regardless.
+@media print {
+  .prt-runbar,
+  .prt-meter { break-inside: avoid; }
+}

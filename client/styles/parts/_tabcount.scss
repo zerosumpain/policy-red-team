@@ -1,4 +1,42 @@
 @use "../govuk" as govuk;
 @use "../tokens" as *;
 
-// Reserved for the "tabcount" change. Empty until it lands.
+// ── How big each move is, in the tab that opens it ────────────────────────
+//
+// Five tabs that look identical over panels of 919px and 10,137px. The fourth
+// line is the only thing on the strip a reader can weigh, so it is drawn as a
+// figure — the report's own `.prt-denom` treatment, tabular and quiet — and not
+// as a second hint.
+.prt-tab__count {
+  display: none;
+  @include govuk.govuk-font($size: 16, $tabular: true);
+  color: govuk.govuk-colour("black", $variant: "tint-25");
+  // The control's decoration belongs to `&__label` alone; see `Tabs.tsx`.
+  text-decoration: none;
+  font-weight: 400;
+
+  // THE SAME 1260px THE QUESTION USES, for the same measured reason. Between
+  // tablet and 1260 the five columns are about 143px, where "41 mechanisms ·
+  // 106 relationships" sets on three lines and the strip grows taller than the
+  // panel heading beneath it — the failure the hint's own breakpoint records.
+  // At 1260 the container has settled at its full 1200px and a column is 235px,
+  // which is where these strings set on one or two lines.
+  @media (min-width: 1260px) {
+    display: block;
+  }
+}
+
+// THE SIZE SURVIVES THE TEARDOWN AND THE PRINTER.
+//
+// Below tablet there is no strip at all and in print it is hidden, and those are
+// the two readings where every panel is on the page at once — exactly where
+// knowing that one of them is ten screens is worth most. `.prt-movehead` is the
+// heading both of those readings already use to say which move a panel is, so
+// the count rides on it; above tablet the heading is clipped and this goes with
+// it, because there the strip is saying it.
+.prt-movehead__count {
+  display: block;
+  @include govuk.govuk-font($size: 16, $tabular: true);
+  font-weight: 400;
+  color: govuk.govuk-colour("black", $variant: "tint-25");
+}

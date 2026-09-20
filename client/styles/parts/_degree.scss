@@ -1,4 +1,27 @@
 @use "../govuk" as govuk;
 @use "../tokens" as *;
 
-// Reserved for the "degree" change. Empty until it lands.
+// ── How deep the wiring goes ──────────────────────────────────────────────
+//
+// Two `.prt-nodebar` lists and a sentence between them. Almost everything here
+// is the pattern the mechanism chart already uses, and that is the point: this
+// build has one bar vocabulary and the argument for adding a second has never
+// been made. What the block needs of its own is spacing and one fill colour.
+.prt-degree {
+  margin-bottom: govuk.govuk-spacing(6);
+
+  &__block {
+    margin: 0 0 govuk.govuk-spacing(4);
+  }
+
+  // INK, NOT THE LINK BLUE and not the exposure ramp. The mechanism chart's
+  // segments are the four exposure bands, which mean severity; the two bar
+  // charts under "How they connect" are the framework's link colour, which
+  // means "a quantity you can follow into something". These bars are neither —
+  // they are a count of entities, and `.prt-diverge__fill` already settled that
+  // a plain count is drawn in `tint-25` ink. A third meaning for one of the two
+  // colours already in the panel would be the thing the chart rules forbid.
+  &__seg {
+    background: govuk.govuk-colour("black", $variant: "tint-25");
+  }
+}

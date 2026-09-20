@@ -1,4 +1,91 @@
 @use "../govuk" as govuk;
 @use "../tokens" as *;
 
-// Reserved for the "suggests" change. Empty until it lands.
+// ── What it suggests: the three readings under the advice ─────────────────
+//
+// The section was four numbered paragraphs, 183 words, and three things the
+// assessment had already written that reached the page nowhere: who each
+// recommendation says gains and who carries it, which of the forty-seven plays
+// the four together answer, and what the independent challenge round removed.
+//
+// Almost nothing here is new CSS. `Diverge` brings its own figure, `Matrix`
+// brings its own grid, and the band chips are the report's. What is left is the
+// spacing between the three blocks and the one list that had no pattern.
+
+// The aggregate gains/burden figure. `Diverge` sets its own margin; this is the
+// tail that hangs under it.
+.prt-burden {
+  margin-bottom: govuk.govuk-spacing(6);
+
+  // The figure's own caption ends where this begins, and `figcaption` sets no
+  // bottom margin: without the gap the two ran as one four-line paragraph in
+  // which the count of undrawn groups looked like part of the caption.
+  &__tail {
+    max-width: $prt-measure;
+    margin: govuk.govuk-spacing(2) 0;
+  }
+}
+
+.prt-coverage {
+  margin-bottom: govuk.govuk-spacing(6);
+
+  // A VISUALLY-HIDDEN SPAN INSIDE A SCROLLED TABLE PUSHES THE WHOLE PAGE
+  // SIDEWAYS, and it took a measurement to find. `.govuk-visually-hidden` is
+  // `position: absolute` with `width: 1px`, and `.prt-scroll` is not positioned
+  // — so the containing block for every hidden cell sentence and every hidden
+  // column name is the INITIAL one, the document. Measured at 360px: the grid
+  // is 701px wide and scrolls correctly inside its own box, and the hidden
+  // spans for "Any band" and the per-cell readings land at document x = 717, so
+  // `document.scrollWidth` is 717 and the whole report scrolls 357px sideways
+  // on a phone. Nothing is visible doing it.
+  //
+  // One property fixes it: a positioned scroll box is the containing block for
+  // its own absolute descendants, and it clips them like everything else.
+  // Scoped here rather than written against `.prt-scroll` at large, because the
+  // same trap is in every `Matrix` on the report and that belongs in the base
+  // with the rest of `.prt-scroll`, not in this section's partial.
+  .prt-scroll { position: relative; }
+
+  // The grid's own caption, then the three rules, then the sentence about what
+  // is missing — three blocks that are one argument, so they are spaced as
+  // paragraphs rather than left to the table's own bottom margin.
+  &__rules {
+    margin: govuk.govuk-spacing(2) 0;
+    color: govuk.govuk-colour("black", $variant: "tint-25");
+
+    li { margin-bottom: govuk.govuk-spacing(1); }
+
+    strong { color: govuk.govuk-colour("black"); }
+  }
+
+  // The twelve plays no recommendation answers. A band chip and a name: the
+  // chip is a fixed-width object and the name wraps, so the two are a flex row
+  // rather than inline text — inline, a name that wrapped to a second line
+  // started under the chip and read as part of it.
+  &__missed {
+    li {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: baseline;
+      gap: govuk.govuk-spacing(1) govuk.govuk-spacing(2);
+      margin-bottom: govuk.govuk-spacing(1);
+    }
+  }
+}
+
+// The count of what the challenge round did, above the list. A sentence, set as
+// one — it is the frame the numbered list below is read inside, not a caption
+// under something.
+.prt-suggests__standfirst {
+  max-width: $prt-measure;
+  margin: 0 0 govuk.govuk-spacing(4);
+}
+
+// THE MEASURE, AND WHY IT NEEDS TWO CLASSES TO WIN. The base measures every
+// `p.govuk-body-s` in a panel at 68ch and deliberately un-measures every
+// `.govuk-list` — right for a list of names, wrong for three one-sentence
+// rules, which are prose and set to 115 characters a line without this. The
+// rule it has to beat is `.govuk-tabs__panel .govuk-list`, so a single class
+// loses on specificity however late it loads; the child combinator is the
+// cheapest way to match it and win on order.
+.prt-coverage > .prt-coverage__rules { max-width: $prt-measure; }

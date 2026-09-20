@@ -1,4 +1,69 @@
 @use "../govuk" as govuk;
 @use "../tokens" as *;
 
-// Reserved for the "factors" change. Empty until it lands.
+// ── The four judgements behind every exposure score ────────────────────────
+//
+// Four rows on one fixed 0–1 track. The component argues the rest; this decides
+// where the name, the bar and the two grey lines sit.
+.prt-factors {
+  margin: 0 0 govuk.govuk-spacing(6);
+
+  &__list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+  }
+}
+
+.prt-factor {
+  // A ROW IS A BLOCK, NOT A TABLE ROW. The gloss and the worst-play line belong
+  // to the factor above them and have to read as belonging to it, so the space
+  // between rows is larger than the space inside one.
+  margin-bottom: govuk.govuk-spacing(4);
+
+  &:last-child { margin-bottom: 0; }
+
+  // THE NAME COLUMN IS FIXED AND THE TRACK TAKES THE REST, so four bars start
+  // at the same x and a reader compares lengths rather than left edges.
+  // "Concealment" is the longest of the four words at 19px, which is what the
+  // 9rem is measured against — the framework's own spacing scale has no step
+  // near it and a `ch` here would be measured on the wrong font.
+  &__head {
+    display: grid;
+    grid-template-columns: 9rem minmax(0, 1fr);
+    align-items: center;
+    gap: govuk.govuk-spacing(3);
+    margin: 0 0 govuk.govuk-spacing(1);
+  }
+
+  &__name {
+    @include govuk.govuk-font($size: 19, $weight: bold);
+  }
+
+  // The two sub-lines are indented to the track, so the block reads as one
+  // thing rather than as a bar with two captions floating under it. They are
+  // `.prt-meta` already; this only places them.
+  &__gloss,
+  &__top {
+    margin: 0 0 govuk.govuk-spacing(1);
+    padding-left: calc(9rem + #{govuk.govuk-spacing(3)});
+    max-width: $prt-measure;
+  }
+
+  &__top { margin-bottom: 0; }
+
+  // AT 320px THE FIXED COLUMN IS MOST OF THE PAGE. 9rem of a 288px content box
+  // leaves 144px of track, so the bar stops being a comparison and the two grey
+  // lines are indented into a 40-character gutter. Below tablet the name goes
+  // above its own bar and nothing is indented at all.
+  @include govuk.govuk-media-query($until: tablet) {
+    &__head {
+      display: block;
+    }
+
+    &__gloss,
+    &__top {
+      padding-left: 0;
+    }
+  }
+}

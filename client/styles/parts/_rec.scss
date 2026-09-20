@@ -1,4 +1,63 @@
 @use "../govuk" as govuk;
 @use "../tokens" as *;
 
-// Reserved for the "rec" change. Empty until it lands.
+// ── A recommendation, with the fields the Word export already printed ─────
+//
+// The base layer builds the card: a drawn numeral in its own column and the
+// instruction beside it. What it did not have to accommodate was the rest of
+// the record — `data.change`, `data.tradeoffs`, `data.validationNeeded` and the
+// two lists of who gains and who pays, all populated on all four
+// recommendations and none of them on the page. `report-doc.ts` has printed the
+// first three into the .docx the whole time.
+.prt-rec {
+  // THE TITLE AND THE JUDGEMENT SHARE A LINE. As separate rows of the card's
+  // grid, the chip sat between the title and the instruction and broke the one
+  // reading that matters — what to do — into two halves with a box between
+  // them. On a baseline, the chip reads as an annotation on the title, which is
+  // what it is.
+  &__head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 2px govuk.govuk-spacing(2);
+  }
+
+  // The base gives the title a 2px bottom margin for the paragraph that used to
+  // follow it directly; in a flex row that margin pushes the chip off the
+  // baseline it is aligned to.
+  &__head &__title {
+    margin: 0;
+  }
+
+  // THE THREE FIELDS AS A SUMMARY LIST, WITH THE REPORT'S OWN KEY COLUMN.
+  // `.govuk-tabs__panel .govuk-summary-list__key` is already 14rem for the
+  // panel and for the pack, so nothing here sets a width. What it does set is
+  // the size: the instruction above is 19px and the working under it is
+  // supporting detail, which at 19px would be four more paragraphs of the same
+  // weight as the thing they qualify.
+  &__fields {
+    @include govuk.govuk-font($size: 16);
+    margin: govuk.govuk-spacing(2) 0 0;
+
+    .govuk-summary-list__key,
+    .govuk-summary-list__value {
+      @include govuk.govuk-font($size: 16);
+      padding-top: govuk.govuk-spacing(1);
+      padding-bottom: govuk.govuk-spacing(1);
+    }
+
+    // A value here is prose — "Pilots may delay universal benefits, generate
+    // spillovers and impose evaluation costs" — and the value cell takes
+    // whatever is left of a full-width panel, which is about 110 characters.
+    .govuk-summary-list__value { max-width: $prt-measure; }
+  }
+}
+
+@media print {
+  // A recommendation is now a title, an instruction and up to five rows, which
+  // is most of a printed page. `break-inside: avoid` on the base would rather
+  // push the whole card overleaf than split it, leaving a page half empty; a
+  // split card with its numeral on the first page is the better paper.
+  .prt-rec { break-inside: auto; }
+  .prt-rec__head { break-after: avoid; }
+}

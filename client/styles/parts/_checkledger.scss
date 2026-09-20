@@ -1,4 +1,128 @@
 @use "../govuk" as govuk;
 @use "../tokens" as *;
 
-// Reserved for the "checkledger" change. Empty until it lands.
+// ── The counterpart ledger ─────────────────────────────────────────────────
+//
+// The result tally above the table. A run of four chips with their counts, on
+// `.prt-bandrow`'s geometry — it is the same shape for the same reason and gets
+// its own name here only because it must not inherit the band vocabulary's
+// margins if that rule ever changes.
+.prt-checkledger__counts {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: govuk.govuk-spacing(2) govuk.govuk-spacing(4);
+  margin: 0 0 govuk.govuk-spacing(4);
+}
+
+.prt-checkledger__count {
+  display: flex;
+  align-items: center;
+  gap: govuk.govuk-spacing(1);
+}
+
+.prt-checkledger {
+  // A VISUALLY-HIDDEN SPAN INSIDE A SCROLLED TABLE PUSHES THE WHOLE PAGE
+  // SIDEWAYS. `Bar` carries its scale — "stated in the paper, 0 to 43" — in a
+  // `.govuk-visually-hidden` span, which is `position: absolute` with
+  // `width: 1px`; `.prt-scroll` is not positioned, so the containing block for
+  // all twenty-two of them is the INITIAL one, the document, and they land at
+  // whatever x the table has scrolled them to. Measured at 320px: the table is
+  // 703px inside a 290px box and scrolls correctly, and the page itself then
+  // scrolled 138px sideways with nothing visible doing it.
+  //
+  // `parts/_suggests` hit the identical trap on the coverage grid and records
+  // the same one-property fix: a positioned scroll box is the containing block
+  // for its own absolute descendants, and it clips them like everything else.
+  // Scoped here for the reason that file gives — `.prt-scroll` at large belongs
+  // to the base, not to one section's partial.
+  .prt-scroll { position: relative; }
+
+  // A RELATION IS TWO LINES, NOT ONE. "is accountable for" beside a bar in one
+  // row is about 300px of a five-column table; stacked, the words wrap to two
+  // short lines over their own track and the column settles at roughly 11rem.
+  // Measured on the twelve real rules: the longest relation is
+  // `supplies_data_to`, and the widest pair of columns went from 620px to 360.
+  &__rel {
+    display: block;
+    max-width: 11.5rem;
+  }
+
+  &__relname {
+    display: block;
+    @include govuk.govuk-font($size: 16);
+  }
+
+  // NEVER STATED IS A WORD AND A SHAPE. A relation the paper uses zero times
+  // draws no fill, and a bar with no fill is indistinguishable from one drawn
+  // very short — which is the difference between "rarely" and "not once", and
+  // that difference is the whole finding. The dashed track says the track is
+  // there and empty; the words say which.
+  &__never {
+    display: flex;
+    align-items: center;
+    gap: govuk.govuk-spacing(2);
+    @include govuk.govuk-font($size: 16);
+    color: govuk.govuk-colour("black");
+    // The words are the signal and they are two of them. Wrapped, "never
+    // stated" breaks under its own dash and the row grows a line for no
+    // reason; the dash is the flexible part and shrinks instead.
+    white-space: nowrap;
+  }
+
+  &__empty {
+    flex: 1 1 auto;
+    min-width: 2rem;
+    height: 6px;
+    // `tint-50` is the base layer's own figure for a graphical edge that has to
+    // carry 3:1. Dashed rather than solid so it reads as an absence beside the
+    // solid tracks in the rows above and below it.
+    border-top: 2px dashed govuk.govuk-colour("black", $variant: "tint-50");
+  }
+
+  // A RESULT IS ONE PHRASE. "Could not decide" is the commonest result on a
+  // real run — seven of twelve here — and a fixed column width for it is a
+  // guess that was wrong twice: at 9rem the tag broke over two lines on seven
+  // consecutive rows, and at 11rem it cost the check names a line each. The
+  // tag simply refuses to wrap and the browser sizes the column to it.
+  .govuk-tag { white-space: nowrap; }
+
+  // ON PAPER THE TAG WRAPS AGAIN. The base switches every `.prt-scroll` table
+  // to `table-layout: fixed` in print, because a print sheet has no scrollbar
+  // and `overflow-x: auto` simply clips — so the columns divide the page
+  // instead of sizing to their content, and a `nowrap` tag then runs out of
+  // its own cell and over the column beside it. Measured at A4: "Could not
+  // decide" overhung into the Why column on all seven rows.
+  @media print {
+    .govuk-tag { white-space: normal; }
+    // Same cause: under fixed layout "never stated" overhung the column to its
+    // right. On screen the dash shrinks and the words stay on one line; on
+    // paper there is no room to shrink into, so the words wrap instead.
+    .prt-checkledger__never { white-space: normal; }
+  }
+
+  // The labels inside a "Why" disclosure. Three blocks — what it looked for,
+  // what it found, what would fix it — and without a label each one is an
+  // unattributed paragraph of pipeline prose.
+  &__label {
+    @include govuk.govuk-font($size: 16, $weight: bold);
+    margin: 0 0 govuk.govuk-spacing(1);
+  }
+
+  // THE DISCLOSURE CANNOT BE ALLOWED TO SIZE ITS COLUMN. The three blocks come
+  // to about 400 characters, and under auto table layout a cell asks for its
+  // content's max-content width — so the "Why" column would take the table
+  // past a thousand pixels and scroll it sideways on a desktop screen for
+  // content that is shut.
+  .govuk-details {
+    margin-bottom: 0;
+  }
+
+  .govuk-details__text {
+    max-width: 44ch;
+  }
+
+  // The summary is one word and must not be the thing that widens the column
+  // either; nothing here needs it to wrap.
+  .govuk-details__summary { white-space: nowrap; }
+}

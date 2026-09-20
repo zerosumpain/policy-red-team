@@ -1,4 +1,64 @@
 @use "../govuk" as govuk;
 @use "../tokens" as *;
 
-// Reserved for the "nodebar-track" change. Empty until it lands.
+// ── A bar needs a track, and both charts in this panel now share one ───────
+//
+// `.prt-nodebar__bar` was the FILL: a 16px bordered box sized by an inline
+// `width: ${(n / widest) * 100}%`, sitting in a `minmax(0, 1fr)` grid column. So
+// the remainder of the column was bare page and there was nothing to read the
+// length against — a one-play stub was a mark floating in about 310px of
+// nothing, and thirteen of the mechanism rows are one play. The same stylesheet
+// gets this right 800px away for the exposure bars, whose `.prt-bar__track` has
+// carried a visible band since it was drawn.
+//
+// SO THE BAR IS THE TRACK AND THE FILL MOVES INSIDE IT. The 1px black frame it
+// already had now bounds the whole scale rather than the value, which is what a
+// frame on a chart means, and every row is read against the same ceiling.
+//
+// Unscoped, and that is deliberate: `BarChart` builds its rows out of this same
+// vocabulary — one bordered `__bar` per row with a `__seg` sized by percentage
+// inside it — so a track is right for both of the panel's charts and a rule
+// that applied to only one of them would be the second bar vocabulary this
+// change exists to remove.
+//
+// `tint-80` RATHER THAN `tint-95`. `parts/_metrics` measured the alternative:
+// tint-95 is #f3f2f1, 1.12:1 against the page, which is a track a reader cannot
+// see. #cecece is 1.57:1, the file's own figure for a rule between things, and
+// the 1px black border is what the length is actually judged against.
+.prt-nodebar__bar {
+  background: govuk.govuk-colour("black", $variant: "tint-80");
+}
+
+// The value, inside the track. `display: flex` because the mechanism chart
+// divides one fill into up to four band segments with `flex-grow`; a chart with
+// a single-colour fill puts one child in here and reads the same.
+.prt-nodebar__fill {
+  display: flex;
+  height: 100%;
+  // A mechanism with a play still has to be visible beside one with seven, and
+  // at 1/7th of a 250px track the smallest fill is 35px — but a narrowed
+  // selection can put a single play against a much longer widest, and a fill
+  // that rounds to nothing says the row is not there.
+  min-width: 3px;
+}
+
+@media print {
+  // A BAND IS A FILL, AND A BROWSER PRINTS NO FILLS UNLESS ASKED.
+  //
+  // `parts/_metrics` asks for `.prt-band`, `.prt-stack__seg` and
+  // `.prt-stack__swatch`, which is every place the ramp is painted EXCEPT this
+  // one: a nodebar segment carries `prt-band--severe` and not `prt-band`, so
+  // the attribute selector in that list never matched it and the mechanism
+  // chart printed as a row of empty outlines with the right lengths and no
+  // bands in them.
+  .prt-nodebar__fill,
+  .prt-nodebar__seg {
+    print-color-adjust: exact;
+    -webkit-print-color-adjust: exact;
+  }
+
+  // The track's grey is the one part that may legitimately drop out with
+  // background graphics off. The frame is what survives and is what the length
+  // is read against, so it is stated here rather than left to the base rule.
+  .prt-nodebar__bar { border: 1px solid govuk.govuk-colour("black"); }
+}

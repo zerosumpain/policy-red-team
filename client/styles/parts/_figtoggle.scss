@@ -1,4 +1,47 @@
 @use "../govuk" as govuk;
 @use "../tokens" as *;
 
-// Reserved for the "figtoggle" change. Empty until it lands.
+// ── The Diagram / Table toggle ────────────────────────────────────────────
+//
+// IT WAS THE LOUDEST THING IN THE SECTION IT CONTROLS. `Figure` rendered two
+// full-size `.govuk-button`s and gave the current view the solid GDS green.
+// Measured on the live report at 1280px: the green "Diagram" button sat at page
+// y≈2326 and the 95% bar it controls at y≈2388–2468, so the control outweighed
+// the figure — and the pair repeated 380px later above the families chart.
+// Green is this service's call-to-action colour, and using it twice in 400px
+// for a view switch tells the eye that pressing it is the point of the section.
+// The report carries four of these pairs.
+//
+// So both buttons are `govuk-button--secondary` and the pressed one is marked
+// the way `.prt-tab` marks the current move: black text, 700, and a 3px black
+// bottom border. GOV.UK has no toggle component, `govuk-button--small` does not
+// exist in govuk-frontend 6.5.1 (there is no such modifier in
+// node_modules/govuk-frontend/dist/govuk/components/button), and nesting the
+// framework's Tabs inside a tab panel would break both the keyboard model and
+// the offline pack — so this is the state carried by what the design system
+// does have.
+//
+// NOT FLOATED BESIDE THE HEADING, which the finding asked for. `Figure` does not
+// know what precedes it: above the shape chart that is an h3, and above the
+// families chart it is a paragraph, so a float at tablet would drop the control
+// into the right margin of a paragraph on two of the four figures. The gap is
+// closed by taking the margin off instead.
+.prt-figtoggle {
+  // `.govuk-button-group` reserves 20px under the group and 15px under each
+  // button for a row of real actions. This is a switch above a figure, and 35px
+  // of air between the control and the thing it controls is what made the two
+  // read as separate blocks.
+  margin-bottom: govuk.govuk-spacing(2);
+
+  .govuk-button { margin-bottom: govuk.govuk-spacing(1); }
+
+  .govuk-button[aria-pressed="true"] {
+    color: govuk.govuk-colour("black");
+    font-weight: 700;
+    // `govuk-button--secondary` draws its own bottom edge as a 2px box-shadow in
+    // a darker grey. Left in place it sits under this border as a second, wider
+    // edge and reads as a misprint.
+    box-shadow: none;
+    border-bottom: 3px solid govuk.govuk-colour("black");
+  }
+}

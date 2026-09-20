@@ -2,7 +2,9 @@ import { useCallback, useEffect, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router';
 import { dossier } from '$lib/persona-view';
 import { api, type PersonaDossier } from '../api';
-import { Button, ButtonGroup, Details, InsetText, SummaryList, Table, Tag, WarningText } from '../govuk';
+import { Button, ButtonGroup, Details, InsetText, SummaryList, Table, WarningText } from '../govuk';
+import { selectionParam } from '../report/selection';
+import { BandMark } from '../BandMark';
 import { usePageTitle } from '../layout/Template';
 
 /**
@@ -93,6 +95,36 @@ export function Persona() {
   const { persona, analyses, readOnly } = detail;
   const view = dossier(detail.observations);
   const titleOf = (analysisId: string | null) => analyses.find((a) => a.id === analysisId);
+  /*
+   * WHICH ACTOR THIS BODY IS, IN THE ASSESSMENT IT WAS SEEN IN.
+   *
+   * `dossier()` drops `actorId` on the way from an observation to a `Sighting`,
+   * and that is the one thing the library uniquely knows: the reader arrived
+   * asking about one body. Read back off the raw observations by id rather than
+   * by widening the view module, which is a change of its own.
+   */
+  const actorOf = new Map(detail.observations.map((o) => [o.id, o.actorId]));
+
+  /**
+   * A link into an assessment, landing on the body the reader came in asking
+   * about.
+   *
+   * Both links out of this page were bare `/assessments/:id`, so a reader who
+   * had just read that Universities is credited with a severe play in the
+   * Post-16 paper arrived at the top of Move 1, showing everything, with 47
+   * plays and 12 bodies in front of them and no trace of the body they came for.
+   *
+   * `selectionParam` rather than a hand-written `actor:` prefix, so the producer
+   * and `parseSelection` cannot drift — and `parseSelection` checks the KIND as
+   * well as the id, so an id that is no longer an actor in that run resolves to
+   * nothing rather than to a label that lies.
+   */
+  const intoAssessment = (analysisId: string | null, observationId: string) => {
+    const actorId = actorOf.get(observationId) ?? null;
+    if (!actorId) return `/assessments/${analysisId}`;
+    const sel = selectionParam({ kind: 'actor', id: actorId, label: '' });
+    return `/assessments/${analysisId}?move=actors${sel ? `&sel=${encodeURIComponent(sel)}` : ''}`;
+  };
 
   async function research() {
     setBusy('research');
@@ -256,9 +288,16 @@ export function Persona() {
             columns={[{ header: 'Play' }, { header: 'Band' }, { header: 'Exposure', numeric: true }, { header: 'Legality' }, { header: 'Found in' }]}
             rows={view.plays.slice(0, 20).map((play, i) => [
               play.label,
-              <Tag key={`b${i}`} colour={play.band === 'severe' ? 'red' : play.band === 'significant' ? 'orange' : 'grey'}>{play.band}</Tag>,
+              <BandMark key={`b${i}`} band={play.band} />,
               play.exposure.toFixed(2),
               play.legality || '—',
+              /* THE LINK IS TO THE ASSESSMENT, NEVER TO THE PLAY.
+                 `PersonaObservation.plays[]` is `{ label, band, exposure,
+                 legality }` and carries no id, so a play-level URL cannot be
+                 built from this payload and inventing one would be a fabricated
+                 link. And it is a bare assessment URL here rather than a deep
+                 one: `view.plays` is flattened across every sighting, so the
+                 row does not know which observation contributed it. */
               titleOf(play.analysisId)
                 ? <Link key={`l${i}`} className="govuk-link" to={`/assessments/${play.analysisId}`}>{play.from}</Link>
                 : play.from,
@@ -280,7 +319,9 @@ export function Persona() {
               <div key={sighting.id} className="govuk-!-margin-bottom-4">
                 <h3 className="govuk-heading-s">
                   {titleOf(sighting.analysisId) ? (
-                    <Link className="govuk-link" to={`/assessments/${sighting.analysisId}`}>{sighting.title}</Link>
+                    <Link className="govuk-link" to={intoAssessment(sighting.analysisId, sighting.id)}>
+                      {sighting.title}
+                    </Link>
                   ) : (
                     sighting.title
                   )}

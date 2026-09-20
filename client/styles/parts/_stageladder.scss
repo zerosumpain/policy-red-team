@@ -1,4 +1,231 @@
 @use "../govuk" as govuk;
 @use "../tokens" as *;
 
-// Reserved for the "stageladder" change. Empty until it lands.
+// ── The eighteen stages, as rows ──────────────────────────────────────────
+//
+// The report's whole account of an 18-stage, 10h 23m run was one summary-list
+// row reading "18 of 18 completed". This is the ladder that replaces it: a name,
+// a duration in words, and two bars on two honest axes.
+//
+// A GRID RATHER THAN A TABLE, in the diagram half — the table half is a real
+// `<table>` and `Figure` renders both. A grid is what lets the row's first cell
+// be a button that fills its column and still line up with seventeen others.
+
+.prt-ladder {
+  margin: 0 0 govuk.govuk-spacing(3);
+}
+
+// The columns, stated once and restated by the legend, because a shared grid
+// definition is the only thing that keeps the heading over its own column.
+%prt-ladder-columns {
+  display: grid;
+  // THE COMPONENT SETS `--prt-ladder-cols`, because a pack that carries no
+  // timings has one column fewer and a template written here could not know.
+  // A custom property rather than an inline `grid-template-columns` so the
+  // narrow rule below can still win: an inline declaration would beat the media
+  // query and take the phone layout with it.
+  grid-template-columns: var(--prt-ladder-cols, minmax(12em, 22em) minmax(7em, 11em) minmax(0, 1fr) minmax(0, 1fr));
+  gap: govuk.govuk-spacing(3);
+  align-items: center;
+
+  // ONE COLUMN AT 320px, which is the same collapse `.prt-nodebar` makes at the
+  // same breakpoint: four columns inside 320 gives the two bars about 40px each,
+  // and a 40px track is a decoration rather than a comparison.
+  @include govuk.govuk-media-query($until: tablet) {
+    grid-template-columns: 1fr;
+    gap: govuk.govuk-spacing(1);
+  }
+}
+
+.prt-ladder__legend {
+  @extend %prt-ladder-columns;
+  @include govuk.govuk-font($size: 16, $weight: bold);
+  padding-bottom: govuk.govuk-spacing(1);
+  border-bottom: 1px solid govuk.govuk-colour("black");
+
+  // The legend names columns, and at 320px there are no columns to name — the
+  // rows carry their own words there. It is `aria-hidden` either way.
+  @include govuk.govuk-media-query($until: tablet) { display: none; }
+}
+
+.prt-ladder__rows {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.prt-ladder__row {
+  @extend %prt-ladder-columns;
+  padding: govuk.govuk-spacing(1) 0;
+  border-bottom: 1px solid govuk.govuk-colour("black", $variant: "tint-80");
+
+  // THE SELECTED ROW IS MARKED BY A RULE, NOT BY A FILL. The stage detail block
+  // opens below the ladder and a reader has to be able to find which of eighteen
+  // rows it belongs to; a tinted background would have to pass contrast against
+  // link-blue text in the first column, and a 4px black edge does not.
+  &.is-selected {
+    box-shadow: inset 4px 0 0 0 govuk.govuk-colour("black");
+    padding-left: govuk.govuk-spacing(2);
+  }
+}
+
+// THE SAME BUTTON TRAP `.prt-nodebar__name` DOCUMENTS. `font-family: inherit`
+// takes the family and leaves the SIZE, so a button inside a 19px panel renders
+// at the user agent's 13.333px — below every step on the GDS scale. The mixin
+// sets family, size and line-height together, which is why it and not a bare
+// `font-size` is the fix.
+.prt-ladder__name {
+  @include govuk.govuk-font($size: 19);
+  text-align: left;
+  background: none;
+  border: 0;
+  padding: 0;
+  color: govuk.govuk-functional-colour("link");
+  text-decoration: underline;
+  cursor: pointer;
+
+  &:focus-visible {
+    outline: 3px solid govuk.govuk-colour("yellow");
+    outline-offset: 0;
+  }
+
+  &[aria-pressed="true"] { color: govuk.govuk-colour("black"); font-weight: 700; }
+
+  // A ladder rendered with no `onSelect` — the pack renders whatever it is
+  // handed — is a name and not a control, and must not look like one.
+  &--plain {
+    color: govuk.govuk-colour("black");
+    text-decoration: none;
+    cursor: auto;
+  }
+}
+
+// THE NUMBER IS THE PIPELINE POSITION, and it is set apart because the position
+// is the one thing the sort order is carrying: the two stages that struggled
+// most are the second and the fifth, and a reader can only see that if the
+// numbers are legible down the left edge.
+.prt-ladder__ord {
+  @include govuk.govuk-font($size: 16);
+  font-variant-numeric: tabular-nums;
+  color: govuk.govuk-colour("black", $variant: "tint-25");
+  display: inline-block;
+  min-width: 2ch;
+}
+
+.prt-ladder__spent {
+  @include govuk.govuk-font($size: 16);
+  font-variant-numeric: tabular-nums;
+}
+
+.prt-ladder__status {
+  font-weight: 700;
+}
+
+.prt-ladder__cell {
+  min-width: 0;
+}
+
+// "None" WHERE A BAR WOULD DRAW A ZERO. `Bar` prints `value.toFixed(places)`, so
+// the stage that minted nothing and the two that recorded no limits would each
+// render "0" against an empty track — which reads as a fault in the row rather
+// than as a fact about the stage.
+.prt-ladder__none {
+  @include govuk.govuk-font($size: 16);
+  color: govuk.govuk-colour("black", $variant: "tint-25");
+}
+
+// ── One stage, opened ─────────────────────────────────────────────────────
+//
+// It sits BELOW the ladder rather than inside the row, for the reason
+// `.prt-mech` gives about the mechanism block: a detail that opens inside a row
+// reflows the seventeen rows under it, and a reader loses the row they pressed.
+.prt-stagedetail {
+  border-left: 5px solid govuk.govuk-colour("black");
+  padding-left: govuk.govuk-spacing(3);
+  margin: 0 0 govuk.govuk-spacing(5);
+
+  p { max-width: $prt-measure; }
+}
+
+// ── What the run spent ────────────────────────────────────────────────────
+//
+// A NEUTRAL RAMP, not `prt-band--*`. That ramp is four steps of one hue defined
+// as the exposure MAGNITUDE encoding and taught across four moves of the report;
+// input, cache, reasoning and answer are a nominal set, and borrowing it would
+// make lightness assert that reasoning is more severe than cache.
+//
+// Four steps of grey to black, each pair at least 3:1 apart against its
+// neighbour so the joins are visible without a border — and the key below states
+// every segment in words and figures regardless, because no reader should have
+// to tell two greys apart to read the figure.
+$prt-spend-steps: (
+  "cached": govuk.govuk-colour("black", $variant: "tint-80"),
+  "fresh": govuk.govuk-colour("black", $variant: "tint-50"),
+  "reasoning": govuk.govuk-colour("black", $variant: "tint-25"),
+  "answer": govuk.govuk-colour("black"),
+);
+
+.prt-spend {
+  margin: 0 0 govuk.govuk-spacing(5);
+
+  &__bar {
+    display: flex;
+    width: 100%;
+    height: 24px;
+    border: 1px solid govuk.govuk-colour("black");
+    overflow: hidden;
+  }
+
+  &__seg {
+    display: block;
+    height: 100%;
+
+    @each $name, $colour in $prt-spend-steps {
+      &--#{$name} { background: $colour; }
+    }
+  }
+
+  &__swatch {
+    display: inline-block;
+    width: 1em;
+    height: 1em;
+    margin-right: govuk.govuk-spacing(1);
+    border: 1px solid govuk.govuk-colour("black");
+    vertical-align: -0.1em;
+  }
+
+  &__key {
+    list-style: none;
+    margin: govuk.govuk-spacing(2) 0 0;
+    padding: 0;
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(14em, 1fr));
+    gap: govuk.govuk-spacing(1) govuk.govuk-spacing(3);
+    @include govuk.govuk-font($size: 16);
+
+    li { margin-bottom: 0; }
+
+    .prt-denom { display: block; padding-left: calc(1em + #{govuk.govuk-spacing(1)}); }
+  }
+}
+
+// ── The stage filter over the limits ──────────────────────────────────────
+//
+// Sixteen stages recorded something, and sixteen small checkboxes in one column
+// is about 450px of control above a list — which is height paid before a reader
+// has read a single limit. GOV.UK has no multi-column checkbox variant, so the
+// columns are added here and nowhere near the component, which every other form
+// in the service renders one-per-line and should keep doing.
+//
+// `auto-fit` WITH A FLOOR, not a fixed count: the labels are stage names and run
+// to "9. Adversarial scenarios and sensitivity (13)", so a column narrower than
+// this wraps every one of them onto two lines and saves nothing.
+.prt-stagefilter .govuk-checkboxes {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(20em, 1fr));
+  column-gap: govuk.govuk-spacing(4);
+
+  @include govuk.govuk-media-query($until: tablet) {
+    grid-template-columns: 1fr;
+  }
+}

@@ -1,4 +1,120 @@
 @use "../govuk" as govuk;
 @use "../tokens" as *;
 
-// Reserved for the "pipeline" change. Empty until it lands.
+// ── What the tool does to a paper ─────────────────────────────────────────
+//
+// Two rails on the landing page: the eighteen pipeline stages, and the five
+// moves the report is read in. They are drawn as grids of plain text rather
+// than as a diagram because every cell is a NAME — "Behavioural hypotheses",
+// "Cross-policy exposure" — and a name is prose: it has to wrap, it has to
+// grow with the reader's type size, and it has to survive being read one cell
+// at a time by a screen reader. An SVG rail of eighteen boxes does none of
+// those things.
+//
+// NO ARROWS AND NO CONNECTORS. The obvious decoration is a chevron between
+// stages, and at 320px it is eighteen chevrons pointing down a single column,
+// which says "flowchart" about a thing that is already an ordered list. The
+// ordinal carries the order; `<ol>` carries it for everyone else.
+
+.prt-pipeline {
+  list-style: none;
+  margin: 0 0 govuk.govuk-spacing(4);
+  padding: 0;
+  display: grid;
+  // SIX, NOT FIVE OR SEVEN. Eighteen over six is three full rows with no
+  // orphan; over five it is three rows and a widow of three, which reads as a
+  // fourth group of stages that does not exist.
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: govuk.govuk-spacing(3);
+
+  @include govuk.govuk-media-query($until: desktop) {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  // One column on a phone. Three at 320px is a 90px cell, and "Behavioural
+  // hypotheses" sets one word per line in it.
+  @include govuk.govuk-media-query($until: tablet) {
+    grid-template-columns: minmax(0, 1fr);
+    gap: govuk.govuk-spacing(2);
+  }
+}
+
+.prt-pipeline__step {
+  border-top: 2px solid govuk.govuk-colour("black", $variant: "tint-80");
+  padding-top: govuk.govuk-spacing(1);
+  display: flex;
+  gap: govuk.govuk-spacing(2);
+  align-items: baseline;
+}
+
+.prt-pipeline__n {
+  @include govuk.govuk-font($size: 16, $weight: bold, $tabular: true);
+  color: govuk.govuk-colour("black", $variant: "tint-25");
+  flex: 0 0 auto;
+}
+
+.prt-pipeline__name {
+  @include govuk.govuk-font($size: 16);
+  // The cell is narrow by construction and some stage names are two long
+  // words; without this a 6-column rail forces its own track open and the
+  // six columns stop being equal.
+  overflow-wrap: anywhere;
+}
+
+// The one sentence that joins the two rails. Held to the measure like any
+// other sentence on the page — it is prose, not a caption on a figure.
+.prt-pipeline__joint {
+  max-width: $prt-measure;
+}
+
+.prt-moves {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: govuk.govuk-spacing(3);
+
+  @include govuk.govuk-media-query($until: desktop) {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  @include govuk.govuk-media-query($until: tablet) {
+    grid-template-columns: minmax(0, 1fr);
+    gap: govuk.govuk-spacing(2);
+  }
+}
+
+// A move block borrows the metric card's shape — a black rule, the name
+// largest, the qualifier under it — because that is what the rest of the
+// service uses to say "this is a thing, and here is what it is". Reinventing
+// a second card here would be a second vocabulary for one idea.
+.prt-moves__move {
+  border-top: 4px solid govuk.govuk-colour("black");
+  padding-top: govuk.govuk-spacing(2);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.prt-moves__step {
+  @include govuk.govuk-font($size: 16);
+  color: govuk.govuk-colour("black", $variant: "tint-25");
+}
+
+.prt-moves__label {
+  @include govuk.govuk-font($size: 24, $weight: bold);
+}
+
+.prt-moves__hint {
+  @include govuk.govuk-font($size: 16);
+  color: govuk.govuk-colour("black", $variant: "tint-25");
+}
+
+// PRINT: the rails are the one part of the landing page worth printing, and
+// they print as lists. The grid survives, but a page break through a cell
+// leaves an ordinal on one sheet and its name on the next.
+@media print {
+  .prt-pipeline__step,
+  .prt-moves__move { break-inside: avoid; }
+}

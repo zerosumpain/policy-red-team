@@ -1,5 +1,6 @@
 import { Suspense, lazy } from 'react';
-import { Route, Routes, useParams } from 'react-router';
+import { Route, Routes, useParams, useSearchParams } from 'react-router';
+import { MOVES } from './moves';
 import { Template } from './layout/Template';
 import { Home } from './pages/Home';
 
@@ -82,11 +83,38 @@ export function App() {
  */
 function DrillRoute() {
   const { id = '' } = useParams();
+  const [params] = useSearchParams();
+  /*
+   * THE BACK LINK GOES BACK TO WHERE THE READER WAS, NOT TO MOVE 1.
+   *
+   * `Report` keeps the reading position in `?move=…&sel=…`, and the link INTO
+   * the drill now carries it as an opaque `?from=`. Without this the browser's
+   * own Back preserved the position — the `replaceState` entry is still in the
+   * history — while the one visible affordance on the page silently reset the
+   * move and cleared the selection banner.
+   *
+   * IT IS PUT BACK UNPARSED. Whatever `Report` wrote is what `Report` reads: it
+   * validates the move against `MOVE_ORDER` and resolves the selection id
+   * against the assessment's own artefacts, returning null rather than a label
+   * that lies. So a stale or hand-edited `from` degrades to the plain report,
+   * and this route needs to understand none of it.
+   */
+  const from = params.get('from') ?? '';
+  const back = from ? `/assessments/${id}?${from}` : `/assessments/${id}`;
+  /*
+   * The link NAMES the move it returns to, which is the half a generic "Back
+   * to the assessment" could not say. Only the move: naming the selection as
+   * well would mean resolving an artefact id, and this wrapper holds no
+   * artefacts — the drill does, and says the whole sentence at the foot of the
+   * page where the reader actually finishes reading.
+   */
+  const move = MOVES.find((entry) => entry.id === new URLSearchParams(from).get('move'));
+  const text = move ? `Back to ${move.step} · ${move.label}` : 'Back to the assessment';
   return (
     /* WIDE, like the report it is reached from. Following a play out of a
        1200px page into a 960px one is a 240px jolt on a route whose whole job
        is to be the same record at more depth. */
-    <Template wide backLink={{ href: `/assessments/${id}`, text: 'Back to the assessment' }}>
+    <Template wide backLink={{ href: back, text }}>
       <Drill />
     </Template>
   );

@@ -1,4 +1,86 @@
 @use "../govuk" as govuk;
 @use "../tokens" as *;
 
-// Reserved for the "withheld" change. Empty until it lands.
+// ── Where the model could not see everything ──────────────────────────────
+//
+// Ten rows, one per stage that made a call it could not be given the whole
+// assessment for. The three columns are a name, a length, and the figures in
+// words — the same grammar as `.prt-nodebar`, which is the bar row this report
+// already teaches, rather than a second bar vocabulary.
+//
+// THE FIGURES COLUMN IS WIDER THAN A NODEBAR'S because it holds two lines: "1,236
+// of 2,251 withheld from its deepest call" over "1 call reduced · none of actor,
+// alias, claim and 11 more". Left at `auto` it would size to the longest of the
+// ten and take about 380px off every bar.
+
+.prt-withheld {
+  list-style: none;
+  margin: 0 0 govuk.govuk-spacing(3);
+  padding: 0;
+}
+
+.prt-withheld__row {
+  display: grid;
+  grid-template-columns: minmax(12em, 20em) minmax(0, 1fr) minmax(0, 22em);
+  gap: govuk.govuk-spacing(3);
+  align-items: center;
+  padding: govuk.govuk-spacing(2) 0;
+  border-top: 1px solid govuk.govuk-colour("black", $variant: "tint-80");
+
+  // The same collapse as every other bar row in the report: three columns inside
+  // 320px leaves the track about 60px, which is a decoration rather than a
+  // comparison, and the figures are already in words underneath it.
+  @include govuk.govuk-media-query($until: tablet) {
+    grid-template-columns: 1fr;
+    gap: govuk.govuk-spacing(1);
+  }
+}
+
+.prt-withheld__name {
+  @include govuk.govuk-font($size: 19);
+
+  // A TAG ON A NAME NEEDS A LINE OF ITS OWN TO SIT ON. "Read as partial" beside
+  // "Independent challenge" wraps at every width below tablet, and a tag half on
+  // the next line reads as a second item rather than as a mark on this one.
+  .govuk-tag {
+    display: inline-block;
+    margin-top: govuk.govuk-spacing(1);
+  }
+}
+
+.prt-withheld__bar { min-width: 0; }
+
+.prt-withheld__figures {
+  @include govuk.govuk-font($size: 16);
+
+  .prt-denom {
+    display: block;
+    // The second line is the qualifier and must not look like a second figure.
+    color: govuk.govuk-colour("black", $variant: "tint-25");
+  }
+}
+
+// ── The ids a discard named ───────────────────────────────────────────────
+//
+// Also the discards panel's, which is why it is in this partial: one change owns
+// both halves of "what the run threw away".
+//
+// These were a semicolon-joined run inside a disclosure — the longest 814
+// characters — so the ids, which carry their kind in brackets and are the
+// checkable part of a discard, were unreadable as a paragraph. As a list they
+// are thirty short lines, which is thirty lines of height for no reason, so they
+// column up wherever there is room.
+//
+// PLAIN TEXT, NEVER LINKS: all 89 of them resolve against `artefacts[]` zero
+// times, correctly — they were refused, so they were never stored.
+.prt-affected {
+  columns: 18em;
+  column-gap: govuk.govuk-spacing(4);
+  margin-bottom: 0;
+
+  li {
+    // A list item that breaks across a column boundary reads as two ids.
+    break-inside: avoid;
+    margin-bottom: 0;
+  }
+}

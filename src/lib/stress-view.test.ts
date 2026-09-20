@@ -7,7 +7,7 @@
 import { describe, expect, it } from 'vitest';
 import { artefact, type Artefact } from '$lib/policy-analysis/contracts';
 import { leverage, stress } from '$lib/policy-analysis/stress';
-import { byCause, reading, reasonsOf, STANDING_COLOUR, STANDING_LABEL } from './stress-view';
+import { byCause, leverPreviews, reading, reasonsOf, standingMeter, STANDING_COLOUR, STANDING_LABEL } from './stress-view';
 
 const assumption = (id: string, over: Record<string, unknown> = {}) =>
   artefact(id, 'assumption', `Assumption ${id}`, 'Something taken for granted.', { importance: 0.9, uncertainty: 0.9, consequence: 0.9, ...over });
@@ -226,5 +226,79 @@ describe('what a standing is called', () => {
     // The only good news on the page is the only green one.
     expect(STANDING_COLOUR.disarmed).toBe('green');
     expect(STANDING_COLOUR.unsupported).toBe('red');
+  });
+});
+
+describe('what a lever would do before it is pulled', () => {
+  it('reports both outcomes for every offered lever, in the panel\'s own denominators', () => {
+    const items = world();
+    const preview = leverPreviews(items, leverage(items));
+    // a1 is cited by the model, the scenario, both findings and one play.
+    expect(preview.by.get('a1')).toEqual({ disarms: 1, moves: 5 });
+    expect(preview.by.get('a2')).toEqual({ disarms: 1, moves: 1 });
+    expect(preview.population).toEqual({ plays: 2, conclusions: 5 });
+  });
+
+  it('carries the largest of each, because the two bars are on two different scales', () => {
+    // "9 of 47 plays" and "38 of 60 conclusions" on one shared axis would make
+    // the smaller quantity look like the smaller finding. Each bar needs its
+    // own stated top.
+    const items = world();
+    const preview = leverPreviews(items, leverage(items));
+    expect(preview.most).toEqual({ disarms: 1, moves: 5 });
+  });
+
+  it('DISAGREES with the order the rail is drawn in, which is the point of computing it', () => {
+    // The rail is ranked by dependants. On the real assessment the top-ranked
+    // lever (30 dependants) disarms 3 of 47 while the 7th and 9th disarm 9
+    // each. Here the fixture is smaller and the property is the same one: the
+    // preview is not a function of the rank.
+    const items = [...world(), make('x3', 'exploit', { preconditions: ['a2'] }), make('x4', 'exploit', { preconditions: ['a2'] })];
+    const levers = leverage(items);
+    const preview = leverPreviews(items, levers);
+    expect(levers[0].artefact.id).toBe('a1');
+    expect(preview.by.get('a2')!.disarms).toBeGreaterThan(preview.by.get('a1')!.disarms);
+  });
+
+  it('is empty rather than wrong when there are no levers', () => {
+    const preview = leverPreviews(world(), []);
+    expect(preview.by.size).toBe(0);
+    expect(preview.population).toEqual({ plays: 0, conclusions: 0 });
+  });
+});
+
+describe('the standing meter', () => {
+  it('reads 100% unchanged before a single lever is pulled', () => {
+    // This is the whole argument for drawing it at zero: it teaches the
+    // instrument before anything is touched. Measured on the real run, that is
+    // 10 recommendations, 32 conclusions, 8 scenarios, 10 models and 47 plays,
+    // all holding.
+    const rows = standingMeter(stress(world(), []));
+    expect(rows.map((r) => r.key)).toEqual(['recommendations', 'findings', 'scenarios', 'models', 'plays']);
+    for (const row of rows) {
+      expect(row.moved).toBe(0);
+      expect(row.counts).toEqual([{ standing: 'holds', count: row.total }]);
+    }
+  });
+
+  it('puts the worst news at the left-hand end of the bar and grey at the right', () => {
+    const rows = standingMeter(stress(world(), ['a1']));
+    const findings = rows.find((r) => r.key === 'findings')!;
+    expect(findings.counts.map((c) => c.standing)).toEqual(['unsupported', 'weakened']);
+    const plays = rows.find((r) => r.key === 'plays')!;
+    expect(plays.counts.map((c) => c.standing)).toEqual(['disarmed', 'holds']);
+    expect(plays.counts.find((c) => c.standing === 'disarmed')!.count).toBe(1);
+  });
+
+  it('drops a standing with nothing in it rather than drawing a zero-width segment', () => {
+    const rows = standingMeter(stress(world(), ['a1']));
+    for (const row of rows) expect(row.counts.every((c) => c.count > 0)).toBe(true);
+  });
+
+  it('counts every row exactly once', () => {
+    const rows = standingMeter(stress(world(), ['a1', 'a2']));
+    for (const row of rows) {
+      expect(row.counts.reduce((n, c) => n + c.count, 0)).toBe(row.total);
+    }
   });
 });

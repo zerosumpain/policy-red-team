@@ -1,4 +1,68 @@
 @use "../govuk" as govuk;
 @use "../tokens" as *;
 
-// Reserved for the "figure-print" change. Empty until it lands.
+// ── Both halves of a figure, on paper ─────────────────────────────────────
+//
+// `Figure` used to mount one child — `view === 'diagram' ? diagram : table` —
+// so the view that was not showing was not in the document, which is the one
+// state CSS cannot reach. Print emulation of the Threats panel at 1280 found
+// the scatter rendered, `#report-panel-threats table` absent from the document
+// entirely, and the toggle hidden by the `.govuk-button` rule in the base print
+// block. So every printed and PDF copy of the report carried 47 unlabelled
+// marks and dropped "Every play, by ease and impact" — the only place a
+// per-play ease or impact figure is printed anywhere — and a reader printing
+// from a phone lost the picture instead, because below tablet the default is
+// the table.
+//
+// Both children are rendered now, one of them `[hidden]`. This is the half that
+// brings the other one back for paper.
+//
+// NOT SCOPED TO `.govuk-tabs__panel` AND `.prt-pack`, which is the pairing most
+// report rules use. `EgoMap` mounts a `Figure` on the drill page, which is
+// neither a tab panel nor a pack, and a scoped rule would have printed the
+// drill's ego map without its table while fixing the three figures in the
+// report. There is no `[hidden]` rule in the base for this to fight — the only
+// one is `.govuk-tabs__panel[hidden]` — so `!important` here is beating the
+// user agent sheet and nothing else.
+
+// The name of a view. Clipped on screen rather than marked
+// `.govuk-visually-hidden`, because the framework writes that class with
+// `!important` on every declaration and a print rule cannot reverse it.
+.prt-figure__viewhead {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
+
+@media print {
+  .prt-figure__view[hidden] { display: block !important; }
+
+  // A figure and its table are one object and should not be split across a
+  // page break when they fit on one.
+  .prt-figure__view { break-inside: avoid; }
+
+  .prt-figure__viewhead {
+    position: static;
+    width: auto;
+    height: auto;
+    overflow: visible;
+    clip-path: none;
+    white-space: normal;
+    @include govuk.govuk-font($size: 16, $weight: bold);
+    margin: govuk.govuk-spacing(2) 0 govuk.govuk-spacing(1);
+  }
+
+  // The bar fills these figures draw need `print-color-adjust: exact` to reach
+  // paper at all, and they get it from `parts/_nodebar-track`, which owns
+  // `.prt-nodebar__bar` and `.prt-nodebar__seg` for every chart in the build.
+  // Restating it here would also have put an outline round each of the
+  // mechanism chart's four band segments, which already carry their own
+  // divider — so this file stops at the `[hidden]` half of the defect, which
+  // is the half it is for.
+}

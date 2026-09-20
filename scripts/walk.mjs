@@ -63,11 +63,18 @@ async function audit(label) {
     const r = await window.axe.run(document, {
       runOnly: { type: 'tag', values: ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'wcag22aa', 'best-practice'] },
     });
-    return r.violations.map((v) => ({ id: v.id, impact: v.impact, help: v.help, nodes: v.nodes.length }));
+    // THE SELECTOR, NOT JUST THE COUNT. A note reading "moderate landmark-unique
+    // (1)" is a note nobody can act on: it says something is wrong once,
+    // somewhere, on a page with eighteen sections. Carrying the first few
+    // targets turns it into a thing that can be looked at.
+    return r.violations.map((v) => ({
+      id: v.id, impact: v.impact, help: v.help, nodes: v.nodes.length,
+      where: v.nodes.slice(0, 3).map((n) => n.target.join(' ')).join(' | '),
+    }));
   });
   const bad = violations.filter((v) => v.impact === 'serious' || v.impact === 'critical');
-  for (const v of bad) failures.push(`${label}: axe ${v.impact} ${v.id} — ${v.help} (${v.nodes})`);
-  for (const v of violations.filter((v) => !bad.includes(v))) console.log(`  note  ${label}: ${v.impact} ${v.id} (${v.nodes})`);
+  for (const v of bad) failures.push(`${label}: axe ${v.impact} ${v.id} — ${v.help} (${v.nodes}) ${v.where}`);
+  for (const v of violations.filter((v) => !bad.includes(v))) console.log(`  note  ${label}: ${v.impact} ${v.id} (${v.nodes}) ${v.where}`);
   return bad.length === 0;
 }
 
@@ -337,12 +344,25 @@ try {
   // Sharing and the export are actions on the whole report, so they sit in
   // Verdict — and the walk has been in Threats since the stress test.
   await page.getByRole('tab', { name: /verdict/i }).click();
-  await page.getByRole('heading', { name: 'Send it to someone' }).scrollIntoViewIfNeeded();
-  const panelText = await page.locator('section[aria-labelledby="send"]').innerText();
-  if (!/no link to send/i.test(panelText)) failures.push('send: does not say why there is no link');
-  // In-page anchors excluded: `Report` appends "Back to contents" to every section.
-  if (await page.locator('section[aria-labelledby="send"] a[href]:not([href*="scope=shared"]):not([href^="#"])').count()) {
-    failures.push('send: offers a download that is not the redacted one');
+  /*
+   * ONE SECTION, NOT TWO. "Take it away" and "Send it to someone" were two
+   * headings over one subject — every download in the first, and in the second
+   * an argument about links plus the redacted copy. They are now one `take`
+   * section holding a download grid and that argument.
+   *
+   * SO THE ASSERTION MOVED RATHER THAN RELAXED. The section now legitimately
+   * offers the owner's own unredacted exports beside the shared one, so "no
+   * download here that is not redacted" is no longer the invariant. What still
+   * has to be true is that the redacted copy is offered, that the page says why
+   * there is no link, and — the assertion that actually protects a recipient —
+   * that the shared pack's payload withholds the three kinds, which is checked
+   * against the real bytes below.
+   */
+  await page.getByRole('heading', { name: 'Take it away' }).scrollIntoViewIfNeeded();
+  const panelText = await page.locator('section[aria-labelledby="take"]').innerText();
+  if (!/no link to send/i.test(panelText)) failures.push('take: does not say why there is no link');
+  if (!(await page.locator('section[aria-labelledby="take"] a[href*="scope=shared"]').count())) {
+    failures.push('take: does not offer the redacted copy');
   }
 
   const owned = await page.evaluate(async (a) => (await fetch(`/api/policy-analysis/${a}`)).json(), id);
@@ -553,15 +573,45 @@ try {
   await page.getByRole('heading', { level: 1, name: playName }).waitFor({ timeout: 10000 });
   note('the chain is followable, and the browser back button reverses it');
 
-  await page.getByRole('link', { name: 'Back to the assessment' }).click();
+  /*
+   * THE BACK LINK RETURNS TO WHERE THE READER WAS, not to the top of the report.
+   *
+   * This used to wait for "What it found" — a Verdict section — because the back
+   * link always landed on Move 1 with the selection cleared. That was the defect:
+   * following a play out of Threats under a mechanism and pressing the one
+   * visible way back put the reader on a different move showing everything,
+   * while the browser's own Back, which nobody is looking at, was perfect.
+   *
+   * So the assertion is now the behaviour rather than the symptom: the report
+   * renders, and the panel showing is the one the drill was opened from. Read
+   * off the URL rather than hard-coded, so it keeps holding if the walk's route
+   * through the moves changes.
+   */
+  await page.locator('.govuk-back-link').click();
   await page.waitForURL((url) => /\/assessments\/[^/]+$/.test(url.pathname), { timeout: 10000 });
-  await page.getByRole('heading', { name: 'What it found' }).waitFor({ timeout: 15000 }).catch(() => {
+  await page.getByRole('tablist').waitFor({ timeout: 15000 }).catch(() => {
     failures.push('drill: the back link did not return to the report');
   });
+  /*
+   * AND THE URL HAS TO AGREE WITH THE PANEL, which is a second assertion and not
+   * a restatement of the first. The move arrives as a query parameter and the
+   * component mounts on its default before the reading effect applies it, so the
+   * writing effect can strip the parameter on the first commit and put it back
+   * on the second. A page that shows Threats under a URL that says Verdict looks
+   * right and loses the reader's place on reload — which is the whole defect this
+   * carries the position to fix.
+   */
+  const showing = await page.locator('[role="tab"][aria-selected="true"]').innerText().catch(() => '');
+  await page.waitForFunction(() => true, null, { timeout: 1000 }).catch(() => {});
+  await page.waitForTimeout(600);
+  const cameBack = new URL(page.url()).searchParams.get('move') ?? 'verdict';
+  if (!showing.toLowerCase().includes(cameBack)) {
+    failures.push(`drill: the back link showed "${showing.replace(/\s+/g, ' ').slice(0, 40)}" and the URL settled on ${cameBack} — a reload would lose the reader's place`);
+  }
   if (!(await page.evaluate(() => window.__spa === true))) {
     failures.push('drill: leaving the drill reloaded the whole app rather than routing');
   }
-  note('the back link returns to the report without reloading');
+  note(`the back link returns to ${cameBack}, without reloading`);
 
   // 8 — REFLOW, at the narrowest width WCAG 2.2 asks about.
   //

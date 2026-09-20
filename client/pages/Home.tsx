@@ -2,7 +2,8 @@ import { useEffect, useState } from 'react';
 import { Link } from 'react-router';
 import { api, type AnalysisRow } from '../api';
 import { NotificationBanner, Table, Tag, type TagColour } from '../govuk';
-import { statusLabel, statusColour } from '../status';
+import { MOVES } from '../moves';
+import { spent, statusLabel, statusColour } from '../status';
 import { usePageTitle } from '../layout/Template';
 
 /**
@@ -14,6 +15,17 @@ import { usePageTitle } from '../layout/Template';
  */
 export function Home() {
   const [rows, setRows] = useState<AnalysisRow[] | null>(null);
+  /**
+   * THE EIGHTEEN STAGE NAMES WERE FETCHED AND DROPPED ON THE FLOOR.
+   *
+   * `server/api.ts` has sent `stages: STAGES` in the landing response since the
+   * route existed and `client/api.ts` types it, and the `.then` below took
+   * `analyses` and `readOnly` out of the same object and discarded the rest. So
+   * the landing screen said "it reads a policy paper as an adversary would" and
+   * never showed what reading means — the phrase "eighteen stages" appears once
+   * in the whole client, on `/about`, behind a footer link.
+   */
+  const [stages, setStages] = useState<readonly string[]>([]);
   const [readOnly, setReadOnly] = useState(false);
   const [error, setError] = useState<string | null>(null);
   // No page name: the landing page IS the service, and "Policy Red Team —
@@ -22,7 +34,7 @@ export function Home() {
 
   useEffect(() => {
     api.landing()
-      .then((data) => { setRows(data.analyses); setReadOnly(data.readOnly); })
+      .then((data) => { setRows(data.analyses); setStages(data.stages); setReadOnly(data.readOnly); })
       .catch((err: Error) => setError(err.message));
   }, []);
 
@@ -60,6 +72,56 @@ export function Home() {
         )}
       </div>
 
+      {/*
+        WHAT IT DOES TO A PAPER, on the screen that is asking you to hand it one.
+
+        The lead says the tool "reads a policy paper as an adversary would" and
+        the page then went straight to a table of runs — so a reader could not
+        tell whether reading takes ten seconds or ten hours, nor what the thing
+        they get back looks like. Both halves were already in hand: the stage
+        names arrive in the landing response, and the five moves are the report's
+        own tab strip.
+
+        FULL WIDTH, not the two-thirds column the lead sits in. This is a rail of
+        eighteen short labels and a row of five blocks; at the measure that suits
+        a paragraph the rail is three columns of wrapped text.
+
+        UNGROUPED, AND THAT IS DELIBERATE. The obvious drawing is eighteen stages
+        bracketed into the five moves they feed, and the stage-to-move mapping is
+        not in the data: `MOVE_ORDER` orders the moves and says nothing about
+        stages. Bracketing them would be inventing a correspondence the pipeline
+        does not assert, on the first screen of the service.
+      */}
+      {stages.length ? (
+        <div className="govuk-grid-column-full govuk-!-margin-top-6">
+          <h2 className="govuk-heading-l">What it does to a paper</h2>
+          <ol className="prt-pipeline">
+            {stages.map((stage, i) => (
+              <li key={stage} className="prt-pipeline__step">
+                {/* The ordinal is `aria-hidden` because the list is an `<ol>`:
+                    a screen reader already announces "1 of 18", and the printed
+                    number is there for the sighted reader who is counting. */}
+                <span className="prt-pipeline__n" aria-hidden="true">{i + 1}</span>
+                <span className="prt-pipeline__name">{stage}</span>
+              </li>
+            ))}
+          </ol>
+          <p className="govuk-body prt-pipeline__joint">
+            {stages.length === 18 ? 'Eighteen' : stages.length} stages produce one report in{' '}
+            {MOVES.length === 5 ? 'five' : MOVES.length} moves.
+          </p>
+          <ol className="prt-moves">
+            {MOVES.map((move) => (
+              <li key={move.id} className="prt-moves__move">
+                <span className="prt-moves__step">{move.step}</span>
+                <span className="prt-moves__label">{move.label}</span>
+                <span className="prt-moves__hint">{move.hint}</span>
+              </li>
+            ))}
+          </ol>
+        </div>
+      ) : null}
+
       <div className="govuk-grid-column-full govuk-!-margin-top-6">
         <h2 className="govuk-heading-l">Assessments</h2>
         {error ? <p className="govuk-body govuk-error-message">{error}</p> : null}
@@ -89,14 +151,6 @@ export function Home() {
  */
 function Assessments({ rows }: { rows: AnalysisRow[] }) {
   const [showAll, setShowAll] = useState(false);
-  const spent = (row: AnalysisRow) => {
-    const ms = new Date(row.updatedAt).getTime() - new Date(row.createdAt).getTime();
-    if (!Number.isFinite(ms) || ms < 0) return '—';
-    const minutes = Math.round(ms / 60000);
-    if (minutes < 1) return 'under a minute';
-    if (minutes < 90) return `${minutes} min`;
-    return `${Math.floor(minutes / 60)}h ${String(minutes % 60).padStart(2, '0')}m`;
-  };
   const when = (iso: string) => new Date(iso).toLocaleString('en-GB', {
     day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit',
   });
@@ -107,7 +161,11 @@ function Assessments({ rows }: { rows: AnalysisRow[] }) {
         <Link key="t" className="govuk-link" to={`/assessments/${row.id}`}>{row.title}</Link>,
         row.policyArea ?? row.jurisdiction ?? '—',
         when(row.createdAt),
-        spent(row),
+        // The ladder lives in `client/status.ts` now. It was private here, and
+        // the assessment header and the commissioning page both had to state
+        // the same span — which is how `/assessments/new` came to describe a
+        // 10h 23m run as "two and a half hours".
+        spent(row.createdAt, row.updatedAt),
         <Tag key="s" colour={statusColour(row.status) as TagColour}>{statusLabel(row.status)}</Tag>,
       ])}
     />

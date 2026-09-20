@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Link, useParams } from 'react-router';
+import { Link, useParams, useSearchParams } from 'react-router';
 import type { Artefact } from '$lib/policy-analysis/contracts';
 import { explain } from '$lib/policy-analysis/glossary';
 import { BAND_LABEL, confidenceJudgement, plays, stageOfId } from '$lib/policy-analysis/view';
@@ -9,12 +9,17 @@ import { citedBy, paperWording, provenance, type StageOf } from '$lib/provenance
 import { linkRecommendation, TIER_LABEL, TIER_RULE, type Tier } from '$lib/recommendation';
 import { egoOf, labelIndex } from '$lib/relationships';
 import { api, type Detail } from '../api';
-import { Details, InsetText, SummaryList, Table, WarningText } from '../govuk';
+import { Details, InsetText, Pagination, SummaryList, Table, Tag, WarningText, type TagColour } from '../govuk';
+import { statusColour, statusLabel } from '../status';
 import { usePageTitle } from '../layout/Template';
 import { ArtefactValue, fieldLabel } from '../report/ArtefactValue';
 import { EgoMap } from '../report/EgoMap';
 import { Bar } from '../report/Metrics';
 import { PlayFlow } from '../report/PlayFlow';
+import { describeSelection, parseSelection } from '../report/selection';
+import { MOVES } from '../moves';
+import { ChainRail, StageRail } from '../report/StageRail';
+import { stageMarks, stageSpan, type Rung } from '$lib/stage-rail';
 import { Quoted } from '../report/Quoted';
 import { TestResult } from '../report/TestResult';
 
@@ -46,6 +51,17 @@ import { TestResult } from '../report/TestResult';
  */
 export function Drill() {
   const { id = '', artefactId = '' } = useParams();
+  /*
+   * WHERE THE READER WAS IN THE REPORT, carried in as one opaque string.
+   *
+   * `Report` owns `?move=…&sel=…`; the link into this page appends it as
+   * `?from=<encoded>`. Nothing here parses a route out of it — `parseSelection`
+   * resolves the selection against this assessment's own artefacts, and an id
+   * that is no longer in the run comes back as null rather than as a label that
+   * lies.
+   */
+  const [search] = useSearchParams();
+  const from = search.get('from') ?? '';
   const [detail, setDetail] = useState<Detail | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -104,6 +120,9 @@ export function Drill() {
     return { edges, nodes: nodesOf(detail.artefacts, edges) };
   }, [detail, inGraph]);
 
+  /** The way back, with the reading position on it where there is one. */
+  const backHref = from ? `/assessments/${id}?${from}` : `/assessments/${id}`;
+
   // A PAGE, not a red sentence. `govuk-error-message` is the field-level class;
   // used alone it left <main> with no h1 at all, nothing announced, and a
   // screen-reader user following a link into a purged assessment heard silence.
@@ -114,7 +133,7 @@ export function Drill() {
           <h1 className="govuk-heading-l">There is a problem</h1>
           <p className="govuk-body">{error}</p>
           <p className="govuk-body">
-            <Link className="govuk-link" to={`/assessments/${id}`}>Go back to the assessment</Link>
+            <Link className="govuk-link" to={backHref}>Go back to the assessment</Link>
           </p>
         </div>
       </div>
@@ -146,14 +165,18 @@ export function Drill() {
             assessment, or to a stage this one did not reach.
           </p>
           <p className="govuk-body">
-            <Link className="govuk-link" to={`/assessments/${id}`}>Go back to the assessment</Link>
+            <Link className="govuk-link" to={backHref}>Go back to the assessment</Link>
           </p>
         </div>
       </div>
     );
   }
 
-  const to = (target: Artefact) => `/assessments/${id}/artefacts/${encodeURIComponent(target.id)}`;
+  // The position travels with every step sideways too: following four plays in
+  // a row through the pagination below and then pressing Back should return to
+  // the move and the selection the first one was opened from, not to Move 1.
+  const to = (target: Artefact) => `/assessments/${id}/artefacts/${encodeURIComponent(target.id)}`
+    + (from ? `?from=${encodeURIComponent(from)}` : '');
   const link = (target: Artefact) => <Link className="govuk-link" to={to(target)}>{target.label}</Link>;
   const byId = new Map(all.map((a) => [a.id, a]));
   // Indexed once. `net.nodes.find(...)` is a scan of four hundred entities, and
@@ -173,11 +196,36 @@ export function Drill() {
   const rows = new Map(detail.artefactMetadata.map((row) => [row.id, row]));
   const stageOf: StageOf = (target) => rows.get(target)?.stage ?? stageOfId(target);
 
+  /** The stage that actually stopped — read, not assumed to be the last one. */
+  const stoppedAt = detail.stages.find((row) => row.status === 'failed') ?? null;
+
   const stage = stageOf(artefact.id);
   const producedAt = rows.get(artefact.id)?.updatedAt ?? null;
   const chain = provenance(artefact.id, all, { stageOf });
   const cites = citedBy(artefact.id, all, undefined, stageOf);
   const list = plays(all);
+
+  /*
+   * THE EIGHTEEN-STAGE SCALE THIS PAGE CITES 33 TIMES AND NEVER DREW.
+   *
+   * The meta line says "produced at stage 11" and the provenance ladder prints
+   * a stage tag beside every one of the 32 items below it. `StageRail` is that
+   * axis; `stageMarks` is what goes on it. The arithmetic is in `$lib` with a
+   * test because three of its four rules — the uncapped citing set, the pass
+   * ordinals, the rung with nothing on the scale — are wrong in a way no
+   * screenshot reveals, and one of them only when a figure exceeds a cap.
+   */
+  const rail = stageMarks({
+    artefactId: artefact.id,
+    all,
+    hops: chain.hops,
+    chainSources: chain.sources,
+    stageOf,
+    stageCount: STAGES.length,
+  });
+  const sourceStages = rail.sources;
+  const citingStages = rail.citing;
+  const rungs: Rung[] = rail.rungs;
   const play = list.find((p) => p.artefact.id === artefact.id) ?? null;
 
   /*
@@ -215,16 +263,162 @@ export function Drill() {
   // one. The section reads differently depending on which of those this is.
   const wording = paperWording(artefact);
 
+  /*
+   * THE INDEX, BUILT FROM THE SAME EXPRESSIONS THE SECTIONS ARE.
+   *
+   * This is the longest page in the application — four 1,600px slices at 1280
+   * and the content is still running at the foot of the fourth — and it was the
+   * only long one with no contents. The report gives its 2-to-6-section panels
+   * one and the offline pack gives its fifteen sections one. The cost is
+   * concrete: "Where this stands" — how it was arrived at, evidence standing,
+   * when it was produced — sits at y≈2,276px, below seven paragraphs of
+   * model-written narrative, and "What rests on this" is past 6,400px with
+   * nothing naming it.
+   *
+   * IN RENDER ORDER AND UNDER THE SAME CONDITIONS, so the index can never name
+   * a section that did not draw: a profile, a play, a recommendation and a
+   * passage each produce a different subset of the ten. The ids are the
+   * `aria-labelledby` values already on the page, and the titles are built from
+   * the same expressions as the headings rather than retyped — several are
+   * dynamic, and a retyped "What rests on this — 37" is a number that goes
+   * stale on the next assessment.
+   */
+  const contents: { id: string; title: string }[] = [];
+  const entry = (when: unknown, id: string, title: string) => { if (when) contents.push({ id, title }); };
+  entry(play, 'play', 'How this would be run');
+  entry(artefact.kind === 'recommendation', 'tackles', 'What this would tackle');
+  entry(profile && profileLead(profile).length, 'profile', 'What this body is playing for');
+  entry(couldRun.length, 'could-run',
+    `What it could run — ${couldRun.length} ${couldRun.length === 1 ? 'way' : 'ways'} to beat the policy`);
+  entry(ego.node && (ego.in.length || ego.out.length), 'connects',
+    `What connects to this — ${ego.in.length + ego.out.length} ${ego.in.length + ego.out.length === 1 ? 'relationship' : 'relationships'} the paper states`);
+  entry(true, 'standing', 'Where this stands');
+  entry(wording, 'quoted',
+    artefact.kind === 'passage' ? 'The passage, as the paper has it' : "The paper's own wording");
+  entry(true, 'chain', 'What it rests on');
+  entry(cites.total, 'cited-by', `What rests on this — ${cites.total}`);
+  entry(true, 'fields', 'Everything recorded about it');
+
+  /*
+   * THE NEXT PLAY, WITHOUT A ROUND TRIP THROUGH THE REPORT.
+   *
+   * The page says a play is rank 3 of 47 and offered no way to read rank 4;
+   * reading the playbook one play at a time — which is what Move 3's ranked
+   * list invites — cost a back link, finding your place in a 47-row table, a
+   * click and a fetch for every step.
+   *
+   * FOR A PLAY ONLY. A recommendation has four assured entries on this run, all
+   * of them on one screen in Move 1, so a control to step between them is
+   * chrome; and an actor, a passage or an assumption sits in no order the
+   * assessment asserts, so numbering them would be inventing one.
+   */
+  const rank = play ? list.findIndex((p) => p.artefact.id === artefact.id) : -1;
+  const previousPlay = rank > 0 ? list[rank - 1] : null;
+  const nextPlay = rank >= 0 && rank < list.length - 1 ? list[rank + 1] : null;
+
+  /*
+   * WHAT THE READER IS GOING BACK TO, IN THE BANNER'S OWN WORDS.
+   *
+   * The back link at the top of the page names the move; only this page holds
+   * the artefacts, so only this page can resolve `sel=actor:<id>` into "showing
+   * what “Department for Education” is positioned to run". `describeSelection`
+   * is the sentence the report's own selection banner prints, so the reader
+   * meets the same relationship worded the same way at both ends of the trip.
+   */
+  const fromParams = new URLSearchParams(from);
+  const fromSelection = parseSelection(fromParams.get('sel'), all);
+  const fromMove = MOVES.find((move) => move.id === fromParams.get('move'));
+  const returnLabel = [
+    fromMove ? `Back to ${fromMove.step} · ${fromMove.label}` : 'Back to the assessment',
+    // `describeSelection` writes a standalone sentence; here it is the tail of
+    // one, so the capital and the full stop come off rather than being written
+    // twice in two files that could then disagree.
+    fromSelection
+      ? `${describeSelection(fromSelection).charAt(0).toLowerCase()}${describeSelection(fromSelection).slice(1).replace(/\.$/, '')}`
+      : '',
+  ].filter(Boolean).join(' — ');
+
   return (
     <div className="prt-drill">
-      {/* The caption names the PAPER, not the kind. A drill URL opened in a
-          cold tab is otherwise a finding about nothing in particular, and
-          which document this is about is the first thing a reader needs. */}
-      <span className="govuk-caption-l">{detail.analysis.title}</span>
+      {/*
+        THE CAPTION NAMES THE PAPER *AND* SAYS WHAT STATE THE RUN IS IN.
+
+        It named the paper alone — "Education" over the artefact's title — and
+        this page's own header comment argues it exists so a reader can open
+        three findings in three tabs and send someone a URL, which makes
+        arriving here with no memory of the assessment page the common case
+        rather than the odd one. The assessment page carries a status tag above
+        the same data; quoting an artefact out of a run that finished with gaps,
+        without knowing it finished with gaps, is the thing that qualification
+        exists to prevent.
+
+        `statusLabel`/`statusColour` are the same two functions the landing
+        table and the assessment header use, so there is no third opinion about
+        what a status is called. `.prt-pagehead__status` is the row those two
+        already sit in, and it draws the separators.
+
+        THE TITLE IS A LINK. It is the one noun on the page that names something
+        a reader would want to open and was not clickable.
+      */}
+      <p className="prt-pagehead__status govuk-!-margin-bottom-2">
+        {/* A plain link at body size, not `govuk-caption-l`: the two classes
+            disagree about colour and about size, and which of them won would be
+            decided by their order in the stylesheet rather than by anybody. */}
+        <Link className="govuk-link" to={`/assessments/${id}`}>{detail.analysis.title}</Link>
+        <Tag colour={statusColour(detail.analysis.status) as TagColour}>
+          {statusLabel(detail.analysis.status)}
+        </Tag>
+        {/* Dead on a clean run, and on this one: the live assessment is
+            `completed_with_gaps`. The stage is READ off the rows rather than
+            assumed to be the last, exactly as the assessment page does it. */}
+        {stoppedAt ? (
+          <span className="prt-meta">
+            It stopped in {stoppedAt.name.toLowerCase()} — stage {stoppedAt.ordinal + 1} of{' '}
+            {detail.stages.length}
+          </span>
+        ) : null}
+      </p>
+      {/*
+        MATERIAL ATTACHED AFTER THE REPORT WAS WRITTEN.
+
+        `AddendumNotice` is the component that says this inside the report, and
+        it is deliberately NOT reused here: its last sentence is "What came
+        after this was written, below, says which", and that section is on the
+        assessment page, not on this one. A notice that points at something the
+        page does not have is worse than a shorter one that points at the page
+        that does. `passes` is empty on the live run, so this costs a clean
+        report nothing.
+      */}
+      {detail.passes.length ? (
+        <WarningText>
+          This assessment has been added to since this was written — {detail.passes.length}{' '}
+          {detail.passes.length === 1 ? 'later pass' : 'later passes'} over it. The assessment
+          records what was attached and which conclusions it moved.
+        </WarningText>
+      ) : null}
       <h1 className="govuk-heading-l">{artefact.label}</h1>
+      {/*
+        THE CAPTION CARRIES THE RAIL IN WORDS, and it comes first.
+
+        The rail below is `aria-hidden` and is hidden outright below tablet, so
+        this sentence is what print, a phone and a screen reader get — which
+        means it has to say the same three things the picture does rather than
+        being a label on it. "of {STAGES.length}" is the half that was missing:
+        "produced at stage 11" was a number on a scale the page never stated.
+      */}
       <p className="govuk-body-s prt-meta">
         {fieldLabel(artefact.kind)} · {producedIn(stage)}
+        {stageSpan(sourceStages) ? <>. Built from work at {stageSpan(sourceStages)}</> : null}
+        {citingStages.size
+          ? <>. Cited from {citingStages.size} {citingStages.size === 1 ? 'stage' : 'stages'}</>
+          : null}
+        .
       </p>
+      {/* No rail for a pass artefact: its ordinal is off the end of the scale,
+          and a rail with nothing marked on it reads as "stage 1". */}
+      {isPassStage(stage) ? null : (
+        <StageRail stages={STAGES} own={stage} sources={sourceStages} citing={citingStages} />
+      )}
       {/* A PASSAGE'S STATEMENT IS ITS WORDING, and the section below sets
           it as the quotation it is. Printing both put the same text on the
           page twice — invisible against the fixture, obvious the moment a
@@ -236,6 +430,8 @@ export function Drill() {
           any named person.
         </WarningText>
       ) : null}
+
+      <DrillContents sections={contents} of={artefact.label} />
 
       {play ? <PlaySection play={play} resolve={(rid) => byId.get(rid) ?? null} linkTo={link} /> : null}
 
@@ -358,7 +554,7 @@ export function Drill() {
         </p>
       ) : null}
 
-      <Chain chain={chain} link={link} stageOf={stageOf} marks={marks} kind={artefact.kind} own={stage} />
+      <Chain chain={chain} link={link} stageOf={stageOf} marks={marks} kind={artefact.kind} own={stage} rungs={rungs} />
 
       {cites.total ? (
         <section aria-labelledby="cited-by">
@@ -380,7 +576,73 @@ export function Drill() {
         </Details>
         <p className="govuk-body-s prt-meta">Identified in this assessment as {artefact.id}.</p>
       </section>
+
+      {/* The neighbours in the playbook's own ranking, labelled with their rank
+          and their name — "Previous: 2. Visible collaboration with minimal
+          substantive change" — so the reader knows what they are stepping to
+          rather than only that there is something there.
+
+          `label` is set because this page has two navigation landmarks: the
+          back link at the top is `<nav aria-label="Back">`, and two landmarks
+          a screen reader cannot tell apart is axe's `landmark-unique`. */}
+      <Pagination
+        label="Plays, by rank"
+        previous={previousPlay ? {
+          href: to(previousPlay.artefact),
+          title: 'Previous',
+          label: `${rank}. ${previousPlay.artefact.label}`,
+        } : null}
+        next={nextPlay ? {
+          href: to(nextPlay.artefact),
+          title: 'Next',
+          label: `${rank + 2}. ${nextPlay.artefact.label}`,
+        } : null}
+        render={({ href, className, rel, children }) => (
+          <Link to={href} className={className} rel={rel}>{children}</Link>
+        )}
+      />
+
+      {/* THE WAY BACK, NAMED, at the end of a 6,400px page. The back link at the
+          top names the move; this one names the move AND the selection, which
+          only this page can resolve. */}
+      <p className="govuk-body govuk-!-margin-top-6">
+        <Link className="govuk-link" to={backHref}>{returnLabel}</Link>
+      </p>
     </div>
+  );
+}
+
+/**
+ * THE INDEX FOR THE LONGEST PAGE IN THE APPLICATION.
+ *
+ * Markup, classes and the `aria-label` are deliberately identical to the
+ * report's own `Contents` — same `<nav>`, same `govuk-list--number`, same
+ * "Contents of {what}" naming, which exists because below the tablet breakpoint
+ * every panel is on the page at once and five `<nav aria-label="Contents">`
+ * elements are five landmarks a screen-reader user cannot tell apart.
+ *
+ * IT IS A LOCAL COPY ON PURPOSE, FOR NOW. That component still lives inside
+ * `Report.tsx`, which this page must not import: `Report.tsx` is the report
+ * spine and pulls the whole report tree behind it. When `Contents` is extracted
+ * to `client/report/Contents.tsx` — which is a change of its own — this
+ * function goes and the import takes its place.
+ *
+ * THE `< 3` GUARD STAYS HERE, unlike in the report's panels. A passage renders
+ * three sections in about 2,000px, and a three-item index over that is chrome.
+ */
+function DrillContents({ sections, of }: { sections: { id: string; title: string }[]; of: string }) {
+  if (sections.length < 3) return null;
+  return (
+    <nav className="govuk-!-margin-bottom-6" aria-label={`Contents of ${of}`}>
+      <h2 className="govuk-heading-s" id="contents-drill">Contents</h2>
+      <ol className="govuk-list govuk-list--number govuk-list--spaced">
+        {sections.map((section) => (
+          <li key={section.id}>
+            <a className="govuk-link" href={`#${section.id}`}>{section.title}</a>
+          </li>
+        ))}
+      </ol>
+    </nav>
   );
 }
 
@@ -446,7 +708,7 @@ function ArtefactList({ items, link, stageOf }: { items: Artefact[]; link: (a: A
  * saying what the ladder is: the stages of the run, walked in reverse, ending
  * at the document.
  */
-function Chain({ chain, link, stageOf, marks, kind, own }: {
+function Chain({ chain, link, stageOf, marks, kind, own, rungs }: {
   chain: ReturnType<typeof provenance>;
   link: (a: Artefact) => React.ReactNode;
   stageOf: StageOf;
@@ -455,6 +717,8 @@ function Chain({ chain, link, stageOf, marks, kind, own }: {
   kind: string;
   /** The stage this page's own artefact was produced at — the rungs are measured from it. */
   own: number;
+  /** The same rungs, reduced to the stage span and item count the rail draws. */
+  rungs: Rung[];
 }) {
   const steps = chain.hops.length;
   const thing = kind === 'exploit' ? 'play' : kind === 'recommendation' ? 'recommendation' : 'finding';
@@ -542,10 +806,18 @@ function Chain({ chain, link, stageOf, marks, kind, own }: {
         </InsetText>
       ) : null}
 
+      {/* THE WALK, ON THE AXIS THE ITEMS' OWN TAGS ARE MEASURED IN. Drawn only
+          where the artefact has a place on that axis: a pass artefact's ordinal
+          is off the end of it. */}
+      {isPassStage(own) ? null : (
+        <ChainRail stages={STAGES} own={own} rungs={rungs} rungId={rungIdOf} />
+      )}
+
       <div className="prt-ladder">
         {chain.hops.map((hop) => (
           <div key={hop.depth} className="prt-ladder__rung">
-            <h3 className="govuk-heading-s prt-ladder__head">
+            {/* The id is what a band on the rail above points at. */}
+            <h3 className="govuk-heading-s prt-ladder__head" id={rungIdOf(hop.depth)}>
               {hop.depth === 1 ? 'What it cites directly' : `${ordinal(hop.depth)} step back`}
               {' — '}{hop.items.length}
             </h3>
@@ -641,6 +913,9 @@ function Paper({ sources, link, stageOf, marks }: {
   );
 }
 
+/** The rung a band on the stage rail points at. */
+const rungIdOf = (depth: number) => `rung-${depth}`;
+
 /**
  * What a given rung actually is, read off the rung.
  *
@@ -657,6 +932,15 @@ function Paper({ sources, link, stageOf, marks }: {
  * time, and on one recommendation the whole rung is deterministic structural
  * checks that were never read off anything. So the sentence is built from the
  * items the rung is about to list, and the page cannot contradict itself.
+ *
+ * THE DISTANCE CLAUSE IS GONE, AND ONLY THAT. These four sentences read "It was
+ * written at stages 2 to 5 — from 9 stages earlier to 6 stages earlier", which
+ * states one fact twice: the second half is the first half subtracted from the
+ * artefact's own stage, and the reader has just been told that stage in the
+ * caption. `ChainRail` draws the span and the distance together, on the axis the
+ * items' own tags are in. What is kept is the half a picture cannot carry — what
+ * a rung IS — plus the span itself, because the rail is hidden on a phone and in
+ * print and a rung with no stated stages there would be a bare count.
  */
 function stepGloss(depth: number, thing: string, items: Artefact[], stageOf: StageOf, own: number): string {
   const what = depth === 1
@@ -673,17 +957,9 @@ function stepGloss(depth: number, thing: string, items: Artefact[], stageOf: Sta
 
   const low = Math.min(...ordinals);
   const high = Math.max(...ordinals);
-  const where = low === high
-    ? `All of it was written at stage ${low + 1}`
-    : `It was written at stages ${low + 1} to ${high + 1}`;
-  const gap = (n: number) => (n === 0
-    ? 'the same stage as this page'
-    : n > 0
-      ? `${n} ${n === 1 ? 'stage' : 'stages'} earlier`
-      : `${-n} ${-n === 1 ? 'stage' : 'stages'} later`);
-  const near = own - high;
-  const far = own - low;
-  return `${what} ${where} — ${near === far ? gap(far) : `from ${gap(far)} to ${gap(near)}`}.`;
+  return low === high
+    ? `${what} All of it was written at stage ${low + 1}.`
+    : `${what} Written at stages ${low + 1} to ${high + 1}.`;
 }
 
 /**
@@ -697,7 +973,12 @@ function stepGloss(depth: number, thing: string, items: Artefact[], stageOf: Sta
 function producedIn(ordinal: number): string {
   if (isPassStage(ordinal)) return 'added by a later pass over the assessment';
   const name = STAGES[ordinal];
-  return name ? `produced at stage ${ordinal + 1}, ${name.toLowerCase()}` : `produced at stage ${ordinal + 1}`;
+  // "of 18" is the half the sentence was missing. "Produced at stage 11" is a
+  // number on a scale the page had never stated, and it then printed the same
+  // scale beside all 32 items of the provenance ladder.
+  return name
+    ? `produced at stage ${ordinal + 1} of ${STAGES.length}, ${name.toLowerCase()}`
+    : `produced at stage ${ordinal + 1} of ${STAGES.length}`;
 }
 
 /** The same fact, short enough to sit beside a link in a list. */
@@ -759,10 +1040,15 @@ function PlaySection({ play, resolve, linkTo }: {
       <PlayFlow play={play} resolve={resolve} linkTo={linkTo} />
 
       <h3 className="govuk-heading-s">The four judgements behind the rank</h3>
+      {/* THE ARGUMENT IS MADE ONCE, IN THE REPORT, ON THE FIGURE THAT SHOWS IT.
+          "A mean rather than an average because a play that scores high on three
+          and near zero on one is not a threat" was printed in four places a
+          reader passes through in one session — the Verdict lead, the Threats
+          panel, here, and the design system page — so going Verdict → Threats →
+          a play met it three times. What is left is the phrase, which is what
+          the table underneath needs to be read. */}
       <p className="govuk-body">
-        Exposure is the geometric mean of the four below. A mean rather than an average because
-        a play that scores high on three and near zero on one is not a threat, and an average
-        would hide that.
+        Exposure is the geometric mean of the four below.
       </p>
       {/*
         THE SCORE IS DRAWN AS WELL AS PRINTED. Four numbers between 66 and 82
@@ -1007,12 +1293,24 @@ const LEAD_FIELDS: { key: string; label: string }[] = [
   { key: 'gainFromFailure', label: 'Better off if this fails' },
 ];
 
-function ProfileSection({ profile }: { profile: Artefact }) {
-  const rows = LEAD_FIELDS.map((field) => {
+/**
+ * The four lead fields, or none.
+ *
+ * Hoisted out of the component because the contents list has to know whether
+ * this section renders BEFORE it renders: an index that names a section the
+ * page did not draw is worse than no index, and a profile carrying none of the
+ * four evidenced fields draws nothing.
+ */
+function profileLead(profile: Artefact): { key: string; value: string }[] {
+  return LEAD_FIELDS.map((field) => {
     const raw = profile.data[field.key];
     const value = raw && typeof raw === 'object' ? String((raw as { value?: string }).value ?? '') : '';
     return { key: field.label, value };
   }).filter((row) => row.value);
+}
+
+function ProfileSection({ profile }: { profile: Artefact }) {
+  const rows = profileLead(profile);
 
   if (!rows.length) return null;
 

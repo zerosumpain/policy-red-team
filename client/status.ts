@@ -43,3 +43,27 @@ export function isFinished(status: string): boolean {
 export function isTerminal(status: string): boolean {
   return isFinished(status) || status === 'failed' || status === 'cancelled';
 }
+
+/**
+ * HOW LONG A RUN TOOK, in one ladder used by every surface that says so.
+ *
+ * This was private to the landing table, where its own comment argues that
+ * "Ran for" is the only column that separates a ten-hour assessment from a
+ * fourteen-minute stub. The assessment header then had to state the same span
+ * and the commissioning page quotes it as prose, and three copies of a
+ * duration ladder is three chances to round the same run differently — the
+ * defect the page already carried, where `/assessments/new` said the run took
+ * two and a half hours and the landing table said 10h 23m of the same run.
+ *
+ * NEGATIVE AND NON-FINITE COME BACK AS AN EM DASH rather than as "0 min": a
+ * row whose `updatedAt` precedes its `createdAt` is a clock problem, and
+ * printing a duration for it would launder it into a measurement.
+ */
+export function spent(from: string, to: string): string {
+  const ms = new Date(to).getTime() - new Date(from).getTime();
+  if (!Number.isFinite(ms) || ms < 0) return '—';
+  const minutes = Math.round(ms / 60000);
+  if (minutes < 1) return 'under a minute';
+  if (minutes < 90) return `${minutes} min`;
+  return `${Math.floor(minutes / 60)}h ${String(minutes % 60).padStart(2, '0')}m`;
+}

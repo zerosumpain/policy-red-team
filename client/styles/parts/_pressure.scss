@@ -1,4 +1,71 @@
 @use "../govuk" as govuk;
 @use "../tokens" as *;
 
-// Reserved for the "pressure" change. Empty until it lands.
+// ── A pressure bar, divided by band ───────────────────────────────────────
+//
+// TWO COLUMNS IN MOVE 4 WERE THE SAME COLUMN. Measured across the 99 targets,
+// "Plays aimed at it" and "Pressure" correlate at r = 0.986 — one signal in two
+// encodings, taking 20rem of fixed width out of a table that has to reach
+// 320px. The reading is in the residual: six plays for 4.40 of pressure against
+// six plays for 3.39. Dividing the bar by band is what makes the second column
+// a different fact — how hard a part is being hit, and what kind of play is
+// hitting it.
+//
+// IT IS `.prt-bar`'s GEOMETRY AND `.prt-nodebar`'s FILL, deliberately. The
+// figure has to stay on the row beside the length, which is `.prt-bar`'s whole
+// argument; the fill has to hold segments, which is what the mechanism chart's
+// bars already do. Neither could be reused whole — `.prt-bar__fill` is a solid
+// block and `.prt-nodebar__bar` is a grid cell rather than a table cell — so
+// this is the two of them, and nothing about it is new to a reader.
+.prt-pressure {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: govuk.govuk-spacing(2);
+
+  // A TRACK, NOT A FLOATING STUB. The unfilled remainder is what a reader
+  // judges a short bar against, and at `tint-95` — 1.12:1 against the page,
+  // measured — there was nothing to judge against. A 1px `tint-80` edge is the
+  // ceiling the number is a fraction of, and `.prt-nodebar__bar` already draws
+  // its own for the same reason.
+  &__track {
+    flex: 1 1 auto;
+    min-width: 3rem;
+    display: flex;
+    height: 14px;
+    border: 1px solid govuk.govuk-colour("black", $variant: "tint-80");
+  }
+
+  &__fill {
+    display: flex;
+    height: 100%;
+  }
+
+  // A floor, so a band holding 0.05 of a 5.75 bar is still visible. It is the
+  // same 3px `.prt-nodebar__seg` sets, for the same reason: a segment nobody
+  // can see says the band is not there.
+  &__seg {
+    display: block;
+    min-width: 3px;
+  }
+
+  // Tabular, because this column is read down: 5.75 over 5.09 over 5.05 with
+  // proportional digits puts the decimal point in three different places.
+  &__value {
+    font-variant-numeric: tabular-nums;
+    flex: 0 0 auto;
+  }
+}
+
+@media print {
+  // A background on a segment is the only thing carrying the band here, and
+  // browsers drop backgrounds on paper by default. The base sets
+  // `print-color-adjust` for the band tags; a segment is the same fact drawn as
+  // a length, and without this the bar prints as an empty frame with a number
+  // beside it. The visually-hidden split in the value is the other half of the
+  // answer and survives either way.
+  .prt-pressure__seg {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+}

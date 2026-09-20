@@ -1,4 +1,78 @@
 @use "../govuk" as govuk;
 @use "../tokens" as *;
 
-// Reserved for the "sortbutton" change. Empty until it lands.
+// ── A table header that is a control ──────────────────────────────────────
+//
+// GOV.UK has no sortable table, so this is the Ministry of Justice pattern,
+// which is the GOV.UK-family answer: the whole header cell is the button, the
+// `<th>` carries `aria-sort`, and the new order is spoken in a `role="status"`
+// line under the table.
+//
+// IT IS NOT A `.govuk-button`, and that is the point of the class existing. A
+// green call-to-action in a table head would be the loudest object in a section
+// of 47 rows — the same defect `Figure` records, where the solid green
+// "Diagram" toggle was measured as the loudest thing in "Where the
+// relationships run". A header that can be pressed looks like a header, and
+// says so by underlining on hover and moving its arrow.
+.prt-sortbutton {
+  // The framework's own header type, inherited rather than restated, so a
+  // sortable column and a plain one are the same weight and size in the row.
+  font: inherit;
+  color: inherit;
+  text-align: inherit;
+  background: none;
+  border: 0;
+  padding: 0;
+  margin: 0;
+  cursor: pointer;
+  // FULL WIDTH, so the target is the cell. A chevron beside the word is a 12px
+  // target inside a header the reader is already pointing at.
+  display: flex;
+  width: 100%;
+  align-items: baseline;
+  gap: govuk.govuk-spacing(1);
+
+  // A numeric column is right-aligned and its heading must stay over its
+  // figures; the arrow then belongs on the left of the word, not trailing off
+  // the edge of the table.
+  .govuk-table__header--numeric & {
+    justify-content: flex-end;
+    flex-direction: row-reverse;
+  }
+
+  &:hover { text-decoration: underline; }
+
+  &:focus {
+    outline: 3px solid transparent;
+    background-color: govuk.govuk-colour("yellow");
+    box-shadow: 0 -2px govuk.govuk-colour("yellow"), 0 4px govuk.govuk-colour("black");
+    text-decoration: none;
+    color: govuk.govuk-colour("black");
+  }
+
+  // THE ARROW IS NOT THE SIGNAL, it is the reminder. Which column is sorted is
+  // carried by `aria-sort` for assistive technology and by the `role="status"`
+  // sentence for everyone; this is the affordance that says the header moves at
+  // all. `tint-25` is 5.7:1 on white, so it is legible rather than decorative.
+  &__mark {
+    @include govuk.govuk-font($size: 16);
+    color: govuk.govuk-colour("black", $variant: "tint-25");
+    flex: 0 0 auto;
+  }
+}
+
+// ── Paper ─────────────────────────────────────────────────────────────────
+//
+// The base's print block hides `.prt-linkbutton` outright, because a link-shaped
+// button is an instruction a reader cannot follow on paper. A sort header is
+// different: the table prints in whatever order the reader chose, so the
+// heading has to still be there to name its column. It prints as plain text,
+// and the arrow goes, because an arrow that cannot be pressed is a smudge.
+@media print {
+  .prt-sortbutton {
+    display: inline;
+    width: auto;
+
+    &__mark { display: none; }
+  }
+}

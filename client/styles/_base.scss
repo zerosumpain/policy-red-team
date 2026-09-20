@@ -125,6 +125,24 @@
 // axe checks for them.
 .prt-scroll {
   overflow-x: auto;
+  /*
+   * `contain: paint`, BECAUSE `overflow-x: auto` CLIPS THE PAINT AND NOT THE
+   * PAGE.
+   *
+   * The box is 290px at a 320px viewport and its table is 523px, and the table
+   * is correctly invisible past the box's right edge — and the DOCUMENT still
+   * measured 539px wide, so the whole page scrolled sideways. That is WCAG 2.2
+   * 1.4.10 Reflow, and it is invisible to every check that looks for an element
+   * sticking out: there isn't one. Every offender is already inside a scroll
+   * box that is already the right width.
+   *
+   * Measured at 320px on the real report: 539 → 321 with this one line, and the
+   * sticky row header still parks against the box's left edge while the cells
+   * run under it (scrollLeft 137, header left unchanged at 15px). `paint` is
+   * the weakest containment that does it — it promises only that nothing inside
+   * paints outside, which `overflow-x: auto` already promised and did not keep.
+   */
+  contain: paint;
   // A scroll container clips BOTH axes, so anything that needs to overhang —
   // a focus ring on an edge cell — needs room inside, not outside.
   padding-bottom: govuk.govuk-spacing(2);
@@ -711,9 +729,7 @@
 // `$prt-measure` is in `ch`, so one value holds 19px body copy and a 24px lead
 // to the same number of CHARACTERS rather than the same number of pixels, which
 // is the thing that actually governs whether a line is readable.
-//
-// `.prt-measured-none` is the way out for a paragraph that genuinely spans —
-// there is no way to know from a selector that a sentence is a caption.
+
 .govuk-tabs__panel,
 .prt-pack {
   .govuk-list { max-width: none; }
@@ -722,7 +738,6 @@
   p.govuk-body-l,
   p.govuk-body-s { max-width: $prt-measure; }
 
-  .prt-measured-none { max-width: none; }
 }
 
 // Every table fills its section. Several were sizing to their content and
@@ -1281,14 +1296,6 @@
   padding: 0 govuk.govuk-spacing(1);
   color: govuk.govuk-colour("black", $variant: "tint-25");
   white-space: nowrap;
-}
-
-// The band counts above the playbook: one ramp, spaced, not a run of tags.
-.prt-bandrow {
-  display: flex;
-  flex-wrap: wrap;
-  gap: govuk.govuk-spacing(2);
-  margin: 0 0 govuk.govuk-spacing(4);
 }
 
 // ── The drill ─────────────────────────────────────────────────────────────

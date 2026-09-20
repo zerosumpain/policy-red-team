@@ -7,7 +7,7 @@
  * empty panel.
  */
 import type { Artefact } from '$lib/policy-analysis/contracts';
-import type { PassRow } from '$lib/policy-analysis/view';
+import type { PassRow, RunCost } from '$lib/policy-analysis/view';
 
 export interface OfferedModel {
   id: string;
@@ -42,6 +42,17 @@ export interface StageRow {
   startedAt: string | null;
   completedAt: string | null;
   error: string | null;
+  /**
+   * How many artefacts this stage minted.
+   *
+   * Counted from `artefactMetadata` in `forTheReport` rather than in the
+   * browser, because the offline pack carries no metadata at all — so a count
+   * derived in the component would be a figure the service had and the pack
+   * could not, and the two copies of one assessment would disagree about what a
+   * stage produced. Optional because a read that is not `?view=report` does not
+   * carry it.
+   */
+  kept?: number;
 }
 
 export interface Detail {
@@ -83,6 +94,17 @@ export interface Detail {
    * section has to say so.
    */
   models?: { id: string; calls: number }[];
+  /**
+   * What the run spent: tokens in and out, what was served from cache, what it
+   * cost in cash where anything reported a price.
+   *
+   * `runCost()` has computed this in the copied view layer all along and had
+   * zero call sites; the figure was drawn once, by `RunClock`, while the run was
+   * in flight, and unmounted with it. `null` means nothing reported usage — not
+   * a run that spent nothing, which is the distinction `runCost`'s own comment
+   * was written to protect.
+   */
+  cost?: RunCost | null;
   /** True when the server refuses every mutation, so the page can decline to draw a control that would 403. */
   readOnly: boolean;
 }

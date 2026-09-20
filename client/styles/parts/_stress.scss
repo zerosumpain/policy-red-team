@@ -1,4 +1,245 @@
 @use "../govuk" as govuk;
 @use "../tokens" as *;
 
-// Reserved for the "stress" change. Empty until it lands.
+// ── A lever, and what pulling it would cost ───────────────────────────────
+//
+// The rail printed one grey numeral after each label — 30, 22, 22, 21, 19, 19,
+// 19, 18, 17 — and that numeral is `dependants`, a raw count of everything
+// citing the assumption. Measured against the real simulation for all 29
+// offered levers it predicts NEITHER outcome: the top-ranked lever takes 3 of
+// 47 plays off the table and the two that take 9 rank 7th and 9th. Worse, at
+// 16px grey at the end of variable-length labels, even the ranking it does
+// encode cannot be compared by eye.
+//
+// So each lever carries the two figures that ARE the answer, as lengths. ONE
+// LINE, because a GOV.UK checkbox hint renders on its own line and doubling the
+// rail's height is the defect this panel was rebuilt to escape.
+.prt-lever {
+  display: flex;
+  align-items: baseline;
+  gap: govuk.govuk-spacing(2);
+
+  &__name {
+    flex: 1 1 auto;
+    min-width: 0;
+  }
+
+  &__fig {
+    flex: 0 0 auto;
+    display: flex;
+    align-items: center;
+    gap: govuk.govuk-spacing(1);
+    width: 4.5rem;
+  }
+
+  &__track {
+    flex: 1 1 auto;
+    height: 6px;
+    // The same track as `.prt-bar`, which is the report's bar everywhere else.
+    // A second bar vocabulary in a panel that already has one would be two
+    // kinds of "more" on one page.
+    background: govuk.govuk-colour("black", $variant: "tint-95");
+  }
+
+  &__fill {
+    display: block;
+    height: 100%;
+  }
+
+  // THE GOOD DIRECTION IS GREEN AND IT IS NOT A FREE CHOICE. `STANDING_COLOUR`
+  // has said `disarmed: 'green'` since `stress-view` was written, because a
+  // play taken off the table is the only good news the simulation produces —
+  // and the panel below prints a green "Taken off the table" tag for exactly
+  // this event. Painting it in the severe ink, as the plan first had it, would
+  // have made the one piece of good news on the page look like the worst.
+  &__fig--disarm &__fill { background: govuk.govuk-colour("green"); }
+  // Neutral, because a conclusion losing its footing is not thereby wrong —
+  // the warning above the rail says so in as many words, and colouring it red
+  // would contradict the sentence it sits under.
+  &__fig--move &__fill { background: govuk.govuk-colour("black", $variant: "tint-25"); }
+
+  &__n {
+    @include govuk.govuk-font($size: 16, $tabular: true);
+    flex: 0 0 auto;
+    min-width: 1.25rem;
+    text-align: right;
+    color: govuk.govuk-colour("black", $variant: "tint-25");
+  }
+
+  // BELOW TABLET THE BARS GO AND THE FIGURES STAY. At 320px the rail is the
+  // full width of the page and a 44px track beside a wrapped three-line label
+  // is noise; the number is the part that survives, and the visually-hidden
+  // sentence beside it carries both denominators either way.
+  @include govuk.govuk-media-query($until: tablet) {
+    &__fig { width: auto; }
+    &__track { display: none; }
+  }
+}
+
+// ── What is still standing ────────────────────────────────────────────────
+//
+// The right-hand half of the panel used to be one `govuk-body-l` sentence
+// saying a feature existed — "Nothing failed yet. Tick an assumption and this
+// becomes a list…" — so a reader scrolling past the section whose whole point
+// is that you pull a lever and SEE the answer learnt nothing at all. Five bars
+// tallied straight off `stress()` read 100% Unchanged at zero levers, which
+// teaches the instrument before anything is touched.
+.prt-standing {
+  margin-bottom: govuk.govuk-spacing(4);
+
+  &__rows {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+  }
+
+  &__row {
+    display: grid;
+    grid-template-columns: 9rem minmax(0, 1fr) 4.5rem;
+    gap: govuk.govuk-spacing(2);
+    align-items: center;
+    margin-bottom: govuk.govuk-spacing(1);
+    @include govuk.govuk-font($size: 16);
+  }
+
+  // PLAYS MOVE IN THE OPPOSITE DIRECTION AND ARE SET APART FOR IT. `Reading`
+  // refuses to add a disarmed play to the conclusions that fell — "collapsing
+  // them into one affected count would be worse than not offering the tool at
+  // all" — and a fifth bar flush against the other four is that addition drawn.
+  &__row--apart {
+    margin-top: govuk.govuk-spacing(3);
+    padding-top: govuk.govuk-spacing(3);
+    border-top: 1px solid govuk.govuk-colour("black", $variant: "tint-80");
+  }
+
+  &__track {
+    display: flex;
+    height: 16px;
+    // A FRAME AT 3.27:1, because the track is the denominator: the reader is
+    // judging a segment against the whole bar, and an unbordered `tint-95`
+    // ground is 1.12:1 against the page — an edge that is not there. The same
+    // figure `.prt-strip` uses for the same reason.
+    border: 1px solid govuk.govuk-colour("black", $variant: "tint-50");
+    background: govuk.govuk-colour("black", $variant: "tint-95");
+    overflow: hidden;
+  }
+
+  &__seg {
+    display: block;
+    height: 100%;
+    // A hairline between two segments, so 5 unsupported beside 4 weakened is
+    // two lengths rather than one gradient.
+    border-right: 1px solid govuk.govuk-colour("white");
+
+    &:last-child { border-right: 0; }
+  }
+
+  // The standings, in the words and colours `stress-view` already assigns them
+  // — red where nothing is left supporting it, orange where it is partly
+  // undercut, green where a threat is removed, grey where nothing moved. The
+  // key below the bars carries every one of them as a word, because four
+  // segments of colour is exactly the signal hard constraint 5 forbids
+  // carrying alone.
+  &__seg--unsupported,
+  &__swatch--unsupported { background: govuk.govuk-colour("red"); }
+  &__seg--weakened,
+  &__swatch--weakened { background: govuk.govuk-colour("orange"); }
+  &__seg--disarmed,
+  &__swatch--disarmed { background: govuk.govuk-colour("green"); }
+  &__seg--holds,
+  &__swatch--holds { background: govuk.govuk-colour("black", $variant: "tint-80"); }
+
+  &__n {
+    @include govuk.govuk-font($size: 16, $tabular: true);
+    text-align: right;
+    color: govuk.govuk-colour("black", $variant: "tint-25");
+  }
+
+  &__key { margin-bottom: 0; }
+
+  // At 320px a 9rem label column leaves about 90px of track. The row becomes
+  // two lines: the name and its figure, then the bar under them.
+  //
+  // THE ROWS ARE PLACED EXPLICITLY, because auto-placement got it wrong in a
+  // way that looked deliberate. Source order is name, track, figure; a track
+  // spanning `1 / -1` cannot share the name's row, so it took row two and
+  // pushed the figure onto row three on its own — a bar with a number floating
+  // under the middle of it, three lines per population.
+  @include govuk.govuk-media-query($until: tablet) {
+    &__row {
+      grid-template-columns: minmax(0, 1fr) 4.5rem;
+      margin-bottom: govuk.govuk-spacing(2);
+    }
+
+    &__name { grid-area: 1 / 1; }
+    &__n { grid-area: 1 / 2; }
+    &__track { grid-area: 2 / 1 / 3 / -1; }
+  }
+}
+
+// A browser prints no background unless it is asked to, and every segment here
+// IS a background — an unasked print gives five empty frames. The same
+// declaration `.prt-stack__swatch` already carries for the band ramp.
+@media print {
+  .prt-standing__seg,
+  .prt-standing__swatch--unsupported,
+  .prt-standing__swatch--weakened,
+  .prt-standing__swatch--disarmed,
+  .prt-standing__swatch--holds,
+  .prt-lever__fill {
+    print-color-adjust: exact;
+    -webkit-print-color-adjust: exact;
+  }
+}
+
+// ── What the conclusion rests on ──────────────────────────────────────────
+//
+// Two rankings of the same 444 assumptions, side by side, because on this run
+// they do not overlap at all: zero of the top ten by the assessment's own
+// priority appear among the twenty-nine the stress lab offers as levers. One
+// column is what the citations rest on, the other is what the assessment said
+// mattered, and the page showed the first and never mentioned the second.
+.prt-rests {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: govuk.govuk-spacing(6);
+  margin-bottom: govuk.govuk-spacing(4);
+
+  @include govuk.govuk-media-query($from: tablet) {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  &__col { min-width: 0; }
+
+  &__list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+  }
+
+  &__row {
+    display: grid;
+    // The name takes the width; the bar and the other quantity are fixed, so
+    // eight rows of different-length statements still line their bars up. A
+    // ranking whose bars do not share a left edge is not a ranking.
+    grid-template-columns: minmax(0, 1fr) 7rem 7.5rem;
+    gap: govuk.govuk-spacing(2);
+    align-items: baseline;
+    padding: govuk.govuk-spacing(1) 0;
+    border-bottom: 1px solid govuk.govuk-colour("black", $variant: "tint-80");
+    @include govuk.govuk-font($size: 16);
+  }
+
+  &__other {
+    @include govuk.govuk-font($size: 16, $tabular: true);
+    color: govuk.govuk-colour("black", $variant: "tint-25");
+    text-align: right;
+  }
+
+  // At 320px three columns is three columns of nothing. The statement takes a
+  // line, and the two quantities share the one under it.
+  @include govuk.govuk-media-query($until: tablet) {
+    &__row { grid-template-columns: minmax(0, 1fr) 7rem; }
+    &__name { grid-column: 1 / -1; }
+  }
+}

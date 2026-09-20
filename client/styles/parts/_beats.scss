@@ -1,4 +1,219 @@
 @use "../govuk" as govuk;
 @use "../tokens" as *;
 
-// Reserved for the "beats" change. Empty until it lands.
+// ── The conditions the policy has to survive, beat by beat ────────────────
+//
+// Eight native `<details>`, not the Design System's accordion. The accordion
+// sets `hidden="until-found"` on a closed section and no stylesheet can
+// override that, so every closed scenario would print as a heading with nothing
+// under it — which is the whole of the section on paper, because all eight are
+// closed until a reader opens one. It also only collapses once its JavaScript
+// has run, and the offline pack is one `file://` document that has to be right
+// before anything runs. A native `<details>` needs neither. Opening it for
+// print takes the block at the foot of this file, for the reason stated there.
+
+.prt-scenarios {
+  // Its own prose keeps the page measure, like everything else in the report.
+  > p { max-width: $prt-measure; }
+}
+
+.prt-scenarios__list {
+  list-style: none;
+  margin: govuk.govuk-spacing(4) 0 0;
+  padding: 0;
+  border-top: 1px solid govuk.govuk-colour("black", $variant: "tint-80");
+}
+
+.prt-scenario {
+  border-bottom: 1px solid govuk.govuk-colour("black", $variant: "tint-80");
+}
+
+// `display: block` rather than the default `list-item` is what removes the
+// browser's own triangle — in WebKit it also needs the pseudo-element killing,
+// and Firefox needs `list-style`. All three are stated because the row draws its
+// own marker below and two markers is worse than none.
+.prt-scenario__summary {
+  display: block;
+  list-style: none;
+  cursor: pointer;
+  position: relative;
+  padding: govuk.govuk-spacing(3) govuk.govuk-spacing(3) govuk.govuk-spacing(3) govuk.govuk-spacing(6);
+
+  &::-webkit-details-marker { display: none; }
+
+  &:hover { background: govuk.govuk-colour("black", $variant: "tint-95"); }
+
+  // The design system's focus state, said explicitly, for the reason `.prt-chip`
+  // gives: a custom control otherwise gets the browser's thin ring and the
+  // report ends up carrying two focus languages.
+  &:focus-visible {
+    outline: 3px solid govuk.govuk-colour("yellow");
+    outline-offset: 0;
+    background: govuk.govuk-colour("yellow");
+    color: govuk.govuk-colour("black");
+  }
+
+  // A CHARACTER, NOT A COLOURED TRIANGLE. The marker has to survive a
+  // monochrome print, a reader who has turned colour off and anyone who meets
+  // the row through a screen reader — which reads the summary's own
+  // expanded/collapsed state and never sees this at all, hence `aria-hidden`
+  // being unnecessary on a pseudo-element. Plus and minus differ in shape, not
+  // in hue.
+  &::before {
+    content: "+";
+    position: absolute;
+    left: govuk.govuk-spacing(2);
+    top: govuk.govuk-spacing(3);
+    @include govuk.govuk-font($size: 19, $weight: bold);
+    line-height: 1.3;
+  }
+}
+
+details[open] > .prt-scenario__summary::before { content: "\2212"; }
+
+// OPEN, THE GIST IS THE SENTENCE UNDERNEATH IT. The summary shows the first
+// sentence of `changedConditions` so a reader can choose between eight; the
+// first beat is the whole of `changedConditions`, so once the scenario is open
+// the same sentence stands twice, four lines apart. Hidden on open rather than
+// trimmed out of the beat, because the beat is the tracked function's own
+// output and the summary is ours.
+details[open] > .prt-scenario__summary .prt-scenario__gist { display: none; }
+
+.prt-scenario__name {
+  @include govuk.govuk-font($size: 19, $weight: bold);
+  display: block;
+  margin: 0;
+}
+
+.prt-scenario__gist {
+  display: block;
+  @include govuk.govuk-font($size: 16);
+  max-width: $prt-measure;
+  margin-top: govuk.govuk-spacing(1);
+}
+
+.prt-scenario__meta {
+  display: block;
+  @include govuk.govuk-font($size: 16);
+  margin-top: govuk.govuk-spacing(1);
+}
+
+// ── The beats ─────────────────────────────────────────────────────────────
+//
+// A rail down the left with a ring at each step: a border and a `::before`, so
+// it is one element per beat, wraps at 320px without a media query, and scales
+// with the reader's type size the way an SVG of the same picture would not.
+//
+// THE RING IS A BORDER, NOT A FILLED DOT. A print engine drops background
+// colour by default and keeps borders, so a dot drawn with `background` is a
+// step marker that exists on screen and not on the paper copy a policy reader
+// actually files.
+.prt-beats {
+  list-style: none;
+  margin: 0;
+  padding: 0 govuk.govuk-spacing(3) govuk.govuk-spacing(4) govuk.govuk-spacing(6);
+  border-left: 2px solid govuk.govuk-colour("black", $variant: "tint-50");
+  // The rail belongs to the list, so it starts under the summary rather than
+  // against the page edge.
+  margin-left: govuk.govuk-spacing(3);
+}
+
+.prt-beat {
+  position: relative;
+  margin-bottom: govuk.govuk-spacing(4);
+
+  &:last-child { margin-bottom: 0; }
+
+  &::before {
+    content: "";
+    position: absolute;
+    // Half the ring's own width plus the rail's, so it sits centred on the line.
+    left: calc(-#{govuk.govuk-spacing(6)} - 6px);
+    top: 0.35em;
+    width: 6px;
+    height: 6px;
+    border: 2px solid govuk.govuk-colour("black");
+    border-radius: 50%;
+    background: govuk.govuk-colour("white");
+  }
+}
+
+.prt-beat__label {
+  @include govuk.govuk-font($size: 16, $weight: bold);
+  margin: 0 0 govuk.govuk-spacing(1);
+}
+
+.prt-beat__body {
+  @include govuk.govuk-font($size: 16);
+  margin: 0;
+  max-width: $prt-measure;
+}
+
+// The effect chain — numbered, because it is the one beat that is a sequence
+// inside a sequence. `scenarioBeats` labels these "And then" and then "Which in
+// turn" five times over, which is right as prose and wrong as five identical
+// bold headings, so the run is drawn once and the ordinals carry the order.
+.prt-beat__chain {
+  @include govuk.govuk-font($size: 16);
+  margin: 0;
+  padding-left: govuk.govuk-spacing(4);
+  max-width: $prt-measure;
+
+  li { margin-bottom: govuk.govuk-spacing(1); }
+}
+
+// What the chain lands on, and who moves first: the references, as a wrapping
+// row of names. A list rather than a joined string because each one is a way
+// into the drill, and `display: inline` on the items keeps nine to eighteen of
+// them from becoming eighteen lines of page.
+.prt-beat__refs {
+  list-style: none;
+  margin: govuk.govuk-spacing(1) 0 0;
+  padding: 0;
+  @include govuk.govuk-font($size: 16);
+
+  li {
+    display: inline;
+
+    // A separator that is punctuation rather than a bullet, so it is read as a
+    // pause and not as a list item that is not there.
+    &:not(:last-child)::after {
+      content: " · ";
+      color: govuk.govuk-colour("black", $variant: "tint-25");
+    }
+  }
+}
+
+.prt-beat__more {
+  @include govuk.govuk-font($size: 16);
+  margin: govuk.govuk-spacing(1) 0 0;
+  max-width: $prt-measure;
+}
+
+@media print {
+  // THE PRINT RULE THAT OPENS A DISCLOSURE ALSO HIDES ITS SUMMARY, and here the
+  // summary carries the scenario's name — so without this the paper copy is
+  // eight unlabelled beat lists one after another. The marker goes with it:
+  // "+" beside an open section is a control that is not there.
+  .prt-scenario > .prt-scenario__summary { display: block; }
+
+  // AND THE RULE THAT OPENS ONE NO LONGER OPENS ONE. `_base.scss:1111` forces
+  // `display: block` on a disclosure's children, which is how a closed
+  // `<details>` used to be defeated for print. Chromium 149 hides the contents
+  // through `::details-content { content-visibility: hidden }` instead, and no
+  // amount of `display` on the children reaches it — measured in print
+  // emulation, every beat of all eight scenarios was absent from the paper copy
+  // while the summaries printed. Firefox and Safari still answer to the base
+  // rule, so both are stated and neither is enough alone.
+  .prt-scenario::details-content { content-visibility: visible !important; }
+
+  // The gist is hidden on open for a reason that holds on paper too, and on
+  // paper nothing carries `[open]` — the print rules above are what opened it.
+  .prt-scenario__gist { display: none; }
+  .prt-scenario__summary::before { content: none; }
+  .prt-scenario__summary { padding-left: 0; }
+
+  // A ring drawn in white on white paper is invisible; the rail and the ring's
+  // own border are enough, and the label carries the reading either way.
+  .prt-beat::before { background: transparent; }
+}

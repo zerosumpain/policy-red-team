@@ -7,6 +7,8 @@ import {
 import { usePageTitle } from '../layout/Template';
 import { BarChart, Figure } from '../report/Figure';
 import { Matrix } from '../report/Matrix';
+import { BandKey } from '../report/Metrics';
+import { VocabularyGrid } from '../report/VocabularyGrid';
 import { Diverge } from '../report/Diverge';
 import { Strip } from '../report/Strip';
 
@@ -51,6 +53,7 @@ export function Gallery() {
   const [depth, setDepth] = useState('standard');
   const [showErrors, setShowErrors] = useState(false);
   const [failing, setFailing] = useState<string[]>([]);
+  const [picked, setPicked] = useState(false);
 
   return (
     <>
@@ -99,18 +102,20 @@ export function Gallery() {
         columns={[
           { header: 'Play' }, { header: 'Body' }, { header: 'Incentive', numeric: true },
           { header: 'Ease', numeric: true }, { header: 'Impact', numeric: true },
-          { header: 'Concealment', numeric: true }, { header: 'Rank', numeric: true }, { header: 'Compliant' },
+          { header: 'Concealment', numeric: true }, { header: 'Rank', numeric: true }, { header: 'Legality' },
         ]}
         rows={[
-          ['Reclassify pupils before the census date', 'Multi-academy trusts', '0.82', '0.74', '0.66', '0.71', '0.73', <Tag colour="grey" key="a">Compliant</Tag>],
-          ['Delay the return until after the funding cut-off', 'Local authorities', '0.77', '0.81', '0.52', '0.63', '0.67', <Tag colour="grey" key="b">Compliant</Tag>],
-          ['Report attendance against the softer of two definitions', 'Schools', '0.69', '0.88', '0.44', '0.79', '0.68', <Tag colour="grey" key="c">Compliant</Tag>],
-          ['Withhold the underlying data pending review', 'The department', '0.55', '0.62', '0.71', '0.48', '0.58', <Tag colour="red" key="d">Contested</Tag>],
+          ['Reclassify pupils before the census date', 'Multi-academy trusts', '0.82', '0.74', '0.66', '0.71', '0.73', <span className="prt-legality" key="a">Inside the rules</span>],
+          ['Delay the return until after the funding cut-off', 'Local authorities', '0.77', '0.81', '0.52', '0.63', '0.67', <span className="prt-legality" key="b">Inside the rules</span>],
+          ['Report attendance against the softer of two definitions', 'Schools', '0.69', '0.88', '0.44', '0.79', '0.68', <span className="prt-legality" key="c">Inside the rules</span>],
+          ['Withhold the underlying data pending review', 'The department', '0.55', '0.62', '0.71', '0.48', '0.58', <span className="prt-legality" key="d">Grey area</span>],
         ]}
       />
+      {/* The argument for a mean rather than an average is made once, in the
+          report, on the figure that draws the four judgements. It was printed in
+          four places a reader passes through in one session. */}
       <p className="govuk-body-s prt-meta">
-        Rank is the geometric mean of the four factors, computed on the server. A play that
-        scores high on three and near zero on one is not a threat, and an average would hide that.
+        Rank is the geometric mean of the four factors, computed on the server.
       </p>
 
       <h3 className="govuk-heading-m govuk-!-margin-top-6">Detail, on request</h3>
@@ -219,6 +224,59 @@ export function Gallery() {
         caption="Just 1 of the 120 things this paper connects appears at both ends of an arrow."
       />
 
+      <h3 className="govuk-heading-m govuk-!-margin-top-6">A bar divided by band</h3>
+      <p className="govuk-body">
+        Where a bar&rsquo;s length is a SUM of exposures rather than a count, the segments are
+        sized by summed exposure too — a reader reads a segment&rsquo;s width as a contribution to
+        the length, so sizing by play count would draw six limited plays wider than two severe ones
+        inside a bar saying the opposite. The exact figure stays beside the bar, the split is read
+        out to anyone not looking at it, and the key below says what the shades are. The scale is
+        the table&rsquo;s own top row, which is why the caption under such a figure has to say so.
+      </p>
+      <span className="prt-pressure" style={{ maxWidth: '22rem' }}>
+        <span className="prt-pressure__track" aria-hidden="true">
+          <span className="prt-pressure__fill" style={{ width: '100%' }}>
+            <span className="prt-pressure__seg prt-band--severe" style={{ flexGrow: 3.65 }} />
+            <span className="prt-pressure__seg prt-band--significant" style={{ flexGrow: 2.05 }} />
+            <span className="prt-pressure__seg prt-band--limited" style={{ flexGrow: 0.05 }} />
+          </span>
+        </span>
+        <span className="prt-pressure__value">
+          5.75
+          <span className="govuk-visually-hidden"> — 3.65 severe, 2.05 significant, 0.05 limited</span>
+        </span>
+      </span>
+      <BandKey label="Each bar is divided by band:" />
+
+      <h3 className="govuk-heading-m govuk-!-margin-top-6">Every word the contract allows</h3>
+      <p className="govuk-body">
+        A relation the paper never uses is a finding, so the vocabulary is drawn whole and the
+        unused chips are dashed rather than omitted. Carried here for the reason the bar chart
+        above is: the static check walks this page on every run, and the section it belongs to
+        needs an assessment to exist.
+      </p>
+      <VocabularyGrid
+        total={106}
+        caption="Every relation type the contract defines, under the family it belongs to. A dashed chip is one this paper never uses."
+        families={[
+          { key: 'money', label: 'Money and burden', what: 'Who pays, who is paid, and who carries the cost of the policy working.', count: 48, colour: 'var(--govuk-link-colour, #1a65a6)',
+            relations: [{ relation: 'receives_benefit_from', words: 'receives benefit from', count: 32 }, { relation: 'bears_cost_of', words: 'bears cost of', count: 13 }, { relation: 'funds', words: 'funds', count: 3 }, { relation: 'commissions', words: 'commissions', count: 0 }] },
+          { key: 'dependence', label: 'Dependence', what: 'What has to hold for a body to do its part.', count: 0, colour: 'var(--govuk-link-colour, #1a65a6)',
+            relations: [{ relation: 'assumes', words: 'assumes', count: 0 }, { relation: 'can_adapt', words: 'can adapt', count: 0 }, { relation: 'depends_on', words: 'depends on', count: 0 }, { relation: 'is_exposed_to', words: 'is exposed to', count: 0 }] },
+        ]}
+      />
+
+      <h2 className="govuk-heading-l govuk-!-margin-top-8">How much of this the assessment will stand behind</h2>
+      <p className="govuk-body">
+        Not the exposure ramp and not a GDS tag: the ramp means magnitude everywhere else on the
+        report, and a tag is the status of a case. This is epistemic status, drawn as a ramp of
+        solidity — filled, outlined, dotted — with the word inside the box in every case.
+      </p>
+      <p className="prt-judgement prt-judgement--well_supported">Well supported</p>{' '}
+      <p className="prt-judgement prt-judgement--supported_with_limits">Supported with limits</p>{' '}
+      <p className="prt-judgement prt-judgement--provisional">Provisional</p>{' '}
+      <p className="prt-judgement prt-judgement--contested">Contested</p>
+
       <Strip
         values={[
           { id: 'a', label: 'Minimum observable compliance', value: 0.77 },
@@ -306,6 +364,20 @@ export function Gallery() {
           </ButtonGroup>
         </div>
       </div>
+
+      <h2 className="govuk-heading-l govuk-!-margin-top-8">Controls that stay, and controls that leave</h2>
+      <p className="govuk-body">
+        A picker narrows every view and stays where it is; a link leaves the page. They were drawn
+        identically — same blue, same underline, same size, in the same panel — so the report gives
+        pickers a box, black text and a dotted underline, and keeps the underlined blue for links.
+      </p>
+      <p className="govuk-body">
+        <button type="button" className="prt-nodebar__name" aria-pressed={picked} onClick={() => setPicked(!picked)}>
+          Governance registration conditions
+        </button>
+        {' — '}
+        <a className="govuk-link" href="#main-content">Governance registration conditions</a>
+      </p>
 
       <h2 className="govuk-heading-l govuk-!-margin-top-8">Asking the reader several things at once</h2>
       <p className="govuk-body">

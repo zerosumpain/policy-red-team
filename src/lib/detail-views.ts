@@ -1,4 +1,5 @@
 import type { Artefact } from './policy-analysis/contracts';
+import { runCost, type RunCost } from './policy-analysis/view';
 
 /**
  * TWO NARROWER ANSWERS TO "GIVE ME THIS ASSESSMENT".
@@ -50,15 +51,36 @@ export function stubForReport(artefact: Artefact): Artefact {
   return { ...artefact, statement: '', sourceQuote: null, section: null, url: null, data };
 }
 
-type Call = { provider: string | null; model: string | null };
+/**
+ * `usage` IS DECLARED HERE OR THE COST IS SILENTLY ZERO.
+ *
+ * `runCost`'s parameter is `{ model?; usage?: unknown }[]`, so an array of calls
+ * WITHOUT a `usage` member typechecks against it perfectly and returns all
+ * zeros — the one failure shape a compiler cannot catch for you. It is `unknown`
+ * rather than a row type on purpose: the column is jsonb and an ARRAY of usage
+ * rows, because a call that needed a corrective round-trip appends its second
+ * attempt rather than replacing the first, and `runCost` is the only thing that
+ * should know that.
+ */
+type Call = { provider: string | null; model: string | null; usage?: unknown };
+
+/**
+ * A STAGE ROW, AS FAR AS THIS FILE NEEDS ONE.
+ *
+ * `stages` was `unknown`, which was true when this file only passed it through.
+ * The report now needs the artefact count PER STAGE and the pack has no
+ * `artefactMetadata` to derive one from, so the count is attached here, once,
+ * where both readings get the same number.
+ */
+type Stage = { ordinal: number };
 
 type Full = {
   analysis: unknown;
-  stages: unknown;
+  stages: Stage[];
   passes: unknown;
   personas: unknown;
   heartbeat: unknown;
-  artefactMetadata: { id: string }[];
+  artefactMetadata: { id: string; stage?: number }[];
   artefacts: Artefact[];
   calls?: Call[];
 };
@@ -119,16 +141,97 @@ export function modelsUsed(calls: Call[] | undefined): ModelUse[] {
  * an answer; it takes nothing away from the one that was there.
  */
 export function forTheReport<T extends Full>(result: T) {
+  const kept = keptByStage(result.artefactMetadata);
   return {
     analysis: result.analysis,
-    stages: result.stages,
+    // `kept` RATHER THAN A SECOND TALLY IN THE BROWSER. The report draws it, the
+    // pack draws it, and the pack carries no `artefactMetadata` at all — so
+    // deriving it in the component would have given the service a figure the
+    // pack could not have, which is the disagreement `offline-run.ts` exists to
+    // end. Attached here, both readings are the same arithmetic.
+    stages: result.stages.map((stage) => ({ ...stage, kept: kept.get(stage.ordinal) ?? 0 })),
     passes: result.passes,
     personas: result.personas,
     heartbeat: result.heartbeat,
     artefactMetadata: result.artefactMetadata,
     artefacts: result.artefacts.map(stubForReport),
     models: modelsUsed(result.calls),
+    cost: reportCost(result.calls),
   };
+}
+
+/**
+ * How many artefacts each stage actually minted.
+ *
+ * Read off the metadata rows rather than off `stages[].output.rejected`, which
+ * is the number 0 on all eighteen rows of the live run and is not a source for
+ * anything. The distribution is the reason the report wants it: stage 2 minted
+ * 1,275 of the run's 2,296 artefacts, stage 15 minted 409, and stage 12 minted
+ * none at all — which no six flat cards can show, because the stage axis was
+ * not on the page.
+ */
+export function keptByStage(metadata: { stage?: number }[]): Map<number, number> {
+  const counts = new Map<number, number>();
+  for (const row of metadata) {
+    if (typeof row.stage !== 'number') continue;
+    counts.set(row.stage, (counts.get(row.stage) ?? 0) + 1);
+  }
+  return counts;
+}
+
+/**
+ * WHAT THE RUN COST, AS EIGHT NUMBERS INSTEAD OF 241 KiB OF CALL LOG.
+ *
+ * `runCost` has existed in the copied view layer, under forty lines of
+ * doc-comment about null-versus-zero pricing, with ZERO call sites anywhere in
+ * the repo. The figure it computes — 61.8M tokens on the live run — was
+ * rendered once, by `RunClock`, while the run was in flight, and unmounted with
+ * it the moment the run ended. A reader asking "what did this cost" after the
+ * fact had no answer anywhere in the product.
+ *
+ * NULL RATHER THAN A ROW OF ZEROS. A report view is asked for on runs whose
+ * calls were never loaded and on runs that made none, and `{ total: 0, cash:
+ * null }` drawn as four cards asserts a run that spent nothing. `cost.calls`
+ * counts calls that actually REPORTED usage, which is the only population these
+ * figures are true of.
+ */
+export function reportCost(calls: Call[] | undefined): RunCost | null {
+  if (!calls?.length) return null;
+  const cost = runCost(calls);
+  return cost.calls ? cost : null;
+}
+
+/** One share of a run's tokens, as a word and a length. */
+export type CostSegment = { key: string; label: string; tokens: number };
+
+/**
+ * THE FOUR TOKEN FIGURES ARE NOT FOUR CATEGORIES — two of them are inside the
+ * other two.
+ *
+ * `cached` is the part of `input` served from cache and `reasoning` is the part
+ * of `output` spent thinking; `runCost` says so in its own arithmetic, where
+ * `total = input + output` and neither of the other two is added. So a
+ * four-segment bar of input, cached, output and reasoning would sum to more
+ * than the run and invent about 46M tokens on this assessment.
+ *
+ * Nested instead, which IS a partition: re-sent context, fresh input, reasoning
+ * and answer sum to exactly `total`. That also gives the reading the figure is
+ * worth having — that a 61.8M-token run is mostly context being re-sent rather
+ * than the model thinking.
+ *
+ * CLAMPED, because the arithmetic is a provider's and not ours: a `cached`
+ * larger than `input` would otherwise draw a negative segment, and a bar with a
+ * negative part in it is a bar that lies quietly.
+ */
+export function costSegments(cost: RunCost): CostSegment[] {
+  const cached = Math.max(0, Math.min(cost.cached, cost.input));
+  const reasoning = Math.max(0, Math.min(cost.reasoning, cost.output));
+  return [
+    { key: 'cached', label: 'Input served from cache', tokens: cached },
+    { key: 'fresh', label: 'Input sent fresh', tokens: Math.max(0, cost.input - cached) },
+    { key: 'reasoning', label: 'Output spent reasoning', tokens: reasoning },
+    { key: 'answer', label: 'Output kept as answer', tokens: Math.max(0, cost.output - reasoning) },
+  ].filter((segment) => segment.tokens > 0);
 }
 
 /**

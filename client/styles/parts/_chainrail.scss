@@ -1,4 +1,98 @@
 @use "../govuk" as govuk;
 @use "../tokens" as *;
 
-// Reserved for the "chainrail" change. Empty until it lands.
+// ── One causal chain, under the mechanism it runs through ─────────────────
+//
+// A WRAPPING FLEX ROW, NOT A THREE-COLUMN GRID. The rail has two or three bands
+// depending on what the chain actually names — only 65 of the run's 150 chains
+// name a conclusion and only 120 name a passage — so a fixed template would
+// leave a hole on more than half of them. Wrapping is also what turns the rail
+// into a stacked list on a phone, in the offline pack and in a print column,
+// with no media query to keep in step with the markup.
+.prt-chain {
+  margin-bottom: govuk.govuk-spacing(4);
+
+  // Its own prose keeps the page measure, like everything else in the block.
+  p { max-width: $prt-measure; }
+}
+
+.prt-chain__rail {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: govuk.govuk-spacing(3);
+  margin: govuk.govuk-spacing(2) 0 govuk.govuk-spacing(2);
+}
+
+.prt-chain__band {
+  // A basis rather than a width: three bands fit a wide report side by side and
+  // fall to one column below about 52rem without being told to.
+  flex: 1 1 16rem;
+  min-width: 0;
+}
+
+.prt-chain__band--subject {
+  flex: 0 1 18rem;
+}
+
+.prt-chain__head {
+  @include govuk.govuk-font($size: 16, $weight: bold);
+  margin: 0 0 govuk.govuk-spacing(2);
+}
+
+.prt-chain__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+// The same box `.prt-ego` draws for a graph neighbour, for the same reasons it
+// gives: an assumption's label is a sentence, so it has to wrap, and the
+// obvious thing to do with one is open it.
+.prt-chain__box {
+  display: block;
+  @include govuk.govuk-font($size: 16);
+  border: 2px solid govuk.govuk-colour("black", $variant: "tint-25");
+  padding: govuk.govuk-spacing(1) govuk.govuk-spacing(2);
+  background: govuk.govuk-colour("white");
+  margin-bottom: govuk.govuk-spacing(2);
+  overflow-wrap: anywhere;
+}
+
+.prt-chain__box--subject {
+  border-color: govuk.govuk-colour("black");
+  font-weight: 700;
+}
+
+// THE WHOLE BOX IS THE LINK, because the rail reads as a set of objects and an
+// inline anchor inside a padded border is a target covering a fifth of what was
+// drawn. `.prt-ego` measured that on the live drill and this is the same fix.
+.prt-chain__box a {
+  display: block;
+  margin: -#{govuk.govuk-spacing(1)} -#{govuk.govuk-spacing(2)};
+  padding: govuk.govuk-spacing(1) govuk.govuk-spacing(2);
+}
+
+.prt-chain__box:has(a):hover {
+  background: govuk.govuk-colour("black", $variant: "tint-95");
+}
+
+.prt-chain__box:has(a:focus-visible) {
+  outline: 3px solid govuk.govuk-colour("yellow");
+  outline-offset: 0;
+  box-shadow: 0 4px govuk.govuk-colour("black");
+}
+
+// THE CONNECTOR CARRIES A WORD AND NOT AN ARROW. The rail is a row on a page
+// and a column on a phone, and an arrow drawn for one points the wrong way in
+// the other; the words "has to hold for" and "which produces" read correctly in
+// both, and the band headings carry the direction for anyone who meets them out
+// of order.
+.prt-chain__rel {
+  @include govuk.govuk-font($size: 16);
+  color: govuk.govuk-colour("black", $variant: "tint-25");
+  flex: 0 0 auto;
+  align-self: center;
+  margin: 0;
+  font-style: italic;
+}

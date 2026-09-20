@@ -1,4 +1,85 @@
 @use "../govuk" as govuk;
 @use "../tokens" as *;
 
-// Reserved for the "vocab" change. Empty until it lands.
+// ── The relation vocabulary, all twenty-six of it ─────────────────────────
+//
+// One row per family: the family's name and question in the label column of a
+// `.prt-nodebar`, its count as a bar, and its relations as chips underneath.
+// The head row is the shared bar pattern and needs nothing here; what this file
+// owns is the family's second line and the chips.
+.prt-vocab {
+  &__list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+  }
+
+  &__family {
+    padding: govuk.govuk-spacing(2) 0 govuk.govuk-spacing(3);
+    // A RULE BETWEEN FAMILIES, because the chips are the tallest thing on a row
+    // and wrap to two lines on the two big families: without a separator the
+    // last chip of Money sat directly above the name of Accountability and read
+    // as part of it.
+    border-bottom: 1px solid govuk.govuk-colour("black", $variant: "tint-80");
+
+    &:last-child { border-bottom: 0; }
+  }
+
+  &__name {
+    // The first column of the `.prt-nodebar` grid, carrying two lines rather
+    // than one. `display: block` so the question sits under the name instead of
+    // running on from it.
+    display: block;
+  }
+
+  &__what {
+    display: block;
+    @include govuk.govuk-font($size: 16);
+    color: govuk.govuk-colour("black", $variant: "tint-25");
+  }
+
+  &__chips {
+    list-style: none;
+    display: flex;
+    flex-wrap: wrap;
+    gap: govuk.govuk-spacing(2);
+    margin: govuk.govuk-spacing(2) 0 0;
+    padding: 0;
+  }
+
+  // THE SAME OBJECT AS `.prt-legality`: a word in a 1px box, at one weight
+  // whichever word it is. Both are saying "this is a category and not a score",
+  // and the failure mode for both is becoming a colour ramp.
+  &__chip {
+    @include govuk.govuk-font($size: 16);
+    border: 1px solid govuk.govuk-colour("black");
+    padding: 0 govuk.govuk-spacing(1);
+    // The name of a relation is three or four words and must not break across
+    // the middle of one: "receives benefit from" reads as three chips if it
+    // does. Measured before pinning it: the longest chip on this run, "provides
+    // evidence for 2", sets at about 190px, so two of them still fit on a
+    // 320px line and none is clipped.
+    white-space: nowrap;
+  }
+
+  // NEVER STATED, SAID IN WORDS. A dashed border alone would be a second
+  // encoding of the same fact for anyone who can see it and no encoding at all
+  // for anyone who cannot — and the two lightest steps of this build's own ramp
+  // are already below 3:1, which is why nothing here is carried by a tone. The
+  // words are inside the chip; the dash only makes them findable at a glance.
+  &__chip--unused {
+    border-style: dashed;
+    border-color: govuk.govuk-colour("black", $variant: "tint-50");
+    color: govuk.govuk-colour("black", $variant: "tint-25");
+  }
+
+  &__n {
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+  }
+
+  &__never {
+    @include govuk.govuk-font($size: 16);
+    color: govuk.govuk-colour("black", $variant: "tint-25");
+  }
+}

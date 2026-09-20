@@ -1,4 +1,84 @@
 @use "../govuk" as govuk;
 @use "../tokens" as *;
 
-// Reserved for the "chips" change. Empty until it lands.
+// ── The tail of the mechanism chart, as chips ─────────────────────────────
+//
+// Thirteen of the forty-one mechanisms generate exactly one play. As bars they
+// were thirteen rows of identical minimum length with an identical "1 play"
+// beside them — about 570px of chart carrying a comparison a single sentence
+// makes better. As chips they are the same `aria-pressed` control, still
+// selectable, in about 80px.
+//
+// THE CUT IS THE SECTION'S OWN THESIS, not a top-N: "one mechanism can generate
+// several plays" is what the move opens with, so "generates more than one" is
+// where the bars stop. A run whose tail is shorter than five keeps its bars —
+// two lists where one would do is worse than four short rows.
+.prt-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: govuk.govuk-spacing(2);
+  list-style: none;
+  margin: 0 0 govuk.govuk-spacing(5);
+  padding: 0;
+}
+
+// The item is the flex child and the chip fills it, so a chip that wraps to two
+// lines does not leave its neighbours sitting at a different height.
+.prt-chips__item {
+  display: flex;
+}
+
+// THE SAME BUTTON TRAP `.prt-tab` AND `.prt-nodebar__name` BOTH DOCUMENT, in a
+// third place: `font-family: inherit` takes the family and leaves the user
+// agent's 13.333px, and the framework's link colour rules are `:link` and
+// `:visited`, neither of which matches a button. The mixin sets family, size
+// and line-height together.
+.prt-chips__chip {
+  -webkit-appearance: none;
+  appearance: none;
+  @include govuk.govuk-font($size: 16);
+  text-align: left;
+  background: govuk.govuk-colour("white");
+  border: 1px solid govuk.govuk-colour("black", $variant: "tint-50");
+  padding: 2px govuk.govuk-spacing(2);
+  color: govuk.govuk-functional-colour("link");
+  text-decoration: underline;
+  text-underline-offset: 0.1em;
+  cursor: pointer;
+
+  &:hover { background: govuk.govuk-colour("black", $variant: "tint-95"); }
+
+  // The design system's focus state, said explicitly, for the same reason
+  // `.prt-nodebar__name` says it: a custom control otherwise gets the browser's
+  // thin ring and the report carries two focus languages.
+  &:focus-visible {
+    outline: 3px solid govuk.govuk-colour("yellow");
+    outline-offset: 0;
+    background: govuk.govuk-colour("yellow");
+    color: govuk.govuk-colour("black");
+    text-decoration: none;
+  }
+
+  // PRESSED IS AN INVERSION, NOT A HUE. A chip row has no bold-versus-regular
+  // to trade on the way a full-width row does — every chip is short and they
+  // sit side by side — so the pressed one swaps ink and ground, which survives
+  // a monochrome print and any form of colour vision. `aria-pressed` carries it
+  // for anyone not looking.
+  &[aria-pressed="true"] {
+    background: govuk.govuk-colour("black");
+    border-color: govuk.govuk-colour("black");
+    color: govuk.govuk-colour("white");
+    font-weight: 700;
+    text-decoration: none;
+  }
+}
+
+@media print {
+  // The inversion is a fill, and a browser prints no fills unless asked. A
+  // pressed chip that prints as black text on white is indistinguishable from
+  // the twelve beside it.
+  .prt-chips__chip[aria-pressed="true"] {
+    print-color-adjust: exact;
+    -webkit-print-color-adjust: exact;
+  }
+}

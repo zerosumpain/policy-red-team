@@ -1,4 +1,92 @@
 @use "../govuk" as govuk;
 @use "../tokens" as *;
 
-// Reserved for the "actors" change. Empty until it lands.
+// ── Move 4's tables ───────────────────────────────────────────────────────
+//
+// Three of the four things here are a SECOND LINE IN A TABLE CELL, and they
+// exist because the alternative was a column. The target table was four columns
+// and had to lose one; the body table gained a kind, a reach, a worst play and a
+// legality split. A cell that carries a name and a qualifier under it costs no
+// width, and the reader's eye still runs down one column of names — which is
+// the whole reason the qualifier is not a column of its own.
+
+// WHAT KIND OF THING A ROW IS, under its name. "Priority-course starts measure"
+// is a claim the paper makes and "Provider progress accountability" is machinery
+// the paper creates, and they sat in one column at identical weight — a
+// distinction Move 2 is built entirely on. Also carries the library's name for
+// a persona group whose name differs from the actor's, which is the one case
+// where the same body appeared twice on one panel under two names.
+.prt-actors__kind {
+  display: block;
+  // `.prt-meta` is `white-space` normal already; the table's numeric columns are
+  // the ones that must not wrap, and this is never in one.
+  margin-top: 2px;
+}
+
+// The drill link beside a name that has become a control. OPENING IS NOT
+// SELECTING — `selection.ts` argues it in writing — so the row carries both, and
+// the one that leaves the report is the quieter of the two.
+.prt-actors__open {
+  display: block;
+  margin-top: 2px;
+
+  // The same 24px WCAG 2.2 target the contents sub-list needs, and for the same
+  // reason: this is a four-character link on its own line under a body's name,
+  // so its inline box was about 19px and axe called it serious. The wrapper is
+  // `display: block` already, so the height goes on the anchor inside it.
+  .govuk-link {
+    display: inline-block;
+    min-height: 24px;
+    line-height: 24px;
+  }
+}
+
+// TWO LEGALITY BOXES IN ONE CELL, AND THEY STACK BEFORE THEY OVERFLOW.
+// `.prt-legality` is `white-space: nowrap` — rightly, "inside the rules" must
+// not break across lines — so two of them side by side set a minimum width of
+// about 16em on a column that has to survive 320px. A flex row that wraps gives
+// them one line where there is room and two where there is not.
+//
+// The pair is the base's own: a report section is a child of the tab panel in
+// the service and of `.prt-pack` in the offline copy.
+.govuk-tabs__panel,
+.prt-pack {
+  .prt-actors__legality {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 2px govuk.govuk-spacing(1);
+    justify-content: flex-end;
+  }
+}
+
+// THE BODY NAME SURVIVES THE HORIZONTAL SCROLL. The body table went from three
+// columns to six — kind, reach, plays, worst play, legality — and at 320px a
+// reader who scrolls to the legality boxes is looking at "3 inside the rules"
+// belonging to nobody. `.prt-scroll` is the scroll container, so `left: 0` is
+// its edge and the name parks against it while the figures run underneath.
+// `.prt-matrix` and `.prt-cast` carry the same rule for the same reason; it is
+// restated rather than shared because the three tables differ in everything
+// else, and a selector covering all three would be a rule nobody could change
+// for one of them.
+.prt-actors__bodies {
+  th[scope="row"] {
+    position: sticky;
+    left: 0;
+    background: govuk.govuk-colour("white");
+    // `#main-content` sets `overflow-wrap: anywhere`, which also tells the
+    // browser this column may be one character wide. `break-word` breaks the
+    // same long words without entering min-content sizing, so a body name sets
+    // as a phrase rather than as a ladder.
+    overflow-wrap: break-word;
+    min-width: 12rem;
+    border-right: 1px solid govuk.govuk-colour("black", $variant: "tint-50");
+  }
+}
+
+@media print {
+  // Nothing scrolls on paper, and a sticky cell inside the `table-layout: fixed`
+  // the print sheet forces is how a column ends up painted over its neighbour.
+  .prt-actors__bodies th[scope="row"] {
+    position: static;
+  }
+}

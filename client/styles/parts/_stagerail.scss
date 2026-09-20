@@ -1,4 +1,155 @@
 @use "../govuk" as govuk;
 @use "../tokens" as *;
 
-// Reserved for the "stagerail" change. Empty until it lands.
+// ── The drill's eighteen-stage axis ───────────────────────────────────────
+//
+// The drill cites a stage number 33 times on one page — once under the h1 and
+// once beside every item in the provenance ladder — on a scale it never drew.
+// These two figures are that scale: the rail marks where the artefact sits on
+// it, and the walk draws the chain back across it.
+//
+// PLAIN GRID, NOT SVG. Eighteen equal cells and a set of bands over the same
+// columns is exactly what CSS grid is; an SVG of the same thing would not
+// reflow, would not scale with the reader's type size, and could not hold the
+// anchors the bands are.
+//
+// HIDDEN BELOW TABLET, AND THE SENTENCE CARRIES IT. Eighteen cells across a
+// 320px screen is seventeen pixels each, which cannot legibly hold a two-digit
+// number, let alone two border states. Two rows of nine gives 35px cells and a
+// broken axis — a scale that wraps is not a scale. So the caption in
+// `Drill.tsx` states the same three facts in words and the picture goes.
+
+.prt-rail {
+  list-style: none;
+  margin: 0 0 govuk.govuk-spacing(4);
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(18, minmax(0, 1fr));
+  // The cells are a scale, so they touch: a gap between them would read as
+  // eighteen separate things rather than one axis.
+  gap: 0;
+  max-width: 32rem;
+
+  @include govuk.govuk-media-query($until: tablet) { display: none; }
+}
+
+.prt-rail__cell {
+  @include govuk.govuk-font($size: 16, $tabular: true);
+  text-align: center;
+  padding: govuk.govuk-spacing(1) 0;
+  color: govuk.govuk-colour("black", $variant: "tint-25");
+  background: govuk.govuk-colour("black", $variant: "tint-95");
+  // Every cell carries all four borders so that turning one on is a change of
+  // COLOUR on an edge that is already there — otherwise a marked cell is 2px
+  // taller than its neighbours and the axis steps up and down.
+  border: 2px solid transparent;
+  border-left-width: 1px;
+  border-right-width: 1px;
+}
+
+// THE ARTEFACT'S OWN STAGE — filled, because it is the one cell the reader is
+// looking for and a border would put it in the same vocabulary as the other
+// two states.
+.prt-rail__cell--own {
+  background: govuk.govuk-colour("black");
+  color: govuk.govuk-colour("white");
+  font-weight: 700;
+}
+
+// A STAGE THE CHAIN REACHES is marked underneath; a stage that CITES this is
+// marked on top. Below and above, because the walk goes backwards and the
+// citations come forwards — the two directions are the whole point and a
+// reader must be able to tell them apart without reading a key in colour.
+.prt-rail__cell--source { border-bottom-color: govuk.govuk-colour("black"); }
+.prt-rail__cell--citing { border-top-color: govuk.govuk-colour("black"); }
+
+// ── The walk back, drawn on the same axis ─────────────────────────────────
+
+.prt-chainwalk {
+  margin: 0 0 govuk.govuk-spacing(5);
+  max-width: 44rem;
+
+  @include govuk.govuk-media-query($until: tablet) { display: none; }
+}
+
+.prt-chainwalk__axis { margin: 0 0 govuk.govuk-spacing(1); }
+
+.prt-chainwalk__plot { position: relative; }
+
+.prt-chainwalk__rungs {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(var(--rail-cells, 18), minmax(0, 1fr));
+  grid-auto-rows: 2.75rem;
+  row-gap: 2px;
+  background: govuk.govuk-colour("black", $variant: "tint-95");
+}
+
+// `display: contents` so the `<a>` inside is the grid item and can be placed
+// on the stage columns directly. The list element stays in the markup because
+// the rungs ARE an ordered list — first step back, second, third — and
+// flattening them to bare anchors would say they were not.
+.prt-chainwalk__row { display: contents; }
+
+.prt-chainwalk__band {
+  align-self: center;
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  overflow: hidden;
+  background: govuk.govuk-colour("black", $variant: "tint-25");
+  text-decoration: none;
+  padding: 0 govuk.govuk-spacing(1);
+
+  // WHITE, ON `:link` AND `:visited`, BECAUSE `color: white` ALONE LOSES.
+  //
+  // `$govuk-global-styles: true` emits `a:link { color: #1a65a6 }` — (0,2,0) —
+  // and a bare `color` on this class is (0,1,0), so the declaration was written,
+  // compiled, shipped, and never applied. The band rendered link blue on
+  // tint-25: 1.48:1, which axe called a serious contrast failure and which no
+  // amount of reading the stylesheet reveals, because the rule looks right.
+  //
+  // Measured rather than reasoned about: axe reported fgColor #1a65a6 against
+  // bgColor #484949. The pseudo-class carries no meaning here — it is purely
+  // how a class beats the framework's element rule.
+  &:link,
+  &:visited { color: govuk.govuk-colour("white"); }
+
+  // The link states its own destination in text; it needs the framework's
+  // focus state and nothing else from the link vocabulary.
+  &:hover { background: govuk.govuk-colour("black"); color: govuk.govuk-colour("white"); }
+  &:focus {
+    outline: 3px solid transparent;
+    background: govuk.govuk-colour("yellow");
+    color: govuk.govuk-colour("black");
+    box-shadow: 0 -2px govuk.govuk-colour("yellow"), 0 4px govuk.govuk-colour("black");
+  }
+}
+
+.prt-chainwalk__label {
+  @include govuk.govuk-font($size: 16);
+  white-space: nowrap;
+}
+
+// The artefact's own stage as a rule down the stack. A dashed rule rather than
+// a solid one so it never reads as a band of its own.
+.prt-chainwalk__own {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 0;
+  border-left: 2px dashed govuk.govuk-colour("black");
+  pointer-events: none;
+}
+
+// PRINT: both figures go. The rail is decorative by construction — it is
+// `aria-hidden` and the caption states its content — and the walk's bands are
+// links, which print as underlined text pointing at fragments of a page that
+// is no longer on screen. What prints is the caption and each rung's own
+// measured sentence, which is what they are for.
+@media print {
+  .prt-rail,
+  .prt-chainwalk { display: none; }
+}

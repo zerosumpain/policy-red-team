@@ -1,6 +1,5 @@
 import { useEffect, useState, type ReactNode } from 'react';
-import { BAR_HEIGHT, bars, barsHeight } from '$lib/relationships';
-import { cx } from '../govuk';
+import { barShares } from '$lib/relationships';
 
 /**
  * A figure and the same figure as a table, with one control between them.
@@ -19,16 +18,60 @@ import { cx } from '../govuk';
  * AND THE PRESSED ONE LOOKS PRESSED. `aria-pressed` alone tells assistive
  * technology which view is showing and tells a sighted reader nothing: two
  * identical grey buttons over a chart, with no way to know which one you are
- * looking at. GOV.UK has no toggle component, so the state is carried by the
- * two button variants it does have — the current view is the solid one.
+ * looking at. GOV.UK has no toggle component, so the state is carried the way
+ * `.prt-tab` carries it for the move spine — black text, 700, and a 3px black
+ * bottom border on the current one. It used to be carried by the solid green
+ * `.govuk-button`, and that was measured as a defect rather than argued as one:
+ * at 1280px the green "Diagram" button sat at page y≈2326 and the 95% bar it
+ * controls at y≈2388, so the loudest object in "Where the relationships run"
+ * was the control, twice in 400px, in the service's call-to-action colour.
+ *
+ * BOTH VIEWS ARE ALWAYS IN THE DOCUMENT. This rendered `view === 'diagram' ?
+ * diagram : table`, so the other view was UNMOUNTED rather than hidden — the one
+ * state no print stylesheet can reach. Every printed and PDF copy of the report
+ * therefore carried the 47-mark scatter and dropped "Every play, by ease and
+ * impact", which is the only place a per-play ease or impact figure appears
+ * anywhere in the assessment; and a reader printing from a phone lost the
+ * picture instead, because the default below tablet is the table. `[hidden]`
+ * keeps exactly one view in the layout and in the accessibility tree, so screen
+ * behaviour is unchanged, and `parts/_figure-print` un-hides the other on paper.
+ * The cost is 47 extra rows in the document at worst.
  */
+export type FigureView = 'diagram' | 'table';
+
 /**
  * The framework's breakpoint, as `Tabs` uses it. Below this there is no room for
  * a drawing that was laid out for a page.
  */
 const TABLET = 641;
 
-export function Figure({ label, diagram, table }: { label: string; diagram: ReactNode; table: ReactNode }) {
+export function Figure({ label, diagram, table, flipAtNarrow = true, value, onChange }: {
+  label: string;
+  diagram: ReactNode;
+  table: ReactNode;
+  /**
+   * Whether a narrow screen should open on the table rather than the diagram.
+   *
+   * ONLY AN SVG NEEDS THIS. It was unconditional, and it is why "How they
+   * connect" was two tables on a phone while the HTML mechanism chart 400px
+   * above them rendered its bars perfectly at 320px. The default is kept at
+   * `true` so every caller that has not been measured behaves exactly as it did
+   * — the exposure plot is a genuine 47-point scatter in a square viewBox and
+   * cannot be rebuilt in CSS, so it still wants the flip — and the two charts
+   * whose diagrams are now HTML opt out.
+   */
+  flipAtNarrow?: boolean;
+  /**
+   * The view, where the caller is holding it.
+   *
+   * Three figures held three independent states in three components, all lost
+   * on reload and on the drill-and-back journey the URL work exists for. A
+   * caller that wants the choice to survive that journey passes it in and puts
+   * it in the URL; a caller that does not passes nothing and this keeps its own.
+   */
+  value?: FigureView;
+  onChange?: (view: FigureView) => void;
+}) {
   /*
    * A PHONE MEETS THE TABLE, A PAGE MEETS THE DIAGRAM.
    *
@@ -45,46 +88,80 @@ export function Figure({ label, diagram, table }: { label: string; diagram: Reac
    * — "THE TABLE IS NOT A FALLBACK" — and `ExposurePlot` already says the table
    * is the more capable of the two anyway.
    */
-  const [view, setView] = useState<'diagram' | 'table'>('diagram');
+  const [own, setOwn] = useState<FigureView>('diagram');
   useEffect(() => {
+    if (!flipAtNarrow) return;
     const query = window.matchMedia(`(min-width: ${TABLET}px)`);
-    const apply = () => setView(query.matches ? 'diagram' : 'table');
+    const apply = () => setOwn(query.matches ? 'diagram' : 'table');
     apply();
     // Only on the way past the breakpoint: a reader who has pressed Table on a
     // wide screen must not be put back on the diagram by a resize.
     query.addEventListener('change', apply);
     return () => query.removeEventListener('change', apply);
-  }, []);
+  }, [flipAtNarrow]);
+
+  const view = value ?? own;
+  const choose = (next: FigureView) => {
+    // Written to both, so a controlled caller that later stops passing a value
+    // — the offline pack, where the URL is never read back — does not throw the
+    // reader's choice away on the next render.
+    setOwn(next);
+    onChange?.(next);
+  };
+
+  const button = (name: FigureView, text: string) => (
+    <button type="button" className="govuk-button govuk-button--secondary"
+            aria-pressed={view === name} onClick={() => choose(name)}>
+      {text}<span className="govuk-visually-hidden"> of {label}</span>
+    </button>
+  );
 
   return (
     <>
-      <div className="govuk-button-group govuk-!-margin-bottom-2">
-        <button type="button" className={cx('govuk-button', view !== 'diagram' && 'govuk-button--secondary')}
-                aria-pressed={view === 'diagram'} onClick={() => setView('diagram')}>
-          Diagram<span className="govuk-visually-hidden"> of {label}</span>
-        </button>
-        <button type="button" className={cx('govuk-button', view !== 'table' && 'govuk-button--secondary')}
-                aria-pressed={view === 'table'} onClick={() => setView('table')}>
-          Table<span className="govuk-visually-hidden"> of {label}</span>
-        </button>
+      <div className="govuk-button-group prt-figtoggle">
+        {button('diagram', 'Diagram')}
+        {button('table', 'Table')}
       </div>
-      {view === 'diagram' ? diagram : table}
+      {/* The name of each view, for paper. On screen it is clipped — the
+          pressed button already says which view is showing — and in print the
+          two views sit one above the other with nothing between them, where
+          "As a diagram" / "As figures" is what stops the second reading as a
+          repeat of the first. A paragraph rather than a heading, deliberately:
+          a heading here would land at whatever level the caller's own headings
+          make wrong, and this says what the block is, not what it is called. */}
+      <div className="prt-figure__view" hidden={view !== 'diagram'}>
+        <p className="prt-figure__viewhead">As a diagram</p>
+        {diagram}
+      </div>
+      <div className="prt-figure__view" hidden={view !== 'table'}>
+        <p className="prt-figure__viewhead">As figures</p>
+        {table}
+      </div>
     </>
   );
 }
 
 /**
- * A horizontal bar chart.
+ * A horizontal bar chart, in HTML.
  *
- * The geometry comes from `bars()` in `$lib/relationships`, for the reason the
- * exposure plot takes its points from the copied core: a chart whose arithmetic
- * lives in its own JSX cannot be tested, and the one thing that must never
- * happen to a bar chart is a bar of the wrong length.
+ * IT WAS AN SVG IN A 960-UNIT viewBox AND IT NEVER NEEDED TO BE. Three rows and
+ * four rows of `label — value — share` is a list with a length on it, and the
+ * viewBox cost real things: the labels resolved to about 7px at the 460px
+ * minimum width, so both charts in Move 2 defaulted to a table on a phone while
+ * the HTML mechanism chart in the same panel rendered fine; the drawing clipped
+ * in print, which `.prt-scroll` has a special case for; and 600 of the 960 units
+ * went on a label column. The same three facts in HTML wrap, scale with the
+ * reader's type size, and print.
+ *
+ * ON `.prt-nodebar`, THE PATTERN ALREADY IN THIS PANEL, rather than a second
+ * bar vocabulary: a fixed label column, a bordered track, a fill, and the
+ * figures as real text in the third column. Nothing new is added to the
+ * stylesheet for it.
  *
  * NO TEXT ON THE FILL. A label written inside a bar is unreadable on the short
- * ones and has to pass contrast against five different hues; outside, it is
- * black on white everywhere and the colour carries nothing but identity — which
- * the table repeats in words for a reader who cannot see it.
+ * ones and has to pass contrast against the fill; outside, it is black on white
+ * everywhere and the colour carries nothing but identity — which the table
+ * repeats in words for a reader who cannot see it.
  */
 export function BarChart({ rows, label, total }: {
   rows: { key: string; label: string; value: number; colour: string }[];
@@ -100,45 +177,46 @@ export function BarChart({ rows, label, total }: {
    */
   total: number;
 }) {
-  // A chart of nothing is a `viewBox` of height zero, which does not render at
-  // all — an empty frame under a heading, with no way to tell it from a bug.
+  // A chart of nothing is an empty frame under a heading, with no way to tell
+  // it from a bug. The caller's own "nothing to show" sentence is better.
   if (!rows.length) return null;
 
-  const WIDTH = 960;
-  const TRACK = 360;
-  const geometry = bars(rows.map((r) => r.value), TRACK);
+  const shares = barShares(rows.map((row) => row.value));
 
   return (
     <figure className="govuk-!-margin-0">
-      <div className="prt-scroll" tabIndex={0} role="region" aria-label={`${label}, as a diagram`}>
-        <svg
-          viewBox={`0 0 ${WIDTH} ${barsHeight(rows.length)}`}
-          width="100%"
-          // Wide enough for the longest label this can carry — a pair of kind
-          // names either side of an arrow — which at 720 ran past the viewBox
-          // and was silently clipped.
-          style={{ maxWidth: WIDTH, minWidth: 460 }}
-          role="img"
-          aria-label={`Bar chart: ${label}. ${rows.map((r) => `${r.label}, ${r.value}`).join('. ')}. The same figures are available as a table.`}
-        >
-          {rows.map((row, i) => {
-            const { y, length } = geometry[i];
-            return (
-              <g key={row.key}>
-                {/* A minimum of two pixels: a category with one relationship in
-                    it still has to be visible beside one with two hundred, or
-                    the chart says it is not there. */}
-                <rect x="0" y={y} width={Math.max(length, 2)} height={BAR_HEIGHT} fill={row.colour} />
-                <text x={length + 10} y={y + BAR_HEIGHT / 2 + 5} fontSize="15" fill="#0b0c0c">
-                  {row.value}
-                  {total ? <tspan fill="#505a5f">{`  ${Math.round((row.value / total) * 100)}%`}</tspan> : null}
-                  <tspan fill="#0b0c0c">{`  ${row.label}`}</tspan>
-                </text>
-              </g>
-            );
-          })}
-        </svg>
-      </div>
+      {/*
+        A LIST, NOT AN IMAGE WITH A LABEL. The SVG was `role="img"` with the
+        whole reading in `aria-label`, and porting that to the `<ul>` was wrong
+        twice over: `role="img"` is not an allowed role on a list — axe reports
+        it, and 15 `<li>`s lost their list parent with it — and the rows here are
+        real text, so a screen reader that walks them hears "Bodies to
+        Machinery, 101, 95%" rather than one 300-character sentence. The empty
+        track is the only part with nothing to say.
+      */}
+      <ul className="prt-nodebars">
+        {rows.map((row, i) => (
+          <li key={row.key} className="prt-nodebar">
+            {/* No class: the row is a three-column grid and this is its first
+                column, so it inherits the panel's 19px — which is the size
+                `.prt-nodebar__name` sets for the same column on the mechanism
+                chart. A class here would be a rule that restates one. */}
+            <span>{row.label}</span>
+            <span className="prt-nodebar__bar" aria-hidden="true">
+              {/* `.prt-nodebar__seg` carries a 3px floor, which is the rule the
+                  SVG spelled out as `Math.max(length, 2)`: a family with one
+                  relationship still has to be visible beside one with forty-eight,
+                  or the chart says it is not there. A family with NONE draws no
+                  segment at all, because an empty track is the reading. */}
+              {row.value ? <span className="prt-nodebar__seg" style={{ width: `${shares[i]}%`, background: row.colour }} /> : null}
+            </span>
+            <span className="prt-nodebar__n">
+              <strong>{row.value}</strong>
+              {total ? ` · ${Math.round((row.value / total) * 100)}%` : ''}
+            </span>
+          </li>
+        ))}
+      </ul>
       <figcaption className="govuk-body-s prt-meta">{label}. Switch to the table for the detail behind each bar.</figcaption>
     </figure>
   );

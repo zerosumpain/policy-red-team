@@ -1,4 +1,87 @@
 @use "../govuk" as govuk;
 @use "../tokens" as *;
 
-// Reserved for the "cast" change. Empty until it lands.
+// ── The cast grid ─────────────────────────────────────────────────────────
+//
+// Twelve bodies against the six questions the assessment asks of each. It is a
+// `govuk-table` in the scroll box every wide table here uses, so what follows is
+// only what a grid of PROSE needs and a grid of figures does not.
+//
+// NOT `.prt-matrix`. That primitive centres every cell and marks every column
+// numeric, which is right for a grid of exposures and wrong for six columns of
+// clipped sentences: centred prose has no left edge for the eye to run down, and
+// running down a column is the entire reason this is a grid rather than twelve
+// cards.
+.prt-cast {
+  // A GRID IS ALLOWED TO BE WIDER THAN THE PAGE — the scroll box is what that is
+  // for, and the base's `table { width: 100% }` is what stops it. Right for five
+  // columns of prose and fatal at seven: the browser recovers the difference
+  // from whichever column it can break, which is the row label, and the body
+  // names set one word to the line.
+  table {
+    width: auto;
+    min-width: 100%;
+  }
+
+  // THE BODY NAME SURVIVES THE HORIZONTAL SCROLL. At 320px a reader scrolls to
+  // "Gains if it fails" and is looking at a column of sentences belonging to
+  // nobody. `.prt-scroll` is the scroll container, so `left: 0` is its edge.
+  // This is `.prt-matrix`'s rule, restated rather than shared because the two
+  // grids differ in everything else.
+  th[scope="row"] {
+    position: sticky;
+    left: 0;
+    background: govuk.govuk-colour("white");
+    // `#main-content` sets `overflow-wrap: anywhere`, which also tells the
+    // browser this column may be one character wide. `break-word` breaks the
+    // same long words without entering min-content sizing.
+    overflow-wrap: break-word;
+    min-width: 13rem;
+    border-right: 1px solid govuk.govuk-colour("black", $variant: "tint-50");
+  }
+
+  // A column of three words needs a floor or the browser gives the widest cell
+  // the width and squeezes the rest to two characters a line. 11rem is about
+  // the 28 characters `CastGrid` clips to, at two lines.
+  td {
+    min-width: 11rem;
+    vertical-align: top;
+  }
+
+  // The row's own ranking, kept with its name so the grid and the body table
+  // above it are visibly in the same order.
+  &__name {
+    display: block;
+    font-weight: 700;
+  }
+
+  &__rank {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 2px govuk.govuk-spacing(1);
+    margin-top: govuk.govuk-spacing(1);
+    font-weight: 400;
+  }
+
+  // HOW MANY OF THE BODIES THIS COLUMN ANSWERS FOR, in the heading rather than
+  // in a row of totals under the grid. "Gains if it fails — 0 of 12 answered" is
+  // the finding of this whole section, and a reader meets it before the cells
+  // rather than after scrolling past seventy-two of them.
+  &__count {
+    display: block;
+    @include govuk.govuk-font($size: 16);
+    font-weight: 400;
+    color: govuk.govuk-colour("black", $variant: "tint-25");
+    margin-top: 2px;
+  }
+}
+
+@media print {
+  // Nothing scrolls on paper, and a sticky cell inside the `table-layout: fixed`
+  // the print sheet forces is how a column ends up painted over the one beside
+  // it.
+  .prt-cast th[scope="row"] {
+    position: static;
+  }
+}
