@@ -1,0 +1,19 @@
+// ── Shared tokens ──────────────────────────────────────────────────────────
+//
+// Anything a component partial under `parts/` needs to agree with the base
+// stylesheet about. Kept deliberately tiny: a token here is a decision two files
+// have to share, and everything else belongs to whichever file owns it.
+
+// ONE MEASURE, IN A UNIT THAT MEANS WHAT A MEASURE MEANS.
+//
+// There were six, each an `em` count against a different font size, so six rules
+// that all say "this is prose, keep the line readable" resolved to 832, 836,
+// 836, 988, 1056 and 1080 pixels. The container is 960 and the tab panel's
+// content box about 920, so five of the six could never fire — including the
+// standfirst, whose own comment says it is "held to a measure because it is
+// genuinely prose" and which ran the full width of the page.
+//
+// `ch` is the unit a measure is actually expressed in: it scales with the type,
+// so one number means one line length at 16px and at 27px alike. 68 characters
+// is the middle of the 45-75 a typographer would give you.
+$prt-measure: 68ch;
