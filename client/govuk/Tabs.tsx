@@ -167,10 +167,20 @@ export function Tabs({ id, label, tabs, current, onSelect }: {
       >
         {tabs.map((tab) => {
           const selected = tab.id === current;
+          /*
+           * THE NAME IS THE LINK; THE STEP AND THE QUESTION ARE NOT.
+           *
+           * `text-decoration` propagates from an ancestor to its in-flow block
+           * children and a child cannot cancel it — so `text-decoration: none` on
+           * the step was a dead declaration, and adding the question underneath
+           * gave every tab three underlined lines reading as one long link. The
+           * decoration comes off the control and goes on the label, which is the
+           * part that names where you are going.
+           */
           const inside = (
             <>
               {tab.step ? <span className="prt-tab__step">{tab.step}</span> : null}
-              {tab.label}
+              <span className="prt-tab__label">{tab.label}</span>
               {tab.hint ? <span className="prt-tab__hint">{tab.hint}</span> : null}
             </>
           );

@@ -206,6 +206,8 @@ $prt-measure: 68ch;
   cursor: pointer;
   font-family: inherit;
   @include govuk.govuk-font($size: 19);
+  // The control carries no underline; `&__label` does. See `Tabs.tsx`.
+  text-decoration: none;
   // THE LINK TOKEN, NOT THE PALETTE ENTRY. `govuk-colour("blue")` is #1d70b8;
   // every real anchor on the same page resolves to the framework's link colour,
   // blue shade-10, #1a65a6. Measured on the live report: 26 elements at
@@ -220,6 +222,18 @@ $prt-measure: 68ch;
     text-decoration: none;
   }
 
+  // The move's name, and the only part of the tab that is dressed as a link —
+  // the step above it and the question below it are what it is, not where it
+  // goes. The current tab drops the underline the way the framework's does.
+  &__label {
+    text-decoration: underline;
+    text-underline-offset: 0.1em;
+
+    .govuk-tabs__list-item--selected & { text-decoration: none; }
+  }
+
+  &:hover &__label { text-decoration-thickness: 3px; }
+
   // The step number above the label. The framework has no slot for it, and it is
   // the one addition to its Tabs: it says the first four are an order worth
   // reading in without making them a journey a reader cannot leave.
@@ -233,15 +247,62 @@ $prt-measure: 68ch;
   // The question the move answers, under its name. "Causality" is what the
   // section is called; "why is any of it possible" is what a reader arrived
   // with, and until now it existed only in a code comment.
+  //
+  // DESKTOP ONLY. Between tablet and desktop the five columns are about 120px
+  // each, where "Why is any of it possible" wraps to four lines and the spine
+  // grows taller than the panel heading under it. The step and the label carry
+  // the navigation on their own at that width.
   &__hint {
-    display: block;
+    display: none;
     @include govuk.govuk-font($size: 16);
     color: govuk.govuk-colour("black", $variant: "tint-25");
     text-decoration: none;
     font-weight: 400;
-    // The strip is a row of five; a question that wraps to three lines would
-    // make the spine taller than the panel heading under it.
-    max-width: 14em;
+
+    // 1020px is where the width container stops growing and settles at its full
+    // 960px — five columns of 187px, which is the first width at which these
+    // questions set on one or two lines rather than three. `desktop` (769px)
+    // gives 143px columns and a 153px-tall sticky spine.
+    @media (min-width: 1020px) {
+      display: block;
+    }
+  }
+}
+
+/*
+ * THE SPINE IS ONE ROW OF FIVE, WHATEVER THE LABELS SAY.
+ *
+ * govuk-frontend floats the tabs and lets them wrap, which is right for a strip
+ * whose items are one word each. These carry a step, a name and the question the
+ * move answers, so the five wanted 1,028px inside a 960px list and "Last /
+ * Provenance" dropped onto a second row — reading as an afterthought below the
+ * four rather than as the fifth of five.
+ *
+ * `flex: 1 1 0` gives every tab the same width from a zero basis, so the row is
+ * a function of how many moves there are and not of how long their questions
+ * are. The framework's own selected treatment is untouched: its `margin-top:
+ * -5px` still lifts the current tab, and `align-items: stretch` keeps every
+ * bottom edge on the rule that joins the strip to the panel.
+ *
+ * FROM TABLET, because below it the component tears itself down into an index
+ * and the framework draws it as a list of em-dash bullets.
+ */
+@include govuk.govuk-media-query($from: tablet) {
+  .govuk-frontend-supported .govuk-tabs__list {
+    display: flex;
+    align-items: stretch;
+
+    // The framework's float clearfix, which a flex row would otherwise carry as
+    // a sixth, empty item.
+    &::after { display: none; }
+  }
+
+  .govuk-frontend-supported .govuk-tabs__list-item {
+    float: none;
+    flex: 1 1 0;
+    // Without this a long unbroken word sets the column's floor and the five
+    // stop being equal.
+    min-width: 0;
   }
 }
 
