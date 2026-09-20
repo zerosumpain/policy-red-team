@@ -730,11 +730,11 @@ export async function executeStage(input: StageInput, deps: PipelineDeps): Promi
      */
     const absent = () => ASSURANCE_CATEGORIES.filter((category) =>
       !output.artefacts.some((a) => a.kind === 'assurance_challenge' && a.data.category === category));
+    // No warning for the ask itself: a gap the second sweep closes is not a limit,
+    // and `requireMajority` reports one that survives. See the note in the
+    // single-call branch below.
     const missing = absent();
-    if (missing.length) {
-      output.warnings.push(`${missing.length} of ${ASSURANCE_CATEGORIES.length} challenge remits produced nothing and were asked again: ${missing.join(', ').replaceAll('_', ' ')}.`);
-      await fanOut(missing.map(remit));
-    }
+    if (missing.length) await fanOut(missing.map(remit));
   } else if (stage === 11) {
     // Failing to LOAD the comparison must not cost the assessment its stage; the
     // rest of this run is unaffected by whether the other papers could be read.
@@ -796,10 +796,13 @@ export async function executeStage(input: StageInput, deps: PipelineDeps): Promi
      * 498 of that run's 623 minutes went on it, and what finally unblocked it was
      * a change of model — which is luck, not a mechanism.
      *
-     * So the gap is named and asked about ONCE, before any rule decides. Under a
-     * key of its own, so the response cache cannot replay the omission, and with
-     * `coverageGap` in the payload, so the hash differs and the instruction in
-     * `prompts.ts` can tell the model to return only what is absent.
+     * So the gap is named and asked about ONCE, before any rule decides. What
+     * makes it a different question is the PAYLOAD: `provider.ts` keys its cache
+     * on `(stageId, inputHash, promptKey)` and not on the call key, so it is
+     * `coverageGap` and the call's own `idPrefix` that miss the cache where a bare
+     * retry hits it. A later execution of the same stage replays both calls from
+     * the cache, which is correct — it is the degraded gate below, not this, that
+     * stops a stage retrying its way to the same place.
      *
      * ONE round, deliberately. A deterministic gap asked about differently is a
      * different question; asking it five times is the loop this replaces.
@@ -821,34 +824,86 @@ export async function executeStage(input: StageInput, deps: PipelineDeps): Promi
         ...(output.artefacts.some((a) => a.kind === 'evaluation_plan') ? [] : ['evaluation_plan'])]
         : [];
     if (gap.length) {
-      output.warnings.push(`${gap.length} part${gap.length === 1 ? '' : 's'} of this stage ${gap.length === 1 ? 'was' : 'were'} missing from the first response and the model was asked again for ${gap.length === 1 ? 'it' : 'them'}: ${gap.slice(0, 8).map((g) => g.replaceAll('_', ' ')).join(', ')}${gap.length > 8 ? `, and ${gap.length - 8} more` : ''}.`);
-      const before = output.artefacts.length;
-      await attempt('topup', context, `The ${gap.length} part${gap.length === 1 ? '' : 's'} this stage left out`, { ...extra, coverageGap: gap });
       /**
-       * A TOP-UP CONTRIBUTES ONLY THE KIND IT ASKED FOR.
+       * A RECOVERY IS NOT A LIMIT, so it writes no warning of its own.
+       *
+       * Every warning is carried into the later stages' context and counted on
+       * the report's own account of what the run discarded. A gap that the second
+       * ask CLOSED is neither: the stage is complete, and saying so would spend
+       * the warning budget claiming a deficiency that no longer exists. That the
+       * second call happened is on the durable record either way — `policy_model_calls`
+       * holds it under the key `topup`. A gap that survives is reported by the
+       * coverage rule below, which is the thing that knows it survived.
+       */
+      const before = output.artefacts.length;
+      /**
+       * A TOP-UP THAT FAILS MUST NOT CHANGE THE STAGE'S OWN VERDICT.
+       *
+       * `attempt` routes a failure through `gap`, which sets `fault.last` — and
+       * the appraisal rule below throws `fault.last?.code ?? 'coverage'`, while
+       * `worker.ts` treats `budget`, `extraction` and `timeout` as codes NOT worth
+       * retrying. So a top-up that merely ran out of time would relabel the
+       * stage's coverage failure as a timeout and spend two of its three attempts
+       * at a stroke: an extra chance, taken, turning into a penalty. It also
+       * feeds `consecutive`, which exists to detect a dead provider from the
+       * stage's own sweep and not from a bonus call appended to it.
+       *
+       * So this catch is the whole of the handling. It writes no warning either:
+       * the rule below reports the gap that survived, in the sentence
+       * `stage-facts.ts` counts, and reporting it twice would put a phantom
+       * "could not be assessed" beside it. The failed call itself is on the
+       * durable record in `policy_model_calls`, with its error.
+       */
+      try {
+        await request('topup', context, { ...extra, coverageGap: gap });
+      } catch (err) {
+        deps.signal.throwIfAborted();
+        if (!(err instanceof PolicyError)) throw err;
+      }
+      /**
+       * A TOP-UP CONTRIBUTES WHAT IT WAS ASKED FOR, AND WHAT THAT RESTS ON.
        *
        * The instruction says "return only the missing artefacts", and a model that
-       * ignores it hands back the whole report a second time. Nothing would catch
-       * that: the identifiers carry this call's own slot so they do not collide,
-       * and the result is a duplicate set of findings under a second review
-       * summary — which the rule below then fails on, turning a stage that was one
-       * response short into one that cannot finish at all.
+       * ignores it hands back the whole report a second time. Nothing else would
+       * catch that: the identifiers carry this call's own slot so they collide
+       * with nothing, and the result is a duplicate set of findings under a second
+       * review summary — which the rule below then fails on, turning a stage that
+       * was one response short into one that cannot finish at all.
        *
-       * So the gap decides what may come back. Everything else the call produced
-       * is work the stage already holds, and is dropped rather than added.
+       * But the answer is not simply "the kind that answers the gap". Both these
+       * stages may write an `assumption` (`STAGE_KINDS`), and both
+       * `option_appraisal.assumptions` and an `exploit`'s preconditions are
+       * `min(1)` — so a call that obeys the instruction perfectly may still have
+       * to mint the hypothesis its one new row rests on. Admitting only the row
+       * would strand it, and `semanticFault` folds a cited assumption into `refs`,
+       * so the row would then be dropped for leaning on something absent: the one
+       * thing that was missing, deleted, under a warning saying the stage already
+       * held it.
+       *
+       * So keep what answers the gap, then close over what those rows cite from
+       * this same call. A closure rather than one pass, because an
+       * `evaluation_plan` citing an option appraisal citing a new assumption is
+       * two hops, and one pass would resolve it or not depending on array order.
        */
       const wanted = new Set(gap);
-      const invited = (a: Artefact) => stage === ASSURED_SYNTHESIS_STAGE
+      const answers = (a: Artefact) => stage === ASSURED_SYNTHESIS_STAGE
         ? a.kind === 'assurance_response' && wanted.has(String(a.data.challengeId))
         : (a.kind === 'option_appraisal' && wanted.has(String(a.data.optionType))) || (a.kind === 'evaluation_plan' && wanted.has('evaluation_plan'));
       const added = output.artefacts.slice(before);
-      const unwanted = new Set(added.filter((a) => !invited(a)).map((a) => a.id));
-      if (unwanted.size) {
-        // And anything invited that leans on something uninvited goes with it,
-        // rather than being kept with a reference nothing can resolve.
-        for (const a of added) if (!unwanted.has(a.id) && a.refs.some((r) => unwanted.has(r))) unwanted.add(a.id);
-        output.artefacts = output.artefacts.filter((a) => !unwanted.has(a.id));
-        output.warnings.push(`The second call restated ${unwanted.size} item${unwanted.size === 1 ? '' : 's'} this stage already holds; ${unwanted.size === 1 ? 'it was' : 'they were'} discarded rather than recorded twice. Only what was actually missing was taken from it.`);
+      const byId = new Map(added.map((a) => [a.id, a]));
+      const keep = new Set(added.filter(answers).map((a) => a.id));
+      for (let settled = false; !settled;) {
+        settled = true;
+        for (const id of [...keep]) {
+          for (const ref of byId.get(id)?.refs ?? []) {
+            if (byId.has(ref) && !keep.has(ref)) { keep.add(ref); settled = false; }
+          }
+        }
+      }
+      const unwanted = added.filter((a) => !keep.has(a.id));
+      if (unwanted.length) {
+        output.artefacts = output.artefacts.filter((a) => keep.has(a.id) || !byId.has(a.id));
+        output.warnings.push(`The second call restated ${unwanted.length} item${unwanted.length === 1 ? '' : 's'} this stage already holds; ${unwanted.length === 1 ? 'it was' : 'they were'} discarded rather than recorded twice. Only what was actually missing, and what that rests on, was taken from it.`);
       }
     }
   }
@@ -973,7 +1028,11 @@ export async function executeStage(input: StageInput, deps: PipelineDeps): Promi
      */
     const core = missing.filter((type) => type === 'proposed_policy');
     if (core.length || !output.artefacts.some((a) => a.kind === 'evaluation_plan')) throw new PolicyError(fault.last?.code ?? 'coverage', `The appraisal omitted ${core.length ? core.join(', ').replaceAll('_', ' ') : 'the evaluation plan'}.${fault.last ? ` Last reason: ${fault.last.message}` : ''}`);
-    if (missing.length) output.warnings.push(`The appraisal has no ${missing.join(', ').replaceAll('_', ' ')} option, so the comparison is narrower than the method asks for. Read it as incomplete on those grounds.`);
+    // Phrased "N of M ... were not assessed" because that is the sentence
+    // `stage-facts.ts` parses into a counted limit; anything else it does not
+    // recognise is filed as an open QUESTION, which is a different claim. Same
+    // wording `requireMajority` uses, including its plural for a count of one.
+    if (missing.length) output.warnings.push(`${missing.length} of 4 policy options were not assessed: ${missing.join(', ').replaceAll('_', ' ')}. The comparison is narrower than the appraisal method asks for; read it as incomplete on those grounds.`);
   }
   if (stage === ASSURANCE_STAGE) {
     // DIVERGENCE: the top-up above has already asked again for anything absent, so
@@ -1022,8 +1081,13 @@ export async function executeStage(input: StageInput, deps: PipelineDeps): Promi
      * one open objection, which is what `unresolvedMaterialChallenges` below is
      * for; one answering two is a report that did not do the job.
      */
-    if (missing.length * 2 >= challenges.length) throw new PolicyError('coverage', `${missing.length} of ${challenges.length} independent challenge${challenges.length === 1 ? '' : 's'} ${missing.length === 1 ? 'has' : 'have'} no response in the revised assessment.`);
-    if (missing.length) output.warnings.push(`${missing.length} of ${challenges.length} independent challenges ${missing.length === 1 ? 'has' : 'have'} no response in the revised assessment, after the model was asked a second time for ${missing.length === 1 ? 'it' : 'them'}: ${missing.slice(0, 6).map((a) => String(a.data.category).replaceAll('_', ' ')).join(', ')}${missing.length > 6 ? `, and ${missing.length - 6} more` : ''}. Those objections stand unanswered rather than resolved.`);
+    // `challenges.length &&` because `0 * 2 >= 0` is true: a stage 17 handed no
+    // challenges at all would otherwise throw "0 of 0 have no response". The rule
+    // it replaces was vacuously safe there, and stage 16's own floor makes this
+    // unreachable in an ordinary run — but a re-seeded or hand-built one is not
+    // an ordinary run, and this is the gate that must not fail for nothing.
+    if (challenges.length && missing.length * 2 >= challenges.length) throw new PolicyError('coverage', `${missing.length} of ${challenges.length} independent challenge${challenges.length === 1 ? '' : 's'} ${missing.length === 1 ? 'has' : 'have'} no response in the revised assessment.`);
+    if (missing.length) output.warnings.push(`${missing.length} of ${challenges.length} independent challenges were not assessed: ${missing.slice(0, 6).map((a) => String(a.data.category).replaceAll('_', ' ')).join(', ')}${missing.length > 6 ? `, and ${missing.length - 6} more` : ''}. They have no response in the revised assessment, after the model was asked a second time for them, so those objections stand unanswered rather than resolved.`);
     const summaries = output.artefacts.filter((a) => a.kind === 'review_summary');
     if (summaries.length !== 1) throw new PolicyError('coverage', 'The revised assessment must contain exactly one review summary.');
     const issueIds = new Set(challenges.filter((a) => a.data.finding === 'issue').map((a) => a.id));

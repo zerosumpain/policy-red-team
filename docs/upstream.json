@@ -2,7 +2,7 @@
   "repo": "zerosumpain/SR-Policy-Analysis",
   "checkout": "~/sr-policy-analysis",
   "commit": "72c40f654c9d9e90c0d7236eceec7035a286c9e3",
-  "copiedAt": "2026-09-19",
+  "copiedAt": "2026-09-20",
   "note": "Files copied verbatim from the repository this one forked. Anything NOT listed here is written for this build. Run scripts/sync-core.mjs --check to see what has drifted.",
   "verbatim": [
     {

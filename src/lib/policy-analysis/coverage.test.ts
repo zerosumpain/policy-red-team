@@ -21,9 +21,10 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { artefact, ASSURANCE_CATEGORIES, ASSURANCE_STAGE, ASSURED_SYNTHESIS_STAGE, APPRAISAL_STAGE, type Artefact, type StageInput } from './contracts';
-import { triageArtefacts } from './validation';
+import { PolicyError, triageArtefacts } from './validation';
 import { executeStage } from './pipeline';
 import { ingest } from './server/ingest';
+import { stageFacts } from './stage-facts';
 import { fixtureModel } from '../../../tests/fixtures/policy-analysis/model';
 
 const signal = new AbortController().signal;
@@ -50,6 +51,14 @@ async function inventory(): Promise<Artefact[]> {
   cached = structuredClone(all);
   return all;
 }
+
+/**
+ * `inventory()` runs stages 1 to 16, so it already holds stage 15's own output —
+ * and the fixture derives its identifiers from `idPrefix`, so re-running the
+ * stage over that inventory makes every row a duplicate of itself. A stage under
+ * test is handed everything EXCEPT what it is about to produce.
+ */
+const without = (all: Artefact[], stage: number) => all.filter((a) => !a.id.startsWith(`s${stage}_`));
 
 /** The fixture model, with some of what it produced taken back out. */
 const withhold = (drop: (a: Artefact, input: StageInput & { targetCategory?: string }) => boolean) =>
@@ -86,7 +95,10 @@ describe('a coverage gap is asked about before it is fatal', () => {
     expect(keys[1]).not.toBe(keys[0]);
     const responses = result.artefacts.filter((a) => a.kind === 'assurance_response');
     expect(new Set(responses.map((a) => a.data.challengeId)).size).toBe(challenges.length);
-    expect(result.warnings.join(' ')).toContain('asked again');
+    // A gap the second ask CLOSED is not a limit, so it writes no warning: the
+    // stage is complete, and the warning channel is carried into every later
+    // call and counted on the report's account of what the run discarded.
+    expect(result.warnings.join(' ')).not.toContain('not assessed');
   });
 
   it('re-dispatches the units of a fan-out that produced nothing', async () => {
@@ -144,6 +156,7 @@ describe('a coverage gap is asked about before it is fatal', () => {
     // Two calls, not nine: one ask, one top-up, then the gate decides.
     expect(keys).toHaveLength(2);
     expect(result.warnings.join(' ')).toContain('no response');
+    expect(result.warnings.join(' ')).toContain('asked a second time');
   });
 });
 
@@ -156,7 +169,7 @@ describe('a gate that is still short degrades instead of ending the run', () => 
     // Nineteen sections of work is nineteen sections of work.
     expect(result.artefacts.filter((a) => a.kind === 'finding').length).toBeGreaterThan(10);
     expect(result.artefacts.some((a) => a.kind === 'review_summary')).toBe(true);
-    expect(result.warnings.join(' ')).toMatch(/1 of 7 .*no response|no response/);
+    expect(result.warnings.join(' ')).toContain('1 of 7 independent challenges were not assessed');
   });
 
   it('still refuses a revised report that answered a minority of them', async () => {
@@ -170,17 +183,128 @@ describe('a gate that is still short degrades instead of ending the run', () => 
 
   it('finishes an appraisal missing a counterfactual option, and refuses one missing the policy', async () => {
     const all = await inventory();
-    const spare = await executeStage(base(APPRAISAL_STAGE, all), {
+    const spare = await executeStage(base(APPRAISAL_STAGE, without(all, APPRAISAL_STAGE)), {
       model: withhold((a) => a.kind === 'option_appraisal' && a.data.optionType === 'alternative'),
       research, signal, neighbours: none, personas: none,
     });
     expect(spare.artefacts.some((a) => a.kind === 'evaluation_plan')).toBe(true);
-    expect(spare.warnings.join(' ')).toContain('alternative');
+    expect(spare.warnings.join(' ')).toContain('1 of 4 policy options were not assessed: alternative');
 
-    await expect(executeStage(base(APPRAISAL_STAGE, all), {
+    await expect(executeStage(base(APPRAISAL_STAGE, without(all, APPRAISAL_STAGE)), {
       model: withhold((a) => a.kind === 'option_appraisal' && a.data.optionType === 'proposed_policy'),
       research, signal, neighbours: none, personas: none,
     })).rejects.toThrow(/proposed policy/);
+  });
+});
+
+describe('what a top-up is allowed to bring back with it', () => {
+  it('keeps the new assumption the one missing option rests on', async () => {
+    // The contract makes this the OBEDIENT case, not an edge one: stage 15 may
+    // write an `assumption` (STAGE_KINDS) and `option_appraisal.assumptions` is
+    // min(1), so a call asked for one missing option may have to mint the
+    // hypothesis it rests on. Admitting only the option strands that assumption —
+    // and `semanticFault` folds a cited assumption into refs, so the option would
+    // then be dropped for leaning on something absent: the one thing that was
+    // missing, deleted, under a warning saying the stage already held it.
+    const all = await inventory();
+    let first = true;
+    const model = async (...args: Parameters<typeof fixtureModel>) => {
+      const out = fixtureModel(...args);
+      if (first) {
+        first = false;
+        return { ...out, artefacts: out.artefacts.filter((a) => !(a.kind === 'option_appraisal' && a.data.optionType === 'alternative')) };
+      }
+      // The top-up, obeying the instruction exactly: the missing option and the
+      // new hypothesis it depends on, and nothing else.
+      const prefix = (args[2] as { idPrefix: string }).idPrefix;
+      const chain = all.find((a) => a.kind === 'causal_chain')!;
+      const mechanism = all.find((a) => a.kind === 'mechanism')!;
+      const minted = artefact(`${prefix}assumption`, 'assumption', 'Fresh hypothesis', 'The alternative assumes spare capacity.', { importance: 0.7, uncertainty: 0.7, consequence: 0.7, notes: 'Minted by the second call.' }, { refs: [mechanism.id] });
+      const option = out.artefacts.find((a) => a.kind === 'option_appraisal' && a.data.optionType === 'alternative')!;
+      return { artefacts: [minted, { ...option, data: { ...option.data, assumptions: [minted.id] }, refs: [chain.id, minted.id] }], warnings: [] };
+    };
+    const result = await executeStage(base(APPRAISAL_STAGE, without(all, APPRAISAL_STAGE)), { model, research, signal, neighbours: none, personas: none });
+    const types = result.artefacts.filter((a) => a.kind === 'option_appraisal').map((a) => a.data.optionType);
+    expect(types).toContain('alternative');
+    expect(result.artefacts.some((a) => a.kind === 'assumption')).toBe(true);
+    expect(result.warnings.join(' ')).not.toContain('not assessed');
+    expect(result.warnings.join(' ')).not.toContain('already holds');
+  });
+
+  it('does not let a failed top-up relabel the stage, or report the gap twice', async () => {
+    // `attempt` routes a failure through `gap`, which sets `fault.last` — and the
+    // appraisal rule throws `fault.last?.code ?? 'coverage'` while worker.ts
+    // treats `timeout` as a code not worth retrying. A bonus call running out of
+    // time would therefore cost the stage two of its three attempts.
+    const all = await inventory();
+    let first = true;
+    const model = async (...args: Parameters<typeof fixtureModel>) => {
+      const out = fixtureModel(...args);
+      if (!first) throw new PolicyError('timeout', 'The model ran out of time.');
+      first = false;
+      return { ...out, artefacts: out.artefacts.filter((a) => !(a.kind === 'option_appraisal' && a.data.optionType === 'alternative')) };
+    };
+    const result = await executeStage(base(APPRAISAL_STAGE, without(all, APPRAISAL_STAGE)), { model, research, signal, neighbours: none, personas: none });
+    // The soft gap degrades as it should, and says so exactly once.
+    const facts = stageFacts(result.warnings);
+    expect(facts.find((f) => f.kind === 'not_covered')).toMatchObject({ count: 1, of: 4 });
+    expect(facts.some((f) => f.kind === 'unavailable')).toBe(false);
+
+    // And when the gap IS load-bearing, the stage still fails as a coverage
+    // failure — which the worker retries — rather than as the top-up's timeout.
+    let firstAgain = true;
+    const fatal = async (...args: Parameters<typeof fixtureModel>) => {
+      const out = fixtureModel(...args);
+      if (!firstAgain) throw new PolicyError('timeout', 'The model ran out of time.');
+      firstAgain = false;
+      return { ...out, artefacts: out.artefacts.filter((a) => a.kind !== 'evaluation_plan') };
+    };
+    await expect(executeStage(base(APPRAISAL_STAGE, without(all, APPRAISAL_STAGE)), { model: fatal, research, signal, neighbours: none, personas: none }))
+      .rejects.toMatchObject({ code: 'coverage' });
+  });
+
+  it('refuses a stage 17 handed no challenges at all rather than failing on nothing', async () => {
+    // `0 * 2 >= 0` is true, so an unguarded majority floor reports "0 of 0 have
+    // no response" on a stage that did everything asked of it.
+    // The stage still fails — the fixture's review summary cites the challenges,
+    // so with none it has no provenance and is quarantined for that. What must
+    // not happen is this rule reporting a shortfall against an empty library.
+    const all = (await inventory()).filter((a) => a.kind !== 'assurance_challenge');
+    await expect(executeStage(base(ASSURED_SYNTHESIS_STAGE, all), {
+      model: async (...a) => fixtureModel(...a), research, signal, neighbours: none, personas: none,
+    })).rejects.toThrow(/review summary/);
+    await expect(executeStage(base(ASSURED_SYNTHESIS_STAGE, all), {
+      model: async (...a) => fixtureModel(...a), research, signal, neighbours: none, personas: none,
+    })).rejects.not.toThrow(/0 of 0/);
+  });
+});
+
+describe('the report counts a degraded gate as a gap, not as an open question', () => {
+  // `stage-facts.ts` is what the report's own account of what the run discarded
+  // reads, and anything its rules do not recognise is filed as an open QUESTION —
+  // a different claim from "not covered", and the mis-filing its own header warns
+  // about: a thing the RUN failed to do, presented as a thing the paper failed to
+  // say. So the two warnings this phase adds are phrased in the sentence it
+  // parses, including `requireMajority`'s plural for a count of one.
+  it('files an unanswered challenge and a missing option as counted limits', async () => {
+    const all = await inventory();
+    const omitted = all.filter((a) => a.kind === 'assurance_challenge')[0].id;
+    const revised = await executeStage(base(ASSURED_SYNTHESIS_STAGE, all), {
+      model: withhold((a) => a.kind === 'assurance_response' && a.data.challengeId === omitted),
+      research, signal, neighbours: none, personas: none,
+    });
+    const challengeGap = stageFacts(revised.warnings).find((f) => f.kind === 'not_covered');
+    expect(challengeGap).toBeDefined();
+    expect(challengeGap!.count).toBe(1);
+    expect(challengeGap!.of).toBe(ASSURANCE_CATEGORIES.length);
+    expect(stageFacts(revised.warnings).some((f) => f.kind === 'open')).toBe(false);
+
+    const appraisal = await executeStage(base(APPRAISAL_STAGE, without(all, APPRAISAL_STAGE)), {
+      model: withhold((a) => a.kind === 'option_appraisal' && a.data.optionType === 'alternative'),
+      research, signal, neighbours: none, personas: none,
+    });
+    const optionGap = stageFacts(appraisal.warnings).find((f) => f.kind === 'not_covered');
+    expect(optionGap).toMatchObject({ count: 1, of: 4 });
   });
 });
 

@@ -110,14 +110,25 @@ function semanticFault(a: Artefact, all: Map<string, Artefact>, stage: number, n
       : 'Interaction models and scenarios must depend on assumptions, not on other kinds of artefact.');
     if (real.length !== citedAssumptions.length) {
       const field = a.kind === 'exploit' ? 'preconditions' : 'assumptions';
-      const lost = citedAssumptions.length - real.length;
+      const noun = field === 'preconditions' ? 'precondition' : 'assumption';
+      // TWO DIFFERENT LOSSES, AND THE NOTE MUST NOT CONFUSE THEM. An id that
+      // resolves to the wrong kind was mis-filed by the model. An id that
+      // resolves to nothing at all is an assumption this stage QUARANTINED on an
+      // earlier settle pass — `all` is rebuilt from the survivors each time round
+      // — and saying that one "named something other than an assumption" would be
+      // false: it named one, and the one it named did not survive.
+      const gone = citedAssumptions.filter((id) => !all.has(id)).length;
+      const misfiled = citedAssumptions.length - real.length - gone;
       a.data[field] = real;
-      // The dropped identifiers stay in `refs`. They resolve, the model named
-      // them, and provenance is what a reference means — what they are not is a
-      // hypothesis this artefact rests on.
-      note?.(`“${a.label}” dropped ${lost} ${field === 'preconditions' ? 'precondition' : 'assumption'}${lost === 1 ? '' : 's'} that named something other than an assumption.`);
+      if (misfiled) note?.(`“${a.label}” dropped ${misfiled} ${noun}${misfiled === 1 ? '' : 's'} that named something other than an assumption.`);
+      if (gone) note?.(`“${a.label}” dropped ${gone} ${noun}${gone === 1 ? '' : 's'} whose assumption did not survive this stage.`);
     }
-    for (const id of real) if (!a.refs.includes(id)) a.refs = [...a.refs, id];
+    // EVERY CITED IDENTIFIER STILL LANDS IN `refs`, exactly as it did before this
+    // rule narrowed anything. The model named it and it resolves, which is all a
+    // reference asserts; what it is not is a hypothesis the artefact RESTS on, and
+    // that is the only claim being withdrawn here. A `prune` on a later pass takes
+    // any that stop resolving.
+    for (const id of citedAssumptions) if (all.has(id) && !a.refs.includes(id)) a.refs = [...a.refs, id];
   }
   if (a.origin === 'normative_judgement' && a.kind === 'research_source') return fault('source', 'A recommendation is not an external source.');
   if (a.kind === 'recommendation' && a.origin !== 'normative_judgement') return fault('recommendation', 'Redesign options must be labelled as normative recommendations.');
