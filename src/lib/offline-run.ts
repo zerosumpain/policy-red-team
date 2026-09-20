@@ -1,3 +1,4 @@
+import { modelsUsed } from './detail-views';
 import type { OfflinePayload } from './policy-analysis/offline/payload';
 
 /**
@@ -29,8 +30,16 @@ import type { OfflinePayload } from './policy-analysis/offline/payload';
  * It is optional anyway, and its absence means "say nothing", never "assume".
  */
 export type RunFacts = {
-  /** The model the run was made with — `null` only if the row genuinely has none. */
+  /** The model the run was COMMISSIONED with — `null` only if the row has none. */
   model: string | null;
+  /**
+   * The models it was actually made of, busiest first.
+   *
+   * A pack outlives the service, so it has to carry the difference: an assessment
+   * resumed after the configured default moved was made by two models, and a pack
+   * naming one of them is the same lie the service used to tell.
+   */
+  models: { id: string; calls: number }[];
   thinkingLevel: string | null;
   depth: string;
   /**
@@ -46,9 +55,11 @@ export type PackPayload = OfflinePayload & { run?: RunFacts };
 export function runFacts(input: {
   analysis: { model: string | null; thinkingLevel: string | null; depth: string };
   stages: { ordinal: number; name: string; status: string; error: string | null }[];
+  calls?: { provider: string | null; model: string | null }[];
 }): RunFacts {
   return {
     model: input.analysis.model,
+    models: modelsUsed(input.calls),
     thinkingLevel: input.analysis.thinkingLevel,
     depth: input.analysis.depth,
     stages: input.stages.map((stage) => ({

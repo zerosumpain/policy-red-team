@@ -760,6 +760,8 @@ export function Report({ detail, offline, linkTo, onChanged }: {
    * completed. A pack that cannot say stays quiet; the service is unchanged.
    */
   const known = stages.some((stage) => stage.status !== 'unknown');
+  /** The models the run was made of. Absent on an unfiltered read; see `detail-views`. */
+  const ranOn = detail.models ?? [];
   /*
    * WHAT STOPPED, IN THE MOVE THAT EXISTS FOR WHAT THE RUN DID TO ITSELF.
    *
@@ -787,7 +789,28 @@ export function Report({ detail, offline, linkTo, onChanged }: {
     ) : null}
     <SummaryList
       rows={[
-        ...(analysis.model || !offline ? [{ key: 'Model', value: analysis.model ?? 'the configured default' }] : []),
+        ...(analysis.model || !offline ? [{ key: 'Commissioned', value: analysis.model ?? 'the configured default' }] : []),
+        /*
+         * WHAT ACTUALLY RAN, WHERE IT IS NOT WHAT WAS ASKED FOR.
+         *
+         * `analysis.model` is the model the submission commissioned, and this
+         * section presented it as the model the assessment was made with. On
+         * 2026-09-20 a stage of the real run was resumed after a restart and went
+         * out on `gpt-5.6-sol`, while the other 419 calls had been
+         * `gpt-5.6-luna` — so one assessment had been made by two models and the
+         * report named one of them.
+         *
+         * Shown only when the two disagree. On the ordinary run they say the same
+         * thing, and a row repeating the row above it is noise.
+         */
+        ...(ranOn.length && !(ranOn.length === 1 && ranOn[0].id === analysis.model)
+          ? [{
+              key: 'Ran on',
+              value: ranOn
+                .map((use) => `${use.id} (${use.calls.toLocaleString()} ${use.calls === 1 ? 'call' : 'calls'})`)
+                .join(', '),
+            }]
+          : []),
         ...(analysis.thinkingLevel || !offline
           ? [{ key: 'Reasoning effort', value: analysis.thinkingLevel ?? 'the provider default' }]
           : []),

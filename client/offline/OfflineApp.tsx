@@ -81,6 +81,8 @@ export function OfflineApp({ payload }: { payload: PackPayload }) {
       context: null,
     },
     stages,
+    // The pack names both too — see `RunFacts.models`.
+    models: run?.models ?? [],
     artefacts: payload.artefacts,
     // A pack carries no per-row metadata and does not render the drill, which is
     // the only thing that reads it.

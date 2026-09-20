@@ -50,6 +50,8 @@ export function stubForReport(artefact: Artefact): Artefact {
   return { ...artefact, statement: '', sourceQuote: null, section: null, url: null, data };
 }
 
+type Call = { provider: string | null; model: string | null };
+
 type Full = {
   analysis: unknown;
   stages: unknown;
@@ -58,7 +60,41 @@ type Full = {
   heartbeat: unknown;
   artefactMetadata: { id: string }[];
   artefacts: Artefact[];
+  calls?: Call[];
 };
+
+/** What a run was actually made of, one entry per distinct provider and model. */
+export type ModelUse = { id: string; calls: number };
+
+/**
+ * WHICH MODELS ACTUALLY RAN, AS A SUMMARY RATHER THAN AS THE CALL LOG.
+ *
+ * The provenance section named `analysis.model` — the model that was
+ * COMMISSIONED — and presented it as the model the assessment was made with.
+ * Those are the same thing until they are not: on 2026-09-20 a resumed stage of
+ * the real run went out on `gpt-5.6-sol` while the other 419 calls had been
+ * `gpt-5.6-luna`, because the configured default had moved in between. The
+ * report went on naming one model for a run made by two, which is the exact
+ * shape of defect the rest of this section exists to prevent.
+ *
+ * A SUMMARY, because the report view drops `calls` on purpose — 241 KiB of
+ * model-call records that nothing in the browser reads. Two or three entries of
+ * an id and a count answer the question those records were being carried for.
+ *
+ * `provider/model` is the spelling `analysis.model` uses, so the two are
+ * comparable without anyone parsing anything.
+ */
+export function modelsUsed(calls: Call[] | undefined): ModelUse[] {
+  if (!calls?.length) return [];
+  const counts = new Map<string, number>();
+  for (const call of calls) {
+    if (!call.model) continue;
+    const id = call.provider ? `${call.provider}/${call.model}` : call.model;
+    counts.set(id, (counts.get(id) ?? 0) + 1);
+  }
+  // Busiest first: the model that made most of the assessment leads.
+  return [...counts].map(([id, n]) => ({ id, calls: n })).sort((a, b) => b.calls - a.calls || a.id.localeCompare(b.id));
+}
 
 /**
  * `?view=report` — everything the report draws, and nothing else.
@@ -76,6 +112,7 @@ export function forTheReport<T extends Full>(result: T) {
     heartbeat: result.heartbeat,
     artefactMetadata: result.artefactMetadata,
     artefacts: result.artefacts.map(stubForReport),
+    models: modelsUsed(result.calls),
   };
 }
 

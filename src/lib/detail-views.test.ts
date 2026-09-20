@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { Artefact } from './policy-analysis/contracts';
 import { leverage } from './policy-analysis/stress';
-import { forProgress, forTheReport, RUN_INDEX_CAP } from './detail-views';
+import { forProgress, forTheReport, modelsUsed, RUN_INDEX_CAP } from './detail-views';
 
 const a = (id: string, kind: string, extra: Partial<Artefact> = {}): Artefact => ({
   id,
@@ -94,5 +94,40 @@ describe('the progress view', () => {
 
   it('carries no statements at all — the index is links and stage tags', () => {
     expect(view.artefacts.every((x) => x.statement === '')).toBe(true);
+  });
+});
+
+describe('which models a run was made of', () => {
+  const call = (provider: string | null, model: string | null) => ({ provider, model });
+
+  it('counts one model as one entry', () => {
+    expect(modelsUsed([call('codex', 'gpt-5.6-luna'), call('codex', 'gpt-5.6-luna')]))
+      .toEqual([{ id: 'codex/gpt-5.6-luna', calls: 2 }]);
+  });
+
+  it('names BOTH when a resumed stage ran on something else, busiest first', () => {
+    // The real case: 419 calls on one model, then a restart resumed the last
+    // stage after the configured default had moved, and the report went on
+    // naming one model for a run made by two.
+    const calls = [
+      ...Array.from({ length: 419 }, () => call('codex', 'gpt-5.6-luna')),
+      ...Array.from({ length: 2 }, () => call('codex', 'gpt-5.6-sol')),
+    ];
+    expect(modelsUsed(calls)).toEqual([
+      { id: 'codex/gpt-5.6-luna', calls: 419 },
+      { id: 'codex/gpt-5.6-sol', calls: 2 },
+    ]);
+  });
+
+  it('spells an id the way `analysis.model` does, so the two can be compared', () => {
+    expect(modelsUsed([call('codex', 'gpt-5.6-luna')])[0].id).toBe('codex/gpt-5.6-luna');
+    expect(modelsUsed([call(null, 'gpt-5.6-luna')])[0].id).toBe('gpt-5.6-luna');
+  });
+
+  it('says nothing rather than guessing when there are no calls to read', () => {
+    expect(modelsUsed(undefined)).toEqual([]);
+    expect(modelsUsed([])).toEqual([]);
+    // A call that never reached a provider carries no model and is not a model.
+    expect(modelsUsed([call('codex', null)])).toEqual([]);
   });
 });

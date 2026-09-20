@@ -74,6 +74,15 @@ export interface Detail {
    * beside a list of 25 is a quieter kind of wrong than a slow page.
    */
   artefactCounts?: Record<string, number>;
+  /**
+   * The models the run was actually made of, busiest first.
+   *
+   * Separate from `analysis.model`, which is what was COMMISSIONED. They are the
+   * same thing until a run is resumed after the configured default has moved, at
+   * which point one assessment has been made by two models and the provenance
+   * section has to say so.
+   */
+  models?: { id: string; calls: number }[];
   /** True when the server refuses every mutation, so the page can decline to draw a control that would 403. */
   readOnly: boolean;
 }
