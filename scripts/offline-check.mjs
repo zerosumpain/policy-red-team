@@ -155,6 +155,38 @@ try {
     [...document.querySelectorAll('.prt-writeup__body')].filter((el) => el.scrollHeight > el.clientHeight + 2).length);
   if (clipped) failures.push(`${clipped} write-up sections are clipped in the pack, so their text cannot be searched`);
 
+  /*
+   * EVERY CONTROL IN THE PACK GETS PRESSED.
+   *
+   * This gate loaded the pack, read its text and passed — while pressing "How
+   * they connect" threw `ReferenceError: Cannot access '_e' before
+   * initialization` and left the reader on a dead button. The service build of
+   * the same component was fine, which is exactly why nothing caught it: the
+   * pack is a SECOND bundle — one IIFE, `lib` mode, its own minifier pass — and
+   * the two disagreed about a `const` a closure captured before its declaration
+   * ran.
+   *
+   * A pack has no console, no reload that helps and nobody to report to. So the
+   * check is the blunt one: press everything, and let `pageerror` above catch
+   * what falls out. `force` because a control scrolled out of view is still a
+   * control, and this is not a test of scrolling.
+   */
+  const controls = await page.locator('button').all();
+  let pressed = 0;
+  for (const control of controls) {
+    const label = (await control.innerText().catch(() => '')).replace(/\s+/g, ' ').trim().slice(0, 40);
+    try {
+      await control.click({ timeout: 2000, force: true });
+      pressed += 1;
+    } catch {
+      // A control that cannot be reached at all is worth knowing about, but an
+      // element Playwright declines to click is not by itself a defect.
+      note(`could not press "${label || '(no label)'}"`);
+    }
+    await page.waitForTimeout(60);
+  }
+  note(`pressed ${pressed} of ${controls.length} controls, no error`);
+
   if (attempted.length) failures.push(`the pack tried to reach the network: ${[...new Set(attempted)].slice(0, 5).join(', ')}`);
   else note('no request left the page');
 

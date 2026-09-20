@@ -320,6 +320,33 @@ export function Report({ detail, offline, linkTo, onChanged }: {
   const levers = useMemo(() => leverage(artefacts), [artefacts]);
 
 
+  /**
+   * Open another move and land on a section inside it.
+   *
+   * The scroll waits two frames for the same reason `Tabs` does: the panel it is
+   * scrolling into has only just been rendered, and the browser clamps the scroll
+   * position after the document's height changes.
+   *
+   * DECLARED HERE, ABOVE ITS ONLY CALLER, and that is a fix rather than a tidy-up.
+   * It used to sit 460 lines below the `section('actors', …)` body that closes
+   * over it, and in the OFFLINE PACK pressing "How they connect" threw
+   * `ReferenceError: Cannot access '_e' before initialization` and left the
+   * reader on a dead control. The service build was fine, so nothing caught it:
+   * the pack is a different bundle — one IIFE, `lib` mode, its own minifier pass
+   * — and the two disagreed about a `const` referenced from a closure created
+   * before the declaration ran. A reader offline has no console and no reload
+   * that would help.
+   *
+   * The rule this now follows needs no knowledge of any minifier: a function a
+   * closure calls is declared before the closure is built.
+   */
+  const goTo = (next: Move, anchor: string) => {
+    setMove(next);
+    requestAnimationFrame(() => requestAnimationFrame(() => {
+      document.getElementById(anchor)?.scrollIntoView({ block: 'start' });
+    }));
+  };
+
   const sections: Section[] = [];
   const section = (id: string, title: string, move: Move, body: React.ReactNode) => {
     if (body) sections.push({ id, title, body, move });
@@ -955,20 +982,6 @@ export function Report({ detail, offline, linkTo, onChanged }: {
       </div>
     );
   }
-
-  /**
-   * Open another move and land on a section inside it.
-   *
-   * The scroll waits two frames for the same reason `Tabs` does: the panel it is
-   * scrolling into has only just been rendered, and the browser clamps the scroll
-   * position after the document's height changes.
-   */
-  const goTo = (next: Move, anchor: string) => {
-    setMove(next);
-    requestAnimationFrame(() => requestAnimationFrame(() => {
-      document.getElementById(anchor)?.scrollIntoView({ block: 'start' });
-    }));
-  };
 
   const inMove = (move: Move) => sections.filter((entry) => entry.move === move);
   const panel = (move: Move) => (
