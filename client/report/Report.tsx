@@ -114,7 +114,20 @@ const MOVE_ORDER: Move[] = ['verdict', 'causality', 'threats', 'actors', 'proven
  * Actors, a contents list is longer than the thing it indexes.
  */
 function Contents({ sections, id = 'contents', of }: { sections: Section[]; id?: string; of?: string }) {
-  if (sections.length < 3) return null;
+  /*
+   * TWO, NOT THREE — the guard counts the wrong thing and was set against the
+   * wrong scale.
+   *
+   * It asks how many SECTIONS a panel has, and what a reader needs an index for
+   * is how much PAGE there is. Causality and Actors are the two longest panels
+   * in the report — 5,491px and 3,990px measured at 1280 — and each registers
+   * exactly two top-level sections, so the panels that most need a contents list
+   * were the only two denied one. Causality carries eleven headings inside those
+   * two sections.
+   *
+   * Two entries is a short index and still a useful one at five thousand pixels.
+   */
+  if (sections.length < 2) return null;
   return (
     /*
      * NAMED BY WHAT IT INDEXES. Below the tablet breakpoint every panel is on the
@@ -464,25 +477,38 @@ export function Report({ detail, offline, linkTo, onChanged }: {
    */
   const active = board.filter((a) => a.plays.length);
   /*
-   * COUNTED FROM WHAT IS THERE, not from the length of the board.
+   * A BODY IS A NAME. EVERY COUNT HERE IS A COUNT OF NAMES.
    *
-   * A board row survives with a null profile — `actorBoard` maps every actor
-   * artefact and attaches `profiles.find(...) ?? null` — so "N further bodies are
-   * profiled but run no play" was counting rows, not profiles. On the real run
-   * that claimed 159 profiles where 43 exist: 116 of those bodies were named and
-   * never profiled at all.
+   * A board row is a CANDIDATE, not a body: entity resolution deliberately keeps
+   * candidates apart rather than merging them, so on this run 171 rows stand for
+   * 55 distinct names — "Employers" appears 25 times, "Skills England" 23,
+   * "Government" 21. Any sentence beginning "of the bodies the paper names" has
+   * to count names, and the candidate figure belongs only in the sentence about
+   * resolution, where it means something.
    *
-   * And a row is a CANDIDATE, not a body. The 171 rows resolve to 56 distinct
-   * names — "Employers" appears 25 times, "Skills England" 23 — because entity
-   * resolution deliberately keeps candidates apart rather than merging them. So
-   * "of the bodies the paper names" has to count names; the candidate figure
-   * belongs in the sentence about resolution, where it means something.
+   * THIS IS WHERE THE PAGE WAS LYING. `idleUnprofiled` counted ROWS with a null
+   * profile and printed "116 were named and never profiled" — a sentence saying
+   * the assessment had skipped two thirds of the cast. It had not: measured on
+   * this run, 116 rows carry no profile and ZERO NAMES DO. There are 55 profiles
+   * for 55 names, one each. The 116 are the duplicate candidates of a name whose
+   * profile is attached to one of its other rows.
+   *
+   * `profiled` therefore asks whether a NAME has a profile anywhere among its
+   * rows, and the arithmetic stays general — a run that really does name a body
+   * and never profile it will say so.
    */
-  const names = (rows: typeof board) => new Set(rows.map((a) => a.actor.label.trim().toLowerCase())).size;
+  const nameOf = (a: typeof board[number]) => a.actor.label.trim().toLowerCase();
+  const names = (rows: typeof board) => new Set(rows.map(nameOf)).size;
   const namedAll = names(board);
   const namedActive = names(active);
-  const idleProfiled = board.filter((a) => !a.plays.length && a.profile).length;
-  const idleUnprofiled = board.filter((a) => !a.plays.length && !a.profile).length;
+  /** The names with no play, split by whether the name was profiled at all. */
+  const idle = [...new Set(board.filter((a) => !a.plays.length).map(nameOf))]
+    .filter((label) => !active.some((a) => nameOf(a) === label));
+  const profiledNames = new Set(board.filter((a) => a.profile).map(nameOf));
+  const idleProfiled = idle.filter((label) => profiledNames.has(label)).length;
+  const idleUnprofiled = idle.length - idleProfiled;
+  /** Candidate rows that are a second record of a name already on the board. */
+  const duplicates = board.length - namedAll;
   section('actors', 'Who is involved', 'actors', board.length ? (
     <>
       {/*
@@ -520,9 +546,11 @@ export function Report({ detail, offline, linkTo, onChanged }: {
       {idleProfiled || idleUnprofiled ? (
         <p className="govuk-body-s prt-meta">
           {idleProfiled ? `${idleProfiled} further ${idleProfiled === 1 ? 'body is' : 'bodies are'} profiled but run no play in this assessment. ` : ''}
-          {idleUnprofiled ? `${idleUnprofiled} ${idleUnprofiled === 1 ? 'was' : 'were'} named and never profiled. ` : ''}
-          {board.length} candidate records stand for {namedAll} names — entity resolution keeps
-          candidates apart rather than merging them, which{' '}
+          {idleUnprofiled
+            ? `${idleUnprofiled} ${idleUnprofiled === 1 ? 'was' : 'were'} named and never profiled. `
+            : 'Every body the paper names is profiled. '}
+          {duplicates} of the {board.length} candidate records are a second record of a name
+          already here — entity resolution keeps candidates apart rather than merging them, which{' '}
           {/*
             A CROSS-MOVE MENTION IS A CONTROL, NOT PROSE. "How they connect" is a
             section in the Causality panel: one click sideways, named in a
