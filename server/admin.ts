@@ -123,6 +123,11 @@ export async function handleAdmin(
     }
 
     clearLLMClientCache();
+    // The MODEL is one of these fields, and a provider that pins one decides the
+    // per-call deadline for every run that commissions nothing. Leaving the
+    // registry stale here means the panel says one model and an uncommissioned
+    // run is judged as the last one — the quiet half of the 2026-09-20 failure.
+    await refreshModelMenu();
     sendJson(res, 200, await configPayload());
     return true;
   }
@@ -133,6 +138,9 @@ export async function handleAdmin(
     if (!providers().some((p) => p.id === id)) throw new HttpError(400, 'This build does not offer that provider.');
     await writeSetting(ACTIVE_PROVIDER, id);
     clearLLMClientCache();
+    // Switching provider changes both what may be commissioned and what will
+    // answer whatever is. Same reason as the config branch above.
+    await refreshModelMenu();
     sendJson(res, 200, await configPayload());
     return true;
   }

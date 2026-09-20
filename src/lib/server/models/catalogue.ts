@@ -159,3 +159,28 @@ export function isOfferedModel(id: string | null | undefined): boolean {
   if (!id) return false;
   return providerModelIds.has(id) || offeredModels().some((m) => m.id === id);
 }
+
+/**
+ * The model the active provider will call WHATEVER a run commissioned, or null
+ * where it takes the run's own choice.
+ *
+ * `getLLMClient` prefers `definition.model(config)` over the commissioned id, so
+ * for a bridge or an Azure deployment that field is not a default — it is the
+ * only model that can answer. Anything reasoning about a run's model therefore
+ * has to know it, and the one that matters is the DEADLINE: `callTimeoutMs`
+ * allows a Codex context 420 seconds against OpenRouter's 180, and it reads the
+ * provider off the model id.
+ *
+ * A module variable refreshed beside `providerModelIds`, by the same call and
+ * for the same reason — the readers are synchronous and sit under `ingest.ts`,
+ * a file this fork keeps byte-identical to upstream.
+ */
+let providerPinnedModelId: string | null = null;
+
+export function registerProviderPinnedModel(id: string | null): void {
+  providerPinnedModelId = id?.trim() || null;
+}
+
+export function providerPinnedModel(): string | null {
+  return providerPinnedModelId;
+}

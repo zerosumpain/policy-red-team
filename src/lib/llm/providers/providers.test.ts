@@ -10,7 +10,9 @@ import { codex } from './codex';
 import { openrouter } from './openrouter';
 import { providerById, providers, redact } from './index';
 import { coerceModelContext } from '$lib/constants/default-models';
-import { isOfferedModel, registerProviderModels } from '$lib/server/models/catalogue';
+import { isOfferedModel, registerProviderModels, registerProviderPinnedModel } from '$lib/server/models/catalogue';
+import { pinnedModelId } from '$lib/server/models/offered-store';
+import { DEFAULT_RESEARCH_DEEP_MODEL_ID, resolveResearchDeepModel } from '$lib/server/models/workload-settings';
 
 const env = { ...process.env };
 afterEach(() => { process.env = { ...env }; });
@@ -237,5 +239,87 @@ describe('a Codex call can run as long as its deadline allows', () => {
   it('leaves OpenRouter alone, whose 180s deadline is inside undici’s patience', () => {
     const or = providerById('openrouter')!.client({ apiKey: 'sk-or-test' });
     expect((or as unknown as { fetchOptions?: unknown }).fetchOptions).toBeUndefined();
+  });
+});
+
+/**
+ * A RUN THAT COMMISSIONS NOTHING STILL HAS A DEADLINE, and it has to be the
+ * deadline of the provider that will actually answer.
+ *
+ * "Use the default" is the first option in the picker and the ordinary choice,
+ * so `policy_analyses.model` is null for most runs. `provider.ts` then falls
+ * back to `resolveResearchDeepModel()`, which used to be a constant OpenRouter
+ * id — while `getLLMClient` prefers `definition.model(config)` and sent the call
+ * to the bridge regardless. The run was therefore judged against a deadline
+ * belonging to a model it never called.
+ *
+ * Measured on 2026-09-20: four of the first five calls of a real assessment died
+ * at exactly 180.0s each, the fifth answered in 173.3s, on a bridge whose own
+ * deadline is 420.
+ */
+describe('the model a run falls back to when it commissioned none', () => {
+  const bridge = providerById('codex')!;
+  const bridgeConfig = { baseUrl: 'http://127.0.0.1:5207/v1', model: 'gpt-5.6-luna' };
+  const direct = providerById('openrouter')!;
+
+  afterEach(() => { registerProviderPinnedModel(null); });
+
+  it('names the bridge model, prefixed, so the run is read as Codex', async () => {
+    registerProviderPinnedModel(pinnedModelId(bridge, bridgeConfig));
+    const context = await resolveResearchDeepModel();
+    expect(context.modelId).toBe('codex/gpt-5.6-luna');
+    expect(context.provider).toBe('codex');
+  });
+
+  it('beats POLICY_RESEARCH_MODEL, which could never have reached the model', async () => {
+    // Setting it changed nothing but the deadline, and changed that wrongly.
+    process.env.POLICY_RESEARCH_MODEL = 'anthropic/claude-sonnet-4.5';
+    registerProviderPinnedModel(pinnedModelId(bridge, bridgeConfig));
+    expect((await resolveResearchDeepModel()).provider).toBe('codex');
+  });
+
+  it('leaves a provider that takes the run’s own choice alone', async () => {
+    registerProviderPinnedModel(pinnedModelId(direct, { apiKey: 'sk-or-test' }));
+    delete process.env.POLICY_RESEARCH_MODEL;
+    const context = await resolveResearchDeepModel();
+    expect(context.provider).toBe('openrouter');
+    expect(context.modelId).toBe(DEFAULT_RESEARCH_DEEP_MODEL_ID);
+  });
+
+  it('still honours POLICY_RESEARCH_MODEL where nothing is pinned', async () => {
+    process.env.POLICY_RESEARCH_MODEL = 'z-ai/glm-5.2';
+    expect((await resolveResearchDeepModel()).modelId).toBe('z-ai/glm-5.2');
+  });
+});
+
+/**
+ * WHICH ID THE PIN IS RECORDED UNDER, which is the whole mechanism.
+ *
+ * `coerceModelContext` recovers the provider from the `codex/` prefix and from
+ * nothing else, so a pin recorded under the bare slug the endpoint is sent would
+ * be read straight back as OpenRouter — the bug, reintroduced one layer down.
+ */
+describe('the id a pinned provider model is recognised by', () => {
+  it('takes the prefixed id from the menu, not the slug sent to the endpoint', () => {
+    const bridge = providerById('codex')!;
+    const config = { baseUrl: 'http://127.0.0.1:5207/v1', model: 'gpt-5.6-luna' };
+    expect(bridge.model(config)).toBe('gpt-5.6-luna');
+    expect(pinnedModelId(bridge, config)).toBe('codex/gpt-5.6-luna');
+  });
+
+  it('is an Azure deployment’s own name, which is the id it is offered under', () => {
+    const foundry = providerById('azure')!;
+    const config = { endpoint: 'https://r.openai.azure.com', deployment: 'gpt-5-policy', apiKey: 'k' };
+    expect(pinnedModelId(foundry, config)).toBe('gpt-5-policy');
+  });
+
+  it('is null for OpenRouter, whose menu is a choice rather than a pin', () => {
+    expect(pinnedModelId(providerById('openrouter')!, { apiKey: 'sk-or-test' })).toBeNull();
+  });
+
+  it('is the pinned id when OpenRouter does name one, absent from its menu', () => {
+    const or = providerById('openrouter')!;
+    expect(pinnedModelId(or, { apiKey: 'sk-or-test', model: 'deepseek/deepseek-v4-flash' }))
+      .toBe('deepseek/deepseek-v4-flash');
   });
 });

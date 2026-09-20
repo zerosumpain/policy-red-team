@@ -1,6 +1,7 @@
 import { deleteSetting, readSetting, writeSetting } from '$lib/server/settings-store';
-import { registerOfferedModels, registerProviderModels, type CostTier, type OfferedModel } from './catalogue';
+import { registerOfferedModels, registerProviderModels, registerProviderPinnedModel, type CostTier, type OfferedModel } from './catalogue';
 import { resolveProvider } from '$lib/llm/client';
+import type { ProviderConfig, ProviderDefinition } from '$lib/llm/providers/types';
 import { setTokenCeiling } from '$lib/server/budget';
 
 /**
@@ -89,6 +90,26 @@ export async function saveOfferedModels(models: OfferedModel[]): Promise<void> {
 /** Where the operator records the most one run may spend, in tokens. */
 export const RUN_TOKEN_CEILING = 'run.tokenCeiling';
 
+/**
+ * THE ID A PINNED PROVIDER'S MODEL IS RECOGNISED BY, which is the mechanism.
+ *
+ * `definition.model(config)` is the slug the endpoint is SENT — bare, because
+ * the endpoint has never heard of a `codex/` prefix. `coerceModelContext`
+ * recovers the provider from that prefix and from nothing else, so recording the
+ * pin under the bare slug reads straight back as OpenRouter and hands the one
+ * provider that needs seven minutes a three-minute deadline. The menu carries
+ * the prefixed id; match the two on the name they share.
+ *
+ * Null where the provider names no model of its own — OpenRouter, ordinarily,
+ * whose menu is a choice the reader makes rather than a pin. There the
+ * commissioned id really is what gets called and needs no correcting.
+ */
+export function pinnedModelId(definition: ProviderDefinition, config: ProviderConfig): string | null {
+  const own = definition.model(config).trim();
+  if (!own) return null;
+  return definition.models(config).find((m) => m.name === own)?.id ?? own;
+}
+
 export async function refreshModelMenu(): Promise<void> {
   await loadOfferedModels().catch(() => {});
   // Loaded with the menu because they are read at the same moments — boot, the
@@ -98,6 +119,7 @@ export async function refreshModelMenu(): Promise<void> {
   try {
     const active = await resolveProvider();
     registerProviderModels(active.definition.models(active.config).map((m) => m.id));
+    registerProviderPinnedModel(pinnedModelId(active.definition, active.config));
   } catch {
     // A provider that cannot be resolved offers nothing, which is already the
     // state of the set. Never fail a submission over this.
