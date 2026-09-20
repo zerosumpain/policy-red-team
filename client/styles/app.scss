@@ -11,13 +11,12 @@
 // argument in production. The image and font paths are root-relative here because
 // this app is served from the root and compiled through Vite, which tries to
 // resolve a relative url() at build time and warns when the file is not there.
-@use "govuk-frontend/dist/govuk/index" as govuk with (
-  $govuk-global-styles: true,
-  $govuk-font-family: ("Helvetica Neue", arial, sans-serif),
-  $govuk-include-default-font-face: false,
-  $govuk-images-path: "/assets/govuk/images/",
-  $govuk-fonts-path: "/assets/govuk/fonts/"
-);
+// The framework, configured once, in `_govuk.scss`. It is a separate file so that
+// a component's own partial under `parts/` can `@use "../govuk" as govuk` and
+// reach the same mixins — Sass allows a module to be CONFIGURED only once, so a
+// second `@use ... with (...)` anywhere would be an error. The framework's CSS is
+// still emitted exactly once, here, at its first load.
+@use "./govuk" as govuk;
 
 // ── The service's own layer ────────────────────────────────────────────────
 //
