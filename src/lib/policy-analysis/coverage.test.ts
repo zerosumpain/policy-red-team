@@ -351,3 +351,66 @@ describe('a play keeps the preconditions that are real', () => {
     expect(triaged.artefacts[0].data.assumptions).toEqual([assumptions[0].id]);
   });
 });
+
+/**
+ * The third way stage 17 threw away a finished report — found on the "best start
+ * in life" run, 20 September 2026, and not by this file's two.
+ *
+ * A corrective round answers with a WHOLE revised assessment, its summing-up
+ * included, and `provider.ts` accumulates the rounds. So `main`, `main#repair1`
+ * and `main#repair2` wrote one review summary each, "exactly one" saw three, and
+ * the stage threw. Three attempts failed identically, because asking again is
+ * what adds the next one: a gate no retry can pass.
+ *
+ * Seventeen of eighteen stages, 65.2M input tokens and two and a half hours were
+ * recorded as a failed run for it.
+ */
+describe('a surplus summing-up is the correction arriving twice, not a shortfall', () => {
+  /**
+   * A reply carrying the summing-up of every corrective round.
+   *
+   * The duplicates arrive TOGETHER, in one result, because `provider.ts`
+   * accumulates its repair rounds into the artefact list `executeStage` is
+   * handed — they are not separate calls this stage could dedupe between. The
+   * top-up path already drops a restated item, which is why the run had to teach
+   * us this one: it comes in below that.
+   */
+  const signsEveryRound = async (...args: Parameters<typeof fixtureModel>) => {
+    const out = fixtureModel(...args);
+    const summary = out.artefacts.find((a) => a.kind === 'review_summary');
+    if (!summary) return out;
+    const rounds = [1, 2].map((round) => {
+      const extra = structuredClone(summary);
+      extra.id = `${summary.id}_repair${round}`;
+      return extra;
+    });
+    return { ...out, artefacts: [...out.artefacts, ...rounds] };
+  };
+
+  it('keeps the last, discards what it supersedes, and does not end the run', async () => {
+    const all = await inventory();
+    const omitted = all.filter((a) => a.kind === 'assurance_challenge')[0].id;
+    const model = async (...args: Parameters<typeof fixtureModel>) => {
+      const out = await signsEveryRound(...args);
+      return { ...out, artefacts: out.artefacts.filter((a) => !(a.kind === 'assurance_response' && a.data.challengeId === omitted)) };
+    };
+    const result = await executeStage(base(ASSURED_SYNTHESIS_STAGE, all), { model, research, signal, neighbours: none, personas: none });
+    expect(result.artefacts.filter((a) => a.kind === 'review_summary')).toHaveLength(1);
+    // Said out loud, not silently reconciled: a reader who sees one summing-up
+    // should be able to find out that there were more.
+    expect(result.warnings.join(' ')).toContain('review summaries');
+    expect(result.warnings.join(' ')).toContain('superseded');
+    // The report survives, which is the whole point of the change.
+    expect(result.artefacts.filter((a) => a.kind === 'finding').length).toBeGreaterThan(10);
+  });
+
+  it('still refuses a revised assessment that signed nothing at all', async () => {
+    const all = await inventory();
+    const model = async (...args: Parameters<typeof fixtureModel>) => {
+      const out = fixtureModel(...args);
+      return { ...out, artefacts: out.artefacts.filter((a) => a.kind !== 'review_summary') };
+    };
+    await expect(executeStage(base(ASSURED_SYNTHESIS_STAGE, all), { model, research, signal, neighbours: none, personas: none }))
+      .rejects.toThrow(PolicyError);
+  });
+});

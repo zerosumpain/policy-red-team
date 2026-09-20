@@ -1089,7 +1089,30 @@ export async function executeStage(input: StageInput, deps: PipelineDeps): Promi
     if (challenges.length && missing.length * 2 >= challenges.length) throw new PolicyError('coverage', `${missing.length} of ${challenges.length} independent challenge${challenges.length === 1 ? '' : 's'} ${missing.length === 1 ? 'has' : 'have'} no response in the revised assessment.`);
     if (missing.length) output.warnings.push(`${missing.length} of ${challenges.length} independent challenges were not assessed: ${missing.slice(0, 6).map((a) => String(a.data.category).replaceAll('_', ' ')).join(', ')}${missing.length > 6 ? `, and ${missing.length - 6} more` : ''}. They have no response in the revised assessment, after the model was asked a second time for them, so those objections stand unanswered rather than resolved.`);
     const summaries = output.artefacts.filter((a) => a.kind === 'review_summary');
-    if (summaries.length !== 1) throw new PolicyError('coverage', 'The revised assessment must contain exactly one review summary.');
+    if (!summaries.length) throw new PolicyError('coverage', 'The revised assessment must contain a review summary, and this one has none.');
+    /*
+     * MORE THAN ONE IS NOT A SHORTFALL. IT IS THE CORRECTION ARRIVING TWICE.
+     *
+     * A corrective round answers with a whole revised assessment, its summing-up
+     * included, and `provider.ts` accumulates the rounds — so a stage 17 that
+     * needed any repair at all arrived here with two, and this rule threw. Asking
+     * again could only add a third, which makes it a gate no retry can pass: the
+     * corrective action is what breaks it.
+     *
+     * Measured on the "best start in life" run, 2026-09-20: `main`, `main#repair1`
+     * and `main#repair2` wrote one each, three attempts failed identically, and a
+     * run that had finished seventeen of eighteen stages was recorded as failed
+     * for it.
+     *
+     * The last is the revised one; the earlier rounds are what it revises. So
+     * keep it, drop what it supersedes, and say so — the same shape as the
+     * challenge rule above, which phase 16 converted and left this line behind.
+     */
+    if (summaries.length > 1) {
+      const superseded = new Set(summaries.slice(0, -1).map((a) => a.id));
+      output.artefacts = output.artefacts.filter((a) => !superseded.has(a.id));
+      output.warnings.push(`The revised assessment came back with ${summaries.length} review summaries, one per corrective round. The last is kept; the earlier ${superseded.size} ${superseded.size === 1 ? 'is' : 'are'} discarded as superseded.`);
+    }
     const issueIds = new Set(challenges.filter((a) => a.data.finding === 'issue').map((a) => a.id));
     const accepted = responses.filter((a) => issueIds.has(String(a.data.challengeId)) && ['accepted', 'partly_accepted'].includes(String(a.data.disposition))).length;
     const unresolved = responses.filter((a) => issueIds.has(String(a.data.challengeId)) && a.data.disposition === 'unresolved');
