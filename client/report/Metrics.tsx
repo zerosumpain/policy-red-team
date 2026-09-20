@@ -82,6 +82,17 @@ export type Segment = {
   count: number;
   /** The band class suffix: severe, significant, moderate, limited. */
   tone: string;
+  /**
+   * What this segment means for the reader, in the vocabulary's own words.
+   *
+   * `bandCounts()` has always returned `{ band, note, count }` and every caller
+   * destructured the note onto the floor, so the report taught a reader four
+   * colours and four words and withheld the actionable half: severe is "Strong
+   * incentive, low effort, real damage, and hard to see. Redesign before
+   * publication." A key that says "Severe 20 of 47 · 43%" and stops is a legend
+   * for a chart rather than a reading of an assessment.
+   */
+  note?: string;
   selected?: boolean;
   onSelect?: () => void;
 };
@@ -109,6 +120,11 @@ export function StackedBar({ segments, total, label }: { segments: Segment[]; to
               <span className="prt-stack__n" aria-hidden="true">{segment.count}</span>
               <span className="govuk-visually-hidden">
                 {segment.label}: {segment.count} of {sum}
+                {/* The note goes inside the control, not only in the key below
+                    it: a screen-reader user pressing "Severe, 20 of 47" is
+                    choosing to narrow the whole report by it, and why 20 matters
+                    is the thing that decides whether they want to. */}
+                {segment.note ? `. ${segment.note}` : ''}
               </span>
             </button>
           );
@@ -119,9 +135,13 @@ export function StackedBar({ segments, total, label }: { segments: Segment[]; to
           <li key={segment.id}>
             <span className={`prt-stack__swatch prt-band--${segment.tone}`} aria-hidden="true" />
             <strong>{segment.label}</strong>
-            <span className="prt-meta">
+            <span className="prt-denom">
               {segment.count} of {sum} · {Math.round((segment.count / sum) * 100)}%
             </span>
+            {/* Hidden from assistive technology because the segment button above
+                already carries it; a screen reader reading the bar and then the
+                key hears the same sentence twice otherwise. */}
+            {segment.note ? <span className="prt-stack__note" aria-hidden="true">{segment.note}</span> : null}
           </li>
         ))}
       </ul>
@@ -142,18 +162,50 @@ export function StackedBar({ segments, total, label }: { segments: Segment[]; to
  * be a second, finer encoding of the same thing, disagreeing with it at every
  * boundary. This is ink on grey and means only "more".
  */
-export function Bar({ value, max = 1, digits }: { value: number; max?: number; digits?: number }) {
+export function Bar({ value, max = 1, digits, scale }: {
+  value: number;
+  max?: number;
+  digits?: number;
+  /**
+   * What this length is measured against, for a screen reader — "summed
+   * exposure, 0 to 5.75 on this table".
+   *
+   * THE SAME SENTENCE BELONGS IN THE FIGURE'S CAPTION, where it is said once and
+   * seen. It is repeated per row here because a row is what a screen-reader user
+   * reads: two tables in the same panel draw identical-looking bars on different
+   * scales — one normalised to its own top row, one absolute on 0–1 — and
+   * hearing "5.75" and "0.77" with nothing else is hearing two numbers that
+   * cannot be compared and no way to know it.
+   */
+  scale?: string;
+}) {
   const share = Math.max(0, Math.min(1, max ? value / max : 0)) * 100;
-  // An exposure runs 0–1 and needs two decimals to separate 0.75 from 0.73; a
-  // score out of a hundred needs none, and printed "82.00" beside "72.00" for
-  // no reason but the default.
-  const places = digits ?? (max > 1 ? 0 : 2);
+  /*
+   * PRECISION IS NOT A SIDE EFFECT OF THE AXIS MAXIMUM.
+   *
+   * This was `max > 1 ? 0 : 2`, which is right for a score out of a hundred —
+   * "82.00" beside "72.00" is precision nobody asked for — and wrong for
+   * anything summed. Move 4's pressure column passes the largest pressure as its
+   * max, 5.749 on the live run, so every row printed whole: the twelve true
+   * values 5.75, 5.09, 5.05, 5.05, 5.01, 4.64, 4.40, 3.59, 3.39, 2.98, 2.89,
+   * 2.88 printed as 6, 5, 5, 5, 5, 5, 4, 4, 3, 3, 3, 3. Five consecutive rows
+   * read 5 and four read 3, in a table whose only purpose is a ranking, with the
+   * bars beside them drawn at the right lengths and contradicting the figures.
+   *
+   * Ten is the threshold because that is where the two families actually
+   * separate: a percentage or a score runs to 100 and a sum of exposures on a
+   * 0–1 scale reaches about six here. `digits` still overrides both.
+   */
+  const places = digits ?? (max > 10 ? 0 : 2);
   return (
     <span className="prt-bar">
       <span className="prt-bar__track" aria-hidden="true">
         <span className="prt-bar__fill" style={{ width: `${share}%` }} />
       </span>
-      <span className="prt-bar__value">{value.toFixed(places)}</span>
+      <span className="prt-bar__value">
+        {value.toFixed(places)}
+        {scale ? <span className="govuk-visually-hidden"> — {scale}</span> : null}
+      </span>
     </span>
   );
 }

@@ -1,4 +1,91 @@
 @use "../govuk" as govuk;
 @use "../tokens" as *;
 
-// Reserved for the "strip" change. Empty until it lands.
+// ── A distribution strip, and the cuts through it ──────────────────────────
+//
+// The drawing itself is SVG and carries its own geometry; this is the frame it
+// sits in and the axis labels beside it, which are HTML so they scale with the
+// reader's type rather than with the viewBox.
+.prt-strip {
+  margin-bottom: govuk.govuk-spacing(2);
+
+  &__track {
+    position: relative;
+    height: 44px;
+    // The same 44px the stacked bar uses, so two figures about the same 47 plays
+    // sitting one above the other are the same weight on the page.
+    background: govuk.govuk-colour("black", $variant: "tint-95");
+    // A FRAME AT 3.65:1, because the track is the axis: a reader judges a tick's
+    // position against the ends of it, and `tint-95` is 1.12:1 against the page —
+    // an edge that is not there. `tint-50` is the file's own figure for a
+    // graphical edge that has to be seen.
+    border: 1px solid govuk.govuk-colour("black", $variant: "tint-50");
+
+    // An inline SVG is `display: inline` and sits on the text baseline, which
+    // left a few pixels of descender space below the plot inside the frame.
+    svg { display: block; }
+  }
+
+  &__axis {
+    position: relative;
+    display: flex;
+    justify-content: space-between;
+    @include govuk.govuk-font($size: 16, $tabular: true);
+    color: govuk.govuk-colour("black", $variant: "tint-25");
+    margin-top: govuk.govuk-spacing(1);
+  }
+
+  // The ends are the only two labels in flow, so the row has a height without
+  // anything being given one, and `space-between` puts them at the two ends of
+  // the axis they name.
+  &__cut {
+    position: absolute;
+    top: 0;
+    // Centred on the rule it names: the rule is drawn at a fraction of the
+    // track, and the label's own width must not shift it.
+    transform: translateX(-50%);
+    white-space: nowrap;
+    color: govuk.govuk-colour("black");
+  }
+
+  // The stretches between the cuts, named. This row is what carries the band
+  // vocabulary on a figure drawn in one ink — see `Strip.tsx` for why the ramp
+  // is refused here.
+  &__regions {
+    position: relative;
+    @include govuk.govuk-font($size: 16, $weight: bold);
+    // A row of absolutely positioned labels has no height of its own, and the
+    // caption under the figure would ride up through it.
+    height: 1.5em;
+    margin: 0;
+  }
+
+  &__region {
+    position: absolute;
+    top: 0;
+    transform: translateX(-50%);
+    white-space: nowrap;
+  }
+
+  // BELOW TABLET THE LABELS STOP POINTING AND START LISTING.
+  //
+  // `Figure` shows the table rather than the diagram under 641px, so in the
+  // report this never renders — but measured at 360px it is worth being right
+  // anyway: four labels centred on their stretches of a 330px axis overlap into
+  // "Limited 2 ModeraSignificant 18evere 20". In flow they are a plain list, in
+  // band order, which is a worse pointer and a perfectly good sentence.
+  @include govuk.govuk-media-query($until: tablet) {
+    &__regions {
+      position: static;
+      height: auto;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0 govuk.govuk-spacing(3);
+    }
+
+    &__region {
+      position: static;
+      transform: none;
+    }
+  }
+}

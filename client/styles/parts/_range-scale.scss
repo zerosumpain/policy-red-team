@@ -1,4 +1,78 @@
 @use "../govuk" as govuk;
 @use "../tokens" as *;
 
-// Reserved for the "range-scale" change. Empty until it lands.
+// ── A weight slider that says what its numbers are ────────────────────────
+//
+// Each of the four controls is `min=0 max=3 step=0.5` drawn as a 28px black
+// track, and on the rendered page all four were identical bare bars with the
+// thumb a third of the way along and one line of text beneath. Nothing said the
+// range was 0 to 3, and nothing said where 1 — the assessment's own weighting —
+// sits, so at a glance ×0.5 and ×2.5 were the same picture. A reader who dragged
+// and wanted neutral back had to overshoot until the words reappeared, or press
+// Reset and lose all four.
+
+.prt-range__scale {
+  position: relative;
+
+  // THE NEUTRAL MARK IS DECORATION, NOT A TARGET.
+  //
+  // An element positioned over a range input's track intercepts the pointer in
+  // exactly the region a reader drags through most, so making this a 24px click
+  // target would break dragging to buy a shortcut. The shortcut is the "reset to
+  // 1" link beside the output instead, which is a real control in the accessible
+  // tree and costs the track nothing. `pointer-events: none` is what keeps the
+  // promise.
+  &::before {
+    content: "";
+    position: absolute;
+    // A third of the way along a 0–3 scale, which is where 1 is.
+    left: 33.333%;
+    top: 0;
+    height: 28px;
+    width: 1px;
+    background: govuk.govuk-colour("black");
+    pointer-events: none;
+  }
+}
+
+// THREE LABELS ON A THREE-CELL GRID, not a flex row: the end labels must sit
+// hard against the ends of the track and the middle one must centre on the
+// neutral mark, and `space-between` puts the middle label wherever its
+// neighbours' lengths leave it.
+.prt-range__ticks {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  // 16, NOT 14. govuk-frontend 6 dropped 14 from the type scale — `govuk-font`
+  // throws "Unknown font size `14`" — so the scale's floor is the design
+  // system's floor, and these captions are the same size as every other piece
+  // of secondary text on the page.
+  @include govuk.govuk-font($size: 16);
+  color: govuk.govuk-colour("black", $variant: "tint-25");
+
+  > :nth-child(1) { text-align: left; }
+  > :nth-child(2) { text-align: center; }
+  > :nth-child(3) { text-align: right; }
+
+  // At 320px the three captions are 12 to 20 characters each in a column about
+  // 90px wide, which sets every one of them three words deep and makes the row
+  // taller than the control. The ends alone still say what the scale is, and the
+  // neutral mark is still drawn — the output below spells "as the assessment
+  // weighs it" out in full whenever the reader is on it.
+  @include govuk.govuk-media-query($until: tablet) {
+    > :nth-child(2) { display: none; }
+    grid-template-columns: 1fr 1fr;
+    > :nth-child(3) { grid-column: 2; }
+  }
+}
+
+// The value and its escape, on one line under the scale.
+.prt-range__read {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: govuk.govuk-spacing(1) govuk.govuk-spacing(3);
+  @include govuk.govuk-font($size: 16);
+  margin: govuk.govuk-spacing(1) 0 0;
+
+  output { font-variant-numeric: tabular-nums; }
+}

@@ -1,4 +1,135 @@
 @use "../govuk" as govuk;
 @use "../tokens" as *;
 
-// Reserved for the "diverge" change. Empty until it lands.
+// ── Centre-line bars for a two-direction count ─────────────────────────────
+//
+// Every length here is a percentage of half the plot, and the percentages come
+// from `divergeShares()` in `$lib/figures` where they can be tested. Nothing in
+// this file decides how long a bar is.
+.prt-diverge {
+  margin-bottom: govuk.govuk-spacing(5);
+
+  // THE LABEL COLUMN IS FIXED AND THE PLOT TAKES THE REST, so every row's centre
+  // rule lands on the same pixel. A label column sized to its content would put
+  // the centre somewhere different in each figure, and the whole point of the
+  // centre is that it is one line down the block.
+  &__head,
+  &__row {
+    display: grid;
+    grid-template-columns: minmax(0, 14rem) minmax(0, 1fr);
+    gap: 0 govuk.govuk-spacing(3);
+  }
+
+  &__head {
+    @include govuk.govuk-font($size: 16, $weight: bold);
+    grid-template-columns: minmax(0, 14rem) minmax(0, 1fr) minmax(0, 1fr);
+    margin: 0 0 govuk.govuk-spacing(1);
+  }
+
+  // Placed by hand rather than by auto-flow: two children in a three-column grid
+  // would land in the first two columns, which is the label column and half the
+  // plot — the two headings sitting where neither of the things they name is.
+  &__side {
+    grid-column: 2;
+
+    &--right {
+      grid-column: 3;
+      text-align: right;
+    }
+  }
+
+  &__rows {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+  }
+
+  &__row {
+    // PADDING RATHER THAN A ROW GAP, because the centre rule is drawn as each
+    // row's own left border: a gap between rows would break the one line the
+    // figure is read against into a column of dashes.
+    padding: govuk.govuk-spacing(1) 0;
+    align-items: stretch;
+  }
+
+  &__label {
+    @include govuk.govuk-font($size: 16);
+    align-self: center;
+    // A body's name is the longest thing on the row and wraps; the rule the
+    // bars are measured from does not move when it does.
+    overflow-wrap: anywhere;
+  }
+
+  &__plot {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+  }
+
+  &__half {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: govuk.govuk-spacing(1);
+    // The height a row keeps when both its counts are zero — an empty half
+    // either side of the rule is the finding, and a collapsed row hides it.
+    min-height: 26px;
+
+    &--right {
+      justify-content: flex-start;
+      // THE CENTRE RULE. A border rather than a background so it survives a
+      // print with background graphics off, and on the half rather than on the
+      // container so it runs the full height of every row.
+      border-left: 2px solid govuk.govuk-colour("black");
+      padding-left: govuk.govuk-spacing(1);
+    }
+  }
+
+  &__fill {
+    height: 14px;
+    flex: none;
+    background: govuk.govuk-colour("black", $variant: "tint-25");
+
+    // THE LIGHTER TONE CARRIES AN EDGE. `tint-80` is #cecece, 1.57:1 against the
+    // page — below the 3:1 a graphical object needs — so it is outlined in
+    // `tint-50` (#858686, 3.65:1), the same pairing the stress lab's boxes use.
+    // The tone is never the signal here in any case: the side of the rule, the
+    // two headings and the row's hidden sentence all carry the direction.
+    &--right {
+      background: govuk.govuk-colour("black", $variant: "tint-80");
+      border: 1px solid govuk.govuk-colour("black", $variant: "tint-50");
+    }
+  }
+
+  &__n {
+    @include govuk.govuk-font($size: 16, $weight: bold);
+    font-variant-numeric: tabular-nums;
+  }
+
+  // Below tablet `Figure` shows the table instead, so this is for a caller that
+  // draws the diagram on its own: the label goes above its own row rather than
+  // squeezing a body's name into a third of a phone.
+  @include govuk.govuk-media-query($until: tablet) {
+    &__head,
+    &__row {
+      grid-template-columns: minmax(0, 1fr);
+    }
+
+    &__side {
+      grid-column: 1;
+
+      &--right { grid-column: 1; }
+    }
+  }
+}
+
+@media print {
+  // A FILL IS A BACKGROUND, AND A BROWSER PRINTS NO BACKGROUNDS BY DEFAULT.
+  // `print-color-adjust: exact` is the declaration that asks for them anyway and
+  // is honoured by Chrome and Firefox; the outline is what happens where it is
+  // not, and it keeps the one thing that has to survive — the length.
+  .prt-diverge__fill {
+    print-color-adjust: exact;
+    -webkit-print-color-adjust: exact;
+    outline: 1px solid govuk.govuk-colour("black");
+  }
+}

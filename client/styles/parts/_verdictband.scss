@@ -1,4 +1,39 @@
 @use "../govuk" as govuk;
 @use "../tokens" as *;
 
-// Reserved for the "verdictband" change. Empty until it lands.
+// ── The exposure bar, above the spine ─────────────────────────────────────
+//
+// Measured off the rendered page at 1280×800, the bar that answers "where does
+// the exposure sit" opened at y=1372 — behind a masthead, a phase banner, a
+// status banner, the headline, the standing caveat, the selection banner, the
+// tab strip, a contents heading and a six-item contents list. Two screens down,
+// inside one of five panels, for a figure that is true of all five and is also
+// the page's only band picker.
+//
+// A PLAIN COMPONENT RULE, NOT THE PANEL/PACK PAIR. The `.govuk-tabs__panel X,
+// .prt-pack X` pairing exists for rules that override a framework class or use a
+// child combinator on the panel or pack root. This sits OUTSIDE both — above the
+// tab strip in the service and above the contents in the pack — so pairing it
+// would scope it to two places it never appears.
+.prt-verdictband {
+  margin-bottom: govuk.govuk-spacing(4);
+
+  // The bar is the widest thing on the page above the strip and it should read
+  // as part of the strip, not as a card floating over it.
+  .prt-stack { margin-bottom: govuk.govuk-spacing(2); }
+
+  &__say {
+    margin: 0;
+    max-width: none;
+  }
+
+  // ON PAPER IT IS THE FIRST FIGURE AND STILL THE RIGHT ONE. The print block
+  // hides the tab strip and un-hides all five panels, so this ends up directly
+  // above "Move 1" — which is where a printed report should open. Its buttons
+  // print as the segments they draw; only the base's `.govuk-button` rule is
+  // hidden, and these are not that.
+  @media print {
+    break-inside: avoid;
+    break-after: avoid;
+  }
+}

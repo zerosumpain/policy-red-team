@@ -1,4 +1,44 @@
 @use "../govuk" as govuk;
 @use "../tokens" as *;
 
-// Reserved for the "movement" change. Empty until it lands.
+// ── What the re-rank moved ────────────────────────────────────────────────
+//
+// Re-weighting is a large, real effect that the list reported in no way at all.
+// Measured against the 47 real plays: impact ×0 changes the position of 41 of
+// them and replaces four of the assessment's top ten, biggest move 12 places;
+// ease ×3 moves 35, biggest 15; incentive ×0 moves 36; concealment ×3 moves 36.
+// The only sign of any of it was ten cards silently swapping places.
+//
+// GLYPH AND TEXT, NEVER COLOUR. The up mark is not green and the down mark is
+// not red: the whole page's colour vocabulary is the four-step exposure ramp,
+// and a fifth, contradictory, red-green encoding on the same cards would be a
+// second meaning for colour that a third of readers cannot read and that
+// greyscale print loses entirely. Each mark carries its arrow AND a
+// visually-hidden "up 12 places".
+.prt-move {
+  @include govuk.govuk-font($size: 16);
+  font-variant-numeric: tabular-nums;
+  // The figures row wraps; a movement mark that wraps between its arrow and its
+  // number is two marks.
+  white-space: nowrap;
+  min-width: 4ch;
+  text-align: right;
+
+  // Up is the one worth noticing — a play that has climbed under the reader's
+  // own weighting is the reason they moved the slider — so it is the only one in
+  // full ink. Down and unmoved recede.
+  &--up { color: govuk.govuk-colour("black"); font-weight: 700; }
+  &--down,
+  &--same { color: govuk.govuk-colour("black", $variant: "tint-25"); }
+}
+
+// BELOW TABLET IT GETS ITS OWN LINE. `.prt-play__figures` already came to about
+// 260px on a 320px screen with three children, which is recorded in the base as
+// the 34px sideways scroll the walk caught; a fifth child is not going on that
+// row. `flex-basis: 100%` after a wrap is cheaper than re-declaring the row.
+@include govuk.govuk-media-query($until: tablet) {
+  .prt-move {
+    flex: 1 0 100%;
+    text-align: left;
+  }
+}

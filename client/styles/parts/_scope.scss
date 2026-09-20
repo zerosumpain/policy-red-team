@@ -1,4 +1,38 @@
 @use "../govuk" as govuk;
 @use "../tokens" as *;
 
-// Reserved for the "scope" change. Empty until it lands.
+// ── A section the selection does not reach ────────────────────────────────
+//
+// Verified live at four different selections: under `?sel=band:severe`,
+// `?sel=band:limited`, a mechanism and a body, the exposure scatter drew 47
+// marks every time and the band row printed "20 Severe 18 Significant 7
+// Moderate 2 Limited" every time — inside a panel whose banner said it was
+// narrowed, 400px below a ranked list that had correctly dropped to six cards.
+// Two figures in one panel, under one banner, disagreeing about what is shown.
+//
+// Some of those views can be narrowed and now are. The network, the stress lab
+// and the whole Provenance move cannot: they read the assessment, or the run,
+// rather than the plays. Those say so here.
+//
+// THE SAME INK AS THE BANNER, deliberately. A reader has already learnt that a
+// blue rule on grey is the page telling them what is being shown; this is the
+// same statement with the opposite sign, and giving it a second visual language
+// would make it a third kind of notice to learn.
+.prt-scope {
+  @include govuk.govuk-font($size: 16);
+  border-left: 5px solid govuk.govuk-colour("blue");
+  background: govuk.govuk-colour("black", $variant: "tint-95");
+  padding: govuk.govuk-spacing(2) govuk.govuk-spacing(3);
+  margin: 0 0 govuk.govuk-spacing(4);
+  max-width: none;
+
+  // What is selected, after the disclaimer. Quieter than the sentence it
+  // qualifies, because the reader has read it once already at the top of the
+  // page and needs it here only as a reminder of which filter is being excused.
+  &__what { color: govuk.govuk-colour("black", $variant: "tint-25"); }
+
+  // IT MATTERS MORE ON PAPER, NOT LESS. The base's print block hides the
+  // selection banner outright, so a printed copy of a narrowed report carries no
+  // statement of what was narrowed at all — and paper is the one reading where
+  // nobody can scroll up to check. This stays.
+}

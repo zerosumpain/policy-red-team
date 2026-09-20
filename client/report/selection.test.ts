@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import { artefact } from '$lib/policy-analysis/contracts';
-import { describeSelection, filterPlays, isEmptyUnder, mechanismIdsOf, mechanismOf, narrowExcept } from './selection';
+import {
+  describeSelection, filterPlays, isEmptyUnder, mechanismIdsOf, mechanismOf, mechanismsOf,
+  narrowExcept, nothingUnder, parseSelection,
+} from './selection';
 import type { Play } from '$lib/policy-analysis/view';
 
 /**
@@ -96,5 +99,74 @@ describe('a picker never narrows by its own kind', () => {
     // plays when only one of them is severe.
     const severe = narrowExcept(list, { kind: 'band', id: 'severe' }, ids, 'mechanism');
     expect(severe.map((p) => p.artefact.id)).toEqual(['p1', 'p3']);
+  });
+});
+
+describe('the mechanisms a play cites, all of them', () => {
+  it('returns every mechanism in refs, not only the first', () => {
+    // `mechanismOf` answers "which one does it hang off"; coverage needs all of
+    // them. On the real run 14 plays cite two mechanisms, 11 cite three and 6
+    // cite four, so a first-ref count attributes 42 citations where the run
+    // recorded 108.
+    const both = play('p5', 'severe', 'a1', ['as1', 'm2', 'a1', 'm1']);
+    expect(mechanismsOf(both, ids)).toEqual(['m2', 'm1']);
+  });
+
+  it('keeps the play’s own order and never repeats an id', () => {
+    expect(mechanismsOf(play('p6', 'severe', null, ['m1', 'm1', 'm2']), ids)).toEqual(['m1', 'm2']);
+  });
+
+  it('returns an empty array for a play that cites none', () => {
+    expect(mechanismsOf(list[3], ids)).toEqual([]);
+  });
+});
+
+describe('a selection in a URL resolves to the right KIND of thing', () => {
+  const artefacts = [
+    ...mechanisms,
+    artefact('a1', 'actor', 'Ofsted', 'x', {}, { refs: [] }),
+    artefact('x1', 'exploit', 'Selective specialisation', 'x', {}, { refs: [] }),
+  ];
+
+  it('resolves a mechanism id to a mechanism', () => {
+    expect(parseSelection('mechanism:m1', artefacts)).toEqual({ kind: 'mechanism', id: 'm1', label: 'Mechanism m1' });
+  });
+
+  it('refuses a PLAY id dressed as a mechanism', () => {
+    // Loaded live as `?sel=mechanism:s10_000_exploit_001`, this rendered the
+    // banner "Showing what follows from “Selective specialisation…”" — a play's
+    // label presented as a mechanism — over two lists narrowed to nothing.
+    expect(parseSelection('mechanism:x1', artefacts)).toBeNull();
+    expect(parseSelection('actor:m1', artefacts)).toBeNull();
+  });
+
+  it('still refuses an id that is not in the run at all', () => {
+    expect(parseSelection('mechanism:nothing', artefacts)).toBeNull();
+    expect(parseSelection('band:enormous', artefacts)).toBeNull();
+  });
+});
+
+describe('saying why a list is empty, in the banner’s own verbs', () => {
+  it('names the band, the mechanism or the body', () => {
+    expect(nothingUnder({ kind: 'band', id: 'limited' })).toBe('No play here has limited exposure.');
+    expect(nothingUnder({ kind: 'mechanism', id: 'm1', label: 'Parliamentary presentation' }))
+      .toBe('No play here follows from “Parliamentary presentation”.');
+    expect(nothingUnder({ kind: 'actor', id: 'a1', label: 'Ofsted' })).toContain('positioned to run');
+  });
+
+  it('says nothing when nothing is selected', () => {
+    expect(nothingUnder(null)).toBe('');
+  });
+});
+
+describe('the two play lists narrow by a band, which they did not', () => {
+  it('filterPlays honours a band where narrowExcept(…, “band”) cancels it', () => {
+    // THE DEFECT: both leads called `narrowExcept(list, selection, ids, 'band' as
+    // never)`, which returns the list UNFILTERED under a band selection. Live at
+    // ?sel=band:limited — two limited plays in the run — the heading read "Read
+    // these first, under this selection" over three severe cards.
+    const band = { kind: 'band', id: 'limited' } as const;
+    expect(narrowExcept(list, band, ids, 'band')).toBe(list);
+    expect(filterPlays(list, band, ids).map((p) => p.artefact.id)).toEqual(['p4']);
   });
 });

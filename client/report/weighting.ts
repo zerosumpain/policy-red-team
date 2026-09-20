@@ -62,3 +62,58 @@ export function weightedExposure(play: Play, weights: Weights): number {
   const total = parts.reduce((n, p) => n + p.weight, 0);
   return Math.exp(parts.reduce((sum, p) => sum + p.weight * Math.log(p.value), 0) / total);
 }
+
+/** 1st, 2nd, 3rd, 4th — for a sentence that names a rank rather than printing it. */
+export function ordinal(n: number): string {
+  const tens = n % 100;
+  if (tens >= 11 && tens <= 13) return `${n}th`;
+  return `${n}${['th', 'st', 'nd', 'rd'][n % 10] ?? 'th'}`;
+}
+
+/**
+ * WHAT THE RE-RANK ACTUALLY DID, as numbers rather than as a list that silently
+ * re-orders.
+ *
+ * Measured by running `weightedExposure` above over the real 47 plays: impact ×0
+ * changes the position of 41 of them and replaces four of the assessment's top
+ * ten, biggest move 12 places; ease ×3 moves 35, biggest 15; incentive ×0 moves
+ * 36, biggest 10; concealment ×3 moves 36, biggest 11. That is a large, real
+ * effect, and before this the only sign of it was ten cards swapping places and
+ * a second decimal on each one.
+ *
+ * MEASURED INSIDE WHAT IS ON SCREEN. `base` must be the list the reader can see
+ * — the NARROWED one — not the whole run: under a mechanism selection the list
+ * is six plays, and arrows drawn against all 47 would tell a reader a play moved
+ * nine places when it moved one.
+ *
+ * A PLAY THAT WAS NOT IN THE BASE GETS NO ARROW. It has not moved from anywhere;
+ * saying it rose from the end of a list it was never in would be an invention.
+ *
+ * Here rather than in the component because it is arithmetic the sentence on the
+ * page is only as true as, and a component is not a thing this repo can test.
+ */
+export function rankMovement(base: Play[], ranked: Play[]): {
+  /** How many plays sit at a different index than they did. */
+  moved: number;
+  /** The biggest single move, in places. */
+  furthest: number;
+  /** Where the play now at the top used to be, 1-based; 0 when it was not in the base list. */
+  leaderWas: number;
+  /** Per-play, positive for a move up the list. Absent where the play was not in the base. */
+  places: Map<string, number>;
+} {
+  const was = new Map(base.map((play, i) => [play.artefact.id, i]));
+  const places = new Map<string, number>();
+  let moved = 0;
+  let furthest = 0;
+  ranked.forEach((play, i) => {
+    const before = was.get(play.artefact.id);
+    if (before === undefined) return;
+    const delta = before - i;
+    places.set(play.artefact.id, delta);
+    if (delta !== 0) moved += 1;
+    if (Math.abs(delta) > furthest) furthest = Math.abs(delta);
+  });
+  const leader = ranked.length ? was.get(ranked[0].artefact.id) : undefined;
+  return { moved, furthest, leaderWas: leader === undefined ? 0 : leader + 1, places };
+}

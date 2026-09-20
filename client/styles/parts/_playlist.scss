@@ -1,4 +1,145 @@
 @use "../govuk" as govuk;
 @use "../tokens" as *;
 
-// Reserved for the "playlist" change. Empty until it lands.
+// ── The play card's new parts ─────────────────────────────────────────────
+//
+// `_base.scss` owns the card itself. What is here is what the card grew when
+// the report stopped hiding the three fields every play carries and started
+// saying how far apart two exposures really are.
+
+// A RANK THAT IS SHARED SAYS SO.
+//
+// Ranks 7 and 8 on the Post-16 run are not close, they are identical: both
+// plays store 0.7388, so the order between "Optimise measured participation and
+// completion" and "Rebase visible progress toward activity measures" is whatever
+// `sort` left. Printed to two decimals four rows read 0.75 and four read 0.74,
+// which makes every one of them look like a tie and the only real one look like
+// nothing. The `=` is the mark a league table has used for this for a century;
+// it is never the only signal, because the sentence under the heading says it in
+// words as well.
+.prt-play__rank--tied {
+  // The equals sign is not a digit and `tabular-nums` gives it a digit's width,
+  // so "=7" sat a character narrower than "10" and the column went ragged at
+  // exactly the rows the reader is being asked to compare.
+  font-variant-numeric: normal;
+  letter-spacing: -0.02em;
+}
+
+// THE EXPOSURE FIGURE BECOMES A LENGTH, AND THE LENGTH LEAVES ON A PHONE.
+//
+// `.prt-play__figures` is a wrapping flex row whose three existing children
+// already come to about 260px, which pushed a 320px page 34px sideways once
+// before and is recorded in the base as the reason the row wraps at all. So the
+// track is a fixed, small, non-growing box from tablet up and is simply absent
+// below it — where the row has always carried the bare number and still does.
+// `Bar` prints the figure beside the track in both cases, so nothing is ever
+// read off length alone.
+.prt-play__exposure {
+  .prt-bar {
+    display: inline-flex;
+    gap: govuk.govuk-spacing(1);
+  }
+
+  .prt-bar__track {
+    flex: 0 0 auto;
+    width: 64px;
+    min-width: 0;
+    // The card's own background is tint-95, which is the track's colour: on a
+    // play card the empty half of the track was invisible and the bar read as a
+    // floating dash rather than as a share of something.
+    background: govuk.govuk-colour("black", $variant: "tint-80");
+  }
+
+  @include govuk.govuk-media-query($until: tablet) {
+    .prt-bar__track { display: none; }
+  }
+}
+
+// WHAT IT WOULD COST, HOW YOU WOULD SPOT IT, WHAT WOULD CLOSE IT.
+//
+// All three are on 47 of 47 plays and the report rendered none of them outside
+// the drill, which the offline pack does not have. The disclosure spans the
+// card's full width: the ranked card is a three-column grid (`auto minmax(0,
+// 1fr) auto`) and a fourth child without this lands in the rank column, 3ch
+// wide, and sets 260 characters of prose one word per line.
+.prt-play__closing {
+  grid-column: 1 / -1;
+
+  .govuk-details { margin-bottom: 0; }
+
+  // The framework indents a details body by 20px and rules it on the left. On a
+  // card that already carries a 6px band edge that is a second rule 3px from the
+  // first, saying something different.
+  .govuk-details__text {
+    border-left: 0;
+    padding-left: 0;
+    margin-top: govuk.govuk-spacing(1);
+  }
+}
+
+.prt-play__closing-line {
+  margin-bottom: govuk.govuk-spacing(2);
+
+  &:last-child { margin-bottom: 0; }
+}
+
+// The field's name, so three paragraphs of similar-looking policy prose are
+// three answers to three questions rather than one long one.
+.prt-play__closing-label {
+  display: block;
+  @include govuk.govuk-font($size: 16, $weight: bold);
+}
+
+// ── A list the selection emptied ──────────────────────────────────────────
+//
+// The exit is put beside the consequence: measured at 320px the document is
+// 130,015px, the banner that carries the only "clear" control sits at y=990, and
+// the Threats panel starts at y=29,507.
+.prt-none {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: govuk.govuk-spacing(2) govuk.govuk-spacing(3);
+  border-left: 5px solid govuk.govuk-colour("blue");
+  background: govuk.govuk-colour("black", $variant: "tint-95");
+  padding: govuk.govuk-spacing(3);
+  margin-bottom: govuk.govuk-spacing(4);
+
+  // The same treatment as `.prt-selection`, deliberately: this sentence and the
+  // banner's sentence are about the same thing, and a reader who has learnt that
+  // a blue-ruled grey box states the filter should not have to learn it twice.
+  .prt-none__says { margin: 0; max-width: none; flex: 1 1 auto; }
+  .govuk-button { margin: 0; }
+}
+
+// ── What the reader's own weighting was, on paper ─────────────────────────
+//
+// Measured in print emulation with Ease at ×3: `.prt-weights` is hidden by the
+// base's print block, the selection banner is hidden, the tab strip is hidden —
+// and ten `.prt-play__yours` figures print with nothing on the page saying what
+// produced them. Print is the one reading where a reader cannot scroll up to
+// check, so the record is written as a sentence that exists only there. The
+// sliders stay hidden; a printed range input is noise.
+.prt-weights__printed { display: none; }
+
+@media print {
+  // A CONTROL ON PAPER IS NOISE, AND THIS ONE IS ALREADY OBEYED. `Checkboxes`
+  // renders a `<fieldset>`, not a `<form>`, so the base's `form { display: none }`
+  // never matched it — the stress lab's lever rail was measured printing for
+  // exactly this reason. The printed copy carries every play's three closing
+  // fields whatever the box says, because the disclosures are always in the
+  // document and the print block forces every `details` open, so a tick box on
+  // paper would be a control describing a state the paper does not have.
+  .prt-counters-toggle { display: none !important; }
+
+  .prt-weights__printed {
+    display: block;
+    @include govuk.govuk-font($size: 16);
+    margin-bottom: govuk.govuk-spacing(3);
+  }
+
+  // A play card is 47 rows of prose once the disclosures are forced open, and
+  // the base already asks the browser not to split one. The figures row has no
+  // meaning split from its title either.
+  .prt-play__figures { break-inside: avoid; }
+}

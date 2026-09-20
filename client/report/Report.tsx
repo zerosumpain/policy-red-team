@@ -1,5 +1,5 @@
 import {
-  BAND_LABEL, actorBoard, bandCounts, checks, evidenceMix, findingsBySection,
+  actorBoard, bandCounts, checks, evidenceMix, findingsBySection,
   headlineSentence, interplay, ledger, personaBoard, plays, recommendations, summarise, tiles,
 } from '$lib/policy-analysis/view';
 import type { Artefact } from '$lib/policy-analysis/contracts';
@@ -10,7 +10,7 @@ import { stageFacts } from '$lib/policy-analysis/stage-facts';
 import type { Detail } from '../api';
 import { Details, InsetText, SummaryList, Table, Tabs } from '../govuk';
 import { mechanismIdsOf, narrowExcept, parseSelection, selectionParam, type Selection } from './selection';
-import { readable } from './warnings';
+import { byReason, readable } from './warnings';
 import { Bar, Metrics } from './Metrics';
 import { WriteUp } from './WriteUp';
 import { TestResult } from './TestResult';
@@ -25,6 +25,10 @@ import { NetworkSection } from './Network';
 import { StressLab } from './StressLab';
 import { Shares } from './Shares';
 import { Addenda, AddendumNotice } from './Addenda';
+import { ExposureRail } from './ExposureRail';
+import { ExposureSpread } from './ExposureSpread';
+import { Counters } from './Counters';
+import { NoneUnder, ScopeNote } from './moves/NoneUnder';
 
 /**
  * The report.
@@ -319,6 +323,34 @@ export function Report({ detail, offline, linkTo, onChanged }: {
   const sectionFindings = findingsBySection(artefacts);
   const recs = recommendations(artefacts);
   const bands = bandCounts(list);
+  /*
+   * NARROWED, EXCEPT BY A BAND — the plays the Threats figures actually show.
+   *
+   * The band row and the scatter under "Ease against impact" read the RAW list.
+   * Measured live under `?sel=band:severe`, `?sel=band:limited`, a mechanism and
+   * a body: the plot drew 47 circles every time and the row printed 20/18/7/2
+   * every time, inside a panel whose banner said it was narrowed, 400px below a
+   * ranked list that had correctly dropped to six.
+   *
+   * `'band'` is the own-kind here because the row is how a reader READS the
+   * distribution, not how they pick from it — the rail above the tabs is the
+   * picker. That is an honest use of `narrowExcept`; the two the leads used were
+   * not, and are gone.
+   */
+  const shownPlays = useMemo(
+    () => narrowExcept(list, selection, mechanismIds, 'band'),
+    [list, selection, mechanismIds],
+  );
+  /*
+   * 47 PLAYS IS 47 OF 73. The run refused 26 exploitation plays for resting on
+   * something other than an assumption — the largest single row `byReason()`
+   * returns, and the same row the Provenance panel states in words. "47 plays"
+   * with no denominator is exactly the overclaim that panel exists to prevent.
+   */
+  const playsWritten = useMemo(() => {
+    const refused = byReason(warnings).find((row) => /exploitation play/i.test(row.reason))?.count ?? 0;
+    return refused ? list.length + refused : 0;
+  }, [warnings, list]);
   const mix = evidenceMix(artefacts);
   const structural = checks(artefacts);
   /**
@@ -382,12 +414,29 @@ export function Report({ detail, offline, linkTo, onChanged }: {
    * Pushed FIRST, in move order, because `inMove()` preserves push order and
    * the lead is the head of its panel.
    */
-  lead('exposure-profile', 'Where the exposure sits', 'verdict',
+  lead('exposure-profile', 'Read these first', 'verdict',
     <VerdictLead list={list} bands={bands} selection={selection} onSelect={setSelection} mechanismIds={mechanismIds} linkTo={linkTo} />);
+  /*
+   * THE SHAPE UNDERNEATH THE FOUR BANDS. The rail says twenty of the forty-seven
+   * plays are severe; measured on this run the cut it used has 0.0039 between
+   * the plays either side of it while the next cut down has 0.0847, and 38 of
+   * the 47 sit inside 23% of the scale. It reads the same `list` and holds no
+   * selection of its own — the rail keeps that job.
+   */
+  section('spread', 'How the exposure is spread', 'verdict', <ExposureSpread list={list} />);
+
   lead('mechanisms', 'The mechanisms that generate the most plays', 'causality',
     <CausalityLead artefacts={artefacts} list={list} selection={selection} onSelect={setSelection} mechanismIds={mechanismIds} linkTo={linkTo} />);
-  lead('weights', 'Rank by what you care about', 'threats',
-    <ThreatsLead list={list} selection={selection} mechanismIds={mechanismIds} linkTo={linkTo} />);
+  lead('weights', 'Ways to beat it', 'threats',
+    <ThreatsLead
+      list={list}
+      selection={selection}
+      mechanismIds={mechanismIds}
+      linkTo={linkTo}
+      onClear={() => setSelection(null)}
+      written={playsWritten}
+      onProvenance={() => goTo('provenance', 'discarded')}
+    />);
   /*
    * MOVE 4 GETS THE LEAD IT NEVER HAD. The other three each open with one; this
    * one opened with a twelve-row table, which is why its panel measured 919px
@@ -397,7 +446,13 @@ export function Report({ detail, offline, linkTo, onChanged }: {
   lead('interplay', 'Who is coming for what', 'actors',
     <ActorsLead interplay={interplayMap} personas={personaGroups} linkTo={linkTo} />);
   lead('discarded', 'What was discarded, and why', 'provenance',
-    <ProvenanceLead stages={stages} />);
+    <>
+      {/* The one panel that is about the RUN and not the paper, under a banner
+          that says the whole report is narrowed. It wraps rather than edits
+          because `ProvenanceLead` belongs to another change tonight. */}
+      <ScopeNote selection={selection} subject="the run, not the paper" />
+      <ProvenanceLead stages={stages} />
+    </>);
 
   /*
    * FIGURES, DRAWN AS FIGURES. This was a two-column summary list, so the
@@ -415,37 +470,33 @@ export function Report({ detail, offline, linkTo, onChanged }: {
     />
   );
 
-  section('plays', 'Ways to beat it', 'threats', list.length ? (
+  /*
+   * NAMED AFTER WHAT IS IN IT. This section was called "Ways to beat it" and
+   * contained no ways to beat it — the forty-seven plays are in the lead above,
+   * which is now called that. What is actually here is the scatter, so that is
+   * the name.
+   *
+   * THE BAND ROW IS GONE. It restated the rail's own figure in a third place,
+   * and did it from the UNNARROWED `bands` — so it printed 20/18/7/2 under a
+   * banner saying the panel was filtered.
+   *
+   * The method sentence goes with it: the geometric mean is now explained once,
+   * on the figure that draws the four judgements, rather than in each of the
+   * four places a reader passes through in one session.
+   */
+  section('plays', 'Ease against impact', 'threats', list.length ? (
     <>
-      <p className="govuk-body">
-        Ranked by the geometric mean of four judgements — incentive, ease, impact and
-        concealment. A mean rather than an average because a play that scores high on three
-        and near zero on one is not a threat, and an average would hide that.
-      </p>
-      {/*
-        ONE RAMP, NOT TWO. These were GOV.UK Tags — red, orange, grey — which is
-        a THIRD colouring of the same four bands, disagreeing with the card
-        borders, the stacked bar, the mechanism segments and the plot, all of
-        which use the assessment's own ramp. Four bands cannot be red-orange-grey
-        here and purple-to-pink everywhere else and still mean one thing.
-      */}
-      <p className="prt-bandrow">
-        {bands.map((band) => (
-          <span key={band.band} className={`prt-band prt-band--${band.band}`}>
-            {band.count} {BAND_LABEL[band.band]}
-          </span>
-        ))}
-      </p>
-      {/*
-        THE PLAYBOOK TABLE IS GONE, and nothing was lost with it.
-        Move 3 printed the same forty-seven plays twice: once as the ranked
-        cards above, in full, and again here as the worst twenty in five
-        columns so narrow that "Department for Education" set as "Departme / nt
-        for / Educatio / n" and "compliant" as "compli / ant". The only column
-        the cards did not carry was legality, which they now do.
-      */}
-      <h3 className="govuk-heading-m">Ease against impact</h3>
-      <ExposurePlot plays={list} linkTo={linkTo} />
+      {shownPlays.length
+        ? <ExposurePlot plays={shownPlays} linkTo={linkTo} />
+        : <NoneUnder selection={selection} onClear={() => setSelection(null)} />}
+      <Counters
+        list={list}
+        artefacts={artefacts}
+        mechanismIds={mechanismIds}
+        selection={selection}
+        onSelect={setSelection}
+        linkTo={linkTo}
+      />
     </>
   ) : null);
 
@@ -569,11 +620,17 @@ export function Report({ detail, offline, linkTo, onChanged }: {
   ) : null);
 
   section('network', 'How they connect', 'causality', net.edges.length ? (
-    <NetworkSection net={net} artefacts={artefacts} linkTo={linkTo} />
+    <>
+      <ScopeNote selection={selection} subject="the whole assessment" />
+      <NetworkSection net={net} artefacts={artefacts} linkTo={linkTo} />
+    </>
   ) : null);
 
   section('stress', 'What if we are wrong', 'threats', levers.length ? (
-    <StressLab artefacts={artefacts} levers={levers} linkTo={linkTo} />
+    <>
+      <ScopeNote selection={selection} subject="the whole assessment" />
+      <StressLab artefacts={artefacts} levers={levers} linkTo={linkTo} />
+    </>
   ) : null);
 
   /*
@@ -947,8 +1004,36 @@ export function Report({ detail, offline, linkTo, onChanged }: {
    * makes the same grouping the order of the page. `sort` on a copy, and stable,
    * so within a move the order is the order the sections were written in.
    */
+  /**
+   * The order a move is READ in, stated rather than implied.
+   *
+   * Reading order used to be the order the `section(...)` calls happen to appear
+   * in this file, which is grouped by what was convenient to compute when. On
+   * Verdict that put "What it suggests" — the only section a reader can act on —
+   * 5,400px down, behind 2,250px of write-up, and left the panel's opening
+   * figure 1,372px below its own heading.
+   *
+   * Moving the calls would have moved two hundred lines of JSX to express six
+   * words. This says the six words. An id not named here keeps its push
+   * position, after everything that is named, so adding a section never
+   * silently reorders the page.
+   */
+  const READING_ORDER: Partial<Record<Move, string[]>> = {
+    verdict: ['exposure-profile', 'spread', 'suggests', 'writeup', 'checks', 'evidence', 'found'],
+  };
+  const inMove = (move: Move) => {
+    const rows = sections.filter((entry) => entry.move === move);
+    const order = READING_ORDER[move];
+    if (!order) return rows;
+    const rank = (id: string) => (order.indexOf(id) === -1 ? order.length : order.indexOf(id));
+    return rows
+      .map((row, pushed) => ({ row, pushed }))
+      .sort((a, b) => rank(a.row.id) - rank(b.row.id) || a.pushed - b.pushed)
+      .map((entry) => entry.row);
+  };
+
   const ordered = offline
-    ? [...sections].sort((a, b) => MOVE_ORDER.indexOf(a.move) - MOVE_ORDER.indexOf(b.move))
+    ? MOVE_ORDER.flatMap((move) => inMove(move))
     : sections;
 
   if (offline) {
@@ -975,6 +1060,9 @@ export function Report({ detail, offline, linkTo, onChanged }: {
             body&rsquo;s incentives — never a finding about a named person.
           </p>
         </div>
+        {/* THE PACK GETS THE RAIL TOO, or the pack loses the bar outright — the
+            one figure that says how much of this there is. */}
+        <ExposureRail bands={bands} total={list.length} selection={selection} onSelect={setSelection} />
         <Contents sections={ordered} />
         {ordered.map((entry) => (entry.bare ? (
           /* It draws its own section and its own heading; a wrapper here would
@@ -1011,7 +1099,6 @@ export function Report({ detail, offline, linkTo, onChanged }: {
     );
   }
 
-  const inMove = (move: Move) => sections.filter((entry) => entry.move === move);
   const panel = (move: Move) => (
     <>
       {/*
@@ -1051,6 +1138,15 @@ export function Report({ detail, offline, linkTo, onChanged }: {
           body&rsquo;s incentives — never a finding about a named person.
         </p>
       </div>
+
+      {/*
+        ABOVE THE SPINE, BECAUSE IT IS TRUE OF ALL FIVE MOVES. The bar was inside
+        the Verdict panel, 1,372px down, behind the contents list — so the figure
+        that answers "how much of this is there" was visible on one tab out of
+        five and only after scrolling. It is also the band picker, and a picker
+        that lives inside one panel cannot be used from the other four.
+      */}
+      <ExposureRail bands={bands} total={list.length} selection={selection} onSelect={setSelection} />
 
       <SelectionBanner selection={selection} onClear={() => setSelection(null)} />
 

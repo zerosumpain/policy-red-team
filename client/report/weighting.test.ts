@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { exposureOf } from '$lib/policy-analysis/exposure';
 import { FACTOR_KEYS, type Play } from '$lib/policy-analysis/view';
 import { artefact } from '$lib/policy-analysis/contracts';
-import { EQUAL, isEqual, weightedExposure } from './weighting';
+import { EQUAL, isEqual, ordinal, rankMovement, weightedExposure } from './weighting';
 
 /**
  * THE RE-RANKING MUST REPRODUCE THE ASSESSMENT AT EQUAL WEIGHTS.
@@ -65,5 +65,67 @@ describe('re-weighting', () => {
   it('knows when it is not re-weighting', () => {
     expect(isEqual(EQUAL)).toBe(true);
     expect(isEqual({ ...EQUAL, ease: 2 })).toBe(false);
+  });
+});
+
+describe('what the re-rank did', () => {
+  /**
+   * The panel's whole claim is "this changes the order you read in", and the
+   * order change was the one thing it never reported. What it reports now is
+   * counted rather than described, so the sentence on the page is only as true
+   * as this function.
+   */
+  const row = (id: string): Play => ({
+    artefact: artefact(id, 'exploit', `Play ${id}`, 'x', {}, { refs: [] }),
+    actor: null,
+    band: 'severe',
+    exposure: 0.5,
+    factors: [],
+  });
+  const [a, b, c, d] = ['a', 'b', 'c', 'd'].map(row);
+
+  it('reports nothing moved when the order is unchanged', () => {
+    const move = rankMovement([a, b, c], [a, b, c]);
+    expect(move.moved).toBe(0);
+    expect(move.furthest).toBe(0);
+    expect(move.leaderWas).toBe(1);
+    expect([...move.places.values()]).toEqual([0, 0, 0]);
+  });
+
+  it('counts the plays that moved and the furthest single move', () => {
+    // c climbs two places; a and b each fall one.
+    const move = rankMovement([a, b, c], [c, a, b]);
+    expect(move.moved).toBe(3);
+    expect(move.furthest).toBe(2);
+    expect(move.places.get('c')).toBe(2);
+    expect(move.places.get('a')).toBe(-1);
+  });
+
+  it('names where the new leader used to be, one-based', () => {
+    expect(rankMovement([a, b, c, d], [d, a, b, c]).leaderWas).toBe(4);
+  });
+
+  it('gives no arrow to a play that was not in the list it is measured against', () => {
+    // The base is the NARROWED list, so under a selection a play can be in the
+    // ranked output and not in the base. "Rose from the end of a list it was
+    // never in" is an invention, so it gets nothing.
+    const move = rankMovement([a, b], [c, a, b]);
+    expect(move.places.has('c')).toBe(false);
+    expect(move.leaderWas).toBe(0);
+    expect(move.moved).toBe(2);
+  });
+
+  it('survives an empty ranking without inventing a leader', () => {
+    expect(rankMovement([], []).leaderWas).toBe(0);
+  });
+});
+
+describe('naming a rank in a sentence', () => {
+  it('uses the English suffix', () => {
+    expect([1, 2, 3, 4, 21, 22, 23].map(ordinal)).toEqual(['1st', '2nd', '3rd', '4th', '21st', '22nd', '23rd']);
+  });
+
+  it('does not say 11st, 12nd or 13rd', () => {
+    expect([11, 12, 13].map(ordinal)).toEqual(['11th', '12th', '13th']);
   });
 });

@@ -6,6 +6,9 @@ import {
 } from '../govuk';
 import { usePageTitle } from '../layout/Template';
 import { BarChart, Figure } from '../report/Figure';
+import { Matrix } from '../report/Matrix';
+import { Diverge } from '../report/Diverge';
+import { Strip } from '../report/Strip';
 
 /**
  * Every component, on one page, with the content it will actually carry.
@@ -172,6 +175,67 @@ export function Gallery() {
             ]}
           />
         }
+      />
+
+      <h2 className="govuk-heading-l govuk-!-margin-top-8">Grids, directions and distributions</h2>
+      <p className="govuk-body">
+        Three figures the report draws for itself: a grid where a row against a column is a fact,
+        two bars either side of a centre rule where a count runs in two directions, and a strip of
+        every value on one axis with the cuts through it drawn. They are carried here for the same
+        reason the bar chart above is — the static accessibility check walks this page on every
+        run, and the report they belong to needs an assessment to exist.
+      </p>
+
+      <Matrix
+        rows={[
+          { id: 'starts', label: 'Priority-course starts measure' },
+          { id: 'align', label: 'Priority-course alignment' },
+          { id: 'progress', label: 'Provider progress accountability' },
+        ]}
+        cols={[
+          { id: 'dfe', label: 'Department for Education' },
+          { id: 'gov', label: 'Government' },
+          { id: 'hep', label: 'Higher education providers' },
+        ]}
+        corner="Part of the policy / body →"
+        caption="Which body is aimed at which part"
+        note="87 further parts are under pressure from at least one play."
+        emptyText="No play"
+        cell={(row, col) => (row.id === 'align' && col.id === 'hep'
+          ? null
+          : { text: '2', band: 'severe', sentence: `${row.label}, ${col.label}, 2 plays, worst band severe` })}
+      />
+
+      <Diverge
+        rows={[
+          { id: 'universities', label: 'Universities', left: 7, right: 3 },
+          { id: 'ofs', label: 'Office for Students', left: 9, right: 0 },
+          { id: 'parliament', label: 'Parliamentary presentation', left: 0, right: 6 },
+        ]}
+        leftLabel="issues"
+        rightLabel="receives"
+        label="which entities issue relationships and which receive them"
+        tableLabel="Entity"
+        caption="Just 1 of the 120 things this paper connects appears at both ends of an arrow."
+      />
+
+      <Strip
+        values={[
+          { id: 'a', label: 'Minimum observable compliance', value: 0.77 },
+          { id: 'b', label: 'Visible collaboration, minimal change', value: 0.76 },
+          { id: 'c', label: 'Shape or withhold information', value: 0.75 },
+          { id: 'd', label: 'Selective reporting', value: 0.69 },
+          { id: 'e', label: 'Slow the return', value: 0.46 },
+          { id: 'f', label: 'Record the objection', value: 0.05 },
+        ]}
+        cuts={[0.7, 0.5, 0.3]}
+        regions={[
+          { label: 'Severe 3', from: 0.7, to: 1 },
+          { label: 'Significant 1', from: 0.5, to: 0.7 },
+          { label: 'Moderate 1', from: 0.3, to: 0.5 },
+          { label: 'Limited 1', from: 0, to: 0.3 },
+        ]}
+        label="Six plays at their exposure on a scale of 0 to 1, with the three band cuts marked."
       />
 
       <h2 className="govuk-heading-l govuk-!-margin-top-8">Telling the reader something</h2>

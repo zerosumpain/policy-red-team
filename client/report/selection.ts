@@ -36,6 +36,27 @@ export function describeSelection(selection: Selection): string {
 }
 
 /**
+ * The same subject, in the negative, for a list the selection emptied.
+ *
+ * A blank where a list was is the one state that reads as a broken page rather
+ * than an answer. `?sel=mechanism:s1_000_mechanism_001` — "Parliamentary
+ * presentation", one of the 110 of 151 mechanisms no play cites — renders two
+ * empty leads and a "0 plays" status line on the real run, so this is reachable
+ * from any shared or stale link, not a theoretical state.
+ *
+ * IT USES THE BANNER'S OWN VERBS. "follows from" for a mechanism, "positioned to
+ * run" for a body: a reader who has just read `describeSelection` at the top of
+ * the page should meet the same relationship worded the same way, or the two
+ * sentences read as being about two different filters.
+ */
+export function nothingUnder(selection: Selection): string {
+  if (!selection) return '';
+  if (selection.kind === 'band') return `No play here has ${BAND_LABEL[selection.id].toLowerCase()} exposure.`;
+  if (selection.kind === 'mechanism') return `No play here follows from “${selection.label}”.`;
+  return `No play here is one “${selection.label}” is positioned to run.`;
+}
+
+/**
  * The mechanism a play hangs off, if any.
  *
  * A play cites the mechanism it exploits in `refs`, so the link is already in
@@ -46,6 +67,29 @@ export function describeSelection(selection: Selection): string {
 export function mechanismOf(play: Play, mechanismIds: Set<string>): string | null {
   for (const ref of play.artefact.refs) if (mechanismIds.has(ref)) return ref;
   return null;
+}
+
+/**
+ * EVERY mechanism a play cites, not just the first one.
+ *
+ * `mechanismOf` answers "which mechanism does this play hang off", which is the
+ * right question for a single-parent grouping and the wrong one for coverage.
+ * Measured over the 47 plays on the Post-16 run: 11 cite one mechanism, 14 cite
+ * two, 11 cite three and 6 cite four — so a count built on the first ref alone
+ * attributes 42 plays where the run recorded 108 citations, and a mechanism that
+ * is a play's second reference looks, to the reader, like a mechanism no play
+ * touches.
+ *
+ * De-duplicated and in the order the play wrote them, because `refs` may name
+ * the same mechanism twice and a caller rendering these as a list must not print
+ * it twice.
+ */
+export function mechanismsOf(play: Play, mechanismIds: Set<string>): string[] {
+  const found: string[] = [];
+  for (const ref of play.artefact.refs) {
+    if (mechanismIds.has(ref) && !found.includes(ref)) found.push(ref);
+  }
+  return found;
 }
 
 /**
@@ -92,6 +136,22 @@ export function isEmptyUnder(list: Play[], selection: Selection, mechanismIds: S
  *
  * Written down here rather than repeated in three components because it was not
  * written down at all in the first cut, and all three got it differently.
+ *
+ * ONLY A PICKER CALLS THIS. A list that sets no selection of its own wants
+ * `filterPlays`, and calling this instead is the defect that cost the report its
+ * headline claim: `VerdictLead` and `ThreatsLead` both read
+ * `narrowExcept(list, selection, mechanismIds, 'band' as never)`, which returns
+ * the list UNFILTERED whenever a band is selected. Measured live at
+ * `?sel=band:limited`, where there are two limited plays: the banner read
+ * “Showing limited exposure only”, the button read “Show all 47 under this
+ * selection”, and the three cards on screen were all severe. Four other views
+ * on the same page honoured the band correctly, which is what made it silent.
+ *
+ * The `as never` cast is what let it compile — `never` is assignable to any
+ * parameter, so no signature can forbid it. The guard is therefore the rule,
+ * not the type: three call sites pass their own picker's kind (`'actor'` for
+ * the board, `'mechanism'` for the mechanism bars, `'band'` for the band row),
+ * and a fourth caller that has no picker is a caller that wanted `filterPlays`.
  */
 export function narrowExcept(
   list: Play[],
@@ -135,6 +195,20 @@ export function parseSelection(param: string | null, artefacts: Artefact[]): Sel
       : null;
   }
   if (kind !== 'mechanism' && kind !== 'actor') return null;
-  const found = artefacts.find((a) => a.id === id);
+  /*
+   * THE KIND HAS TO MATCH, not just the id.
+   *
+   * This was `artefacts.find((a) => a.id === id)` with no check on what was
+   * found, so any artefact id at all resolved. Loaded live:
+   * `?sel=mechanism:s10_000_exploit_001` — a PLAY's id — and the banner read
+   * “Showing what follows from “Selective specialisation with protected
+   * breadth””, a play's label presented as a mechanism, over two lists narrowed
+   * to nothing because no play cites a play.
+   *
+   * The rule is already written above: a selection whose id is not in the run
+   * resolves to nothing rather than to a label that lies. An id that is in the
+   * run but names the wrong kind of thing lies in exactly the same way.
+   */
+  const found = artefacts.find((a) => a.id === id && a.kind === kind);
   return found ? { kind, id, label: found.label } : null;
 }

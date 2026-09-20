@@ -1,4 +1,113 @@
 @use "../govuk" as govuk;
 @use "../tokens" as *;
 
-// Reserved for the "typeroles" change. Empty until it lands.
+// ── Type by role, and dividers by rank ─────────────────────────────────────
+//
+// Two measurements started this. First, a census of the service's own type:
+// `govuk-font($size: …)` is called 44 times in the base layer and 36 of those
+// are the two smallest steps — 28 at 16 and 8 at 19 — with exactly one 27 and
+// one 36 in 1,700 lines. At 19px bold, six different roles compete: a
+// subheading, a table caption, a recommendation title, a flow title, a write-up
+// head and an ego subject; body copy is 19px too, so an insight's h4 and the
+// paragraph under it differ by weight alone, which is visible on the causality
+// screenshots as one undifferentiated block. At 16px grey, `.prt-meta` is used
+// 90 times across 29 files as a caption, a denominator, a sub-label, a
+// timestamp, a hint, a row count and a placeholder — one class doing eight jobs.
+//
+// Second, the dividers: a footer of download links carried a 5px black rule
+// while the boundary between one part of a move's argument and the next carried
+// a 1px hairline the base layer itself measures at 1.57:1.
+//
+// THE GDS SCALE HAS NO STEP BETWEEN 16 AND 19, and inventing one is out. So the
+// two overloaded steps are split by TREATMENT rather than by size.
+
+// A CAPTION IS A LABEL FOR THE THING BELOW IT, not a heading competing with the
+// one above it. This is `.prt-writeup__kicker`'s treatment, which the write-up
+// has used for exactly this job since it was built — 16px bold, uppercase, wide
+// tracking — so the report gains no new vocabulary, only a second use of one.
+.govuk-table__caption--s,
+.prt-figcap {
+  @include govuk.govuk-font($size: 16, $weight: bold);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: govuk.govuk-colour("black", $variant: "tint-25");
+  margin-bottom: govuk.govuk-spacing(2);
+}
+
+// WHERE A FIGURE ENDS. A figcaption set as an ordinary grey sentence is
+// indistinguishable from the paragraph that follows the figure, which is how a
+// reader ends up taking a caption for the next thing the report says. The rule
+// above it is the boundary; it runs the full width of the figure on purpose, so
+// three figures in a section all finish on the same line.
+.prt-caption {
+  @include govuk.govuk-font($size: 16);
+  display: block;
+  color: govuk.govuk-colour("black", $variant: "tint-25");
+  border-top: 1px solid govuk.govuk-colour("black", $variant: "tint-80");
+  padding-top: govuk.govuk-spacing(2);
+  margin: govuk.govuk-spacing(2) 0 0;
+  text-wrap: pretty;
+}
+
+// The base measures every `p.govuk-body-s` in the report at 68ch — right for a
+// sentence, wrong for the rule above one, which would stop two thirds of the way
+// across the figure it is closing. Both arms, because the rule it beats has
+// both.
+.govuk-tabs__panel,
+.prt-pack {
+  p.prt-caption { max-width: none; }
+}
+
+// A DENOMINATOR IS A FIGURE, SO IT LINES UP LIKE ONE. "20 of 47 · 43%" under
+// four band swatches is four numbers a reader compares down the row, and
+// proportional digits put each of them in a different place.
+.prt-denom {
+  @include govuk.govuk-font($size: 16, $tabular: true);
+  color: govuk.govuk-colour("black", $variant: "tint-25");
+}
+
+// ── Dividers, graded to the structure ──────────────────────────────────────
+//
+// REFINED HERE RATHER THAN EDITED IN THE BASE, which is what `app.scss` says
+// this directory is for: the base declares the section rhythm, this part
+// re-states the three declarations that were wrong about rank. The pair is the
+// base's own, because a section is a child of the tab panel in the service and
+// of `.prt-pack` in the offline copy.
+.govuk-tabs__panel > section,
+.prt-pack > section {
+  // 40px was exactly twice a paragraph's bottom margin, which is not enough for
+  // the eye to read a boundary rather than a gap.
+  margin-bottom: govuk.govuk-spacing(8);
+  // THE SPACE GOES ABOVE THE HEADING, where it separates, rather than below the
+  // previous section's last line, where it only trails.
+  padding-top: govuk.govuk-spacing(4);
+
+  > h2 {
+    // `tint-80` is #cecece, 1.57:1 on white — the base layer measures it itself
+    // and calls it right for a rule between rows. The boundary between two parts
+    // of an argument is not a row: `tint-50` is #858686, 3.65:1, which is the
+    // 3:1 a graphical object is meant to carry.
+    border-bottom: 2px solid govuk.govuk-colour("black", $variant: "tint-50");
+  }
+}
+
+// THE FIRST SECTION OF A MOVE IS THE MOVE OPENING, and it takes the 4px black
+// rule `.prt-writeup__lead` already uses for "this is the piece that leads".
+//
+// `:first-of-type` rather than a class, because the lead draws its own
+// `<section>` inside its own component and no markup here can be changed to
+// mark it. In a tab panel that is exactly the lead: the only other child before
+// it is the contents `<nav>`. In the offline pack — one long document with all
+// five moves in it — it matches the first section of the whole pack and no
+// other, which is the pack's own opening, so it reads as a document rule rather
+// than as four missing ones.
+.govuk-tabs__panel > section:first-of-type,
+.prt-pack > section:first-of-type {
+  border-top: 4px solid govuk.govuk-colour("black");
+}
+
+// AND NOTHING OUTRANKS A MOVE'S OPENING. The download footer was 5px, the
+// heaviest rule in the report, for the part of the page that is not the report.
+.prt-actions {
+  border-top-width: 4px;
+}

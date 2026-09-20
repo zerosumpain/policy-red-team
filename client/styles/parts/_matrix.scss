@@ -1,4 +1,112 @@
 @use "../govuk" as govuk;
 @use "../tokens" as *;
 
-// Reserved for the "matrix" change. Empty until it lands.
+// ── A rows-against-columns grid ────────────────────────────────────────────
+//
+// The markup is a plain `govuk-table` inside the scroll region every wide table
+// here uses, so everything below is about the one thing a grid needs that a
+// table does not: the row label has to survive the horizontal scroll, or at
+// 320px a reader scrolls to column eight and is looking at a column of numbers
+// belonging to nothing.
+.prt-matrix {
+  // A GRID IS ALLOWED TO BE WIDER THAN THE PAGE. That is what the scroll box is
+  // for, and without this it is not: the base sets `table { width: 100% }` for
+  // every table in the report, which is right for five columns of prose and
+  // fatal at eleven. Measured on the live join, twelve parts by ten bodies: the
+  // ten clipped headings need about 1,100px between them, the table was pinned
+  // to the container's 1,200px, and the browser recovered the difference from
+  // the only column it could break — so every row label set one character to the
+  // line, 30 lines deep. `min-width` keeps a small grid filling its section.
+  table {
+    width: auto;
+    min-width: 100%;
+  }
+
+  // A STICKY HEADER COLUMN, WHICH IS A PROPERTY OF THE SCROLL BOX, not of the
+  // page. `.prt-scroll` is the scroll container, so `left: 0` is its left edge
+  // and the label parks against it while the cells run underneath.
+  th[scope="row"] {
+    position: sticky;
+    left: 0;
+    background: govuk.govuk-colour("white");
+    // `#main-content` sets `overflow-wrap: anywhere`, which is what lets a long
+    // identifier in a cell narrow instead of forcing its column open — and it
+    // also tells the browser this column's minimum width is one character.
+    // `break-word` breaks the same long words and does NOT enter min-content
+    // sizing, which is the whole difference between the two keywords and the
+    // reason a policy name here sets as a phrase rather than as a ladder.
+    overflow-wrap: break-word;
+    min-width: 12rem;
+    // The cells slide under this, so it needs an edge of its own or the two
+    // overlap as one run of text mid-scroll. `tint-50` is #858686, 3.65:1 on
+    // white — the file's own figure for an edge that has to be seen, where
+    // `tint-80`'s 1.57:1 is for a rule between rows that are already apart.
+    border-right: 1px solid govuk.govuk-colour("black", $variant: "tint-50");
+  }
+
+  // A CELL IS CENTRED IN ITS COLUMN, not pushed to the right of it. The columns
+  // are marked numeric so their headings never wrap — that is what `prt-nowrap`
+  // is for — and numeric alignment is right for a column of figures a reader
+  // adds up, which a grid of incidence counts is not: here the eye is reading
+  // the PATTERN of filled cells across a row, and ten tinted chips each hugging
+  // its right-hand border make a pattern that is not there.
+  .govuk-table__cell--numeric,
+  .govuk-table__header--numeric {
+    text-align: center;
+  }
+
+  // A grid is dense by nature: the framework's cell padding is set for rows of
+  // prose, and at ten columns it is what decides whether the grid fits at all.
+  td,
+  th {
+    padding-left: govuk.govuk-spacing(2);
+    padding-right: govuk.govuk-spacing(2);
+  }
+
+  // A column header that is a control still reads as a heading: bold, black,
+  // and underlined only where a link would be. `.prt-linkbutton` carries the
+  // focus state and the chrome reset; this is the part that is a table heading.
+  &__col {
+    @include govuk.govuk-font($size: 16, $weight: bold);
+    text-align: inherit;
+  }
+
+  // The numbered key, for the print-safe form of a wide grid. An `<ol>` with its
+  // own numbers would count twice, so the digit is the thing the column header
+  // prints and the list repeats it.
+  &__key {
+    @include govuk.govuk-font($size: 16);
+    display: flex;
+    flex-wrap: wrap;
+    gap: govuk.govuk-spacing(1) govuk.govuk-spacing(4);
+    list-style: none;
+    margin: govuk.govuk-spacing(2) 0 0;
+    padding: 0;
+    color: govuk.govuk-colour("black", $variant: "tint-25");
+  }
+
+  &__num {
+    font-variant-numeric: tabular-nums;
+    font-weight: 700;
+    color: govuk.govuk-colour("black");
+  }
+}
+
+@media print {
+  // Nothing scrolls on paper, so nothing needs to be pinned to the edge of a
+  // box that is not there — and a sticky cell inside a `table-layout: fixed`
+  // table is how a column ends up painted over the one beside it.
+  .prt-matrix th[scope="row"] {
+    position: static;
+  }
+
+  // A COLUMN HEADING THAT IS ALSO A CONTROL IS STILL A COLUMN HEADING.
+  //
+  // The base hides `.prt-linkbutton` in print, and it is right to: a live-looking
+  // "Read it in full" on paper points at text that is not there. Here the same
+  // class is worn by the `<th>`'s label, so that rule would print a grid of
+  // numbers with no names above them. The control is inert on paper either way.
+  .prt-matrix .prt-linkbutton {
+    display: inline !important;
+  }
+}
