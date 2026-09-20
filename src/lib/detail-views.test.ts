@@ -124,6 +124,21 @@ describe('which models a run was made of', () => {
     expect(modelsUsed([call(null, 'gpt-5.6-luna')])[0].id).toBe('gpt-5.6-luna');
   });
 
+  it('does not split one model because some of its calls failed before a provider', () => {
+    // THE REAL SHAPE. Six of the live run's 421 calls failed and recorded a null
+    // provider, so keying on `provider/model` printed "codex/gpt-5.6-luna (413)"
+    // and "gpt-5.6-luna (6)" — a run made by two models rendered as three.
+    const calls = [
+      ...Array.from({ length: 413 }, () => call('codex', 'gpt-5.6-luna')),
+      ...Array.from({ length: 6 }, () => call(null, 'gpt-5.6-luna')),
+      ...Array.from({ length: 2 }, () => call('codex', 'gpt-5.6-sol')),
+    ];
+    expect(modelsUsed(calls)).toEqual([
+      { id: 'codex/gpt-5.6-luna', calls: 419 },
+      { id: 'codex/gpt-5.6-sol', calls: 2 },
+    ]);
+  });
+
   it('says nothing rather than guessing when there are no calls to read', () => {
     expect(modelsUsed(undefined)).toEqual([]);
     expect(modelsUsed([])).toEqual([]);

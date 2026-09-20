@@ -86,14 +86,29 @@ export type ModelUse = { id: string; calls: number };
  */
 export function modelsUsed(calls: Call[] | undefined): ModelUse[] {
   if (!calls?.length) return [];
+  /*
+   * GROUPED BY MODEL, AND THE PROVIDER IS FOUND RATHER THAN KEYED ON.
+   *
+   * A call that failed before it reached anything records its model and a NULL
+   * provider — six of the real run's 421. Keying on `provider/model` split one
+   * model into "codex/gpt-5.6-luna (413 calls)" and "gpt-5.6-luna (6 calls)" and
+   * printed a run made by two models as though it were made by three. Found by
+   * reading the row on the live service, which is the only thing that would have.
+   */
   const counts = new Map<string, number>();
+  const providers = new Map<string, string>();
   for (const call of calls) {
     if (!call.model) continue;
-    const id = call.provider ? `${call.provider}/${call.model}` : call.model;
-    counts.set(id, (counts.get(id) ?? 0) + 1);
+    counts.set(call.model, (counts.get(call.model) ?? 0) + 1);
+    if (call.provider && !providers.has(call.model)) providers.set(call.model, call.provider);
   }
   // Busiest first: the model that made most of the assessment leads.
-  return [...counts].map(([id, n]) => ({ id, calls: n })).sort((a, b) => b.calls - a.calls || a.id.localeCompare(b.id));
+  return [...counts]
+    .map(([model, n]) => {
+      const provider = providers.get(model);
+      return { id: provider ? `${provider}/${model}` : model, calls: n };
+    })
+    .sort((a, b) => b.calls - a.calls || a.id.localeCompare(b.id));
 }
 
 /**
