@@ -17,6 +17,7 @@
 // second `@use ... with (...)` anywhere would be an error. The framework's CSS is
 // still emitted exactly once, here, at its first load.
 @use "./govuk" as govuk;
+@use "./parts/width";
 
 // ── The service's own layer ────────────────────────────────────────────────
 //
@@ -258,11 +259,14 @@ $prt-measure: 68ch;
     text-decoration: none;
     font-weight: 400;
 
-    // 1020px is where the width container stops growing and settles at its full
-    // 960px — five columns of 187px, which is the first width at which these
-    // questions set on one or two lines rather than three. `desktop` (769px)
-    // gives 143px columns and a 153px-tall sticky spine.
-    @media (min-width: 1020px) {
+    // 1260px is where the WIDE width container stops growing and settles at its
+    // full 1200px — five columns of 235px, which is the first width at which
+    // these questions set on one or two lines rather than three. The number was
+    // 1020 when the report was 960 wide, which it never actually was: the
+    // modifier that was supposed to widen it had no rule (see `parts/_width`),
+    // so the hint appeared 240px before the columns it was measured against.
+    // `desktop` (769px) gives 143px columns and a 153px-tall sticky spine.
+    @media (min-width: 1260px) {
       display: block;
     }
   }

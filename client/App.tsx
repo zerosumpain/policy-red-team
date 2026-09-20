@@ -83,7 +83,10 @@ export function App() {
 function DrillRoute() {
   const { id = '' } = useParams();
   return (
-    <Template backLink={{ href: `/assessments/${id}`, text: 'Back to the assessment' }}>
+    /* WIDE, like the report it is reached from. Following a play out of a
+       1200px page into a 960px one is a 240px jolt on a route whose whole job
+       is to be the same record at more depth. */
+    <Template wide backLink={{ href: `/assessments/${id}`, text: 'Back to the assessment' }}>
       <Drill />
     </Template>
   );

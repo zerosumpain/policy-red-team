@@ -1,0 +1,26 @@
+@use "../govuk" as govuk;
+
+// ── How wide a page is ─────────────────────────────────────────────────────
+//
+// `govuk-width-container--wide` was on the body container of every wide route —
+// the report, the drill, the persona pages, the design system, the home page,
+// and both containers in the offline pack — and NO RULE ANYWHERE DEFINED IT.
+// Not here, and not in govuk-frontend, which carries the name only inside a
+// documentation comment as `.app-width-container--wide`: an example of the thing
+// a service is expected to write for itself. So `wide` was a prop that did
+// nothing, and the whole report has been reading at the framework's 960px
+// default — the measure meant for a page of prose — while holding a five-column
+// tab strip, a 47-row playbook and a twelve-by-twelve grid.
+//
+// 1200px, not 1100. The step has to be worth taking: the tab strip alone wants
+// 1028px before its five columns stop cramping, and the widest tables here carry
+// four numeric columns and a name. 1200 gives those room and is still short of
+// the point where a line of anything becomes hard to track back.
+//
+// IT DOES NOT WIDEN THE PROSE. `$prt-measure` (68ch) holds every body of text
+// independently of the container, so what actually widens is the furniture:
+// tables, the ego map, the play flow, the band bars, the tab strip. A reader
+// gets more report on the screen and the same line length to read.
+.govuk-width-container--wide {
+  @include govuk.govuk-width-container(1200px);
+}

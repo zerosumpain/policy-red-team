@@ -108,7 +108,11 @@ export function Template({ children, backLink, wide, transient }: {
 
       <header className="govuk-template__header">
         <div className="govuk-generic-header">
-          <div className="govuk-generic-header__container govuk-width-container">
+          {/* The SAME modifier the body container takes. The logo bar had a
+              plain width container, so on a wide page it stopped 120px inside
+              the content it sits above — a step nobody chose, invisible for as
+              long as `--wide` had no rule at all. */}
+          <div className={cx('govuk-generic-header__container govuk-width-container', wide && 'govuk-width-container--wide')}>
             <div className="govuk-generic-header__logo">
               <a href="/" className="govuk-generic-header__homepage-link">
                 <span className="prt-logotype">{SERVICE_NAME}</span>
@@ -147,7 +151,7 @@ export function Template({ children, backLink, wide, transient }: {
         </main>
       </div>
 
-      <Footer />
+      <Footer wide={wide} />
     </>
   );
 }
@@ -159,10 +163,10 @@ export function Template({ children, backLink, wide, transient }: {
  * and drops the emblems, which is the same choice local-plan-navigator made and
  * for the same reason.
  */
-function Footer() {
+function Footer({ wide }: { wide?: boolean }) {
   return (
     <footer className="govuk-footer">
-      <div className="govuk-width-container">
+      <div className={cx('govuk-width-container', wide && 'govuk-width-container--wide')}>
         <div className="govuk-footer__meta">
           <div className="govuk-footer__meta-item govuk-footer__meta-item--grow">
             <h2 className="govuk-visually-hidden">Support links</h2>
