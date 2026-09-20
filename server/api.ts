@@ -33,8 +33,7 @@ function queueResearch<T>(owner: string, run: () => Promise<T>): Promise<T> {
   researchQueues.set(owner, next.catch(() => undefined));
   return next;
 }
-import { offeredModels } from '$lib/server/models/catalogue';
-import { refreshModelMenu } from '$lib/server/models/offered-store';
+import { commissionableModels, refreshModelMenu } from '$lib/server/models/offered-store';
 import { runProgress } from '$lib/server/progress';
 import { readSubmission, readMaterial } from '$lib/policy-analysis/server/ingest';
 import {
@@ -168,7 +167,7 @@ export async function handleApi(
     }));
     sendJson(res, 200, {
       analyses,
-      models: offeredModels(),
+      models: commissionableModels(),
       stages: STAGES,
       readOnly: isReadOnly(),
     });

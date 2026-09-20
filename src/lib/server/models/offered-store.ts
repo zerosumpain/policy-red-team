@@ -1,5 +1,5 @@
 import { deleteSetting, readSetting, writeSetting } from '$lib/server/settings-store';
-import { registerOfferedModels, registerProviderModels, registerProviderPinnedModel, type CostTier, type OfferedModel } from './catalogue';
+import { offeredModels, providerPinnedModel, registerOfferedModels, registerProviderModels, registerProviderPinnedModel, tierForCost, type CostTier, type OfferedModel } from './catalogue';
 import { resolveProvider } from '$lib/llm/client';
 import type { ProviderConfig, ProviderDefinition } from '$lib/llm/providers/types';
 import { setTokenCeiling } from '$lib/server/budget';
@@ -104,10 +104,34 @@ export const RUN_TOKEN_CEILING = 'run.tokenCeiling';
  * whose menu is a choice the reader makes rather than a pin. There the
  * commissioned id really is what gets called and needs no correcting.
  */
-export function pinnedModelId(definition: ProviderDefinition, config: ProviderConfig): string | null {
+export function pinnedModel(definition: ProviderDefinition, config: ProviderConfig): OfferedModel | null {
   const own = definition.model(config).trim();
   if (!own) return null;
-  return definition.models(config).find((m) => m.name === own)?.id ?? own;
+  const listed = definition.models(config).find((m) => m.name === own);
+  return {
+    id: listed?.id ?? own,
+    name: listed?.name ?? own,
+    note: listed?.note ?? 'The model this service is configured to call.',
+    // A subscription bridge quotes no price, which `tierForCost` reads as
+    // `balanced` — not free, just not metered here.
+    tier: tierForCost(null),
+  };
+}
+
+/**
+ * THE MENU A SUBMISSION CAN ACTUALLY HONOUR, which is what the submit page draws.
+ *
+ * `offeredModels()` is the panel's chosen menu, and it is the right menu for a
+ * deployment whose provider takes the run's own choice. Where the provider pins
+ * a model it is a lie: every id on it would be accepted, recorded, and then
+ * quietly not called. One model, named honestly, is the whole of the fix.
+ *
+ * The panel's own menu editor still shows the chosen menu — that is what it is
+ * for, and a pin can be removed.
+ */
+export function commissionableModels(): OfferedModel[] {
+  const pinned = providerPinnedModel();
+  return pinned ? [pinned] : offeredModels();
 }
 
 export async function refreshModelMenu(): Promise<void> {
@@ -119,7 +143,7 @@ export async function refreshModelMenu(): Promise<void> {
   try {
     const active = await resolveProvider();
     registerProviderModels(active.definition.models(active.config).map((m) => m.id));
-    registerProviderPinnedModel(pinnedModelId(active.definition, active.config));
+    registerProviderPinnedModel(pinnedModel(active.definition, active.config));
   } catch {
     // A provider that cannot be resolved offers nothing, which is already the
     // state of the set. Never fail a submission over this.

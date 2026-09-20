@@ -154,9 +154,21 @@ export function registerProviderModels(ids: string[]): void {
   providerModelIds = new Set(ids.filter(Boolean));
 }
 
-/** Is this a model the reader may commission? The question `ingest.ts` asks. */
+/**
+ * Is this a model the reader may commission? The question `ingest.ts` asks.
+ *
+ * WHERE THE PROVIDER PINS A MODEL, THAT IS THE ONLY ANSWER. A bridge or an
+ * Azure deployment calls its own model whatever the submission said, so
+ * accepting any other id records a run as something it was not — and, because
+ * `coerceModelContext` reads the provider off the id, judges it against that
+ * other model's deadline. Refusing here degrades the commission to null, which
+ * `resolveResearchDeepModel` then resolves to the pin: the right model and the
+ * right deadline, by two roads.
+ */
 export function isOfferedModel(id: string | null | undefined): boolean {
   if (!id) return false;
+  const pinned = providerPinnedModel();
+  if (pinned) return id === pinned.id;
   return providerModelIds.has(id) || offeredModels().some((m) => m.id === id);
 }
 
@@ -175,12 +187,12 @@ export function isOfferedModel(id: string | null | undefined): boolean {
  * for the same reason — the readers are synchronous and sit under `ingest.ts`,
  * a file this fork keeps byte-identical to upstream.
  */
-let providerPinnedModelId: string | null = null;
+let providerPinnedModelEntry: OfferedModel | null = null;
 
-export function registerProviderPinnedModel(id: string | null): void {
-  providerPinnedModelId = id?.trim() || null;
+export function registerProviderPinnedModel(model: OfferedModel | null): void {
+  providerPinnedModelEntry = model?.id.trim() ? model : null;
 }
 
-export function providerPinnedModel(): string | null {
-  return providerPinnedModelId;
+export function providerPinnedModel(): OfferedModel | null {
+  return providerPinnedModelEntry;
 }

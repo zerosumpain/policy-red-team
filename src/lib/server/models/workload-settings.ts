@@ -41,7 +41,7 @@ export const DEFAULT_RESEARCH_DEEP_MODEL_ID = 'anthropic/claude-sonnet-4.5';
  */
 export async function resolveResearchDeepModel(): Promise<ModelContext> {
   const pinned = providerPinnedModel();
-  if (pinned) return coerceModelContext({ modelId: pinned });
+  if (pinned) return coerceModelContext({ modelId: pinned.id });
   const modelId = process.env.POLICY_RESEARCH_MODEL?.trim() || DEFAULT_RESEARCH_DEEP_MODEL_ID;
   return coerceModelContext({ modelId });
 }

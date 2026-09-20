@@ -11,11 +11,14 @@ import { openrouter } from './openrouter';
 import { providerById, providers, redact } from './index';
 import { coerceModelContext } from '$lib/constants/default-models';
 import { isOfferedModel, registerProviderModels, registerProviderPinnedModel } from '$lib/server/models/catalogue';
-import { pinnedModelId } from '$lib/server/models/offered-store';
+import { commissionableModels, pinnedModel } from '$lib/server/models/offered-store';
 import { DEFAULT_RESEARCH_DEEP_MODEL_ID, resolveResearchDeepModel } from '$lib/server/models/workload-settings';
 
 const env = { ...process.env };
-afterEach(() => { process.env = { ...env }; });
+// The catalogue's registries are module variables. A pin left behind by one test
+// changes what `isOfferedModel` answers in the next, so it is reset with the
+// environment rather than per-describe.
+afterEach(() => { process.env = { ...env }; registerProviderPinnedModel(null); });
 
 describe('what a provider needs before it can be tried', () => {
   it('names the missing field rather than failing on the first call', () => {
@@ -262,10 +265,8 @@ describe('the model a run falls back to when it commissioned none', () => {
   const bridgeConfig = { baseUrl: 'http://127.0.0.1:5207/v1', model: 'gpt-5.6-luna' };
   const direct = providerById('openrouter')!;
 
-  afterEach(() => { registerProviderPinnedModel(null); });
-
   it('names the bridge model, prefixed, so the run is read as Codex', async () => {
-    registerProviderPinnedModel(pinnedModelId(bridge, bridgeConfig));
+    registerProviderPinnedModel(pinnedModel(bridge, bridgeConfig));
     const context = await resolveResearchDeepModel();
     expect(context.modelId).toBe('codex/gpt-5.6-luna');
     expect(context.provider).toBe('codex');
@@ -274,12 +275,12 @@ describe('the model a run falls back to when it commissioned none', () => {
   it('beats POLICY_RESEARCH_MODEL, which could never have reached the model', async () => {
     // Setting it changed nothing but the deadline, and changed that wrongly.
     process.env.POLICY_RESEARCH_MODEL = 'anthropic/claude-sonnet-4.5';
-    registerProviderPinnedModel(pinnedModelId(bridge, bridgeConfig));
+    registerProviderPinnedModel(pinnedModel(bridge, bridgeConfig));
     expect((await resolveResearchDeepModel()).provider).toBe('codex');
   });
 
   it('leaves a provider that takes the run’s own choice alone', async () => {
-    registerProviderPinnedModel(pinnedModelId(direct, { apiKey: 'sk-or-test' }));
+    registerProviderPinnedModel(pinnedModel(direct, { apiKey: 'sk-or-test' }));
     delete process.env.POLICY_RESEARCH_MODEL;
     const context = await resolveResearchDeepModel();
     expect(context.provider).toBe('openrouter');
@@ -304,22 +305,61 @@ describe('the id a pinned provider model is recognised by', () => {
     const bridge = providerById('codex')!;
     const config = { baseUrl: 'http://127.0.0.1:5207/v1', model: 'gpt-5.6-luna' };
     expect(bridge.model(config)).toBe('gpt-5.6-luna');
-    expect(pinnedModelId(bridge, config)).toBe('codex/gpt-5.6-luna');
+    expect(pinnedModel(bridge, config)?.id).toBe('codex/gpt-5.6-luna');
   });
 
   it('is an Azure deployment’s own name, which is the id it is offered under', () => {
     const foundry = providerById('azure')!;
     const config = { endpoint: 'https://r.openai.azure.com', deployment: 'gpt-5-policy', apiKey: 'k' };
-    expect(pinnedModelId(foundry, config)).toBe('gpt-5-policy');
+    expect(pinnedModel(foundry, config)?.id).toBe('gpt-5-policy');
   });
 
   it('is null for OpenRouter, whose menu is a choice rather than a pin', () => {
-    expect(pinnedModelId(providerById('openrouter')!, { apiKey: 'sk-or-test' })).toBeNull();
+    expect(pinnedModel(providerById('openrouter')!, { apiKey: 'sk-or-test' })).toBeNull();
   });
 
   it('is the pinned id when OpenRouter does name one, absent from its menu', () => {
     const or = providerById('openrouter')!;
-    expect(pinnedModelId(or, { apiKey: 'sk-or-test', model: 'deepseek/deepseek-v4-flash' }))
+    expect(pinnedModel(or, { apiKey: 'sk-or-test', model: 'deepseek/deepseek-v4-flash' })?.id)
       .toBe('deepseek/deepseek-v4-flash');
+  });
+});
+
+/**
+ * A MENU THAT OFFERS WHAT CANNOT BE CALLED IS THE SAME BUG, ONE ROAD OVER.
+ *
+ * With the bridge active, the submit page still drew the panel's five OpenRouter
+ * ids. Picking one passed `isOfferedModel`, was recorded in
+ * `policy_analyses.model`, read back as an OpenRouter run — the 180-second
+ * deadline again — and was then not the model called, because `getLLMClient`
+ * prefers the provider's own. Three wrong things from one dropdown.
+ */
+describe('what a submission may commission while a provider pins its model', () => {
+  const bridge = providerById('codex')!;
+  const bridgeConfig = { baseUrl: 'http://127.0.0.1:5207/v1', model: 'gpt-5.6-luna' };
+
+  it('offers the pinned model and nothing else', () => {
+    registerProviderPinnedModel(pinnedModel(bridge, bridgeConfig));
+    expect(commissionableModels().map((m) => m.id)).toEqual(['codex/gpt-5.6-luna']);
+  });
+
+  it('names it as the endpoint does, not as the routing prefix does', () => {
+    registerProviderPinnedModel(pinnedModel(bridge, bridgeConfig));
+    expect(commissionableModels()[0].name).toBe('gpt-5.6-luna');
+  });
+
+  it('refuses a menu id that would be accepted, recorded, and then not called', () => {
+    registerProviderModels(bridge.models(bridgeConfig).map((m) => m.id));
+    registerProviderPinnedModel(pinnedModel(bridge, bridgeConfig));
+    expect(isOfferedModel('codex/gpt-5.6-luna')).toBe(true);
+    expect(isOfferedModel('z-ai/glm-5.2')).toBe(false);
+    // And refusing lands on the pin anyway, by the other road.
+    expect(coerceModelContext({ modelId: 'z-ai/glm-5.2' }).provider).toBe('openrouter');
+  });
+
+  it('is the panel’s own menu again once nothing is pinned', () => {
+    registerProviderPinnedModel(null);
+    expect(commissionableModels().length).toBeGreaterThan(1);
+    expect(isOfferedModel('z-ai/glm-5.2')).toBe(true);
   });
 });
