@@ -458,10 +458,17 @@ export function Report({ detail, offline, linkTo, onChanged }: {
   const idleUnprofiled = board.filter((a) => !a.plays.length && !a.profile).length;
   section('actors', 'Who is involved', 'actors', board.length ? (
     <>
+      {/*
+        DISTINCT BODIES, WHICH IS NOT THE SAME COUNT THE GRAPH USES. This counts
+        every body the paper names, deduplicated by label; "How they connect"
+        counts only the ones the paper places in a stated relationship, and
+        reports a smaller number from the same assessment. Both are right and
+        neither used to say which it was.
+      */}
       <p className="govuk-body">
-        {namedActive} of the {namedAll} bodies the paper names are positioned to run at least
-        one play. The figure is the worst single play each one could run, on the same 0–1 exposure
-        scale as the playbook.
+        {namedActive} of the {namedAll} distinct bodies the paper names are positioned to run at
+        least one play — named, whether or not the paper connects them to anything. The figure is the
+        worst single play each one could run, on the same 0–1 exposure scale as the playbook.
       </p>
       <Table
         caption={`Bodies that could run a play, worst first${active.length > ACTORS_SHOWN ? ` — the worst ${ACTORS_SHOWN} of ${active.length}` : ''}`}

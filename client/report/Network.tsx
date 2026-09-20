@@ -77,10 +77,20 @@ export function NetworkSection({ net, artefacts, linkTo }: {
 
   return (
     <>
+      {/*
+        IT SAYS WHICH POPULATION IT IS COUNTING.
+        This read "between 120 things it names, 47 of them bodies", and `nodesOf`
+        only mints a node when an edge touches one — so these are the things the
+        paper PLACES IN A RELATIONSHIP, not the things it names. Move 4 counts
+        the other population and reports 55 bodies from the same assessment, and
+        a reader meeting 47 here and 55 there has no way to tell that both are
+        right. Each sentence now names its own denominator.
+      */}
       <p className="govuk-body">
         The paper states {net.edges.length} {net.edges.length === 1 ? 'relationship' : 'relationships'} between{' '}
-        {net.nodes.length} things it names, {bodies} of them bodies. Only relationships whose both ends
-        resolve are counted — a dangling end is a reference, not a relationship.
+        {net.nodes.length} things it places in one, {bodies} of them bodies. Only relationships whose
+        both ends resolve are counted — a dangling end is a reference, not a relationship — so a body
+        the paper names but never connects to anything is not in this count. Move 4 counts those.
       </p>
 
       {/* The star, said in words before it is drawn. A reader who meets an empty
