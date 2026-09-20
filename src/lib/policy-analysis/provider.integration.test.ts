@@ -72,14 +72,25 @@ describe.skipIf(!local)('persisted model audit and stage checkpoints', () => {
       const prior = (await ingest(bytes, 'fixture.txt', 'text/plain')).artefacts;
       const input = { stage: 1, artefacts: prior, idPrefix: 's1_cached_' };
       const [firstExecution] = await db.insert(policyExecutions).values({ stageId: stage.id, runId: stage.runId! }).returning();
+      // DIVERGENCE: the fresh call REPAIRS now. One artefact of four is rejected,
+      // and the old floor of three meant a lone rejection was never re-asked —
+      // this call used to return the incomplete three. It asks once and gets the
+      // fourth back. See the divergence note in sync-core.mjs.
       const partial = await modelCaller(firstExecution.id, stage.runId!, new AbortController().signal, prior)(1, 'cached', input);
-      expect(partial.artefacts).toHaveLength(3);
+      expect(partial.artefacts).toHaveLength(4);
+      // ONE round, not two: the second round is what a mostly-unusable response
+      // gets, and this response was mostly fine.
+      const firstCalls = await db.select().from(policyModelCalls).where(eq(policyModelCalls.executionId, firstExecution.id)).orderBy(asc(policyModelCalls.startedAt));
+      expect(firstCalls.map((c) => c.callKey)).toEqual(['cached', 'cached#repair1']);
 
       const [retryExecution] = await db.insert(policyExecutions).values({ stageId: stage.id, runId: stage.runId! }).returning();
       const repaired = await modelCaller(retryExecution.id, stage.runId!, new AbortController().signal, prior)(1, 'cached', input);
       expect(repaired.artefacts).toHaveLength(4);
       expect(repaired.artefacts.some((item) => item.id === 's1_cached_objective_repaired')).toBe(true);
-      expect(mock.count - before).toBe(2);
+      // Three: the fresh call's round 0 and its repair, then the replay's repair.
+      // The replay still has something to fix because round 0's stored output is
+      // what the cache lookup finds, and that is the reply with the bad member.
+      expect(mock.count - before).toBe(3);
       const retryCalls = await db.select().from(policyModelCalls).where(eq(policyModelCalls.executionId, retryExecution.id));
       expect(retryCalls).toMatchObject([{ callKey: 'cached#repair1', status: 'completed' }]);
     } finally {

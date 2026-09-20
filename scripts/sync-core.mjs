@@ -483,6 +483,130 @@ function phase16(rel, source) {
   return out;
 }
 
+/**
+ * The integration suite's own safety guard, shared by every file that carries it.
+ *
+ * Extracted rather than duplicated: `provider.integration.test.ts` needs this AND
+ * the repair-threshold pairs below, and a destructive-test guard copied into two
+ * places is one that can be corrected in only one of them.
+ */
+const localTestGuard = (s) =>
+  s.replace(
+    /^const local = process\.env\.POLICY_LOCAL_TESTS === '1' && \/\^postgres.*$/m,
+    `// DIVERGENCE: upstream keys this off DATABASE_URL naming its isolated
+// Postgres. Here the throwaway database is a temp directory this suite created.
+const local = process.env.POLICY_LOCAL_TESTS === '1'
+  && /policy-test-[^/]+\\/db$/.test(process.env.POLICY_DATA_DIR ?? '');`
+  );
+
+const REPAIR_ASK_PROVIDER = [
+    [`function callTimeoutMs(provider: string): number {
+  return provider === 'codex' ? SLOW_PROVIDER_TIMEOUT_MS : CALL_TIMEOUT_MS;
+}
+
+/** Repair is worth a call when the response was mostly, or entirely, unusable. */
+function needsRepair(kept: number, rejected: Rejection[]): boolean {
+  if (!rejected.length) return false;
+  return kept === 0 || rejected.length >= Math.max(3, Math.ceil(kept / 2));
+}
+
+/**
+ * What the reader commissioned: a Codex model id, a reasoning effort — either of`,
+     `function callTimeoutMs(provider: string): number {
+  return provider === 'codex' ? SLOW_PROVIDER_TIMEOUT_MS : CALL_TIMEOUT_MS;
+}
+
+/**
+ * Repair is worth a call when the response was mostly, or entirely, unusable —
+ * and ONE ask is worth it whenever anything was rejected at all.
+ *
+ * The floor of three was the whole of the rule for a fan-out, and it never fired
+ * for the case that actually happens. Measured on the "best start in life" run,
+ * 2026-09-20: decomposition rejected artefacts on 27 of its units, and 20 of
+ * those were a single artefact or two against ~22 kept. \`Math.max(3, …)\` meant
+ * none of them was re-asked, so 23 of the 49 refusals were dropped without the
+ * model ever being told what was wrong with them.
+ *
+ * A rejection is lost work, and \`repairPrompt\` names exactly which ids broke
+ * which rule — the cheapest correction available. The bound is the point: a
+ * handful gets ONE round, where a mostly-unusable response still gets two.
+ * Phase 16's rule — ask once for exactly what was missing, then degrade rather
+ * than throw — is the shape being copied. See the divergence in sync-core.mjs.
+ */
+function needsRepair(kept: number, rejected: Rejection[], round: number): boolean {
+  if (!rejected.length) return false;
+  if (kept === 0 || rejected.length >= Math.max(3, Math.ceil(kept / 2))) return true;
+  return round === 0;
+}
+
+/**
+ * What the reader commissioned: a Codex model id, a reasoning effort — either of`],
+    [`        accepted.push(...round1.artefacts);
+        warnings.push(...round1.warnings);
+        await db.update(policyModelCalls).set({ status: 'completed', output: sealed ? null : output, usage: llmCalls, provider: llmCalls.at(-1)?.provider ?? null, model: llmCalls.at(-1)?.model ?? result.model, completedAt: new Date() }).where(eq(policyModelCalls.id, call.id));
+
+        if (!needsRepair(round1.artefacts.length, rejected) || round === REPAIR_ROUNDS) {
+          // An empty reply is an ANSWER, not a fault, and not evidence of a dead
+          // provider — see \`isLegitimateSilence\`, which is where the rule lives.
+          if (isLegitimateSilence(accepted.length, rejected, !!lastError)) return { artefacts: [], warnings };
+          if (!accepted.length) throw lastError ?? new PolicyError(rejected[0]?.code ?? 'contract', rejected[0]?.reason ?? 'The model returned nothing this stage could use.');`,
+     `        accepted.push(...round1.artefacts);
+        warnings.push(...round1.warnings);
+        await db.update(policyModelCalls).set({ status: 'completed', output: sealed ? null : output, usage: llmCalls, provider: llmCalls.at(-1)?.provider ?? null, model: llmCalls.at(-1)?.model ?? result.model, completedAt: new Date() }).where(eq(policyModelCalls.id, call.id));
+
+        if (!needsRepair(round1.artefacts.length, rejected, round) || round === REPAIR_ROUNDS) {
+          // An empty reply is an ANSWER, not a fault, and not evidence of a dead
+          // provider — see \`isLegitimateSilence\`, which is where the rule lives.
+          if (isLegitimateSilence(accepted.length, rejected, !!lastError)) return { artefacts: [], warnings };
+          if (!accepted.length) throw lastError ?? new PolicyError(rejected[0]?.code ?? 'contract', rejected[0]?.reason ?? 'The model returned nothing this stage could use.');`],
+];
+
+const REPAIR_ASK_TEST = [
+    [`      const [stage] = await db.select().from(policyStages).where(eq(policyStages.analysisId, a.id)).orderBy(asc(policyStages.ordinal)).limit(1);
+      const prior = (await ingest(bytes, 'fixture.txt', 'text/plain')).artefacts;
+      const input = { stage: 1, artefacts: prior, idPrefix: 's1_cached_' };
+      const [firstExecution] = await db.insert(policyExecutions).values({ stageId: stage.id, runId: stage.runId! }).returning();
+      const partial = await modelCaller(firstExecution.id, stage.runId!, new AbortController().signal, prior)(1, 'cached', input);
+      expect(partial.artefacts).toHaveLength(3);
+
+      const [retryExecution] = await db.insert(policyExecutions).values({ stageId: stage.id, runId: stage.runId! }).returning();
+      const repaired = await modelCaller(retryExecution.id, stage.runId!, new AbortController().signal, prior)(1, 'cached', input);
+      expect(repaired.artefacts).toHaveLength(4);
+      expect(repaired.artefacts.some((item) => item.id === 's1_cached_objective_repaired')).toBe(true);
+      expect(mock.count - before).toBe(2);
+      const retryCalls = await db.select().from(policyModelCalls).where(eq(policyModelCalls.executionId, retryExecution.id));
+      expect(retryCalls).toMatchObject([{ callKey: 'cached#repair1', status: 'completed' }]);
+    } finally {
+      mock.repairable = false;`,
+     `      const [stage] = await db.select().from(policyStages).where(eq(policyStages.analysisId, a.id)).orderBy(asc(policyStages.ordinal)).limit(1);
+      const prior = (await ingest(bytes, 'fixture.txt', 'text/plain')).artefacts;
+      const input = { stage: 1, artefacts: prior, idPrefix: 's1_cached_' };
+      const [firstExecution] = await db.insert(policyExecutions).values({ stageId: stage.id, runId: stage.runId! }).returning();
+      // DIVERGENCE: the fresh call REPAIRS now. One artefact of four is rejected,
+      // and the old floor of three meant a lone rejection was never re-asked —
+      // this call used to return the incomplete three. It asks once and gets the
+      // fourth back. See the divergence note in sync-core.mjs.
+      const partial = await modelCaller(firstExecution.id, stage.runId!, new AbortController().signal, prior)(1, 'cached', input);
+      expect(partial.artefacts).toHaveLength(4);
+      // ONE round, not two: the second round is what a mostly-unusable response
+      // gets, and this response was mostly fine.
+      const firstCalls = await db.select().from(policyModelCalls).where(eq(policyModelCalls.executionId, firstExecution.id)).orderBy(asc(policyModelCalls.startedAt));
+      expect(firstCalls.map((c) => c.callKey)).toEqual(['cached', 'cached#repair1']);
+
+      const [retryExecution] = await db.insert(policyExecutions).values({ stageId: stage.id, runId: stage.runId! }).returning();
+      const repaired = await modelCaller(retryExecution.id, stage.runId!, new AbortController().signal, prior)(1, 'cached', input);
+      expect(repaired.artefacts).toHaveLength(4);
+      expect(repaired.artefacts.some((item) => item.id === 's1_cached_objective_repaired')).toBe(true);
+      // Three: the fresh call's round 0 and its repair, then the replay's repair.
+      // The replay still has something to fix because round 0's stored output is
+      // what the cache lookup finds, and that is the reply with the bad member.
+      expect(mock.count - before).toBe(3);
+      const retryCalls = await db.select().from(policyModelCalls).where(eq(policyModelCalls.executionId, retryExecution.id));
+      expect(retryCalls).toMatchObject([{ callKey: 'cached#repair1', status: 'completed' }]);
+    } finally {
+      mock.repairable = false;`],
+];
+
 const DIVERGENCES = {
   // ── The exposure ramp had no values, so every mark painted black ─────────
   //
@@ -819,20 +943,40 @@ const FACES: { file: string; family: string; weight: string }[] = [];`
     [
       'persistence.integration.test.ts',
       'personas.integration.test.ts',
-      'provider.integration.test.ts',
       'sealed.integration.test.ts',
-    ].map((name) => [
-      `src/lib/policy-analysis/${name}`,
-      (s) =>
-        s.replace(
-          /^const local = process\.env\.POLICY_LOCAL_TESTS === '1' && \/\^postgres.*$/m,
-          `// DIVERGENCE: upstream keys this off DATABASE_URL naming its isolated
-// Postgres. Here the throwaway database is a temp directory this suite created.
-const local = process.env.POLICY_LOCAL_TESTS === '1'
-  && /policy-test-[^/]+\\/db$/.test(process.env.POLICY_DATA_DIR ?? '');`
-        ),
-    ])
+    ].map((name) => [`src/lib/policy-analysis/${name}`, localTestGuard]),
   ),
+
+  // ── A lone rejection is now re-asked, once ───────────────────────────────
+  //
+  // `needsRepair` refused to spend a call unless three artefacts were rejected,
+  // or half of what the reply kept. On a fan-out neither ever happens: measured
+  // on the "best start in life" run, 2026-09-20, decomposition rejected on 27 of
+  // its units and 20 of those were one artefact or two against ~22 kept, so 23 of
+  // the 49 refusals were dropped without the model being told anything.
+  //
+  // A rejection is lost work and `repairPrompt` already names which ids broke
+  // which rule. The bound is what keeps this from being a blanket retry: a
+  // handful gets ONE round, a mostly-unusable reply still gets two — phase 16's
+  // shape, ask once for exactly what was missing, then degrade.
+  //
+  // The test moves with it: its fresh call used to return the incomplete three.
+  'src/lib/policy-analysis/server/provider.ts': (s) => {
+    let out = s;
+    for (const [from, to] of REPAIR_ASK_PROVIDER) {
+      if (!out.includes(from)) throw new Error('server/provider.ts: a repair-threshold anchor moved');
+      out = out.replace(from, to);
+    }
+    return out;
+  },
+  'src/lib/policy-analysis/provider.integration.test.ts': (s) => {
+    let out = localTestGuard(s);
+    for (const [from, to] of REPAIR_ASK_TEST) {
+      if (!out.includes(from)) throw new Error('provider.integration.test.ts: a repair-threshold anchor moved');
+      out = out.replace(from, to);
+    }
+    return out;
+  },
 
   // parseSubject is pure and lives in peek.ts here; the rest of upstream's
   // peek.svelte.ts is a Svelte rune store that phase 4 replaces.

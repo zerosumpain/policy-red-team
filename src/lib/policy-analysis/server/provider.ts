@@ -53,10 +53,27 @@ function callTimeoutMs(provider: string): number {
   return provider === 'codex' ? SLOW_PROVIDER_TIMEOUT_MS : CALL_TIMEOUT_MS;
 }
 
-/** Repair is worth a call when the response was mostly, or entirely, unusable. */
-function needsRepair(kept: number, rejected: Rejection[]): boolean {
+/**
+ * Repair is worth a call when the response was mostly, or entirely, unusable —
+ * and ONE ask is worth it whenever anything was rejected at all.
+ *
+ * The floor of three was the whole of the rule for a fan-out, and it never fired
+ * for the case that actually happens. Measured on the "best start in life" run,
+ * 2026-09-20: decomposition rejected artefacts on 27 of its units, and 20 of
+ * those were a single artefact or two against ~22 kept. `Math.max(3, …)` meant
+ * none of them was re-asked, so 23 of the 49 refusals were dropped without the
+ * model ever being told what was wrong with them.
+ *
+ * A rejection is lost work, and `repairPrompt` names exactly which ids broke
+ * which rule — the cheapest correction available. The bound is the point: a
+ * handful gets ONE round, where a mostly-unusable response still gets two.
+ * Phase 16's rule — ask once for exactly what was missing, then degrade rather
+ * than throw — is the shape being copied. See the divergence in sync-core.mjs.
+ */
+function needsRepair(kept: number, rejected: Rejection[], round: number): boolean {
   if (!rejected.length) return false;
-  return kept === 0 || rejected.length >= Math.max(3, Math.ceil(kept / 2));
+  if (kept === 0 || rejected.length >= Math.max(3, Math.ceil(kept / 2))) return true;
+  return round === 0;
 }
 
 /**
@@ -254,7 +271,7 @@ export function modelCaller(executionId: string, runId: string, signal: AbortSig
         warnings.push(...round1.warnings);
         await db.update(policyModelCalls).set({ status: 'completed', output: sealed ? null : output, usage: llmCalls, provider: llmCalls.at(-1)?.provider ?? null, model: llmCalls.at(-1)?.model ?? result.model, completedAt: new Date() }).where(eq(policyModelCalls.id, call.id));
 
-        if (!needsRepair(round1.artefacts.length, rejected) || round === REPAIR_ROUNDS) {
+        if (!needsRepair(round1.artefacts.length, rejected, round) || round === REPAIR_ROUNDS) {
           // An empty reply is an ANSWER, not a fault, and not evidence of a dead
           // provider — see `isLegitimateSilence`, which is where the rule lives.
           if (isLegitimateSilence(accepted.length, rejected, !!lastError)) return { artefacts: [], warnings };
