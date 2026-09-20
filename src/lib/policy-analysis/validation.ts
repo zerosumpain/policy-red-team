@@ -33,7 +33,7 @@ function structuralFault(a: Artefact, all: Map<string, Artefact>, stage: number,
  * are taken from the passage rather than from the model, and `sourceQuote` is
  * rewritten to the document's own wording for the span it located.
  */
-function semanticFault(a: Artefact, all: Map<string, Artefact>, stage: number): Fault | null {
+function semanticFault(a: Artefact, all: Map<string, Artefact>, stage: number, note?: (what: string) => void): Fault | null {
   // An artefact that names its source and leaves `refs` empty is stating the same
   // link twice and recording it once. Fold it in rather than rejecting: measured
   // on a live run, THIRTEEN OF EIGHTEEN artefacts in one response were lost to
@@ -81,11 +81,43 @@ function semanticFault(a: Artefact, all: Map<string, Artefact>, stage: number): 
     : ['model', 'scenario', 'causal_chain', 'option_appraisal', 'evaluation_plan'].includes(a.kind) ? a.data.assumptions as string[]
     : null;
   if (citedAssumptions) {
-    const wrongKind = citedAssumptions.filter((id) => all.get(id)?.kind !== 'assumption');
-    if (wrongKind.length) return fault('hypothesis', a.kind === 'exploit'
+    /**
+     * DIVERGENCE: NARROW THE LIST, KEEP THE ARTEFACT — the `finding` rule below,
+     * applied one stage earlier.
+     *
+     * The paragraph above is right that a cited assumption missing from `refs` is
+     * bookkeeping rather than fabrication. It then treats naming the WRONG KIND as
+     * fatal, and that is the same all-or-nothing failure in the same costume: by
+     * the time this runs `prune` has already removed every identifier that does
+     * not resolve, so what is left is a real artefact of this assessment that the
+     * model filed under the wrong heading. Discarding the whole play for it throws
+     * away the reasoning to punish the filing.
+     *
+     * Measured on assessment 36ebca37, the Post-16 run of 2026-09-19: of 41
+     * refusal warnings the largest single class is ten of these, every one at
+     * stage 10 — the red team, the point of the assessment — and 47 plays
+     * survived of 73 written.
+     *
+     * `relationalFault` already does exactly this for a finding's
+     * `hypothesisIds`: keep the supported ones, drop the rest, refuse only when
+     * nothing is left. Nothing is left is still a refusal here, because
+     * `preconditions` and `assumptions` are both `min(1)` and a play resting on no
+     * hypothesis is not a play.
+     */
+    const real = citedAssumptions.filter((id) => all.get(id)?.kind === 'assumption');
+    if (!real.length) return fault('hypothesis', a.kind === 'exploit'
       ? 'An exploitation play must depend on assumptions, not on other kinds of artefact.'
       : 'Interaction models and scenarios must depend on assumptions, not on other kinds of artefact.');
-    for (const id of citedAssumptions) if (!a.refs.includes(id)) a.refs = [...a.refs, id];
+    if (real.length !== citedAssumptions.length) {
+      const field = a.kind === 'exploit' ? 'preconditions' : 'assumptions';
+      const lost = citedAssumptions.length - real.length;
+      a.data[field] = real;
+      // The dropped identifiers stay in `refs`. They resolve, the model named
+      // them, and provenance is what a reference means — what they are not is a
+      // hypothesis this artefact rests on.
+      note?.(`“${a.label}” dropped ${lost} ${field === 'preconditions' ? 'precondition' : 'assumption'}${lost === 1 ? '' : 's'} that named something other than an assumption.`);
+    }
+    for (const id of real) if (!a.refs.includes(id)) a.refs = [...a.refs, id];
   }
   if (a.origin === 'normative_judgement' && a.kind === 'research_source') return fault('source', 'A recommendation is not an external source.');
   if (a.kind === 'recommendation' && a.origin !== 'normative_judgement') return fault('recommendation', 'Redesign options must be labelled as normative recommendations.');
@@ -397,6 +429,10 @@ export function triageArtefacts(output: StageOutput, stage: number, prior: Artef
   const drop = (a: Artefact, f: Fault) => { rejected.push({ id: a.id, kind: a.kind, code: f.code, reason: f.message }); };
   const pruned: string[] = [];
   const dropWarning = (a: Artefact) => (what: string) => pruned.push(`“${a.label}” lost ${what}.`);
+  // DIVERGENCE: the same channel for a citation that resolved but was filed under
+  // the wrong kind. Kept apart from `pruned` because the sentence it belongs in
+  // is a different one: nothing here referred to something absent.
+  const narrowed: string[] = [];
 
   let kept: Artefact[] = [];
   const seen = new Set<string>();
@@ -432,7 +468,7 @@ export function triageArtefacts(output: StageOutput, stage: number, prior: Artef
     const all = new Map(prior.map((a) => [a.id, a]));
     for (const a of kept) all.set(a.id, a);
     const survivors = kept.filter((a) => {
-      const f = semanticFault(a, all, stage) ?? relationalFault(a, all);
+      const f = semanticFault(a, all, stage, (what) => narrowed.push(what)) ?? relationalFault(a, all);
       if (f) { drop(a, f); return false; }
       return true;
     });
@@ -442,6 +478,8 @@ export function triageArtefacts(output: StageOutput, stage: number, prior: Artef
 
   const warnings = [...parsed.warnings];
   if (pruned.length) warnings.push(`${pruned.length} item${pruned.length === 1 ? '' : 's'} referred to something that is not in this assessment; the reference was dropped and the item kept. ${pruned.slice(0, 4).join(' ')}${pruned.length > 4 ? ` And ${pruned.length - 4} more.` : ''}`.slice(0, 1000));
+  // DIVERGENCE: see the narrowing rule in `semanticFault`.
+  if (narrowed.length) warnings.push(`${narrowed.length} item${narrowed.length === 1 ? '' : 's'} named something real among the hypotheses ${narrowed.length === 1 ? 'it rests' : 'they rest'} on that is not an assumption record; that citation was dropped and the item kept, with the identifier retained in its provenance. ${narrowed.slice(0, 4).join(' ')}${narrowed.length > 4 ? ` And ${narrowed.length - 4} more.` : ''}`.slice(0, 1000));
   if (rejected.length) {
     const byCode = new Map<string, Rejection[]>();
     for (const r of rejected) byCode.set(r.code, [...(byCode.get(r.code) ?? []), r]);

@@ -72,6 +72,342 @@ async function resolveAll(manifest) {
  * something, so an upstream rewrite that makes one a no-op fails the sync
  * instead of passing quietly.
  */
+/**
+ * PHASE 16 — a gate that asks again, and a play that survives its bookkeeping.
+ *
+ * Three edits to copied files, all from assessment 36ebca37 (the Post-16 run of
+ * 2026-09-19). Stage 17 failed NINE consecutive times on "N independent
+ * challenges have no response in the revised assessment" — 498 of the run's 623
+ * minutes — because the gate throws on a single absence, the retry replays the
+ * cached `main` response so the omission is deterministic, and the two repair
+ * rounds are aimed at artefacts triage REJECTED rather than at what was never
+ * returned. It was unblocked by a change of model, which is luck, not a fix.
+ *
+ * So: a coverage gap is named and asked about once before any rule decides
+ * (`pipeline.ts`, `prompts.ts`), and a gate still short then degrades the way the
+ * synthesis rule beside it already does. Separately, `validation.ts` narrows a
+ * mis-typed `preconditions` list instead of discarding the play — the largest
+ * single class of refusal on that run, ten of them at stage 10, the red team.
+ *
+ * Generated from the working tree and verified to reproduce it exactly; see
+ * `docs/phase-16.md` for the decision log. Every anchor throws if it moves, so
+ * an upstream rewrite fails the sync rather than silently dropping the fix.
+ */
+const PHASE16 = {
+  'src/lib/policy-analysis/validation.ts': [
+    [` * rewritten to the document's own wording for the span it located.
+ */
+function semanticFault(a: Artefact, all: Map<string, Artefact>, stage: number): Fault | null {
+  // An artefact that names its source and leaves \`refs\` empty is stating the same
+  // link twice and recording it once. Fold it in rather than rejecting: measured`,
+     ` * rewritten to the document's own wording for the span it located.
+ */
+function semanticFault(a: Artefact, all: Map<string, Artefact>, stage: number, note?: (what: string) => void): Fault | null {
+  // An artefact that names its source and leaves \`refs\` empty is stating the same
+  // link twice and recording it once. Fold it in rather than rejecting: measured`],
+    [`    : null;
+  if (citedAssumptions) {
+    const wrongKind = citedAssumptions.filter((id) => all.get(id)?.kind !== 'assumption');
+    if (wrongKind.length) return fault('hypothesis', a.kind === 'exploit'
+      ? 'An exploitation play must depend on assumptions, not on other kinds of artefact.'
+      : 'Interaction models and scenarios must depend on assumptions, not on other kinds of artefact.');
+    for (const id of citedAssumptions) if (!a.refs.includes(id)) a.refs = [...a.refs, id];
+  }
+  if (a.origin === 'normative_judgement' && a.kind === 'research_source') return fault('source', 'A recommendation is not an external source.');`,
+     `    : null;
+  if (citedAssumptions) {
+    /**
+     * DIVERGENCE: NARROW THE LIST, KEEP THE ARTEFACT — the \`finding\` rule below,
+     * applied one stage earlier.
+     *
+     * The paragraph above is right that a cited assumption missing from \`refs\` is
+     * bookkeeping rather than fabrication. It then treats naming the WRONG KIND as
+     * fatal, and that is the same all-or-nothing failure in the same costume: by
+     * the time this runs \`prune\` has already removed every identifier that does
+     * not resolve, so what is left is a real artefact of this assessment that the
+     * model filed under the wrong heading. Discarding the whole play for it throws
+     * away the reasoning to punish the filing.
+     *
+     * Measured on assessment 36ebca37, the Post-16 run of 2026-09-19: of 41
+     * refusal warnings the largest single class is ten of these, every one at
+     * stage 10 — the red team, the point of the assessment — and 47 plays
+     * survived of 73 written.
+     *
+     * \`relationalFault\` already does exactly this for a finding's
+     * \`hypothesisIds\`: keep the supported ones, drop the rest, refuse only when
+     * nothing is left. Nothing is left is still a refusal here, because
+     * \`preconditions\` and \`assumptions\` are both \`min(1)\` and a play resting on no
+     * hypothesis is not a play.
+     */
+    const real = citedAssumptions.filter((id) => all.get(id)?.kind === 'assumption');
+    if (!real.length) return fault('hypothesis', a.kind === 'exploit'
+      ? 'An exploitation play must depend on assumptions, not on other kinds of artefact.'
+      : 'Interaction models and scenarios must depend on assumptions, not on other kinds of artefact.');
+    if (real.length !== citedAssumptions.length) {
+      const field = a.kind === 'exploit' ? 'preconditions' : 'assumptions';
+      const lost = citedAssumptions.length - real.length;
+      a.data[field] = real;
+      // The dropped identifiers stay in \`refs\`. They resolve, the model named
+      // them, and provenance is what a reference means — what they are not is a
+      // hypothesis this artefact rests on.
+      note?.(\`“\${a.label}” dropped \${lost} \${field === 'preconditions' ? 'precondition' : 'assumption'}\${lost === 1 ? '' : 's'} that named something other than an assumption.\`);
+    }
+    for (const id of real) if (!a.refs.includes(id)) a.refs = [...a.refs, id];
+  }
+  if (a.origin === 'normative_judgement' && a.kind === 'research_source') return fault('source', 'A recommendation is not an external source.');`],
+    [`  const pruned: string[] = [];
+  const dropWarning = (a: Artefact) => (what: string) => pruned.push(\`“\${a.label}” lost \${what}.\`);
+
+  let kept: Artefact[] = [];`,
+     `  const pruned: string[] = [];
+  const dropWarning = (a: Artefact) => (what: string) => pruned.push(\`“\${a.label}” lost \${what}.\`);
+  // DIVERGENCE: the same channel for a citation that resolved but was filed under
+  // the wrong kind. Kept apart from \`pruned\` because the sentence it belongs in
+  // is a different one: nothing here referred to something absent.
+  const narrowed: string[] = [];
+
+  let kept: Artefact[] = [];`],
+    [`    for (const a of kept) all.set(a.id, a);
+    const survivors = kept.filter((a) => {
+      const f = semanticFault(a, all, stage) ?? relationalFault(a, all);
+      if (f) { drop(a, f); return false; }
+      return true;`,
+     `    for (const a of kept) all.set(a.id, a);
+    const survivors = kept.filter((a) => {
+      const f = semanticFault(a, all, stage, (what) => narrowed.push(what)) ?? relationalFault(a, all);
+      if (f) { drop(a, f); return false; }
+      return true;`],
+    [`  const warnings = [...parsed.warnings];
+  if (pruned.length) warnings.push(\`\${pruned.length} item\${pruned.length === 1 ? '' : 's'} referred to something that is not in this assessment; the reference was dropped and the item kept. \${pruned.slice(0, 4).join(' ')}\${pruned.length > 4 ? \` And \${pruned.length - 4} more.\` : ''}\`.slice(0, 1000));
+  if (rejected.length) {
+    const byCode = new Map<string, Rejection[]>();`,
+     `  const warnings = [...parsed.warnings];
+  if (pruned.length) warnings.push(\`\${pruned.length} item\${pruned.length === 1 ? '' : 's'} referred to something that is not in this assessment; the reference was dropped and the item kept. \${pruned.slice(0, 4).join(' ')}\${pruned.length > 4 ? \` And \${pruned.length - 4} more.\` : ''}\`.slice(0, 1000));
+  // DIVERGENCE: see the narrowing rule in \`semanticFault\`.
+  if (narrowed.length) warnings.push(\`\${narrowed.length} item\${narrowed.length === 1 ? '' : 's'} named something real among the hypotheses \${narrowed.length === 1 ? 'it rests' : 'they rest'} on that is not an assumption record; that citation was dropped and the item kept, with the identifier retained in its provenance. \${narrowed.slice(0, 4).join(' ')}\${narrowed.length > 4 ? \` And \${narrowed.length - 4} more.\` : ''}\`.slice(0, 1000));
+  if (rejected.length) {
+    const byCode = new Map<string, Rejection[]>();`],
+  ],
+  'src/lib/policy-analysis/prompts.ts': [
+    [`Keep the dossier to what TRAVELS between policies — what this body is, what its position rewards, what it can compel or block, what it does instead if it declines. This paper's own objectives, measures and timetable belong in the assessment above, not in a persona that will be read against a different policy next year.\`,
+  14: \`THEORY OF CHANGE. Produce exactly one causal_chain for targetMechanismId. Reconstruct the chain from inputs through activities, outputs, outcomes and impacts. State the causal mechanism at every substantive jump, the assumptions it needs, plausible alternative explanations, possible negative pathways and indicators that would reveal whether the chain is working. Do not invent budgets, baselines or targets: say "not specified" where the paper or evidence does not supply them. Every assumption must resolve to an assumption artefact and appear in refs. Cite the target mechanism and the evidence the chain rests on. Give a qualitative judgement: well_supported, supported_with_limits, contested, provisional or unknown. This is a causal hypothesis to test, not proof that the intervention will cause the outcome.\`,
+  15: \`APPRAISAL AND EVALUATION. Produce option_appraisal rows for all four option types: business_as_usual, minimum_intervention, proposed_policy and at least one alternative. Compare objective fit, social and financial costs and benefits, risks, distribution, affordability, deliverability and reversibility. Do not invent monetary values. State where comparison is impossible because the paper supplies no evidence. Also produce exactly one evaluation_plan covering process, impact and value-for-money questions, a defensible counterfactual, indicators with baselines, targets, data source, owner and cadence, decision rules and data gaps. "Not specified" is a valid and important answer. Link every option and the evaluation plan to causal chains, findings, evidence and assumptions. Use qualitative judgements only.\`,
+  16: \`INDEPENDENT CHALLENGE. Act as the second analytical reviewer, separate from the analyst who produced the supplied findings. Review only targetCategory. Produce exactly one assurance_challenge. Set finding=issue when a material weakness exists, otherwise finding=cleared and explain the test that cleared it. Check the strongest relevant conclusion, not an easy example. Inspect provenance rather than trusting a citation count. Test for omitted actors or impacts, a citation that does not entail the claim, an unsupported causal leap, neglected counter-evidence, confidence stronger than the evidence, a recommendation that does not follow, or incomplete appraisal according to the assigned category. Name the target artefact IDs and cite the evidence used in refs. Do not rewrite the report and do not assume that an automated review is formal human assurance.\`,
+  17: \`ASSURED SYNTHESIS. Revise the INITIAL report after reading every causal chain, option appraisal, evaluation plan and independent challenge. Produce a complete replacement set of findings with revision=assured, including all report sections where evidence permits: \${REPORT_SECTIONS.join(', ')}. Every assured finding must name the initial findings it reviewed in reviewedFindingIds, the challenges that affected it in challengeIds, a qualitative judgement, resultIds and hypothesisIds; put every one of those identifiers in refs. Produce one assurance_response for every assurance_challenge, stating accepted, partly accepted, rejected or unresolved and what changed. Preserve disagreement where it remains. Produce replacement recommendations with revision=assured and one review_summary. The server recomputes the review_summary counts and decision-use level; do not use a numerical confidence or claim formal assurance. A recommendation is a normative judgement. An automated independent challenge can support decision use, but human sign-off and specialist legal, economic or scientific review remain outside scope.\`,
+};
+/**`,
+     `Keep the dossier to what TRAVELS between policies — what this body is, what its position rewards, what it can compel or block, what it does instead if it declines. This paper's own objectives, measures and timetable belong in the assessment above, not in a persona that will be read against a different policy next year.\`,
+  14: \`THEORY OF CHANGE. Produce exactly one causal_chain for targetMechanismId. Reconstruct the chain from inputs through activities, outputs, outcomes and impacts. State the causal mechanism at every substantive jump, the assumptions it needs, plausible alternative explanations, possible negative pathways and indicators that would reveal whether the chain is working. Do not invent budgets, baselines or targets: say "not specified" where the paper or evidence does not supply them. Every assumption must resolve to an assumption artefact and appear in refs. Cite the target mechanism and the evidence the chain rests on. Give a qualitative judgement: well_supported, supported_with_limits, contested, provisional or unknown. This is a causal hypothesis to test, not proof that the intervention will cause the outcome.\`,
+  15: \`APPRAISAL AND EVALUATION. Produce option_appraisal rows for all four option types: business_as_usual, minimum_intervention, proposed_policy and at least one alternative. Compare objective fit, social and financial costs and benefits, risks, distribution, affordability, deliverability and reversibility. Do not invent monetary values. State where comparison is impossible because the paper supplies no evidence. Also produce exactly one evaluation_plan covering process, impact and value-for-money questions, a defensible counterfactual, indicators with baselines, targets, data source, owner and cadence, decision rules and data gaps. "Not specified" is a valid and important answer. Link every option and the evaluation plan to causal chains, findings, evidence and assumptions. Use qualitative judgements only.
+
+If a "coverageGap" list is supplied, this is a SECOND call about an appraisal you have already written, and the list names the option types — and possibly the evaluation plan — that your previous response omitted. Return ONLY those artefacts, one for each entry, and nothing else. Everything else you produced is already recorded and must not be restated.\`,
+  16: \`INDEPENDENT CHALLENGE. Act as the second analytical reviewer, separate from the analyst who produced the supplied findings. Review only targetCategory. Produce exactly one assurance_challenge. Set finding=issue when a material weakness exists, otherwise finding=cleared and explain the test that cleared it. Check the strongest relevant conclusion, not an easy example. Inspect provenance rather than trusting a citation count. Test for omitted actors or impacts, a citation that does not entail the claim, an unsupported causal leap, neglected counter-evidence, confidence stronger than the evidence, a recommendation that does not follow, or incomplete appraisal according to the assigned category. Name the target artefact IDs and cite the evidence used in refs. Do not rewrite the report and do not assume that an automated review is formal human assurance.\`,
+  17: \`ASSURED SYNTHESIS. Revise the INITIAL report after reading every causal chain, option appraisal, evaluation plan and independent challenge. Produce a complete replacement set of findings with revision=assured, including all report sections where evidence permits: \${REPORT_SECTIONS.join(', ')}. Every assured finding must name the initial findings it reviewed in reviewedFindingIds, the challenges that affected it in challengeIds, a qualitative judgement, resultIds and hypothesisIds; put every one of those identifiers in refs. Produce one assurance_response for every assurance_challenge, stating accepted, partly accepted, rejected or unresolved and what changed. Preserve disagreement where it remains. Produce replacement recommendations with revision=assured and one review_summary. The server recomputes the review_summary counts and decision-use level; do not use a numerical confidence or claim formal assurance. A recommendation is a normative judgement. An automated independent challenge can support decision use, but human sign-off and specialist legal, economic or scientific review remain outside scope.
+
+If a "coverageGap" list is supplied, this is a SECOND call about a report you have already written, and the list names assurance_challenge identifiers that your previous response left with no assurance_response. Return ONLY the missing assurance_response artefacts — exactly one for each identifier listed — and nothing else. Do not restate the findings, the recommendations or the review summary: they are already recorded, and repeating them would replace them with duplicates. Answer each challenge on its merits; "rejected" and "unresolved" are proper answers and a disposition you cannot support is worse than an honest refusal.\`,
+};
+/**`],
+  ],
+  'src/lib/policy-analysis/pipeline.ts': [
+    [`    // shared fit rather than seven times at the boundary. See sync-core.mjs.
+    const assured = [...context.filter((a) => ['finding', 'recommendation', 'causal_chain', 'option_appraisal', 'evaluation_plan', 'evidence'].includes(a.kind)).map((a) => a.id), ...hypotheses];
+    await fanOut(ASSURANCE_CATEGORIES.map((category) => ({
+      key: category,
+      context: orderedContext(context, [], 'assurance', [[]], new Set(assured)),
+      describe: \`\${category.replaceAll('_', ' ')} challenge\`,
+      extra: { targetCategory: category, protect: assured },
+    })));
+  } else if (stage === 11) {
+    // Failing to LOAD the comparison must not cost the assessment its stage; the`,
+     `    // shared fit rather than seven times at the boundary. See sync-core.mjs.
+    const assured = [...context.filter((a) => ['finding', 'recommendation', 'causal_chain', 'option_appraisal', 'evaluation_plan', 'evidence'].includes(a.kind)).map((a) => a.id), ...hypotheses];
+    const remit = (category: string) => ({
+      key: category,
+      context: orderedContext(context, [], 'assurance', [[]], new Set(assured)),
+      describe: \`\${category.replaceAll('_', ' ')} challenge\`,
+      extra: { targetCategory: category, protect: assured },
+    });
+    await fanOut(ASSURANCE_CATEGORIES.map(remit));
+    /**
+     * DIVERGENCE: THE FAN-OUT SHAPE OF THE SAME TOP-UP.
+     *
+     * A fan-out gap needs no new instruction: a unit that answered emptily, or
+     * whose one artefact was quarantined, is re-run as itself. \`reserve\` hands it
+     * a fresh slot, so the second attempt's identifiers cannot collide with the
+     * first's, and \`attempt\` records a failure as a gap exactly as the sweep did.
+     *
+     * Stage 16 is the fan-out whose coverage rule throws on a SINGLE absent
+     * category, which makes it the one where a silent unit ends the run. Stages 7,
+     * 9 and 14 already tolerate a shortfall through \`requireMajority\` or a half
+     * coverage floor, so they are left alone.
+     */
+    const absent = () => ASSURANCE_CATEGORIES.filter((category) =>
+      !output.artefacts.some((a) => a.kind === 'assurance_challenge' && a.data.category === category));
+    const missing = absent();
+    if (missing.length) {
+      output.warnings.push(\`\${missing.length} of \${ASSURANCE_CATEGORIES.length} challenge remits produced nothing and were asked again: \${missing.join(', ').replaceAll('_', ' ')}.\`);
+      await fanOut(missing.map(remit));
+    }
+  } else if (stage === 11) {
+    // Failing to LOAD the comparison must not cost the assessment its stage; the`],
+    [`    const extra = { ...(protect.length ? { protect } : {}), ...(stage === 5 ? { remainingQuestions: limits.questions } : {}) };
+    await request('main', context, extra);
+  }
+`,
+     `    const extra = { ...(protect.length ? { protect } : {}), ...(stage === 5 ? { remainingQuestions: limits.questions } : {}) };
+    await request('main', context, extra);
+    /**
+     * DIVERGENCE: ONE MORE ASK FOR EXACTLY WHAT IS MISSING.
+     *
+     * The coverage rules at the bottom of this function decide whether a stage
+     * did its job. When one of them finds a gap it throws, the worker records an
+     * attempt, and the stage is claimed again — where \`provider.ts\` replays the
+     * CACHED \`main\` response, because the payload hash has not changed. The
+     * omission is therefore reproduced exactly, and the two repair rounds that
+     * follow are aimed at artefacts triage REJECTED rather than at what was never
+     * returned. Retrying cannot reach a different answer.
+     *
+     * Measured on assessment 36ebca37, the Post-16 run of 2026-09-19: stage 17
+     * failed NINE consecutive times on "N independent challenges have no response
+     * in the revised assessment", answering five or six of seven each time and
+     * discarding a complete nineteen-finding assured report on every attempt.
+     * 498 of that run's 623 minutes went on it, and what finally unblocked it was
+     * a change of model — which is luck, not a mechanism.
+     *
+     * So the gap is named and asked about ONCE, before any rule decides. Under a
+     * key of its own, so the response cache cannot replay the omission, and with
+     * \`coverageGap\` in the payload, so the hash differs and the instruction in
+     * \`prompts.ts\` can tell the model to return only what is absent.
+     *
+     * ONE round, deliberately. A deterministic gap asked about differently is a
+     * different question; asking it five times is the loop this replaces.
+     *
+     * This is stage 2's \`unclaimedMentions\` loop, which has done exactly this for
+     * source mentions since before the fork, applied to the two stages whose
+     * coverage rule can end a run over a single absence.
+     */
+    const gap = stage === ASSURED_SYNTHESIS_STAGE
+      ? input.artefacts.filter((a) => a.kind === 'assurance_challenge')
+        .filter((c) => !output.artefacts.some((a) => a.kind === 'assurance_response' && a.data.challengeId === c.id))
+        .map((a) => a.id)
+      : stage === APPRAISAL_STAGE
+        // Mirrors the appraisal rule below. Written out rather than shared with it
+        // because the two sit 120 lines apart and this is a recorded divergence:
+        // a constant hoisted between them is a much larger patch to re-apply.
+        ? [...['business_as_usual', 'minimum_intervention', 'proposed_policy', 'alternative']
+          .filter((type) => !output.artefacts.some((a) => a.kind === 'option_appraisal' && a.data.optionType === type)),
+        ...(output.artefacts.some((a) => a.kind === 'evaluation_plan') ? [] : ['evaluation_plan'])]
+        : [];
+    if (gap.length) {
+      output.warnings.push(\`\${gap.length} part\${gap.length === 1 ? '' : 's'} of this stage \${gap.length === 1 ? 'was' : 'were'} missing from the first response and the model was asked again for \${gap.length === 1 ? 'it' : 'them'}: \${gap.slice(0, 8).map((g) => g.replaceAll('_', ' ')).join(', ')}\${gap.length > 8 ? \`, and \${gap.length - 8} more\` : ''}.\`);
+      const before = output.artefacts.length;
+      await attempt('topup', context, \`The \${gap.length} part\${gap.length === 1 ? '' : 's'} this stage left out\`, { ...extra, coverageGap: gap });
+      /**
+       * A TOP-UP CONTRIBUTES ONLY THE KIND IT ASKED FOR.
+       *
+       * The instruction says "return only the missing artefacts", and a model that
+       * ignores it hands back the whole report a second time. Nothing would catch
+       * that: the identifiers carry this call's own slot so they do not collide,
+       * and the result is a duplicate set of findings under a second review
+       * summary — which the rule below then fails on, turning a stage that was one
+       * response short into one that cannot finish at all.
+       *
+       * So the gap decides what may come back. Everything else the call produced
+       * is work the stage already holds, and is dropped rather than added.
+       */
+      const wanted = new Set(gap);
+      const invited = (a: Artefact) => stage === ASSURED_SYNTHESIS_STAGE
+        ? a.kind === 'assurance_response' && wanted.has(String(a.data.challengeId))
+        : (a.kind === 'option_appraisal' && wanted.has(String(a.data.optionType))) || (a.kind === 'evaluation_plan' && wanted.has('evaluation_plan'));
+      const added = output.artefacts.slice(before);
+      const unwanted = new Set(added.filter((a) => !invited(a)).map((a) => a.id));
+      if (unwanted.size) {
+        // And anything invited that leans on something uninvited goes with it,
+        // rather than being kept with a reference nothing can resolve.
+        for (const a of added) if (!unwanted.has(a.id) && a.refs.some((r) => unwanted.has(r))) unwanted.add(a.id);
+        output.artefacts = output.artefacts.filter((a) => !unwanted.has(a.id));
+        output.warnings.push(\`The second call restated \${unwanted.size} item\${unwanted.size === 1 ? '' : 's'} this stage already holds; \${unwanted.size === 1 ? 'it was' : 'they were'} discarded rather than recorded twice. Only what was actually missing was taken from it.\`);
+      }
+    }
+  }
+`],
+    [`    const types = new Set(output.artefacts.filter((a) => a.kind === 'option_appraisal').map((a) => String(a.data.optionType)));
+    const missing = ['business_as_usual', 'minimum_intervention', 'proposed_policy', 'alternative'].filter((type) => !types.has(type));
+    if (missing.length || !output.artefacts.some((a) => a.kind === 'evaluation_plan')) throw new PolicyError(fault.last?.code ?? 'coverage', \`The appraisal omitted \${missing.length ? missing.join(', ').replaceAll('_', ' ') : 'the evaluation plan'}.\${fault.last ? \` Last reason: \${fault.last.message}\` : ''}\`);
+  }
+  if (stage === ASSURANCE_STAGE) {
+    const covered = new Set(output.artefacts.filter((a) => a.kind === 'assurance_challenge').map((a) => String(a.data.category)));
+    const missing = ASSURANCE_CATEGORIES.filter((category) => !covered.has(category));
+    if (missing.length) throw new PolicyError(fault.last?.code ?? 'coverage', \`Independent challenge omitted \${missing.join(', ').replaceAll('_', ' ')}.\${fault.last ? \` Last reason: \${fault.last.message}\` : ''}\`);
+  }
+  if (stage === SYNTHESIS_STAGE || stage === ASSURED_SYNTHESIS_STAGE) {`,
+     `    const types = new Set(output.artefacts.filter((a) => a.kind === 'option_appraisal').map((a) => String(a.data.optionType)));
+    const missing = ['business_as_usual', 'minimum_intervention', 'proposed_policy', 'alternative'].filter((type) => !types.has(type));
+    /**
+     * DIVERGENCE: A LOAD-BEARING CORE THAT THROWS, AND A TAIL THAT WARNS.
+     *
+     * The synthesis rule below already draws this distinction — \`coreSections\`
+     * against the rest — and says why in its own comment: a missing chapter is a
+     * gap the reader should see named, not a reason to throw away an assessment.
+     * Every other gate in this function threw on a single absence, and the one at
+     * stage 17 is what cost the live run its day.
+     *
+     * The proposal itself and the evaluation plan are the two an appraisal cannot
+     * be read without: without the first there is nothing to appraise, and without
+     * the second no way to tell whether it worked. A missing counterfactual makes
+     * the comparison narrower, which is a limit to report rather than a failure.
+     */
+    const core = missing.filter((type) => type === 'proposed_policy');
+    if (core.length || !output.artefacts.some((a) => a.kind === 'evaluation_plan')) throw new PolicyError(fault.last?.code ?? 'coverage', \`The appraisal omitted \${core.length ? core.join(', ').replaceAll('_', ' ') : 'the evaluation plan'}.\${fault.last ? \` Last reason: \${fault.last.message}\` : ''}\`);
+    if (missing.length) output.warnings.push(\`The appraisal has no \${missing.join(', ').replaceAll('_', ' ')} option, so the comparison is narrower than the method asks for. Read it as incomplete on those grounds.\`);
+  }
+  if (stage === ASSURANCE_STAGE) {
+    // DIVERGENCE: the top-up above has already asked again for anything absent, so
+    // what reaches here is a remit that failed twice. \`requireMajority\` is this
+    // codebase's existing statement of the judgement — a fixed library is only a
+    // guarantee if most of it ran, and the absences are named either way — and it
+    // is what stages 7 and 9 have always used for the same shape of rule.
+    requireMajority(output, ASSURANCE_CATEGORIES, (a) => String(a.data.category), 'challenge remit', fault.last);
+  }
+  if (stage === SYNTHESIS_STAGE || stage === ASSURED_SYNTHESIS_STAGE) {`],
+    [`    const responded = new Set(responses.map((a) => String(a.data.challengeId)));
+    const missing = challenges.filter((a) => !responded.has(a.id));
+    if (missing.length) throw new PolicyError('coverage', \`\${missing.length} independent challenge\${missing.length === 1 ? ' has' : 's have'} no response in the revised assessment.\`);
+    const summaries = output.artefacts.filter((a) => a.kind === 'review_summary');
+    if (summaries.length !== 1) throw new PolicyError('coverage', 'The revised assessment must contain exactly one review summary.');`,
+     `    const responded = new Set(responses.map((a) => String(a.data.challengeId)));
+    const missing = challenges.filter((a) => !responded.has(a.id));
+    /**
+     * DIVERGENCE: THE RULE THAT COST THE LIVE RUN ITS DAY.
+     *
+     * Nine attempts, five or six of seven challenges answered every time, and a
+     * complete nineteen-finding assured report discarded on each — see the top-up
+     * comment in the single-call branch above, which now asks once for exactly
+     * what is absent before this decides anything.
+     *
+     * What remains is the judgement itself, and it takes the shape every other
+     * fixed library in this file uses: a majority is the guarantee, a shortfall is
+     * a named limit. A report answering six of seven challenges is a report with
+     * one open objection, which is what \`unresolvedMaterialChallenges\` below is
+     * for; one answering two is a report that did not do the job.
+     */
+    if (missing.length * 2 >= challenges.length) throw new PolicyError('coverage', \`\${missing.length} of \${challenges.length} independent challenge\${challenges.length === 1 ? '' : 's'} \${missing.length === 1 ? 'has' : 'have'} no response in the revised assessment.\`);
+    if (missing.length) output.warnings.push(\`\${missing.length} of \${challenges.length} independent challenges \${missing.length === 1 ? 'has' : 'have'} no response in the revised assessment, after the model was asked a second time for \${missing.length === 1 ? 'it' : 'them'}: \${missing.slice(0, 6).map((a) => String(a.data.category).replaceAll('_', ' ')).join(', ')}\${missing.length > 6 ? \`, and \${missing.length - 6} more\` : ''}. Those objections stand unanswered rather than resolved.\`);
+    const summaries = output.artefacts.filter((a) => a.kind === 'review_summary');
+    if (summaries.length !== 1) throw new PolicyError('coverage', 'The revised assessment must contain exactly one review summary.');`],
+  ],
+};
+
+/** Apply one file's phase-16 pairs in order, refusing to pass if an anchor moved. */
+function phase16(rel, source) {
+  let out = source;
+  for (const [from, to] of PHASE16[rel]) {
+    if (!out.includes(from)) throw new Error(`${rel}: a phase-16 anchor moved — see docs/phase-16.md`);
+    out = out.replace(from, to);
+  }
+  return out;
+}
+
 const DIVERGENCES = {
   // ── The exposure ramp had no values, so every mark painted black ─────────
   //
@@ -191,8 +527,18 @@ const DIVERGENCES = {
       extra: { targetCategory: category, protect: assured },`,
     );
     if (out === s) throw new Error('pipeline.ts: the fan-out sites moved');
-    return out;
+    // PHASE 16, applied after the cache wiring above because two of its anchors
+    // are that wiring's own output.
+    return phase16('src/lib/policy-analysis/pipeline.ts', out);
   },
+
+  // PHASE 16 — narrow a mis-typed hypothesis list rather than discarding the
+  // artefact that carries it. See the header above.
+  'src/lib/policy-analysis/validation.ts': (s) => phase16('src/lib/policy-analysis/validation.ts', s),
+
+  // PHASE 16 — the stage 15 and 17 instructions learn what `coverageGap` means,
+  // without which a targeted second call is just the same call again.
+  'src/lib/policy-analysis/prompts.ts': (s) => phase16('src/lib/policy-analysis/prompts.ts', s),
 
   'src/lib/policy-analysis/view.ts': (source) =>
     source.replace(

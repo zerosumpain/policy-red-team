@@ -708,12 +708,33 @@ export async function executeStage(input: StageInput, deps: PipelineDeps): Promi
     // which is the same list for all seven — so it is protected once in the
     // shared fit rather than seven times at the boundary. See sync-core.mjs.
     const assured = [...context.filter((a) => ['finding', 'recommendation', 'causal_chain', 'option_appraisal', 'evaluation_plan', 'evidence'].includes(a.kind)).map((a) => a.id), ...hypotheses];
-    await fanOut(ASSURANCE_CATEGORIES.map((category) => ({
+    const remit = (category: string) => ({
       key: category,
       context: orderedContext(context, [], 'assurance', [[]], new Set(assured)),
       describe: `${category.replaceAll('_', ' ')} challenge`,
       extra: { targetCategory: category, protect: assured },
-    })));
+    });
+    await fanOut(ASSURANCE_CATEGORIES.map(remit));
+    /**
+     * DIVERGENCE: THE FAN-OUT SHAPE OF THE SAME TOP-UP.
+     *
+     * A fan-out gap needs no new instruction: a unit that answered emptily, or
+     * whose one artefact was quarantined, is re-run as itself. `reserve` hands it
+     * a fresh slot, so the second attempt's identifiers cannot collide with the
+     * first's, and `attempt` records a failure as a gap exactly as the sweep did.
+     *
+     * Stage 16 is the fan-out whose coverage rule throws on a SINGLE absent
+     * category, which makes it the one where a silent unit ends the run. Stages 7,
+     * 9 and 14 already tolerate a shortfall through `requireMajority` or a half
+     * coverage floor, so they are left alone.
+     */
+    const absent = () => ASSURANCE_CATEGORIES.filter((category) =>
+      !output.artefacts.some((a) => a.kind === 'assurance_challenge' && a.data.category === category));
+    const missing = absent();
+    if (missing.length) {
+      output.warnings.push(`${missing.length} of ${ASSURANCE_CATEGORIES.length} challenge remits produced nothing and were asked again: ${missing.join(', ').replaceAll('_', ' ')}.`);
+      await fanOut(missing.map(remit));
+    }
   } else if (stage === 11) {
     // Failing to LOAD the comparison must not cost the assessment its stage; the
     // rest of this run is unaffected by whether the other papers could be read.
@@ -757,6 +778,79 @@ export async function executeStage(input: StageInput, deps: PipelineDeps): Promi
     // changed nothing at all, which is the whole of what stage 5 does.
     const extra = { ...(protect.length ? { protect } : {}), ...(stage === 5 ? { remainingQuestions: limits.questions } : {}) };
     await request('main', context, extra);
+    /**
+     * DIVERGENCE: ONE MORE ASK FOR EXACTLY WHAT IS MISSING.
+     *
+     * The coverage rules at the bottom of this function decide whether a stage
+     * did its job. When one of them finds a gap it throws, the worker records an
+     * attempt, and the stage is claimed again — where `provider.ts` replays the
+     * CACHED `main` response, because the payload hash has not changed. The
+     * omission is therefore reproduced exactly, and the two repair rounds that
+     * follow are aimed at artefacts triage REJECTED rather than at what was never
+     * returned. Retrying cannot reach a different answer.
+     *
+     * Measured on assessment 36ebca37, the Post-16 run of 2026-09-19: stage 17
+     * failed NINE consecutive times on "N independent challenges have no response
+     * in the revised assessment", answering five or six of seven each time and
+     * discarding a complete nineteen-finding assured report on every attempt.
+     * 498 of that run's 623 minutes went on it, and what finally unblocked it was
+     * a change of model — which is luck, not a mechanism.
+     *
+     * So the gap is named and asked about ONCE, before any rule decides. Under a
+     * key of its own, so the response cache cannot replay the omission, and with
+     * `coverageGap` in the payload, so the hash differs and the instruction in
+     * `prompts.ts` can tell the model to return only what is absent.
+     *
+     * ONE round, deliberately. A deterministic gap asked about differently is a
+     * different question; asking it five times is the loop this replaces.
+     *
+     * This is stage 2's `unclaimedMentions` loop, which has done exactly this for
+     * source mentions since before the fork, applied to the two stages whose
+     * coverage rule can end a run over a single absence.
+     */
+    const gap = stage === ASSURED_SYNTHESIS_STAGE
+      ? input.artefacts.filter((a) => a.kind === 'assurance_challenge')
+        .filter((c) => !output.artefacts.some((a) => a.kind === 'assurance_response' && a.data.challengeId === c.id))
+        .map((a) => a.id)
+      : stage === APPRAISAL_STAGE
+        // Mirrors the appraisal rule below. Written out rather than shared with it
+        // because the two sit 120 lines apart and this is a recorded divergence:
+        // a constant hoisted between them is a much larger patch to re-apply.
+        ? [...['business_as_usual', 'minimum_intervention', 'proposed_policy', 'alternative']
+          .filter((type) => !output.artefacts.some((a) => a.kind === 'option_appraisal' && a.data.optionType === type)),
+        ...(output.artefacts.some((a) => a.kind === 'evaluation_plan') ? [] : ['evaluation_plan'])]
+        : [];
+    if (gap.length) {
+      output.warnings.push(`${gap.length} part${gap.length === 1 ? '' : 's'} of this stage ${gap.length === 1 ? 'was' : 'were'} missing from the first response and the model was asked again for ${gap.length === 1 ? 'it' : 'them'}: ${gap.slice(0, 8).map((g) => g.replaceAll('_', ' ')).join(', ')}${gap.length > 8 ? `, and ${gap.length - 8} more` : ''}.`);
+      const before = output.artefacts.length;
+      await attempt('topup', context, `The ${gap.length} part${gap.length === 1 ? '' : 's'} this stage left out`, { ...extra, coverageGap: gap });
+      /**
+       * A TOP-UP CONTRIBUTES ONLY THE KIND IT ASKED FOR.
+       *
+       * The instruction says "return only the missing artefacts", and a model that
+       * ignores it hands back the whole report a second time. Nothing would catch
+       * that: the identifiers carry this call's own slot so they do not collide,
+       * and the result is a duplicate set of findings under a second review
+       * summary — which the rule below then fails on, turning a stage that was one
+       * response short into one that cannot finish at all.
+       *
+       * So the gap decides what may come back. Everything else the call produced
+       * is work the stage already holds, and is dropped rather than added.
+       */
+      const wanted = new Set(gap);
+      const invited = (a: Artefact) => stage === ASSURED_SYNTHESIS_STAGE
+        ? a.kind === 'assurance_response' && wanted.has(String(a.data.challengeId))
+        : (a.kind === 'option_appraisal' && wanted.has(String(a.data.optionType))) || (a.kind === 'evaluation_plan' && wanted.has('evaluation_plan'));
+      const added = output.artefacts.slice(before);
+      const unwanted = new Set(added.filter((a) => !invited(a)).map((a) => a.id));
+      if (unwanted.size) {
+        // And anything invited that leans on something uninvited goes with it,
+        // rather than being kept with a reference nothing can resolve.
+        for (const a of added) if (!unwanted.has(a.id) && a.refs.some((r) => unwanted.has(r))) unwanted.add(a.id);
+        output.artefacts = output.artefacts.filter((a) => !unwanted.has(a.id));
+        output.warnings.push(`The second call restated ${unwanted.size} item${unwanted.size === 1 ? '' : 's'} this stage already holds; ${unwanted.size === 1 ? 'it was' : 'they were'} discarded rather than recorded twice. Only what was actually missing was taken from it.`);
+      }
+    }
   }
 
   const pursue = async (questions: Artefact[], round: number) => {
@@ -863,12 +957,31 @@ export async function executeStage(input: StageInput, deps: PipelineDeps): Promi
   if (stage === APPRAISAL_STAGE) {
     const types = new Set(output.artefacts.filter((a) => a.kind === 'option_appraisal').map((a) => String(a.data.optionType)));
     const missing = ['business_as_usual', 'minimum_intervention', 'proposed_policy', 'alternative'].filter((type) => !types.has(type));
-    if (missing.length || !output.artefacts.some((a) => a.kind === 'evaluation_plan')) throw new PolicyError(fault.last?.code ?? 'coverage', `The appraisal omitted ${missing.length ? missing.join(', ').replaceAll('_', ' ') : 'the evaluation plan'}.${fault.last ? ` Last reason: ${fault.last.message}` : ''}`);
+    /**
+     * DIVERGENCE: A LOAD-BEARING CORE THAT THROWS, AND A TAIL THAT WARNS.
+     *
+     * The synthesis rule below already draws this distinction — `coreSections`
+     * against the rest — and says why in its own comment: a missing chapter is a
+     * gap the reader should see named, not a reason to throw away an assessment.
+     * Every other gate in this function threw on a single absence, and the one at
+     * stage 17 is what cost the live run its day.
+     *
+     * The proposal itself and the evaluation plan are the two an appraisal cannot
+     * be read without: without the first there is nothing to appraise, and without
+     * the second no way to tell whether it worked. A missing counterfactual makes
+     * the comparison narrower, which is a limit to report rather than a failure.
+     */
+    const core = missing.filter((type) => type === 'proposed_policy');
+    if (core.length || !output.artefacts.some((a) => a.kind === 'evaluation_plan')) throw new PolicyError(fault.last?.code ?? 'coverage', `The appraisal omitted ${core.length ? core.join(', ').replaceAll('_', ' ') : 'the evaluation plan'}.${fault.last ? ` Last reason: ${fault.last.message}` : ''}`);
+    if (missing.length) output.warnings.push(`The appraisal has no ${missing.join(', ').replaceAll('_', ' ')} option, so the comparison is narrower than the method asks for. Read it as incomplete on those grounds.`);
   }
   if (stage === ASSURANCE_STAGE) {
-    const covered = new Set(output.artefacts.filter((a) => a.kind === 'assurance_challenge').map((a) => String(a.data.category)));
-    const missing = ASSURANCE_CATEGORIES.filter((category) => !covered.has(category));
-    if (missing.length) throw new PolicyError(fault.last?.code ?? 'coverage', `Independent challenge omitted ${missing.join(', ').replaceAll('_', ' ')}.${fault.last ? ` Last reason: ${fault.last.message}` : ''}`);
+    // DIVERGENCE: the top-up above has already asked again for anything absent, so
+    // what reaches here is a remit that failed twice. `requireMajority` is this
+    // codebase's existing statement of the judgement — a fixed library is only a
+    // guarantee if most of it ran, and the absences are named either way — and it
+    // is what stages 7 and 9 have always used for the same shape of rule.
+    requireMajority(output, ASSURANCE_CATEGORIES, (a) => String(a.data.category), 'challenge remit', fault.last);
   }
   if (stage === SYNTHESIS_STAGE || stage === ASSURED_SYNTHESIS_STAGE) {
     // A missing chapter is a gap the reader should see named, not a reason to
@@ -895,7 +1008,22 @@ export async function executeStage(input: StageInput, deps: PipelineDeps): Promi
     const responses = output.artefacts.filter((a) => a.kind === 'assurance_response');
     const responded = new Set(responses.map((a) => String(a.data.challengeId)));
     const missing = challenges.filter((a) => !responded.has(a.id));
-    if (missing.length) throw new PolicyError('coverage', `${missing.length} independent challenge${missing.length === 1 ? ' has' : 's have'} no response in the revised assessment.`);
+    /**
+     * DIVERGENCE: THE RULE THAT COST THE LIVE RUN ITS DAY.
+     *
+     * Nine attempts, five or six of seven challenges answered every time, and a
+     * complete nineteen-finding assured report discarded on each — see the top-up
+     * comment in the single-call branch above, which now asks once for exactly
+     * what is absent before this decides anything.
+     *
+     * What remains is the judgement itself, and it takes the shape every other
+     * fixed library in this file uses: a majority is the guarantee, a shortfall is
+     * a named limit. A report answering six of seven challenges is a report with
+     * one open objection, which is what `unresolvedMaterialChallenges` below is
+     * for; one answering two is a report that did not do the job.
+     */
+    if (missing.length * 2 >= challenges.length) throw new PolicyError('coverage', `${missing.length} of ${challenges.length} independent challenge${challenges.length === 1 ? '' : 's'} ${missing.length === 1 ? 'has' : 'have'} no response in the revised assessment.`);
+    if (missing.length) output.warnings.push(`${missing.length} of ${challenges.length} independent challenges ${missing.length === 1 ? 'has' : 'have'} no response in the revised assessment, after the model was asked a second time for ${missing.length === 1 ? 'it' : 'them'}: ${missing.slice(0, 6).map((a) => String(a.data.category).replaceAll('_', ' ')).join(', ')}${missing.length > 6 ? `, and ${missing.length - 6} more` : ''}. Those objections stand unanswered rather than resolved.`);
     const summaries = output.artefacts.filter((a) => a.kind === 'review_summary');
     if (summaries.length !== 1) throw new PolicyError('coverage', 'The revised assessment must contain exactly one review summary.');
     const issueIds = new Set(challenges.filter((a) => a.data.finding === 'issue').map((a) => a.id));
