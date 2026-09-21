@@ -157,3 +157,67 @@ would have said so at install time.
 | B | **`POLICY_ACCESS=password` on `policy.strangeramblings.com`**, set explicitly in the Ansible | The live hostname stops being readable by anyone who knows the name. Phase 3, plus one line in `~/porkserv/policy.yml`. |
 | C | **Hand-rolled Entra token fetch**, no `@azure/identity` | Two cached POSTs on the `openai` package's `azureADTokenProvider` hook. Phase 2. |
 | D | **Search ships as "none, stated honestly" plus the seam** | One scope sentence per run instead of twelve warnings. Azure AI Search is a seam, not a deliverable. Phase 5. |
+
+---
+
+## What was built, 21 September 2026
+
+All six phases landed. Commits `f2b45b2`, `b2e0774`, `240b10f`, `f14f02c`,
+`16de246`, `c8cfc39` — read in that order they are the record.
+
+Gates went from five to eight and from 943 unit tests to 1,010:
+
+| | |
+|---|---|
+| `npm run claim` | NEW. Four servers, real HTTP, no browser: the shipped credential cannot survive by any route, both gates gate, no secret comes back out |
+| `npm run doctor` | NEW. What this install resolved, and `--reach` through the proxy the service itself uses |
+| `npm run a11y` | routes read off `App.tsx` (6 → 14) and an API stub, so a page under audit renders instead of showing its spinner |
+| `npm run sync:check` | now APPLIES each divergence and compares byte for byte, instead of waving through every file that has one |
+
+### What the plan got wrong
+
+**`build.mjs` was not supposed to import `egress`.** The plan said the endpoint
+assertion should read the providers' declared egress instead of its own literal
+list. Having read both: they answer different questions. `egress` is prose for a
+network team and contains entries like "your Azure resource endpoint", which is
+not a string anything can be grepped for; `ENDPOINTS` is the set of literal
+substrings that must be absent from the fixture bytes. Merging them would have
+quietly weakened the byte check. The endpoints were added by hand instead.
+
+**Two bugs came from reading the SDK rather than its documentation comment**, and
+either would have shipped a feature that never worked: `apiKey` and
+`azureADTokenProvider` are mutually exclusive and passing both throws at
+construction, and `buildRequest` pastes the deployment into the path with no
+encoding at all. Neither is in the review's findings; both were found by opening
+`node_modules/openai/azure.js`.
+
+**The `.env` bug was older and wider than the review found.** The reviewers caught
+that the server never loads one. They did not catch that `cli.ts`'s load has been
+in the wrong position since phase 0 — a bare `try { process.loadEnvFile() }` among
+the imports, which are hoisted, so it ran after `$lib/db` had frozen `DATA_DIR`.
+`POLICY_DATA_DIR` in a `.env` had never once been honoured.
+
+### What is still open
+
+**Nothing in the Azure path has made a real request**, and this repository cannot
+make one. What is asserted is what we send and how we report what comes back: the
+request line, the auth mode, the parameter names, the sentence a reader ends up
+with for a 429 or a content filter. Whether Azure accepts it is not knowable from
+here. The api-version floor and the endpoint families are documented behaviour,
+not measured.
+
+**`default-models.ts` is still copied and still carries OpenRouter ids.** The plan
+had it becoming fork-written. It was left: the ids are a MENU, already replaceable
+by `POLICY_MODELS` and by the panel, and a provider that serves one model decides
+for itself. Rewriting a copied file to change a default nobody is forced to use
+was the wrong trade against the sync cost.
+
+**`npm run sync` was not run.** The plan's gate was "sync:check clean and git
+status clean after `npm run sync`". `sync-core.mjs` re-copies EVERYTHING, and
+running it would pull every upstream change since the last sync into a commit
+about configuration — which is the failure `AGENTS.md` records. The strengthened
+`sync:check`, which applies each divergence and compares byte for byte, is a
+stronger guarantee than the one the plan asked for and does not carry that risk.
+
+**There is still no CI.** No `.github`, no workflow. Every gate above is a
+convention until something runs it.
