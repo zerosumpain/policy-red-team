@@ -48,6 +48,13 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run typecheck
+      # BEFORE `npm test`, and it is not an optimisation. `pack.test.ts` SKIPS
+      # ITSELF when there is no offline bundle to open — quietly, with a note
+      # nobody reads in a green log. On a developer's machine the bundle is
+      # usually lying around from an earlier build, so those two assertions run;
+      # on a clean runner they never would, and CI would have been permanently
+      # testing two fewer things than the machine it was meant to be checking.
+      - run: npm run build:offline
       - run: npm test
       # NOT STRICT, and that is deliberate. `sync:check` compares the copied
       # files against a PRIVATE sibling repository that this runner does not

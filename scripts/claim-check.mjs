@@ -257,10 +257,21 @@ const NEW_PASSWORD = 'a-long-enough-new-password';
     const closed = await call(server.base, '/api/policy-analysis');
     check(closed.status === 401, `the reader gate is on and the API answered ${closed.status}`);
 
-    // THE SHELL IS NOT GATED, deliberately: the page that draws the sign-in
-    // form has to load before anybody can sign in.
+    /*
+     * THE SHELL IS NOT GATED, deliberately: the page that draws the sign-in
+     * form has to load before anybody can sign in.
+     *
+     * A 404 HERE IS A DIFFERENT FAULT and has to say so. It means `dist/client`
+     * was never built, not that the gate is too wide — and the first time this
+     * ran in a clean clone it reported an unbuilt client as a security finding,
+     * which is the kind of misdirection that costs an hour.
+     */
     const shell = await fetch(`${server.base}/`, { headers: { 'sec-fetch-site': 'same-origin' } });
-    check(shell.status === 200, `the client shell is gated too, so nobody could ever sign in (${shell.status})`);
+    if (shell.status === 404) {
+      check(false, 'the client is not built — run `npm run build`, not `node build.mjs`, before this check');
+    } else {
+      check(shell.status === 200, `the client shell is gated too, so nobody could ever sign in (${shell.status})`);
+    }
 
     // AND `/health` IS EXEMPT, because the deploy script's smoke test is exactly
     // this and a gate that fails the deploy installing it is a gate nobody keeps.

@@ -14,7 +14,7 @@
     "build": "npm run build:offline && npm run build:client && node build.mjs",
     "build:client": "vite build",
     "build:offline": "vite build --config vite.config.offline.ts",
-    "claim": "node build.mjs && node scripts/claim-check.mjs",
+    "claim": "npm run build && node scripts/claim-check.mjs",
     "cli": "node dist/cli.js",
     "dev": "vite",
     "doctor": "node scripts/doctor.mjs",
