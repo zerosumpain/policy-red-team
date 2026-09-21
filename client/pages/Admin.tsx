@@ -26,7 +26,7 @@ import { MEASURED_SCALE } from '../measured';
  */
 export function Admin() {
   usePageTitle('Configuration');
-  const [status, setStatus] = useState<{ available: boolean; problem: string | null; signedIn: boolean } | null>(null);
+  const [status, setStatus] = useState<Awaited<ReturnType<typeof admin.status>> | null>(null);
   const [config, setConfig] = useState<AdminConfig | null>(null);
   const [password, setPassword] = useState('');
   const [errors, setErrors] = useState<string[]>([]);
@@ -98,6 +98,65 @@ export function Admin() {
             Until then this install uses whatever its environment supplies, which is how it has
             always worked.
           </p>
+        </div>
+      </div>
+    );
+  }
+
+  /*
+   * SETTING THE FIRST PASSWORD, on an install that has never had one.
+   *
+   * The service ships accepting `admin` / `admin`, and the ONLY thing that
+   * credential can do is this form: there is no session until a real password
+   * has been written. On anything not bound to loopback it also needs the setup
+   * token the operator put in the environment, so a service reachable from
+   * outside cannot be claimed by whoever finds it first.
+   */
+  if (status.claimable) {
+    return (
+      <div className="govuk-grid-row">
+        <div className="govuk-grid-column-two-thirds">
+          <span className="govuk-caption-l">Set up</span>
+          <h1 className="govuk-heading-l">Choose an admin password</h1>
+          {errors.length ? <ErrorSummary errors={errors.map((text) => ({ text, href: '#claim-new' }))} /> : null}
+          <p className="govuk-body">
+            This install has not been set up yet. It accepts the sign-in it ships with —
+            <strong> admin</strong> and <strong> admin</strong> — once, to replace it. Nothing else
+            works until you do, and this page is where the model credentials will live.
+          </p>
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              const form = new FormData(e.currentTarget);
+              void run(
+                () =>
+                  admin.claim({
+                    username: String(form.get('username') ?? ''),
+                    password: String(form.get('password') ?? ''),
+                    newPassword: String(form.get('newPassword') ?? ''),
+                    setupToken: String(form.get('setupToken') ?? '') || undefined,
+                  }),
+                () => void load(),
+              );
+            }}
+            noValidate
+          >
+            <Input id="claim-username" name="username" label="Sign in as" labelSize="s"
+                   hint="The name this service ships with." defaultValue="admin" autoComplete="off" disabled={busy} />
+            <Input id="claim-password" name="password" type="password" label="Current password" labelSize="s"
+                   hint="The one it ships with." autoComplete="off" disabled={busy} />
+            {status.tokenRequired ? (
+              <Input id="claim-token" name="setupToken" type="password" label="Setup token" labelSize="s"
+                     hint="This service is not on loopback, so it will not accept the shipped sign-in on its own. POLICY_SETUP_TOKEN on the server."
+                     autoComplete="off" disabled={busy} />
+            ) : null}
+            <Input id="claim-new" name="newPassword" type="password" label="New admin password" labelSize="s"
+                   hint="At least twelve characters. Length is what makes it hard to guess — a long phrase you can remember beats a short one you cannot."
+                   autoComplete="new-password" disabled={busy} />
+            <ButtonGroup>
+              <Button type="submit" disabled={busy}>{busy ? 'Setting…' : 'Set the password'}</Button>
+            </ButtonGroup>
+          </form>
         </div>
       </div>
     );

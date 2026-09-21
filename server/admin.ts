@@ -20,9 +20,13 @@
  */
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import {
-  ADMIN_COOKIE, adminProblem, clearedCookie, issueSession, passwordMatches,
-  readCookie, sessionCookie, sessionValid,
+  ADMIN_COOKIE, clearedCookie, issueSession, passwordMatches,
+  readCookie, sessionCookie, sessionValid, type Credential,
 } from '$lib/server/admin-auth';
+import { adminCredential, adminPasswordIsPinned, setAdminPassword, setReaderPassword, readerPasswordIsPinned } from '$lib/server/credential-store';
+import { claimState, setupTokenAccepted } from '$lib/server/claim';
+import { isDefaultCredential, passwordProblem } from '$lib/server/credentials';
+import { accessMode, accessModeIsPinned, accessSummary, setAccessMode, type AccessMode } from '$lib/server/reader-access';
 import { rateLimit } from '$lib/server/rate-limit';
 import { providers, redact, type ProviderConfig } from '$lib/llm/providers';
 import { clearLLMClientCache, resolveProvider } from '$lib/llm/client';
@@ -41,8 +45,8 @@ function isSecure(req: IncomingMessage): boolean {
   return (proto ?? '').split(',')[0].trim() === 'https';
 }
 
-export function isSignedIn(req: IncomingMessage): boolean {
-  return sessionValid(readCookie(req.headers.cookie, ADMIN_COOKIE));
+export async function isSignedIn(req: IncomingMessage): Promise<boolean> {
+  return sessionValid(readCookie(req.headers.cookie, ADMIN_COOKIE), await adminCredential());
 }
 
 /**
@@ -53,8 +57,43 @@ export function isSignedIn(req: IncomingMessage): boolean {
  * succeed. It reveals nothing — an install with no admin password has no
  * credentials to protect through this route.
  */
-export function adminStatus(req: IncomingMessage) {
-  return { available: adminProblem() === null, problem: adminProblem(), signedIn: isSignedIn(req) };
+export async function adminStatus(req: IncomingMessage) {
+  const credential = await adminCredential();
+  const signedIn = sessionValid(readCookie(req.headers.cookie, ADMIN_COOKIE), credential);
+  if (credential) return { available: true, problem: null, signedIn, claimable: false, tokenRequired: false };
+
+  /*
+   * NO CREDENTIAL. Whether that means "claimable" or "closed" is the one thing
+   * this endpoint must be careful about, because it answers WITHOUT a session.
+   *
+   * An unclaimed install says so only when the claim would actually be
+   * accepted — on loopback, or where a setup token is configured. Anywhere else
+   * an unclaimed install and a closed one are reported identically, so that
+   * scanning the internet for this service does not produce a list of installs
+   * waiting to be taken with a credential printed in the README.
+   */
+  const claim = await claimState();
+  if (claim.claimable || claim.tokenRequired) {
+    return {
+      available: true,
+      problem: null,
+      signedIn: false,
+      claimable: claim.claimable,
+      // True means "and you will need the setup token", which is not a secret:
+      // it is a fact about the deployment that the person holding the token
+      // needs, and it reveals nothing to anyone who does not hold it.
+      tokenRequired: claim.tokenRequired,
+    };
+  }
+  return {
+    available: false,
+    problem:
+      'This install has no admin password and cannot be set up from the browser. ' +
+      'Set POLICY_ADMIN_PASSWORD on the server and restart.',
+    signedIn: false,
+    claimable: false,
+    tokenRequired: false,
+  };
 }
 
 export async function handleAdmin(
@@ -65,13 +104,57 @@ export async function handleAdmin(
 ): Promise<boolean> {
   // ── Unauthenticated: only what the sign-in page itself needs ──────────────
   if (segments.length === 1 && segments[0] === 'status' && method === 'GET') {
-    sendJson(res, 200, adminStatus(req));
+    sendJson(res, 200, await adminStatus(req));
+    return true;
+  }
+
+  /*
+   * THE CLAIM. The one request the shipped `admin`/`admin` is accepted on, and
+   * the only thing it can do is replace itself.
+   *
+   * NO COOKIE IS ISSUED BEFORE THE NEW PASSWORD IS WRITTEN. A bootstrap session
+   * carrying a "you must change this" flag was considered and rejected: while
+   * unclaimed there is no verifier, so such a cookie could only be signed with a
+   * key derived from a credential that is printed in the README. A session token
+   * minted under a guessable credential is the thing this whole file exists to
+   * prevent.
+   */
+  if (segments.length === 1 && segments[0] === 'claim' && method === 'POST') {
+    const limit = rateLimit('admin-claim', { capacity: 5, refillPerSecond: 1 / 60 });
+    if (!limit.allowed) {
+      throw new HttpError(429, `Too many attempts. Try again in ${Math.ceil(limit.retryAfterMs / 1000)} seconds.`);
+    }
+    const claim = await claimState();
+    if (!claim.claimable) {
+      // The reason is written to the server's log, where an operator can read
+      // it, and not to the caller — "this install holds assessments" tells a
+      // stranger something true about a service they have no business knowing.
+      console.warn(`admin: a claim was refused — ${claim.reason}`);
+      throw new HttpError(403, 'This install cannot be set up from the browser.');
+    }
+
+    const body = await readJson(req);
+    const username = typeof body.username === 'string' ? body.username : '';
+    const password = typeof body.password === 'string' ? body.password : '';
+    const token = typeof body.setupToken === 'string' ? body.setupToken : undefined;
+    const newPassword = typeof body.newPassword === 'string' ? body.newPassword : '';
+
+    if (!setupTokenAccepted(token)) throw new HttpError(401, 'That is not the setup token.');
+    if (!isDefaultCredential(username, password)) throw new HttpError(401, 'That is not the sign-in this install ships with.');
+
+    const problem = passwordProblem(newPassword);
+    if (problem) throw new HttpError(400, problem);
+
+    await setAdminPassword(newPassword);
+    const credential = await adminCredential();
+    if (!credential) throw new HttpError(500, 'The password was not stored.');
+    res.setHeader('set-cookie', sessionCookie(issueSession(credential), isSecure(req)));
+    sendJson(res, 200, { signedIn: true });
     return true;
   }
 
   if (segments.length === 1 && segments[0] === 'session' && method === 'POST') {
-    const problem = adminProblem();
-    if (problem) throw new HttpError(403, problem);
+    const credential = await adminCredential();
     // One bucket for everyone behind a tunnel, which is the conservative
     // direction: a shared limit slows an attacker and inconveniences one owner.
     const limit = rateLimit('admin-signin', { capacity: 8, refillPerSecond: 1 / 30 });
@@ -80,13 +163,15 @@ export async function handleAdmin(
     }
     const body = await readJson(req);
     const password = typeof body.password === 'string' ? body.password : '';
-    if (!passwordMatches(password)) {
-      // The same answer whether the password was wrong, empty or absurd.
+    // AN UNCLAIMED INSTALL ANSWERS THIS EXACTLY AS A WRONG PASSWORD DOES.
+    // `passwordMatches` is false for a null credential, so no branch here
+    // distinguishes "no password is set" from "that is not it" — the claim
+    // route is where an unclaimed install is told so, and only when it is
+    // entitled to be.
+    if (!passwordMatches(password, credential)) {
       throw new HttpError(401, 'That is not the password.');
     }
-    const session = issueSession();
-    if (!session) throw new HttpError(403, 'The panel is closed on this install.');
-    res.setHeader('set-cookie', sessionCookie(session, isSecure(req)));
+    res.setHeader('set-cookie', sessionCookie(issueSession(credential!), isSecure(req)));
     sendJson(res, 200, { signedIn: true });
     return true;
   }
@@ -98,7 +183,60 @@ export async function handleAdmin(
   }
 
   // ── Everything below needs the cookie ─────────────────────────────────────
-  if (!isSignedIn(req)) throw new HttpError(401, 'Sign in to the admin panel first.');
+  if (!(await isSignedIn(req))) throw new HttpError(401, 'Sign in to the admin panel first.');
+
+  /*
+   * CHANGING THE ADMIN PASSWORD, from inside a session.
+   *
+   * The current password is required even though the caller already holds a
+   * cookie: the cookie may be a borrowed laptop, and a password change is the
+   * one action that locks its real owner out.
+   */
+  if (segments.length === 1 && segments[0] === 'password' && method === 'POST') {
+    if (adminPasswordIsPinned()) {
+      throw new HttpError(409, 'POLICY_ADMIN_PASSWORD is set on the server, which wins over anything saved here. Change it there.');
+    }
+    const body = await readJson(req);
+    const current = typeof body.current === 'string' ? body.current : '';
+    const next = typeof body.next === 'string' ? body.next : '';
+    if (!passwordMatches(current, await adminCredential())) throw new HttpError(401, 'That is not the current password.');
+    const problem = passwordProblem(next);
+    if (problem) throw new HttpError(400, problem);
+    await setAdminPassword(next);
+    // EVERY SESSION DIED, including this one — the cookie's signing key is
+    // derived from the verifier. Re-issue for the caller who just proved they
+    // know both passwords, and leave everyone else signed out.
+    const credential = await adminCredential();
+    res.setHeader('set-cookie', sessionCookie(issueSession(credential!), isSecure(req)));
+    sendJson(res, 200, { changed: true });
+    return true;
+  }
+
+  /*
+   * WHO MAY READ THE ASSESSMENTS. Separate from the admin password, and
+   * separately stored: a reader who can open an assessment must not thereby
+   * hold the key to the API keys.
+   */
+  if (segments.length === 1 && segments[0] === 'access' && method === 'POST') {
+    const body = await readJson(req);
+    const mode = body.mode as AccessMode;
+    if (mode !== 'open' && mode !== 'password') throw new HttpError(400, 'Access is either open or password.');
+    if (mode === 'password') {
+      const reader = typeof body.readerPassword === 'string' ? body.readerPassword : '';
+      if (reader) {
+        const problem = passwordProblem(reader);
+        if (problem) throw new HttpError(400, problem);
+        await setReaderPassword(reader);
+      } else if (!readerPasswordIsPinned()) {
+        // Turning the gate on without a password behind it would lock everyone
+        // out, including the person doing it.
+        throw new HttpError(400, 'Set a reader password before turning the gate on.');
+      }
+    }
+    await setAccessMode(mode);
+    sendJson(res, 200, await configPayload());
+    return true;
+  }
 
   if (segments.length === 1 && segments[0] === 'config' && method === 'GET') {
     sendJson(res, 200, await configPayload());
@@ -281,6 +419,18 @@ async function configPayload() {
     activeProblem: active.problem,
     fromEnvironment: active.fromEnvironment,
     pinned: Boolean(process.env.POLICY_PROVIDER?.trim()),
+    // Who may READ, as opposed to who may configure. Separate credential,
+    // separate setting; see `$lib/server/reader-access`.
+    access: await accessMode(),
+    accessPinned: accessModeIsPinned(),
+    accessSummary: await accessSummary(),
+    // Whether the panel may change the admin password at all, or the
+    // environment is deciding it. The field says so rather than accepting an
+    // edit that will not take effect.
+    adminPasswordPinned: adminPasswordIsPinned(),
+    // Every host this install needs to reach, gathered from the providers
+    // themselves so a firewall change can be written from one place.
+    egress: [...new Set(providers().flatMap((p) => p.egress))],
     // The assessment picker's menu, and whether anybody has touched it. The
     // panel needs to tell "these are the five this build ships with" from "these
     // are the five I chose", because the reset control only makes sense for one.

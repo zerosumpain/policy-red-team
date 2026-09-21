@@ -216,6 +216,14 @@ export interface AdminConfig {
   menuChosen: boolean;
   /** True when POLICY_MODELS pins it, in which case the panel cannot change it. */
   menuPinned: boolean;
+  /** Who may read the assessments. Separate credential from this page's. */
+  access: 'open' | 'password';
+  accessPinned: boolean;
+  accessSummary: string;
+  /** True when POLICY_ADMIN_PASSWORD decides it, so this page cannot. */
+  adminPasswordPinned: boolean;
+  /** Every host this install needs to reach, for a firewall change. */
+  egress: string[];
   /** What a reset would restore. */
   builtIn: OfferedModel[];
   /** Whether the active provider will list what it sells. Azure will not. */
@@ -359,7 +367,43 @@ export const api = {
  * set, not what it is.
  */
 export const admin = {
-  status: () => request<{ available: boolean; problem: string | null; signedIn: boolean }>('/api/admin/status'),
+  status: () =>
+    request<{
+      available: boolean;
+      problem: string | null;
+      signedIn: boolean;
+      /** True when this install has never been set up and may be claimed now. */
+      claimable: boolean;
+      /** True when claiming it also needs POLICY_SETUP_TOKEN, because it is not on loopback. */
+      tokenRequired: boolean;
+    }>('/api/admin/status'),
+  /**
+   * Set this install's first admin password, using the credential it ships with.
+   *
+   * There is no session until this succeeds: a cookie issued under a password
+   * printed in the README would be a session token minted under a guessable
+   * credential.
+   */
+  claim: (fields: { username: string; password: string; newPassword: string; setupToken?: string }) =>
+    request<{ signedIn: boolean }>('/api/admin/claim', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(fields),
+    }),
+  /** Change the admin password. Every other session ends the moment this returns. */
+  changePassword: (current: string, next: string) =>
+    request<{ changed: boolean }>('/api/admin/password', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ current, next }),
+    }),
+  /** Who may read the assessments, as opposed to who may configure them. */
+  setAccess: (mode: 'open' | 'password', readerPassword?: string) =>
+    request<AdminConfig>('/api/admin/access', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ mode, readerPassword }),
+    }),
   signIn: (password: string) =>
     request<{ signedIn: boolean }>('/api/admin/session', {
       method: 'POST',

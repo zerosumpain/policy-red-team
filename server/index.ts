@@ -26,6 +26,8 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import '../src/lib/polyfills';
 import { handleApi, toHttpError } from './api';
+import { crossSiteProblem } from '$lib/server/request-guard';
+import { handleReader, readerDenied } from './reader-gate';
 import { handleAdmin } from './admin';
 import { serveStatic } from './static';
 import { sendJson } from './http';
@@ -74,9 +76,68 @@ const server = createServer(async (req, res) => {
   const url = new URL(req.url ?? '/', `http://${req.headers.host ?? 'localhost'}`);
 
   try {
+    /*
+     * `/health` IS EXEMPT FROM EVERY GATE, PERMANENTLY, and it says nothing.
+     *
+     * `scripts/deploy-porkserv.sh` verifies a deploy with `curl -fsS /health`
+     * and nothing else, so a gate that covered it would fail the deploy that
+     * installed it — and an exemption granted after the fact is one nobody
+     * remembers is there. It is granted here, deliberately, and narrowed to the
+     * one fact a health check needs.
+     *
+     * It used to list the ids of every assessment currently running, which is
+     * information about the reader's work available to anyone who can reach the
+     * port. A health check does not need it.
+     */
     if (url.pathname === '/health') {
-      sendJson(res, 200, { ok: true, running: [...running] });
+      sendJson(res, 200, { ok: true });
       return;
+    }
+
+    /*
+     * WHAT ANOTHER WEBSITE MAY MAKE THIS SERVICE DO.
+     *
+     * Before anything else that changes state. `POST /api/policy-analysis` takes
+     * multipart, which is a CORS-simple request: no preflight, so any page the
+     * reader visits can submit one and start a billable eighteen-stage run
+     * against their quota. See `$lib/server/request-guard` for what this can and
+     * cannot promise.
+     */
+    const crossSite = crossSiteProblem(req);
+    if (crossSite) {
+      sendJson(res, 403, { message: crossSite });
+      return;
+    }
+
+    /*
+     * WHO MAY READ THE ASSESSMENTS. Open by default, so no existing install
+     * changes behaviour; a password where the operator has asked for one.
+     *
+     * IT GATES THE API AND NOT THE PAGE, and that is a decision rather than an
+     * oversight. Every assessment, every passage of the paper and every export
+     * is served from `/api/policy-analysis/*`; the client bundle is a few
+     * hundred kilobytes of React that says nothing about anybody's work. Gating
+     * the bundle as well would mean the sign-in page could not load the code
+     * that draws the sign-in page — a service that can only be signed into by
+     * somebody who is already signed in.
+     *
+     * So the data is behind the gate, the shell is not, and a reader who is not
+     * signed in gets a page that asks them to.
+     *
+     * `/api/admin` is exempt because it has its own, stronger gate, and because
+     * putting the configuration page behind the reader password would make a
+     * forgotten reader password unrecoverable from the browser.
+     */
+    if (url.pathname.startsWith('/api/policy-analysis')) {
+      const denied = await readerDenied(req);
+      if (denied) {
+        // No cache anywhere between here and the reader: a 401 that is cached
+        // is a reader who cannot sign in, and a 200 that is cached is the gate
+        // not existing.
+        res.setHeader('cache-control', 'no-store');
+        sendJson(res, 401, denied);
+        return;
+      }
     }
 
     // The progress stream. Held open, so it is handled before anything that
@@ -119,7 +180,20 @@ const server = createServer(async (req, res) => {
      * 33 hours and exposed its admin area. `handleAdmin` requires a signed
      * cookie and nothing else.
      */
+    // The reader gate's own door, which has to be reachable by somebody who has
+    // not got through either gate.
+    if (url.pathname.startsWith('/api/reader')) {
+      const segments = url.pathname.replace(/^\/api\/reader\/?/, '').split('/').filter(Boolean);
+      res.setHeader('cache-control', 'no-store');
+      const handled = await handleReader(req, res, segments, req.method ?? 'GET');
+      if (!handled) sendJson(res, 404, { message: 'No such endpoint.' });
+      return;
+    }
+
     if (url.pathname.startsWith('/api/admin')) {
+      // A configuration payload must never sit in a cache between here and the
+      // reader, and neither must a 401.
+      res.setHeader('cache-control', 'no-store');
       const segments = url.pathname.replace(/^\/api\/admin\/?/, '').split('/').filter(Boolean);
       const handled = await handleAdmin(req, res, segments, req.method ?? 'GET');
       if (!handled) sendJson(res, 404, { message: 'No such endpoint.' });
