@@ -17,7 +17,11 @@ set -euo pipefail
 
 HOST="${POLICY_DEPLOY_HOST:-porkserv}"
 DEST=/opt/policy-red-team
-ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+# TWO LEVELS UP, because this lives in deploy/estate/. It was one, and moving
+# the script in phase 18 without changing this would have rsynced `deploy/` over
+# /opt/policy-red-team — the checks below would have caught it, but only after
+# the tree had already gone.
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "$ROOT"
 
 if [[ "${1:-}" != "--no-build" ]]; then
