@@ -59,6 +59,17 @@ const ENV_NAMES: Record<string, Record<string, string>> = {
     deployment: 'AZURE_FOUNDRY_DEPLOYMENT',
     apiKey: 'AZURE_FOUNDRY_KEY',
     apiVersion: 'AZURE_FOUNDRY_API_VERSION',
+    // The Entra fields. `AZURE_TENANT_ID`, `AZURE_CLIENT_ID` and
+    // `AZURE_CLIENT_SECRET` are the names Microsoft's own tooling sets, so a
+    // container that already has them configured for anything else needs
+    // nothing typed into the panel at all — which is the point of an
+    // environment override.
+    authMode: 'AZURE_AUTH_MODE',
+    tenantId: 'AZURE_TENANT_ID',
+    clientId: 'AZURE_CLIENT_ID',
+    clientSecret: 'AZURE_CLIENT_SECRET',
+    federatedTokenFile: 'AZURE_FEDERATED_TOKEN_FILE',
+    authorityHost: 'AZURE_AUTHORITY_HOST',
   },
 };
 

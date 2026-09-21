@@ -28,6 +28,10 @@ export const codex: ProviderDefinition = {
   label: 'Codex bridge, or another OpenAI-compatible endpoint',
   blurb:
     'Anything that speaks the OpenAI chat-completions API at a URL you control — a Codex bridge running against a ChatGPT subscription, a local model server, a gateway of your own. Calls bill however that endpoint bills, which for a subscription bridge is nothing per assessment.',
+  // The reader's own endpoint, so it cannot be named on their behalf. A
+  // loopback bridge needs no egress at all, which is worth saying out loud in a
+  // network conversation.
+  egress: ['the base URL you configure below (nothing, if it is on this machine)'],
   fields: [
     {
       name: 'baseUrl',

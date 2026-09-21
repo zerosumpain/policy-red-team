@@ -1,6 +1,7 @@
 import { deleteSetting, readSetting, writeSetting } from '$lib/server/settings-store';
 import { offeredModels, providerPinnedModel, registerOfferedModels, registerProviderModels, registerProviderPinnedModel, tierForCost, type CostTier, type OfferedModel } from './catalogue';
 import { resolveProvider } from '$lib/llm/client';
+import { registerCallTimeout } from './call-deadline';
 import type { ProviderConfig, ProviderDefinition } from '$lib/llm/providers/types';
 import { setTokenCeiling } from '$lib/server/budget';
 
@@ -144,6 +145,13 @@ export async function refreshModelMenu(): Promise<void> {
     const active = await resolveProvider();
     registerProviderModels(active.definition.models(active.config).map((m) => m.id));
     registerProviderPinnedModel(pinnedModel(active.definition, active.config));
+    // AND THE DEADLINE ITS CALLS ARE JUDGED AGAINST. Registered here because
+    // this runs at exactly the three moments the active provider can change —
+    // boot, a configuration save, and a provider switch — which is the same
+    // reason the model menu is refreshed here. A stale deadline is the quiet
+    // half of the same bug: the panel says Azure and the run is timed as
+    // whatever was active last. See $lib/server/models/call-deadline.
+    registerCallTimeout(active.definition.callTimeoutMs);
   } catch {
     // A provider that cannot be resolved offers nothing, which is already the
     // state of the set. Never fail a submission over this.

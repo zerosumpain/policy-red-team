@@ -123,7 +123,23 @@ const fixtureServer = await bundle({
  * These are the base URLs a client is actually constructed from, one per real
  * provider, and a new provider adds a line here.
  */
-const ENDPOINTS = ['openrouter.ai/api', 'openai.azure.com'];
+/*
+ * NOT THE SAME LIST AS A PROVIDER'S `egress`, and deliberately so. That one is
+ * prose for a network team and includes entries like "your Azure resource
+ * endpoint", which is not a string anything can be grepped for. This is the set
+ * of literal substrings that must be ABSENT from the fixture bytes. The two
+ * answer different questions and merging them would quietly weaken this one.
+ *
+ * `login.microsoftonline.com` and the metadata address arrived with Entra
+ * authentication in phase 18: both are places a real build can send a
+ * credential, so both belong here.
+ */
+const ENDPOINTS = [
+  'openrouter.ai/api',
+  'openai.azure.com',
+  'login.microsoftonline.com',
+  '169.254.169.254',
+];
 for (const [name, source] of [['cli-fixture.js', fixture], ['server-fixture.js', fixtureServer]]) {
   const found = ENDPOINTS.filter((endpoint) => source.includes(endpoint));
   if (found.length) {

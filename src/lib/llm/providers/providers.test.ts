@@ -50,19 +50,45 @@ describe('where the calls actually go', () => {
   it('puts an Azure deployment in the path and the version in the query', () => {
     // Azure's shape, and the one thing that is silently wrong until a real call
     // 404s: the deployment is part of the URL, not the model parameter alone.
+    //
+    // WHERE IT IS ADDED MOVED IN PHASE 18. This used to build the whole path
+    // into `baseURL` by hand. It now uses the SDK's own `AzureOpenAI`, which
+    // keeps `baseURL` at the resource and prepends `/deployments/<name>` when it
+    // builds a chat-completions request (`node_modules/openai/azure.js`,
+    // `buildRequest`). The URL that goes on the wire is the same; the object
+    // holds it differently, and a test that only reads `baseURL` can no longer
+    // see the deployment at all.
     const client = azure.client({
       endpoint: 'https://my-resource.openai.azure.com/',
       deployment: 'gpt-5-policy',
       apiKey: 'secret',
     });
-    expect(client.baseURL).toBe('https://my-resource.openai.azure.com/openai/deployments/gpt-5-policy');
+    expect(client.baseURL).toBe('https://my-resource.openai.azure.com/openai');
+    // `client()` is typed as the plain `OpenAI` the registry contract promises,
+    // so the Azure-only fields need naming. They are public on `AzureOpenAI`,
+    // not private internals — an `openai` major bump that renamed them would
+    // fail here loudly, which is the point.
+    const azureClient = client as unknown as { deploymentName?: string; apiVersion?: string };
+    expect(azureClient.deploymentName).toBe('gpt-5-policy');
+    // The api-version travels as a default query parameter, as Azure requires.
+    expect(azureClient.apiVersion).toBeTruthy();
     // And the deployment is what every request asks for by name.
     expect(azure.model({ endpoint: 'x', deployment: ' gpt-5-policy ', apiKey: 'k' })).toBe('gpt-5-policy');
   });
 
-  it('escapes a deployment name rather than pasting it into a URL', () => {
-    const client = azure.client({ endpoint: 'https://r.openai.azure.com', deployment: 'a b/c', apiKey: 'k' });
-    expect(client.baseURL).toBe('https://r.openai.azure.com/openai/deployments/a%20b%2Fc');
+  it('refuses a deployment name it would have to escape', () => {
+    /*
+     * THE PROTECTION MOVED FROM THE CLIENT TO THE VALIDATION, because the SDK
+     * removed the client half. `buildRequest` pastes the name into the path with
+     * no encoding at all, so what used to come out as `a%20b%2Fc` now builds a
+     * genuinely different URL and 404s from a path nobody typed.
+     *
+     * Azure's own rule is letters, digits, dash and underscore, so refusing
+     * anything else costs no real configuration and turns an undiagnosable 404
+     * into a sentence naming the field.
+     */
+    expect(azure.problem({ endpoint: 'https://r.openai.azure.com', deployment: 'a b/c', apiKey: 'k' }))
+      .toMatch(/letters, numbers, dashes and underscores/);
   });
 
   it('trims a trailing slash off a bridge URL instead of doubling it', () => {

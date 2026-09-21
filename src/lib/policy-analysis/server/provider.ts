@@ -5,6 +5,7 @@ import { policyModelCalls, policyExecutions } from '$lib/db/schema';
 import { getLLMClient } from '$lib/llm/client';
 import { executionContext, type LLMCallRecord } from '$lib/context/execution';
 import { resolveResearchDeepModel } from '$lib/server/models/workload-settings';
+import { registeredCallTimeoutMs } from '$lib/server/models/call-deadline';
 import { thinkingRequestParams, type ThinkingLevel } from '$lib/models/thinking';
 import { coerceModelContext, DEFAULT_NODE_MAX_TOKENS } from '$lib/constants/default-models';
 import { CONTEXT_LIMIT, FIT_LIMIT, PROMPT_VERSION, WORKFLOW_ID, type Artefact, type Extraction, type PassKind, type StageOutput } from '../contracts';
@@ -50,6 +51,14 @@ const REPAIR_ROUNDS = 2;
 const CALL_TIMEOUT_MS = 180_000;
 const SLOW_PROVIDER_TIMEOUT_MS = 420_000;
 function callTimeoutMs(provider: string): number {
+  // FORK DIVERGENCE. `provider` is the pipeline's own union — 'openrouter' or
+  // 'codex' — and this fork can be configured to call services it cannot name,
+  // which then fall to the else branch and are judged against OpenRouter's 180
+  // seconds. Measured on an Azure deployment: 237s at stage one, and over 301s.
+  // The active provider registers its own deadline; absent, upstream's rule
+  // stands exactly as written. See $lib/server/models/call-deadline.
+  const registered = registeredCallTimeoutMs();
+  if (registered !== null) return registered;
   return provider === 'codex' ? SLOW_PROVIDER_TIMEOUT_MS : CALL_TIMEOUT_MS;
 }
 

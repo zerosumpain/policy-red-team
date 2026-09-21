@@ -35,18 +35,36 @@ describe('the fixture registry', () => {
     expect(all(fixture).map((p) => p.id)).toEqual(all(real).map((p) => p.id));
   });
 
-  it('gives each provider the same fields, with the same secret and optional flags', () => {
+  it('gives each provider the same fields, with the same flags, kinds and conditions', () => {
     const shape = (mod: typeof real | typeof fixture) =>
       Object.fromEntries(
         all(mod).map((p) => [
           p.id,
-          p.fields.map((f) => `${f.name}:${f.secret ? 'secret' : 'plain'}:${f.optional ? 'optional' : 'required'}`),
+          p.fields.map((f) => ({
+            name: f.name,
+            secret: Boolean(f.secret),
+            optional: Boolean(f.optional),
+            // Not prose — the hints and labels differ on purpose, because the
+            // real Azure placeholder carries a hostname `build.mjs` forbids in
+            // the fixture bundle. Everything that changes BEHAVIOUR is here.
+            kind: f.kind ?? 'text',
+            options: f.options?.map((o) => o.value) ?? null,
+            showWhen: f.showWhen ? `${f.showWhen.field}=${[...f.showWhen.is].sort().join('|')}` : null,
+          })),
         ]),
       );
-    // A field the fixture does not carry is a field the walk cannot fill in, and
-    // a `secret` flag that disagrees is the difference between a value that
-    // round-trips and one the panel refuses to show.
+    // A field the fixture does not carry is a field the walk cannot fill in; a
+    // `secret` flag that disagrees is the difference between a value that
+    // round-trips and one the panel refuses to show; and a `showWhen` that
+    // disagrees is a form the walk can complete and a reader cannot, or the
+    // reverse.
     expect(shape(fixture)).toEqual(shape(real));
+  });
+
+  it('declares egress for every provider, so the allow-list can be printed from one place', () => {
+    for (const definition of [...all(real), ...all(fixture)]) {
+      expect(definition.egress.length, `${definition.id} declares no egress`).toBeGreaterThan(0);
+    }
   });
 
   it('declares that it cannot reach anything, where the real one declares that it can', () => {

@@ -14,6 +14,7 @@ export const openrouter: ProviderDefinition = {
   label: 'OpenRouter',
   blurb:
     'One key, billed per token, reaching every model in the picker. The simplest thing to set up, and the only one that charges you per assessment rather than against something you already pay for.',
+  egress: ['openrouter.ai'],
   fields: [
     {
       name: 'apiKey',

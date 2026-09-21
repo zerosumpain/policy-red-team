@@ -777,6 +777,50 @@ try {
     failures.push('admin: the secret box is pre-filled, so blank cannot mean "leave it alone"');
   }
 
+  /*
+   * AZURE ASKS HOW TO AUTHENTICATE BEFORE IT ASKS FOR ANYTHING ELSE.
+   *
+   * A tenant with local authentication switched off has no key to type, which
+   * until phase 18 meant the service could not be configured at all. Four modes
+   * now share one form and `showWhen` reveals only what the chosen one needs —
+   * eight fields of which a reader fills in one to three.
+   *
+   * This is browser behaviour and there is no jsdom in this repo, so the walk is
+   * the only thing that can see it. Without this assertion the conditional
+   * rendering could break and every gate would stay green.
+   */
+  const azureMode = page.locator('#azure-authMode');
+  if (!(await azureMode.count())) {
+    failures.push('admin: Azure does not ask how to authenticate');
+  } else {
+    if (await page.locator('#azure-clientSecret').count()) {
+      failures.push('admin: a client secret is shown while the mode is an API key');
+    }
+    await azureMode.selectOption('entra-app');
+    await page.waitForTimeout(200);
+    for (const field of ['tenantId', 'clientId', 'clientSecret']) {
+      if (!(await page.locator(`#azure-${field}`).count())) {
+        failures.push(`admin: choosing an app registration does not reveal ${field}`);
+      }
+    }
+    if (await page.locator('#azure-apiKey').count()) {
+      failures.push('admin: the API key box stays on screen for an Entra configuration');
+    }
+    // Managed identity is the one that needs nothing, and a form still asking
+    // for a tenant would be a form the reader cannot finish.
+    await azureMode.selectOption('managed-identity');
+    await page.waitForTimeout(200);
+    if (await page.locator('#azure-tenantId').count()) {
+      failures.push('admin: a managed identity is asked for a tenant it does not need');
+    }
+    await azureMode.selectOption('key');
+    await page.waitForTimeout(200);
+    if (!(await page.locator('#azure-apiKey').count())) {
+      failures.push('admin: going back to key authentication does not bring the key box back');
+    }
+  }
+  note('Azure asks how to authenticate, and shows only what that answer needs');
+
   // And a fixture build must not be able to reach anything, however configured.
   const tested = await page.evaluate(async () => (await (await fetch('/api/admin/test', { method: 'POST' })).json()));
   if (tested.ok) failures.push('admin: the FIXTURE build reported a working provider, which it cannot have');

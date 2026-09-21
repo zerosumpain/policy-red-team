@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState, type FormEvent } from 'react';
 import { admin, type AdminConfig, type ProviderView } from '../api';
 import { ModelMenu } from './ModelMenu';
-import { Button, ButtonGroup, Details, ErrorSummary, InsetText, Input, Radios, SummaryList, Tag, WarningText } from '../govuk';
+import { Button, ButtonGroup, Details, ErrorSummary, InsetText, Input, Radios, Select, SummaryList, Tag, WarningText } from '../govuk';
 import { usePageTitle } from '../layout/Template';
 import { MEASURED_SCALE } from '../measured';
 
@@ -323,11 +323,60 @@ function ProviderForm({ provider, active, fromEnvironment, busy, version, onSave
   version: number;
   onSave: (values: Record<string, string>) => void;
 }) {
+  /*
+   * WHAT HAS BEEN ANSWERED SO FAR, so `showWhen` can hide what this answer does
+   * not need.
+   *
+   * Azure has four ways to authenticate and between them eight fields; a reader
+   * using a key fills in one of the eight and should be shown one. The
+   * alternative — every field always — is a form where the way to succeed is to
+   * know which boxes to ignore.
+   *
+   * ONLY THE CONTROLLING FIELDS ARE HELD IN STATE. Everything else stays
+   * uncontrolled, because a controlled secret puts the value into React state,
+   * which is the one thing this page exists not to do.
+   */
+  const [answers, setAnswers] = useState<Record<string, string>>({});
+  const controlling = new Set(provider.fields.flatMap((f) => (f.showWhen ? [f.showWhen.field] : [])));
+
+  /**
+   * READ THE VALUE NOW, NOT INSIDE THE UPDATER.
+   *
+   * `setAnswers((a) => ({ ...a, [name]: e.currentTarget.value }))` looks
+   * idiomatic and is a crash. React pools the synthetic event and nulls
+   * `currentTarget` once the handler returns, and a functional updater is
+   * evaluated LATER — during the render that processes the queue. So the read
+   * happens after the nulling and throws "Cannot read properties of null", from
+   * inside React's own state machinery where the stack names `useState` and not
+   * the handler that queued it.
+   *
+   * The whole panel unmounts, which in a browser test looks like the element
+   * simply never appearing. Taking the string first is the entire fix.
+   */
+  const remember = (name: string, value: string) => setAnswers((a) => ({ ...a, [name]: value }));
+
+  /** A select's first option is its default when nothing is stored — the server agrees. */
+  const answerFor = (name: string): string => {
+    if (answers[name] !== undefined) return answers[name];
+    const stored = provider.values[name];
+    if (typeof stored === 'string' && stored.trim()) return stored;
+    const field = provider.fields.find((f) => f.name === name);
+    return field?.options?.[0]?.value ?? '';
+  };
+
+  const visible = (field: ProviderView['fields'][number]): boolean =>
+    !field.showWhen || field.showWhen.is.includes(answerFor(field.showWhen.field));
+
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
     const values: Record<string, string> = {};
     for (const field of provider.fields) {
+      // A HIDDEN FIELD IS NOT SENT, so it keeps whatever is stored rather than
+      // being cleared. Switching from an app registration to a key must not
+      // silently delete the client secret — a reader switching back would find
+      // it gone with nothing having said so.
+      if (!visible(field)) continue;
       const raw = form.get(field.name);
       const value = typeof raw === 'string' ? raw : '';
       // A SECRET LEFT BLANK IS "LEAVE IT ALONE", not "clear it" — the box is
@@ -351,6 +400,36 @@ function ProviderForm({ provider, active, fromEnvironment, busy, version, onSave
             {provider.fields.map((field) => {
               const stored = provider.values[field.name];
               const fromEnv = fromEnvironment.includes(field.name);
+              if (!visible(field)) return null;
+
+              if (field.kind === 'select') {
+                return (
+                  <Select
+                    key={field.name}
+                    id={`${provider.id}-${field.name}`}
+                    name={field.name}
+                    label={field.label}
+                    labelSize="s"
+                    hint={
+                      <>
+                        {field.hint}
+                        {fromEnv ? (
+                          <>
+                            {' '}
+                            <strong>Set in the environment on the server</strong>, which wins over
+                            anything saved here — so this field is not editable.
+                          </>
+                        ) : null}
+                      </>
+                    }
+                    options={(field.options ?? []).map((o) => ({ value: o.value, text: o.text }))}
+                    value={answerFor(field.name)}
+                    onChange={(e) => remember(field.name, e.currentTarget.value)}
+                    disabled={busy || fromEnv}
+                  />
+                );
+              }
+
               return (
                 <Input
                   key={field.name}
@@ -363,6 +442,13 @@ function ProviderForm({ provider, active, fromEnvironment, busy, version, onSave
                   placeholder={field.placeholder}
                   defaultValue={field.secret ? '' : typeof stored === 'string' ? stored : ''}
                   disabled={busy || fromEnv}
+                  {...(controlling.has(field.name)
+                    ? {
+                        value: answerFor(field.name),
+                        onChange: (e: { currentTarget: { value: string } }) =>
+                          remember(field.name, e.currentTarget.value),
+                      }
+                    : {})}
                   hint={
                     <>
                       {field.hint}

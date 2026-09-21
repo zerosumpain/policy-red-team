@@ -33,6 +33,28 @@ export type ProviderField = {
   /** Shown in the field when nothing is stored, and used when the reader leaves it blank. */
   placeholder?: string;
   optional?: boolean;
+  /**
+   * HOW THE READER ANSWERS, not just where the answer is kept.
+   *
+   * Text is the default and was the only option. `select` exists because Azure
+   * has four ways to authenticate and they take different fields: a flat list of
+   * every field all four might need is eleven boxes, of which a reader fills in
+   * three and has to work out which three. A question with four answers is one
+   * box, and `showWhen` below reveals only what that answer needs.
+   */
+  kind?: 'text' | 'select';
+  /** For `kind: 'select'`. The FIRST is the default when nothing is stored. */
+  options?: { value: string; text: string }[];
+  /**
+   * Show this field only when another field holds one of these values.
+   *
+   * A hint, not a guarantee: the panel hides the field and the server still
+   * stores whatever is sent. `problem()` is the thing that decides what a
+   * configuration needs — a hidden field that is nonetheless required would be
+   * a configuration nobody could complete, and the sentence `problem()` returns
+   * is what the reader would have to act on.
+   */
+  showWhen?: { field: string; is: string[] };
 };
 
 /** What a reader has configured for one provider, as stored. */
@@ -44,6 +66,35 @@ export type ProviderDefinition = {
   /** What this is, in the reader's terms — shown above the fields. */
   blurb: string;
   fields: ProviderField[];
+  /**
+   * EVERY HOST THIS PROVIDER NEEDS TO REACH, in a reader's words.
+   *
+   * A network team in a restricted estate asks for one thing — the list — and
+   * the answer used to be assembled by hand from whoever remembered. That is
+   * how `login.microsoftonline.com` gets left off a firewall change and the
+   * failure arrives a week later as "Entra does not work".
+   *
+   * These are printed by `npm run doctor`, by the setup wizard's egress step
+   * and by the README, from this one declaration. An entry may be a description
+   * rather than a hostname where the host is the reader's own — nobody can
+   * write down an Azure resource endpoint on their behalf.
+   */
+  egress: string[];
+  /**
+   * The longest ONE CALL to this provider may take, in milliseconds.
+   *
+   * The pipeline's own table (`provider.ts`, copied) can name only `openrouter`
+   * and `codex`, so everything else was judged against OpenRouter's 180 seconds
+   * — including an Azure deployment, which is provisioned, often slower, and
+   * measured on this estate at 237s and over 301s at stage one. Every call over
+   * three minutes was reported as the model being too slow, which was true of
+   * the deadline and not of the model.
+   *
+   * Optional: absent means the pipeline's own rule decides, which is right for
+   * the two providers it knows by name. See `$lib/server/models/call-deadline`
+   * for how it reaches a copied file.
+   */
+  callTimeoutMs?: number;
   /**
    * Whether this configuration is complete enough to try.
    *

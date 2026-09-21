@@ -651,6 +651,46 @@ const SUMMARY_GATE = [
     const material = unresolved.filter((response) => input.artefacts.find((a) => a.id === response.data.challengeId)?.data.materiality === 'high').length;`],
 ];
 
+/*
+ * THE DEADLINE A CALL IS JUDGED AGAINST, when the pipeline cannot name the
+ * provider.
+ *
+ * `callTimeoutMs` switches on the pipeline's own `ModelProvider` union —
+ * 'openrouter' or 'codex' — which records what an assessment was RUN ON and
+ * knows nothing about this fork's provider registry. Anything else falls to the
+ * else branch and gets OpenRouter's 180 seconds. Measured on an Azure
+ * deployment: 237s at stage one, and calls over 301s. Every one was killed at
+ * 180 and reported as the model being too slow, which was true of the deadline
+ * and false about the model.
+ *
+ * Upstream's rule is left intact underneath, so an install that registers
+ * nothing behaves exactly as upstream does. See
+ * `src/lib/server/models/call-deadline.ts`.
+ */
+const PROVIDER_CALL_DEADLINE = [
+  [
+    `import { resolveResearchDeepModel } from '$lib/server/models/workload-settings';`,
+    `import { resolveResearchDeepModel } from '$lib/server/models/workload-settings';
+import { registeredCallTimeoutMs } from '$lib/server/models/call-deadline';`,
+  ],
+  [
+    `function callTimeoutMs(provider: string): number {
+  return provider === 'codex' ? SLOW_PROVIDER_TIMEOUT_MS : CALL_TIMEOUT_MS;
+}`,
+    `function callTimeoutMs(provider: string): number {
+  // FORK DIVERGENCE. \`provider\` is the pipeline's own union — 'openrouter' or
+  // 'codex' — and this fork can be configured to call services it cannot name,
+  // which then fall to the else branch and are judged against OpenRouter's 180
+  // seconds. Measured on an Azure deployment: 237s at stage one, and over 301s.
+  // The active provider registers its own deadline; absent, upstream's rule
+  // stands exactly as written. See $lib/server/models/call-deadline.
+  const registered = registeredCallTimeoutMs();
+  if (registered !== null) return registered;
+  return provider === 'codex' ? SLOW_PROVIDER_TIMEOUT_MS : CALL_TIMEOUT_MS;
+}`,
+  ],
+];
+
 const DIVERGENCES = {
   // ── The exposure ramp had no values, so every mark painted black ─────────
   //
@@ -1026,6 +1066,10 @@ const FACES: { file: string; family: string; weight: string }[] = [];`
       if (!out.includes(from)) throw new Error('server/provider.ts: a repair-threshold anchor moved');
       out = out.replace(from, to);
     }
+    for (const [from, to] of PROVIDER_CALL_DEADLINE) {
+      if (!out.includes(from)) throw new Error('server/provider.ts: a call-deadline anchor moved');
+      out = out.replace(from, to);
+    }
     return out;
   },
   'src/lib/policy-analysis/provider.integration.test.ts': (s) => {
@@ -1155,6 +1199,8 @@ if (missing.length) {
 const changedUpstream = [];
 const editedHere = [];
 const absent = [];
+/** A recorded divergence whose anchors no longer match upstream. */
+const brokenDivergence = [];
 let identical = 0;
 let expected = 0;
 
@@ -1166,9 +1212,35 @@ for (const rel of files) {
   if (!here) { changedUpstream.push(rel); continue; }
   if (hash(up) === hash(here)) { identical++; continue; }
   // Both exist and differ. The baseline hash says which side moved.
-  // A divergence recorded in the manifest is expected to differ — flagging it
-  // would make --check fail forever and so tell nobody anything.
-  if (manifest.divergences?.[rel]) { expected++; continue; }
+  //
+  // A DIVERGENT FILE IS CHECKED BY APPLYING ITS DIVERGENCE, not by being
+  // excused from the comparison. This used to `continue` on the mere presence
+  // of a recorded divergence, on the reasoning that such a file is expected to
+  // differ and flagging it would fail --check forever. True, and it left the
+  // gate blind for the nineteen files that need it most: a hand edit to
+  // `pipeline.ts` or `provider.ts` — exactly what AGENTS.md says is silently
+  // reverted by the next sync — passed as "diverging as recorded".
+  //
+  // The right question is not "is this file allowed to differ" but "is what is
+  // here what the recorded divergence produces". That is the same proof
+  // AGENTS.md asks for by hand after writing one, so it may as well be the
+  // gate.
+  const divergence = DIVERGENCES[rel];
+  if (divergence) {
+    let produced;
+    try {
+      produced = divergence(up.toString('utf8'));
+    } catch (err) {
+      // An anchor that no longer matches throws by design — that is how you
+      // find out upstream moved the code you were patching. Report it as a
+      // problem rather than letting it pass as expected.
+      brokenDivergence.push(`${rel} — ${err.message}`);
+      continue;
+    }
+    if (hash(Buffer.from(produced, 'utf8')) === hash(here)) { expected++; continue; }
+    editedHere.push(`${rel} — the working tree is not what its divergence produces`);
+    continue;
+  }
   if (baseline && hash(here) === baseline) changedUpstream.push(rel);
   else if (baseline && hash(up) === baseline) editedHere.push(rel);
   else changedUpstream.push(rel);
@@ -1186,8 +1258,9 @@ if (mode === 'check') {
   };
   report('changed upstream — re-copy with `node scripts/sync-core.mjs`', changedUpstream);
   report('edited here — a deliberate divergence, or a mistake', editedHere);
+  report('a recorded divergence no longer applies — upstream moved the code it patches', brokenDivergence);
   report('not copied yet', absent);
-  process.exit(changedUpstream.length || editedHere.length ? 1 : 0);
+  process.exit(changedUpstream.length || editedHere.length || brokenDivergence.length ? 1 : 0);
 }
 
 const hashes = {};

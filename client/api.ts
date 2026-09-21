@@ -158,6 +158,13 @@ export interface PersonaDossier {
 }
 
 /** One field a provider needs. A `secret` is written once and never read back. */
+/**
+ * Mirrors `ProviderField` in `$lib/llm/providers/types`, which is the server's
+ * own and the one that decides. Kept as a separate declaration because the
+ * client bundle must not import server code, and kept in step by
+ * `field-shape.test.ts` — the panel rendering a field kind the server can emit,
+ * or failing to, is a form a reader cannot complete.
+ */
 export interface ProviderField {
   name: string;
   label: string;
@@ -165,6 +172,12 @@ export interface ProviderField {
   secret?: boolean;
   placeholder?: string;
   optional?: boolean;
+  /** `select` renders a dropdown; anything else is a text box. */
+  kind?: 'text' | 'select';
+  /** For `kind: 'select'`. The first is the default when nothing is stored. */
+  options?: { value: string; text: string }[];
+  /** Render this field only when another field holds one of these values. */
+  showWhen?: { field: string; is: string[] };
 }
 
 export interface ProviderView {
