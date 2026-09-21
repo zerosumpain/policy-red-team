@@ -1294,6 +1294,34 @@ const preview = Boolean(process.env.POLICY_PREVIEW_ORIGIN);`
 
 const manifest = JSON.parse(await readFile(MANIFEST, 'utf8'));
 const mode = process.argv.includes('--check') ? 'check' : 'sync';
+
+/*
+ * NO UPSTREAM CHECKOUT IS A SKIP, AND IT HAS TO SAY SO.
+ *
+ * Without the private sibling repository this resolved zero files and printed
+ * "0 verbatim files, 0 identical to upstream" — then exited 0. A gate that
+ * checked nothing and reported success, which is worse than one that fails:
+ * `test:all` runs this, so on any machine without the sibling — a stranger's
+ * clone, a CI runner — the whole chain went green having verified nothing about
+ * the fork at all.
+ *
+ * It is still not an ERROR by default, because a stranger with no access to the
+ * upstream repository is in a perfectly legitimate state and should be able to
+ * run the gates. It is an unmistakable skip. `UPSTREAM_STRICT=1` turns it into
+ * a failure, which is what the author's own machine and any CI that HAS the
+ * checkout should set.
+ */
+const upstreamPresent = await stat(UPSTREAM).then((s) => s.isDirectory()).catch(() => false);
+if (!upstreamPresent) {
+  const strict = process.env.UPSTREAM_STRICT === '1';
+  console.log(
+    `\n${strict ? 'FAILED' : 'SKIPPED'} — no upstream checkout at ${UPSTREAM}.\n` +
+      '  This compares the copied files against the private repository they came\n' +
+      '  from. Without it NOTHING about the fork has been checked. Point UPSTREAM\n' +
+      '  at a checkout, or ignore this if you do not have one.\n'
+  );
+  process.exit(strict ? 1 : 0);
+}
 const commitFlag = process.argv.indexOf('--commit');
 const { files, missing } = await resolveAll(manifest);
 

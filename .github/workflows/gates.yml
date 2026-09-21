@@ -1,0 +1,104 @@
+# Every gate, on every push and pull request.
+#
+# WHY THIS FILE EXISTS. Until now there was no CI at all — no `.github`, no
+# workflow — so the eight gates in `npm run test:all` were a convention rather
+# than a check. They were run by hand, by one person, on one machine, and the
+# things they protect are the kind nobody re-runs voluntarily: that the shipped
+# credential cannot survive, that the fixture build cannot reach a provider,
+# that no secret comes back out of the admin API.
+#
+# IT DOES NOT RUN `test:all`. That is one chain that stops at the first failure,
+# which is right at a terminal and wrong here: a browser walk that breaks should
+# not hide whether the unit tests also broke. The jobs below are the same
+# commands, split so that one red gate still reports the other seven.
+name: gates
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  # A second push supersedes the first. These jobs take minutes and nobody reads
+  # the result for a commit that has already been replaced.
+  group: gates-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # Every gate runs against throwaway directories under the runner's temp space.
+  # The integration and walk suites REFUSE to run unless their data directory is
+  # one they created there — that guard replaces upstream's DATABASE_URL regex
+  # and exists for the same reason: these tests purge and delete.
+  CI: "true"
+
+jobs:
+  # ── Fast, and they catch most things ────────────────────────────────────────
+  unit:
+    name: types and unit tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm test
+      # NOT STRICT, and that is deliberate. `sync:check` compares the copied
+      # files against a PRIVATE sibling repository that this runner does not
+      # have, so it can only skip — loudly, saying it has checked nothing. It is
+      # here so that the skip is visible in the log rather than absent from it.
+      - run: npm run sync:check
+
+  integration:
+    name: integration
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
+      - run: npm run test:integration
+
+  # ── The one that matters most, and it needs no browser ──────────────────────
+  claim:
+    name: the credential and the gates
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
+      # `npm run claim` builds first. The build is also where the fixture
+      # bundles are asserted to contain no provider endpoint, so this job proves
+      # both: the shipped credential cannot survive, and the build that the
+      # browser gates run against cannot reach anything.
+      - run: npm run claim
+
+  # ── The browser gates. Slower, and they need Chromium ───────────────────────
+  browser:
+    name: accessibility, walk and the offline pack
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
+      # `npm install` does not fetch a browser; three of the gates drive one.
+      # `--with-deps` because a bare runner has none of the shared libraries
+      # Chromium links against.
+      - run: npx playwright install --with-deps chromium
+      - run: npm run a11y
+      - run: npm run walk
+      - run: npm run offline
