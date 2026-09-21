@@ -82,6 +82,19 @@ const ALL: ProviderDefinition[] = [
   ]),
 ];
 
+/**
+ * NOTHING HERE CAN REACH ANYTHING, so there is no credential to be missing.
+ *
+ * `problem()` above still reports an empty field, because the admin panel's
+ * dialogue is part of what the walk exercises and a stub that always said
+ * "ready" would stop testing it. But the CLI's pre-flight guard — "do not
+ * create an assessment that cannot run" — asks a different question, and in
+ * this build the honest answer is that a key would change nothing.
+ *
+ * See `index.ts` for the counterpart and the bug it fixes.
+ */
+export const REACHES_REAL_PROVIDERS = false;
+
 export function providers(): ProviderDefinition[] {
   const allowed = process.env.POLICY_PROVIDERS?.split(',').map((p) => p.trim().toLowerCase()).filter(Boolean);
   if (!allowed?.length) return ALL;

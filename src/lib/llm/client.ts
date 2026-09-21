@@ -28,7 +28,7 @@
  * requested id is written down honestly.
  */
 import type OpenAI from 'openai';
-import { providerById, providers, type ProviderConfig, type ProviderDefinition } from '$lib/llm/providers';
+import { providerById, providers, REACHES_REAL_PROVIDERS, type ProviderConfig, type ProviderDefinition } from '$lib/llm/providers';
 import { ACTIVE_PROVIDER, providerSettingKey, readAll } from '$lib/server/settings-store';
 import type { ModelContext } from '$lib/server/models/types';
 import { mapLegacyModelId } from '$lib/constants/default-models';
@@ -109,6 +109,12 @@ export async function resolveProvider(): Promise<Resolved> {
  * buried in a stage's error column where the command line never showed it.
  */
 export async function modelAccessProblem(): Promise<string | null> {
+  // A FIXTURE BUILD HAS NO CREDENTIAL TO BE MISSING. The model is
+  // `provider.fixture.ts` and `client()` throws by design, so refusing to start
+  // is refusing on the grounds of a key that would change nothing — and it is
+  // what broke `npm run assess:fixture`, the README's own "try it without a
+  // key". See `providers/index.ts`.
+  if (!REACHES_REAL_PROVIDERS) return null;
   const { definition, problem } = await resolveProvider();
   return problem ? `${definition.label}: ${problem}` : null;
 }

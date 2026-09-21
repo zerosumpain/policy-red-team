@@ -24,6 +24,24 @@ export type { ProviderDefinition, ProviderId, ProviderField, ProviderConfig } fr
 const ALL: ProviderDefinition[] = [openrouter, codex, azure];
 
 /**
+ * WHETHER A CREDENTIAL IN THIS BUILD COULD EVER REACH ANYTHING. True here,
+ * false in `index.fixture.ts`, and it exists for one caller.
+ *
+ * `modelAccessProblem()` refuses to start an assessment when the active
+ * provider is not configured — right for a real build, where the alternative is
+ * eighteen stages that exist only to fail. In a FIXTURE build it is nonsense:
+ * the model is `provider.fixture.ts`, no credential is read, and `client()`
+ * throws by design. Reporting "fill in OpenRouter" there is advice that would
+ * not help if taken.
+ *
+ * It broke `npm run assess:fixture` — the command the README offers as "try it
+ * without a key or a bill" — from phase 13 until 2026-09-21. It was invisible
+ * because `cli.ts` had also forgotten to await the promise, so the failure read
+ * `Promise { <pending> }` and looked like a different bug entirely.
+ */
+export const REACHES_REAL_PROVIDERS = true;
+
+/**
  * The ones this install offers.
  *
  * An unknown name in `POLICY_PROVIDERS` is IGNORED rather than fatal, and an

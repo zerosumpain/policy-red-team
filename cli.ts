@@ -14,19 +14,20 @@
  * `npm run assess:fixture` runs the same code against a deterministic fixture
  * model — no key, no spend — which is how the eighteen stages are verified.
  */
-import { readFile, writeFile } from 'node:fs/promises';
-import path from 'node:path';
-import './src/lib/polyfills';
-
 // A standalone tool keeps its key in a .env next to itself, and Node can read one
 // without a dependency. Silent when there is no file: `migrate`, `list` and
 // `report` need no credentials at all, and only a real assessment will complain —
 // with a message naming the variable, from `llm/keys.ts`.
-try {
-  process.loadEnvFile();
-} catch {
-  // no .env, or unreadable; the environment may already carry what is needed
-}
+//
+// IT HAS TO BE AN IMPORT, NOT A STATEMENT, AND IT HAS TO BE FIRST. This was a
+// bare `try { process.loadEnvFile() }` sitting among the imports, and imports
+// are hoisted — so it ran after `$lib/db` had already frozen `DATA_DIR` from an
+// environment the file had not reached. `POLICY_DATA_DIR` in a `.env` was
+// silently ignored for eighteen phases. Import order is evaluation order.
+import '$lib/load-env';
+import { readFile, writeFile } from 'node:fs/promises';
+import path from 'node:path';
+import './src/lib/polyfills';
 import { client, db } from '$lib/db';
 import { migrate } from './scripts/migrate.mjs';
 import { createAnalysis, detail, listAnalyses, loadArtefacts } from '$lib/policy-analysis/server/store';
@@ -123,7 +124,14 @@ async function assess(file: string, flags: Flags): Promise<number> {
 
   // Before anything is written down. An assessment created without a key is a
   // row, a queue envelope and eighteen pending stages that exist only to fail.
-  const problem = modelAccessProblem();
+  //
+  // AWAITED, WHICH IT WAS NOT. `modelAccessProblem` became async in phase 13,
+  // when which service answers stopped being compiled and started being read
+  // out of the encrypted store. The call site kept its old shape, and a Promise
+  // is always truthy — so this guard fired on EVERY run, printed
+  // `Promise { <pending> }` and exited 2. Every headless path went with it:
+  // `npm run assess`, `npm run assess:fixture`, and the README's own quickstart.
+  const problem = await modelAccessProblem();
   if (problem) {
     console.error(problem);
     return 2;

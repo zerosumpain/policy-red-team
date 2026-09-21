@@ -12,6 +12,15 @@
  * one for something on a network, so binding anywhere else needs
  * `POLICY_HOST` set deliberately — and it says out loud what that means.
  */
+/*
+ * FIRST, AND THE ORDER IS THE POINT. `$lib/db` reads `POLICY_DATA_DIR` while it
+ * is being evaluated, so a `.env` loaded any later than this is a `.env` that
+ * does not decide where the database lives. See `src/lib/load-env.ts`.
+ *
+ * This file never loaded one at all, which made `cp .env.example .env` — the
+ * README's first instruction — configure nothing.
+ */
+import { envFileLoaded } from '../src/lib/load-env';
 import { createServer } from 'node:http';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -20,10 +29,12 @@ import { handleApi, toHttpError } from './api';
 import { handleAdmin } from './admin';
 import { serveStatic } from './static';
 import { sendJson } from './http';
-import { client } from '$lib/db';
+import { client, DATA_DIR } from '$lib/db';
 import { migrate } from '../scripts/migrate.mjs';
 import { drain, runWorker } from '$lib/worker';
 import { modelAccessProblem } from '$lib/llm/client';
+import { proxyInUse } from '$lib/llm/providers/transport';
+import { keyDir } from '$lib/policy-analysis/server/seal';
 import { refreshModelMenu } from '$lib/server/models/offered-store';
 
 const ROOT = path.resolve(fileURLToPath(new URL('..', import.meta.url)));
@@ -131,6 +142,52 @@ const server = createServer(async (req, res) => {
   }
 });
 
+/**
+ * WHAT THIS PROCESS ACTUALLY RESOLVED, printed once at boot.
+ *
+ * Every line here is something that has already been diagnosed the slow way:
+ * a `.env` the server never read, a data directory that was not where the file
+ * said, a proxy the process had quietly stopped using, a Node below the floor
+ * the package declares. Inside an estate somebody else runs, the first question
+ * is always "is it reading my configuration?" — and the honest answer is cheap
+ * to print and expensive to work out from the outside.
+ *
+ * NO VALUES, ONLY WHETHER AND WHERE. A proxy URL can carry credentials and this
+ * goes to a log, so the proxy variables are reported as set or not. The same
+ * posture the admin panel takes with a key.
+ */
+function bootReport(): void {
+  const proxy = proxyInUse();
+  const rows: [string, string][] = [
+    ['node', `${process.version}${engineFloorMet() ? '' : `  (below the ${ENGINE_FLOOR} this package declares)`}`],
+    ['.env', envFileLoaded ? 'read' : 'none found'],
+    ['database', DATA_DIR],
+    ['keys', keyDir()],
+    ['proxy', proxy.https || proxy.http ? `set${proxy.noProxy ? `, with NO_PROXY` : ''}` : 'none'],
+    ['extra CA', process.env.NODE_EXTRA_CA_CERTS ? process.env.NODE_EXTRA_CA_CERTS : 'none'],
+  ];
+  const width = Math.max(...rows.map(([name]) => name.length));
+  for (const [name, value] of rows) console.log(`  ${name.padEnd(width)}  ${value}`);
+}
+
+const ENGINE_FLOOR = '22.23.2';
+
+/**
+ * Whether this Node is at or above the floor `package.json` declares.
+ *
+ * `src/lib/polyfills.ts` carries `Promise.try` and `Uint8Array.toHex` so the
+ * suite runs on an older one, which is why this is a note rather than a refusal
+ * — but a reader debugging a pdfjs failure should be told, not left to find the
+ * `engines` field.
+ */
+function engineFloorMet(): boolean {
+  const [major, minor, patch] = process.version.replace(/^v/, '').split('.').map(Number);
+  const [fMajor, fMinor, fPatch] = ENGINE_FLOOR.split('.').map(Number);
+  if (major !== fMajor) return major > fMajor;
+  if (minor !== fMinor) return minor > fMinor;
+  return patch >= fPatch;
+}
+
 await migrate(client, { log: () => {} });
 
 // The long-running loop picks up anything left running by a previous process —
@@ -140,6 +197,7 @@ worker.start();
 
 server.listen(PORT, HOST, async () => {
   console.log(`Policy Red Team on http://${HOST}:${PORT}`);
+  bootReport();
   // Said at startup rather than at the first failed assessment. Browsing,
   // reading old reports and downloading exports all work without a key; only a
   // new run needs one, and finding that out eighteen stages in is no way to
