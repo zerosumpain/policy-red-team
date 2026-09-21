@@ -1,0 +1,48 @@
+# Policy Red Team as a systemd unit.
+#
+#   sudo cp deploy/policy-red-team.service /etc/systemd/system/
+#   sudo systemctl daemon-reload && sudo systemctl enable --now policy-red-team
+#
+# Edit the three paths and the user. Everything else is deliberate.
+[Unit]
+Description=Policy Red Team
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=policy
+Group=policy
+WorkingDirectory=/opt/policy-red-team
+ExecStart=/usr/bin/node dist/server.js
+
+# CONFIGURATION LIVES IN A FILE, NOT IN THIS UNIT. `EnvironmentFile=` beats
+# `Environment=` when both set the same name, and a unit that carries secrets is
+# a unit that shows them to anyone who can run `systemctl cat`. Mode 0600, owned
+# by the service user.
+EnvironmentFile=/etc/policy-red-team/app.env
+
+# The worker finishes the stage it is on before the process goes. A stage is a
+# model call and can take several minutes; killing it mid-call loses the work
+# AND still pays for it.
+KillSignal=SIGTERM
+TimeoutStopSec=600
+Restart=on-failure
+RestartSec=5
+
+# Only these two directories are written. `ReadWritePaths` is what makes
+# `ProtectSystem=strict` survivable, and the key directory is separate from the
+# data directory on purpose: they have different backup rules. See the README.
+ReadWritePaths=/var/lib/policy-red-team /var/lib/policy-red-team-keys
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+NoNewPrivileges=true
+PrivateDevices=true
+ProtectKernelTunables=true
+ProtectControlGroups=true
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+MemoryMax=4G
+
+[Install]
+WantedBy=multi-user.target

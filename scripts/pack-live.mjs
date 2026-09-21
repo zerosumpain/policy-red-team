@@ -1,7 +1,7 @@
 /**
  * THE PACK, BUILT FROM THIS WORKING TREE, CARRYING A REAL ASSESSMENT.
  *
- *   node scripts/pack-live.mjs [--base https://policy.strangeramblings.com] [--id <uuid>]
+ *   node scripts/pack-live.mjs --base https://your-host [--id <uuid>]
  *
  * `npm run offline` is the gate and it runs against the fixture, which is right:
  * a gate must not need a network or somebody else's data. But the fixture is a
@@ -34,7 +34,17 @@ const arg = (name, fallback) => {
   const i = process.argv.indexOf(`--${name}`);
   return i === -1 ? fallback : process.argv[i + 1];
 };
-const BASE = arg('base', 'https://policy.strangeramblings.com');
+/*
+ * NO DEFAULT HOST. This used to default to the author's own deployment, so
+ * running it with no arguments fetched HIS assessment — fine on his machine and
+ * meaningless to anybody else, which is the kind of thing that stops a
+ * repository being usable by a stranger without anybody noticing.
+ */
+const BASE = arg('base', process.env.POLICY_BASE_URL ?? '');
+if (!BASE) {
+  console.error('Say which install to fetch from: --base https://your-host (or POLICY_BASE_URL).');
+  process.exit(2);
+}
 const ID = arg('id', '36ebca37-7369-4a40-a23c-7fceb4d5cc2e');
 
 const failures = [];

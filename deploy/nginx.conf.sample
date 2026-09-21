@@ -1,0 +1,45 @@
+# Policy Red Team behind nginx, with TLS terminated here.
+#
+# THE SERVICE BINDS TO LOOPBACK AND SHOULD STAY THERE. Everything below assumes
+# nginx is the only thing that can reach it, which is what makes
+# `POLICY_HOST=127.0.0.1` a security control rather than a default nobody
+# changed.
+#
+# AND READ THIS ONE: behind a proxy every request reaches the service from
+# 127.0.0.1, so nothing in the application may gate on a source address — it
+# would pass for the entire internet. The application does not, deliberately;
+# do not add one here either and assume it helps.
+server {
+    listen 443 ssl;
+    http2 on;
+    server_name policy.example.gov.uk;
+
+    ssl_certificate     /etc/ssl/certs/policy.crt;
+    ssl_certificate_key /etc/ssl/private/policy.key;
+
+    # A policy paper. The default of 1m refuses a long PDF with a 413 that says
+    # nothing useful about what to do next.
+    client_max_body_size 64m;
+
+    location / {
+        proxy_pass http://127.0.0.1:5290;
+        proxy_http_version 1.1;
+
+        # THE SERVICE READS THIS ONE. It sets `Secure` on its session cookie
+        # only when the request arrived over HTTPS, and behind a proxy the
+        # connection to the process is plain — so without this the cookie is
+        # issued without `Secure` on a site that is entirely HTTPS.
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+
+        # A run emits progress over server-sent events for up to several hours.
+        # Buffering holds the whole stream until the run finishes, which is
+        # exactly when nobody needs it; a 60-second read timeout closes it
+        # between stages.
+        proxy_buffering off;
+        proxy_cache off;
+        proxy_read_timeout 3600s;
+        proxy_send_timeout 3600s;
+    }
+}

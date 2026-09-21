@@ -18,6 +18,7 @@
  * shell fails loudly — a pack that opens to a blank page is worse than a button
  * that says it cannot build one.
  */
+import { producerName } from '$lib/server/identity';
 import { createHash } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
@@ -125,7 +126,7 @@ HOW IT WAS MADE
   Artefacts          ${payload.artefacts.length}
   Limits recorded    ${payload.warnings.length}
 ${payload.documentSha256 ? `  Source SHA-256     ${payload.documentSha256}\n` : ''}
-  Produced by strangeramblings.com. Nothing in this pack reports back: it makes
+  Produced by ${producerName()}. Nothing in this pack reports back: it makes
   no request to any server, and it will read the same in five years as it does
   today.
 `;

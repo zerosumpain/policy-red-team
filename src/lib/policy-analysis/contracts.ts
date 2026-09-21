@@ -1,3 +1,4 @@
+import { isSelfHost } from '$lib/server/identity';
 import { z } from 'zod';
 
 export const STAGES = [
@@ -677,7 +678,11 @@ export function safeSourceUrl(value: string): string | null {
     const u = new URL(value);
     if (!['https:', 'http:'].includes(u.protocol) || u.username || u.password) return null;
     // External citations must not point at the site, local addresses, or special hosts.
-    if (!u.hostname.includes('.') || /(^localhost$|\.local$|\.internal$|strangeramblings\.com$)/i.test(u.hostname) || /^[\d.]+$/.test(u.hostname) || u.hostname.includes(':')) return null;
+    // FORK DIVERGENCE: "the site" is whichever host THIS install is served
+    // under, asked of `$lib/server/identity`, rather than the author's own
+    // domain hard-coded. A department's deployment has never heard of that one
+    // and does have a hostname of its own worth refusing.
+    if (!u.hostname.includes('.') || /(^localhost$|\.local$|\.internal$)/i.test(u.hostname) || isSelfHost(u.hostname) || /^[\d.]+$/.test(u.hostname) || u.hostname.includes(':')) return null;
     return u.href;
   } catch { return null; }
 }

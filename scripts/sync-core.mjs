@@ -691,6 +691,86 @@ import { registeredCallTimeoutMs } from '$lib/server/models/call-deadline';`,
   ],
 ];
 
+/*
+ * THE AUTHOR'S OWN DOMAIN, OUT OF THE ARTEFACTS A DEPARTMENT WILL READ.
+ *
+ * Two copied files carried it and both put it in front of a reader: the offline
+ * pack said "Produced by strangeramblings.com" at the bottom of every
+ * assessment, and `safeSourceUrl` refused that domain as a citation. Neither is
+ * wrong upstream, where the tool IS that site. Both are wrong in somebody
+ * else's tenant, where the first prints a stranger's personal domain on a
+ * government document and the second refuses a site nobody there has heard of
+ * while happily citing the deployment's own hostname — which is what the rule
+ * was for.
+ *
+ * `$lib/server/identity` answers both questions about THIS install.
+ */
+const IDENTITY_CONTRACTS = [
+  [
+    `import { z } from 'zod';`,
+    `import { isSelfHost } from '$lib/server/identity';
+import { z } from 'zod';`,
+  ],
+  [
+    `    if (!u.hostname.includes('.') || /(^localhost$|\\.local$|\\.internal$|strangeramblings\\.com$)/i.test(u.hostname) || /^[\\d.]+$/.test(u.hostname) || u.hostname.includes(':')) return null;`,
+    `    // FORK DIVERGENCE: "the site" is whichever host THIS install is served
+    // under, asked of \`$lib/server/identity\`, rather than the author's own
+    // domain hard-coded. A department's deployment has never heard of that one
+    // and does have a hostname of its own worth refusing.
+    if (!u.hostname.includes('.') || /(^localhost$|\\.local$|\\.internal$)/i.test(u.hostname) || isSelfHost(u.hostname) || /^[\\d.]+$/.test(u.hostname) || u.hostname.includes(':')) return null;`,
+  ],
+];
+
+const IDENTITY_BUNDLE = [
+  [
+    `import { createHash } from 'node:crypto';`,
+    `import { producerName } from '$lib/server/identity';
+import { createHash } from 'node:crypto';`,
+  ],
+  [
+    `  Produced by strangeramblings.com. Nothing in this pack reports back: it makes`,
+    `  Produced by \${producerName()}. Nothing in this pack reports back: it makes`,
+  ],
+];
+
+const IDENTITY_GUARDS = [
+  [
+    `    for (const url of ['javascript:alert(1)', 'file:///etc/passwd', 'http://127.0.0.1/', 'http://metadata.internal/', 'https://user:pw@public.example/', 'https://strangeramblings.com/admin', 'https://localhost/'])
+      expect(safeSourceUrl(url)).toBeNull();
+    expect(safeSourceUrl('https://www.gov.uk/guidance')).toBe('https://www.gov.uk/guidance');
+  });`,
+    `    for (const url of ['javascript:alert(1)', 'file:///etc/passwd', 'http://127.0.0.1/', 'http://metadata.internal/', 'https://user:pw@public.example/', 'https://localhost/'])
+      expect(safeSourceUrl(url)).toBeNull();
+    expect(safeSourceUrl('https://www.gov.uk/guidance')).toBe('https://www.gov.uk/guidance');
+  });
+
+  /*
+   * FORK DIVERGENCE. Upstream refuses \`strangeramblings.com\` by name, because
+   * upstream IS that site and a citation pointing back at it is the assessment
+   * citing itself. This fork asks the same question of whatever host the
+   * install is actually served under, so a department's deployment refuses its
+   * own hostname and has no opinion about anybody else's.
+   */
+  it('refuses a citation that points back at this install', () => {
+    const before = process.env.POLICY_HOSTNAME;
+    try {
+      process.env.POLICY_HOSTNAME = 'policy.example.gov.uk';
+      expect(safeSourceUrl('https://policy.example.gov.uk/admin')).toBeNull();
+      expect(safeSourceUrl('https://reports.policy.example.gov.uk/x')).toBeNull();
+      // And somebody else's site is still a perfectly good source.
+      expect(safeSourceUrl('https://www.gov.uk/guidance')).toBe('https://www.gov.uk/guidance');
+      // An install that names no hostname loses only a check it never needed:
+      // a citation cannot point at a service nobody can reach.
+      delete process.env.POLICY_HOSTNAME;
+      expect(safeSourceUrl('https://policy.example.gov.uk/admin')).toBe('https://policy.example.gov.uk/admin');
+    } finally {
+      if (before === undefined) delete process.env.POLICY_HOSTNAME;
+      else process.env.POLICY_HOSTNAME = before;
+    }
+  });`,
+  ],
+];
+
 const DIVERGENCES = {
   // ── The exposure ramp had no values, so every mark painted black ─────────
   //
@@ -965,6 +1045,25 @@ export const WITHHELD_KINDS = ['passage', 'cross_policy', 'persona_link'] as con
   // on the reader's machine already, and it is not licensed to ship GDS
   // Transport. So the pack carries NO font files at all, which is both correct
   // and the same promise `scripts/a11y.mjs` enforces on the web build.
+  // The author's own domain, out of the citation rule and into a question about
+  // whichever host THIS install is served under. See `$lib/server/identity`.
+  'src/lib/policy-analysis/contracts.ts': (s) => {
+    let out = s;
+    for (const [from, to] of IDENTITY_CONTRACTS) {
+      if (!out.includes(from)) throw new Error('contracts.ts: an identity anchor moved');
+      out = out.replace(from, to);
+    }
+    return out;
+  },
+  'src/lib/policy-analysis/guards.test.ts': (s) => {
+    let out = s;
+    for (const [from, to] of IDENTITY_GUARDS) {
+      if (!out.includes(from)) throw new Error('guards.test.ts: the citation case moved');
+      out = out.replace(from, to);
+    }
+    return out;
+  },
+
   'src/lib/policy-analysis/server/bundle.ts': (s) => {
     /*
      * AND THE README DOES NOT PROMISE A DRILL-DOWN.
@@ -985,7 +1084,7 @@ export const WITHHELD_KINDS = ['passage', 'cross_policy', 'persona_link'] as con
 
     const from = out.match(/const FACES: \{ file: string; family: string; weight: string \}\[\] = \[[\s\S]*?\n\];/);
     if (!from) throw new Error('bundle.ts: the FACES list moved');
-    return out.replace(
+    out = out.replace(
       from[0],
       `// DIVERGENCE: no embedded faces. This build sets text in the stack GOV.UK
 // itself specifies off GOV.UK — Helvetica Neue and Arial — which every reader
@@ -993,6 +1092,13 @@ export const WITHHELD_KINDS = ['passage', 'cross_policy', 'persona_link'] as con
 // carries no font bytes and renders identically offline.
 const FACES: { file: string; family: string; weight: string }[] = [];`
     );
+
+    // AND THE AUTHOR'S DOMAIN OFF THE BOTTOM OF EVERY PACK.
+    for (const [from2, to] of IDENTITY_BUNDLE) {
+      if (!out.includes(from2)) throw new Error('bundle.ts: an identity anchor moved');
+      out = out.replace(from2, to);
+    }
+    return out;
   },
 
   // The pack's page needs GOV.UK's shell classes or it renders on the wrong

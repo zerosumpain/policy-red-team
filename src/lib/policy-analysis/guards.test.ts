@@ -66,9 +66,34 @@ describe('evidence comes from retrieval, never from the model', () => {
 
 describe('a citation URL must be public and plain', () => {
   it('refuses schemes, hosts and credentials that are not', () => {
-    for (const url of ['javascript:alert(1)', 'file:///etc/passwd', 'http://127.0.0.1/', 'http://metadata.internal/', 'https://user:pw@public.example/', 'https://strangeramblings.com/admin', 'https://localhost/'])
+    for (const url of ['javascript:alert(1)', 'file:///etc/passwd', 'http://127.0.0.1/', 'http://metadata.internal/', 'https://user:pw@public.example/', 'https://localhost/'])
       expect(safeSourceUrl(url)).toBeNull();
     expect(safeSourceUrl('https://www.gov.uk/guidance')).toBe('https://www.gov.uk/guidance');
+  });
+
+  /*
+   * FORK DIVERGENCE. Upstream refuses `strangeramblings.com` by name, because
+   * upstream IS that site and a citation pointing back at it is the assessment
+   * citing itself. This fork asks the same question of whatever host the
+   * install is actually served under, so a department's deployment refuses its
+   * own hostname and has no opinion about anybody else's.
+   */
+  it('refuses a citation that points back at this install', () => {
+    const before = process.env.POLICY_HOSTNAME;
+    try {
+      process.env.POLICY_HOSTNAME = 'policy.example.gov.uk';
+      expect(safeSourceUrl('https://policy.example.gov.uk/admin')).toBeNull();
+      expect(safeSourceUrl('https://reports.policy.example.gov.uk/x')).toBeNull();
+      // And somebody else's site is still a perfectly good source.
+      expect(safeSourceUrl('https://www.gov.uk/guidance')).toBe('https://www.gov.uk/guidance');
+      // An install that names no hostname loses only a check it never needed:
+      // a citation cannot point at a service nobody can reach.
+      delete process.env.POLICY_HOSTNAME;
+      expect(safeSourceUrl('https://policy.example.gov.uk/admin')).toBe('https://policy.example.gov.uk/admin');
+    } finally {
+      if (before === undefined) delete process.env.POLICY_HOSTNAME;
+      else process.env.POLICY_HOSTNAME = before;
+    }
   });
 });
 
