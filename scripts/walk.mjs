@@ -910,6 +910,86 @@ try {
   if (after !== 401) failures.push(`admin: still signed in after signing out (${after})`);
   note('the panel signs in, hides its secrets, and signs out');
 
+  /*
+   * 9b — THE SETUP JOURNEY.
+   *
+   * The task list's statuses are the SERVER's, derived from what the install
+   * actually holds, so this is really a test of that derivation: the one status
+   * that cannot be derived — has a model actually answered — must not read
+   * "done" on a fixture build, whose provider throws by design.
+   *
+   * It also asserts the thing a wizard is for: that it survives being left. The
+   * journey has no state of its own, so a reader who closes the tab half way
+   * through and comes back finds the same list saying the same things.
+   */
+  // SIGNED OUT, FIRST. The journey handles credentials, so it is behind the
+  // same password the panel is — and a reader who arrives without a session
+  // must be told that rather than watching a spinner that never resolves.
+  await page.goto(`http://127.0.0.1:${PORT}/setup`, { waitUntil: 'networkidle' });
+  if (!(await page.getByRole('heading', { name: 'Sign in to set this up', level: 1 }).isVisible())) {
+    failures.push('setup: opening it without a session does not say to sign in');
+  }
+  await audit('/setup (signed out)');
+
+  await page.goto(`http://127.0.0.1:${PORT}/admin`, { waitUntil: 'networkidle' });
+  await page.getByLabel('Admin password').fill(ADMIN_PASSWORD);
+  await page.getByRole('button', { name: 'Sign in' }).click();
+  await page.getByRole('heading', { name: 'Which service answers' }).waitFor({ timeout: 20000 });
+
+  await page.goto(`http://127.0.0.1:${PORT}/setup`, { waitUntil: 'networkidle' });
+  await page.getByRole('heading', { name: 'Get this service working', level: 1 }).waitFor({ timeout: 20000 });
+  const tasks = page.locator('.govuk-task-list__item');
+  if ((await tasks.count()) < 5) failures.push(`setup: only ${await tasks.count()} tasks in the list`);
+  const listText = await page.locator('#main-content').innerText();
+  if (!/Try the connection/.test(listText)) failures.push('setup: the task list does not include the connection test');
+  // A FIXTURE BUILD CANNOT HAVE REACHED A MODEL, so this must not say done.
+  const testRow = page.locator('.govuk-task-list__item', { hasText: 'Try the connection' });
+  if (!/To do/.test(await testRow.innerText())) {
+    failures.push(`setup: the fixture build claims it has reached a model — ${await testRow.innerText()}`);
+  }
+  await audit('/setup');
+
+  // One thing per page, and each step is reachable from the list.
+  for (const [href, heading] of [
+    ['/setup/service', 'Which service answers'],
+    ['/setup/access', 'Who can reach it'],
+    ['/setup/spend', 'What one run may spend'],
+    ['/setup/egress', 'What this needs to reach'],
+    ['/setup/test', 'Try the connection'],
+  ]) {
+    await page.goto(`http://127.0.0.1:${PORT}${href}`, { waitUntil: 'networkidle' });
+    if (!(await page.getByRole('heading', { name: heading, level: 1 }).isVisible())) {
+      failures.push(`setup: ${href} has no "${heading}" heading`);
+    }
+    await audit(href);
+  }
+
+  // The egress list comes from the providers themselves, so a firewall change
+  // can be written from one place.
+  await page.goto(`http://127.0.0.1:${PORT}/setup/egress`, { waitUntil: 'networkidle' });
+  // NOT a specific hostname: this is the FIXTURE registry, whose whole point is
+  // that no real provider endpoint survives into the bundle — `build.mjs`
+  // asserts it. What is checked is that the list is assembled from the
+  // definitions at all, and that the "what it does not do" half is there, since
+  // that is the half a network team actually argues about.
+  const egressRows = await page.locator('#main-content table tbody tr').count();
+  if (egressRows < 1) failures.push('setup: the egress list has no rows');
+  const egress = await page.locator('#main-content').innerText();
+  if (!/no telemetry/i.test(egress)) failures.push('setup: the egress page does not say what it does NOT do');
+
+  // And the test step tells the truth about a build that cannot reach anything.
+  await page.goto(`http://127.0.0.1:${PORT}/setup/test`, { waitUntil: 'networkidle' });
+  await page.getByRole('button', { name: 'Try it' }).click();
+  await page.waitForTimeout(1200);
+  const outcome = await page.locator('#setup-test').innerText();
+  if (!/did not answer/i.test(outcome)) {
+    failures.push(`setup: the fixture build's connection test did not report a failure — "${outcome}"`);
+  }
+  if (!/fixture/i.test(outcome)) {
+    failures.push(`setup: the failure does not say why — "${outcome}"`);
+  }
+  note('the setup journey lists what is left, and the test step tells the truth');
+
   // 10 — the rest of the surface
   for (const [route, heading] of [['/personas', 'Persona library'], ['/design', 'Design system'], ['/accessibility', 'Accessibility statement'], ['/about', 'About this tool']]) {
     await page.goto(`http://127.0.0.1:${PORT}${route}`, { waitUntil: 'networkidle' });

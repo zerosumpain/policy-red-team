@@ -31,6 +31,18 @@ const Assessment = lazy(() => import('./pages/Assessment').then((m) => ({ defaul
 const Drill = lazy(() => import('./pages/Drill').then((m) => ({ default: m.Drill })));
 const Personas = lazy(() => import('./pages/Personas').then((m) => ({ default: m.Personas })));
 const Admin = lazy(() => import('./pages/Admin').then((m) => ({ default: m.Admin })));
+/*
+ * The setup journey, lazy like every other route here. It is a first-visit
+ * surface: most loads of this application never touch it, and it should not be
+ * in the bundle every reader downloads to look at a report.
+ */
+const SetupIndex = lazy(() => import('./pages/Setup').then((m) => ({ default: m.SetupIndex })));
+const SetupService = lazy(() => import('./pages/Setup').then((m) => ({ default: m.SetupService })));
+const SetupConnect = lazy(() => import('./pages/Setup').then((m) => ({ default: m.SetupConnect })));
+const SetupTest = lazy(() => import('./pages/Setup').then((m) => ({ default: m.SetupTest })));
+const SetupAccess = lazy(() => import('./pages/Setup').then((m) => ({ default: m.SetupAccess })));
+const SetupSpend = lazy(() => import('./pages/Setup').then((m) => ({ default: m.SetupSpend })));
+const SetupEgress = lazy(() => import('./pages/Setup').then((m) => ({ default: m.SetupEgress })));
 const Persona = lazy(() => import('./pages/Persona').then((m) => ({ default: m.Persona })));
 const Gallery = lazy(() => import('./pages/Gallery').then((m) => ({ default: m.Gallery })));
 const Accessibility = lazy(() => import('./pages/Accessibility').then((m) => ({ default: m.Accessibility })));
@@ -61,6 +73,16 @@ export function App() {
       {/* The only page behind a password. It gates itself: the route is always
           here, and what it shows depends on the cookie. */}
       <Route path="/admin" element={<Template backLink={{ href: '/' }}><Admin /></Template>} />
+      {/* The guided route through the same endpoints the panel uses. One thing
+          per page, a task list with statuses, and a real call at the end —
+          because "configured" and "reachable" are different claims. */}
+      <Route path="/setup" element={<Template backLink={{ href: '/' }}><SetupIndex /></Template>} />
+      <Route path="/setup/service" element={<Template backLink={{ href: '/setup' }}><SetupService /></Template>} />
+      <Route path="/setup/service/:id" element={<Template backLink={{ href: '/setup' }}><SetupConnect /></Template>} />
+      <Route path="/setup/test" element={<Template backLink={{ href: '/setup' }}><SetupTest /></Template>} />
+      <Route path="/setup/access" element={<Template backLink={{ href: '/setup' }}><SetupAccess /></Template>} />
+      <Route path="/setup/spend" element={<Template backLink={{ href: '/setup' }}><SetupSpend /></Template>} />
+      <Route path="/setup/egress" element={<Template backLink={{ href: '/setup' }}><SetupEgress /></Template>} />
       <Route path="/personas" element={<Template wide backLink={{ href: '/' }}><Personas /></Template>} />
       <Route path="/personas/:id" element={<Template wide backLink={{ href: '/personas', text: 'Back to the library' }}><Persona /></Template>} />
       {/* The design system, kept as a route: it is what `npm run a11y` scans and

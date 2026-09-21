@@ -202,6 +202,15 @@ export interface CatalogueEntry {
   floating: boolean;
 }
 
+/** The setup wizard's task list. Derived by the server from what the install holds. */
+export interface SetupState {
+  tasks: { id: string; title: string; href: string; status: 'done' | 'todo' | 'optional'; detail: string }[];
+  /** True only when a provider has actually ANSWERED — configured is not reachable. */
+  ready: boolean;
+  provider: string;
+  egress: string[];
+}
+
 export interface AdminConfig {
   active: string;
   activeProblem: string | null;
@@ -424,6 +433,8 @@ export const admin = {
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ provider }),
     }),
+  /** What is left to set up, as a task list. Statuses are the server's, not the page's. */
+  setup: () => request<SetupState>('/api/admin/setup'),
   /** Everything the active provider sells. A few hundred rows and a network call. */
   catalogue: () => request<{ provider: string; entries: CatalogueEntry[] }>('/api/admin/catalogue'),
   /** The most one run may spend, in tokens. 0 clears the ceiling. */

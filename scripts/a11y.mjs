@@ -27,7 +27,22 @@ import { fileURLToPath } from 'node:url';
 
 const ROOT = path.resolve(fileURLToPath(new URL('..', import.meta.url)));
 const DIST = path.join(ROOT, 'dist', 'client');
-const ROUTES = ['/', '/new', '/personas', '/design', '/accessibility', '/about'];
+/**
+ * EVERY ROUTE THE APPLICATION HAS, READ OFF THE ROUTER.
+ *
+ * This was a hand-written list, and a hand-written list of routes is one that
+ * new routes do not join. `govuk-width-container--wide` shipped on every wide
+ * route and was defined nowhere for three phases; the whole `/setup` journey
+ * would have been added and audited by nobody. Parameterised routes are skipped
+ * because there is no id to put in them here — the browser walk covers those,
+ * against a real assessment.
+ */
+const ROUTES = (await readFile(path.join(ROOT, 'client', 'App.tsx'), 'utf8'))
+  .matchAll(/<Route\s+path="([^"]+)"/g)
+  .map((m) => m[1])
+  .filter((route) => !route.includes(':') && !route.includes('*'))
+  .toArray()
+  .sort();
 
 const TYPES = {
   '.html': 'text/html; charset=utf-8',
@@ -42,6 +57,23 @@ const TYPES = {
 function serve() {
   return createServer(async (req, res) => {
     const url = new URL(req.url ?? '/', 'http://localhost');
+
+    /*
+     * A STUBBED API, so a page under audit renders its content rather than its
+     * spinner.
+     *
+     * Without this the setup journey audits a paragraph saying "Loading…" and
+     * reports it clean — a gate that passes because it never saw the page. The
+     * shapes below are the minimum each route needs to draw; anything richer
+     * belongs in the browser walk, which drives a real server.
+     */
+    if (url.pathname.startsWith('/api/')) {
+      const stub = API_STUBS[url.pathname] ?? {};
+      res.writeHead(200, { 'content-type': 'application/json' });
+      res.end(JSON.stringify(stub));
+      return;
+    }
+
     const file = path.extname(url.pathname)
       ? path.join(DIST, url.pathname)
       : path.join(DIST, 'index.html');
@@ -54,6 +86,57 @@ function serve() {
     }
   });
 }
+
+/**
+ * Just enough for each page to render. Signed in, so the audit sees the panel
+ * and the journey rather than their sign-in forms — those are audited too, by
+ * the browser walk against a real server.
+ */
+const API_STUBS = {
+  '/api/admin/status': { available: true, problem: null, signedIn: true, claimable: false, tokenRequired: false },
+  '/api/admin/setup': {
+    ready: false,
+    provider: 'OpenRouter',
+    egress: ['openrouter.ai'],
+    tasks: [
+      { id: 'service', title: 'Choose which service answers', href: '/setup/service', status: 'done', detail: 'OpenRouter' },
+      { id: 'test', title: 'Try the connection', href: '/setup/test', status: 'todo', detail: 'Nothing has called a model yet.' },
+    ],
+  },
+  '/api/admin/config': {
+    active: 'openrouter',
+    activeProblem: null,
+    fromEnvironment: [],
+    pinned: false,
+    access: 'open',
+    accessPinned: false,
+    accessSummary: 'Open to anyone who can reach the port, which is this machine.',
+    adminPasswordPinned: false,
+    egress: ['openrouter.ai'],
+    menu: [],
+    menuChosen: false,
+    menuPinned: false,
+    tokenCeiling: 0,
+    builtIn: [],
+    canBrowse: true,
+    providers: [
+      {
+        id: 'openrouter',
+        label: 'OpenRouter',
+        blurb: 'One key, billed per token.',
+        fields: [{ name: 'apiKey', label: 'API key', hint: 'From your account.', secret: true }],
+        values: { apiKey: false },
+        models: [],
+      },
+    ],
+  },
+  '/api/reader/status': { gated: false, signedIn: true },
+  // The landing page and the submit form both read this one, and both read
+  // more of it than "a list of assessments": `models` fills the picker and
+  // `stages` draws the eighteen. A stub missing either renders an empty page
+  // that audits clean, which is the failure this whole stub exists to avoid.
+  '/api/policy-analysis': { analyses: [], models: [], stages: [], readOnly: false },
+};
 
 async function listFiles(dir) {
   const out = [];

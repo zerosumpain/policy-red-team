@@ -38,6 +38,18 @@ import {
 } from '$lib/server/settings-store';
 import { HttpError, readJson, sendJson } from './http';
 
+/**
+ * WHAT LAST ANSWERED, AND WHEN — the one piece of setup state that is recorded
+ * rather than derived.
+ *
+ * Everything else the task list shows is computed from what the install holds,
+ * because a stored "done" outlives the thing it was about. This cannot be: the
+ * question "does this credential actually reach a model" has no answer except
+ * making a call. So it is written when a call succeeds and deleted wherever the
+ * configuration beneath it changes.
+ */
+const LAST_PROBE = 'setup.lastProbe';
+
 /** True when the reader reached us over HTTPS — behind a tunnel, only the header knows. */
 function isSecure(req: IncomingMessage): boolean {
   const forwarded = req.headers['x-forwarded-proto'];
@@ -243,6 +255,26 @@ export async function handleAdmin(
     return true;
   }
 
+  /*
+   * WHAT IS LEFT TO SET UP, as a GOV.UK task list.
+   *
+   * Derived, never stored as a checklist. A stored "done" is a claim about the
+   * past that survives the thing it was about — a provider configured and then
+   * cleared would still read as complete. Every status below is computed from
+   * what the install actually holds right now, so the only way to make a task
+   * say "done" is for it to be done.
+   *
+   * ONE TASK IS DIFFERENT AND IT IS THE IMPORTANT ONE. "Try the connection" is
+   * the only status this cannot derive, because the question it answers —
+   * does this credential actually reach a model — has no answer except making
+   * a call. So that one IS recorded, with what it reached and when, and it is
+   * cleared whenever the configuration under it changes.
+   */
+  if (segments.length === 1 && segments[0] === 'setup' && method === 'GET') {
+    sendJson(res, 200, await setupPayload());
+    return true;
+  }
+
   if (segments.length === 2 && segments[0] === 'config' && method === 'POST') {
     const definition = providers().find((p) => p.id === segments[1]);
     if (!definition) throw new HttpError(404, 'This build does not offer that provider.');
@@ -261,6 +293,10 @@ export async function handleAdmin(
     }
 
     clearLLMClientCache();
+    // A CHANGED CREDENTIAL HAS NOT BEEN TESTED. Leaving the last result in
+    // place would let a working test vouch for a configuration that has since
+    // been edited, which is the same class of lie as "saved means reachable".
+    await deleteSetting(LAST_PROBE);
     // The MODEL is one of these fields, and a provider that pins one decides the
     // per-call deadline for every run that commissions nothing. Leaving the
     // registry stale here means the panel says one model and an uncommissioned
@@ -276,6 +312,8 @@ export async function handleAdmin(
     if (!providers().some((p) => p.id === id)) throw new HttpError(400, 'This build does not offer that provider.');
     await writeSetting(ACTIVE_PROVIDER, id);
     clearLLMClientCache();
+    // A different service has certainly not been tested.
+    await deleteSetting(LAST_PROBE);
     // Switching provider changes both what may be commissioned and what will
     // answer whatever is. Same reason as the config branch above.
     await refreshModelMenu();
@@ -382,6 +420,11 @@ export async function handleAdmin(
         max_tokens: 1,
         messages: [{ role: 'user', content: 'Reply with the single word: ok' }],
       });
+      // RECORDED, because this is the one thing the task list cannot derive:
+      // "saved" is not "reachable", and nothing else in the install can tell
+      // the difference. Cleared wherever the configuration underneath it
+      // changes, so it can never vouch for a setup that has since moved.
+      await writeSetting(LAST_PROBE, `${definition.label} answered as ${reply.model ?? model} in ${Date.now() - started} ms.`);
       sendJson(res, 200, {
         ok: true,
         provider: definition.label,
@@ -402,6 +445,76 @@ export async function handleAdmin(
   }
 
   return false;
+}
+
+/**
+ * THE TASK LIST'S STATE.
+ *
+ * `status` is one of 'done' | 'todo' | 'optional'. The wizard renders them; it
+ * does not decide them, because a client that decided what "configured" means
+ * would be a second opinion about the thing the server already knows.
+ */
+async function setupPayload() {
+  const active = await resolveProvider();
+  const stored = await readAll().catch(() => ({} as Record<string, string>));
+  const probe = stored[LAST_PROBE];
+  const mode = await accessMode();
+
+  const tasks = [
+    {
+      id: 'service',
+      title: 'Choose which service answers',
+      href: '/setup/service',
+      status: 'done',
+      detail: active.definition.label,
+    },
+    {
+      id: 'connect',
+      title: `Connect ${active.definition.label}`,
+      href: `/setup/service/${active.definition.id}`,
+      status: active.problem ? 'todo' : 'done',
+      detail: active.problem ?? 'Configured.',
+    },
+    {
+      id: 'test',
+      title: 'Try the connection',
+      href: '/setup/test',
+      // The one status that cannot be derived. Saved is not reachable.
+      status: probe ? 'done' : 'todo',
+      detail: probe ?? 'Nothing has called a model yet.',
+    },
+    {
+      id: 'access',
+      title: 'Decide who can reach it',
+      href: '/setup/access',
+      status: 'done',
+      detail: await accessSummary(),
+    },
+    {
+      id: 'spend',
+      title: 'Set what one run may spend',
+      href: '/setup/spend',
+      status: tokenCeiling() ? 'done' : 'optional',
+      detail: tokenCeiling() ? `${tokenCeiling().toLocaleString()} tokens` : 'No ceiling.',
+    },
+    {
+      id: 'egress',
+      title: 'Hand your network team the list',
+      href: '/setup/egress',
+      status: 'optional',
+      detail: 'Every host this install needs to reach.',
+    },
+  ];
+
+  return {
+    tasks,
+    // "Ready" is the honest one: a provider that has actually answered. Not
+    // "every field is filled in", which is what an install that cannot reach
+    // its own endpoint also looks like.
+    ready: !active.problem && Boolean(probe),
+    provider: active.definition.label,
+    egress: [...new Set(providers().flatMap((p) => p.egress))],
+  };
 }
 
 async function configPayload() {

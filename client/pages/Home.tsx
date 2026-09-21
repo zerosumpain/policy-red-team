@@ -70,6 +70,19 @@ export function Home() {
             Assess a paper
           </Link>
         )}
+        {/*
+          THE WAY IN, FOR AN INSTALL THAT HAS NOT BEEN SET UP.
+          
+          A fresh clone had no browser-reachable route to configuration at all:
+          `/admin` was closed unless a variable nobody had heard of was set, and
+          nothing on any page said its name. Somebody who downloads this and
+          opens it should be able to find the thing that makes it work from the
+          first page they see.
+        */}
+        <p className="govuk-body-s prt-meta">
+          Not set up yet? <Link className="govuk-link" to="/setup">Get this service working</Link> —
+          it takes a model credential and one real call to prove it.
+        </p>
       </div>
 
       {/*

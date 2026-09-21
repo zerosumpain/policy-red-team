@@ -15,9 +15,19 @@ export function ErrorSummary({ title = 'There is a problem', errors }: {
   errors: { text: string; href: string }[];
 }) {
   const ref = useRef<HTMLDivElement>(null);
+  /*
+   * KEYED ON WHAT IT SAYS, NOT ON HOW MANY THINGS IT SAYS.
+   *
+   * This depended on `errors.length`, which does not change when one error
+   * replaces another — so a reader who fixes the first problem in a form and
+   * submits into a second one gets a summary that appears silently and does not
+   * take focus. On a one-thing-per-page journey that is most of the time: the
+   * forms have one field, so the count is almost always exactly one.
+   */
+  const signature = errors.map((e) => e.text).join('\u0000');
   useEffect(() => {
     if (errors.length) ref.current?.focus();
-  }, [errors.length]);
+  }, [signature, errors.length]);
 
   if (!errors.length) return null;
   return (
