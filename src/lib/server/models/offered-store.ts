@@ -2,6 +2,7 @@ import { deleteSetting, readSetting, writeSetting } from '$lib/server/settings-s
 import { offeredModels, providerPinnedModel, registerOfferedModels, registerProviderModels, registerProviderPinnedModel, tierForCost, type CostTier, type OfferedModel } from './catalogue';
 import { resolveProvider } from '$lib/llm/client';
 import { registerCallTimeout } from './call-deadline';
+import { refreshSearchConfig } from '../search';
 import type { ProviderConfig, ProviderDefinition } from '$lib/llm/providers/types';
 import { setTokenCeiling } from '$lib/server/budget';
 
@@ -137,6 +138,11 @@ export function commissionableModels(): OfferedModel[] {
 
 export async function refreshModelMenu(): Promise<void> {
   await loadOfferedModels().catch(() => {});
+  // WHERE RESEARCH GETS ITS SOURCES, read at the same three moments as
+  // everything else cached here: boot, a configuration save, a provider switch.
+  // The copied research stage reads it synchronously, so it has to be a module
+  // variable rather than a lookup. See `$lib/server/search`.
+  await refreshSearchConfig().catch(() => {});
   // Loaded with the menu because they are read at the same moments — boot, the
   // landing page, and immediately before a submission is accepted. A ceiling
   // that is only read at boot is a ceiling nobody can change without a restart.

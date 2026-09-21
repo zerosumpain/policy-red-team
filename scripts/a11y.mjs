@@ -101,6 +101,7 @@ const API_STUBS = {
     tasks: [
       { id: 'service', title: 'Choose which service answers', href: '/setup/service', status: 'done', detail: 'OpenRouter' },
       { id: 'test', title: 'Try the connection', href: '/setup/test', status: 'todo', detail: 'Nothing has called a model yet.' },
+      { id: 'search', title: 'Decide about looking things up', href: '/setup/search', status: 'optional', detail: 'Nothing is configured to search the web.' },
     ],
   },
   '/api/admin/config': {
@@ -113,6 +114,7 @@ const API_STUBS = {
     accessSummary: 'Open to anyone who can reach the port, which is this machine.',
     adminPasswordPinned: false,
     egress: ['openrouter.ai'],
+    search: { engine: 'auto', pinned: false, tavilyKeySet: false, domains: '', kind: 'none', why: 'Nothing is configured to search the web.' },
     menu: [],
     menuChosen: false,
     menuPinned: false,

@@ -42,6 +42,7 @@ const SetupConnect = lazy(() => import('./pages/Setup').then((m) => ({ default: 
 const SetupTest = lazy(() => import('./pages/Setup').then((m) => ({ default: m.SetupTest })));
 const SetupAccess = lazy(() => import('./pages/Setup').then((m) => ({ default: m.SetupAccess })));
 const SetupSpend = lazy(() => import('./pages/Setup').then((m) => ({ default: m.SetupSpend })));
+const SetupSearch = lazy(() => import('./pages/Setup').then((m) => ({ default: m.SetupSearch })));
 const SetupEgress = lazy(() => import('./pages/Setup').then((m) => ({ default: m.SetupEgress })));
 const Persona = lazy(() => import('./pages/Persona').then((m) => ({ default: m.Persona })));
 const Gallery = lazy(() => import('./pages/Gallery').then((m) => ({ default: m.Gallery })));
@@ -82,6 +83,7 @@ export function App() {
       <Route path="/setup/test" element={<Template backLink={{ href: '/setup' }}><SetupTest /></Template>} />
       <Route path="/setup/access" element={<Template backLink={{ href: '/setup' }}><SetupAccess /></Template>} />
       <Route path="/setup/spend" element={<Template backLink={{ href: '/setup' }}><SetupSpend /></Template>} />
+      <Route path="/setup/search" element={<Template backLink={{ href: '/setup' }}><SetupSearch /></Template>} />
       <Route path="/setup/egress" element={<Template backLink={{ href: '/setup' }}><SetupEgress /></Template>} />
       <Route path="/personas" element={<Template wide backLink={{ href: '/' }}><Personas /></Template>} />
       <Route path="/personas/:id" element={<Template wide backLink={{ href: '/personas', text: 'Back to the library' }}><Persona /></Template>} />

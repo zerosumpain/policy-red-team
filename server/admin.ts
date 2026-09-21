@@ -27,6 +27,7 @@ import { adminCredential, adminPasswordIsPinned, setAdminPassword, setReaderPass
 import { claimState, setupTokenAccepted } from '$lib/server/claim';
 import { isDefaultCredential, passwordProblem } from '$lib/server/credentials';
 import { accessMode, accessModeIsPinned, accessSummary, setAccessMode, type AccessMode } from '$lib/server/reader-access';
+import { chosenEngine, saveSearchConfig, searchDomains, searchIsPinned, searchPlan, tavilyKey, type SearchEngine } from '$lib/server/search';
 import { rateLimit } from '$lib/server/rate-limit';
 import { providers, redact, type ProviderConfig } from '$lib/llm/providers';
 import { clearLLMClientCache, resolveProvider } from '$lib/llm/client';
@@ -221,6 +222,35 @@ export async function handleAdmin(
     const credential = await adminCredential();
     res.setHeader('set-cookie', sessionCookie(issueSession(credential!), isSecure(req)));
     sendJson(res, 200, { changed: true });
+    return true;
+  }
+
+  /*
+   * WHERE RESEARCH GETS ITS SOURCES — a choice, not a degradation.
+   *
+   * An install that cannot reach the open web should be able to SAY so, once,
+   * and have every run skip the asking. Before this it discovered the answer
+   * once per question, at the cost of a model call each time, and reported it
+   * as a gap rather than as the decision it was.
+   */
+  if (segments.length === 1 && segments[0] === 'search' && method === 'POST') {
+    if (searchIsPinned()) {
+      throw new HttpError(409, 'POLICY_SEARCH is set on the server, which wins over anything saved here.');
+    }
+    const body = await readJson(req);
+    const engine = body.engine as SearchEngine | undefined;
+    if (engine && !['auto', 'tavily', 'grounded', 'none'].includes(engine)) {
+      throw new HttpError(400, 'Search is auto, tavily, grounded or none.');
+    }
+    await saveSearchConfig({
+      engine,
+      // A BLANK KEY IS "LEAVE IT ALONE", the same rule every other secret here
+      // follows, because the box is always empty and treating blank as a
+      // deletion would wipe it every time somebody edited the field beside it.
+      ...(typeof body.tavilyKey === 'string' && body.tavilyKey.trim() ? { tavilyKey: body.tavilyKey } : {}),
+      ...(typeof body.domains === 'string' ? { domains: body.domains } : {}),
+    });
+    sendJson(res, 200, await configPayload());
     return true;
   }
 
@@ -491,6 +521,16 @@ async function setupPayload() {
       detail: await accessSummary(),
     },
     {
+      id: 'search',
+      title: 'Decide about looking things up',
+      href: '/setup/search',
+      // Never 'todo': an install that does not search is correctly configured,
+      // not incomplete. What matters is that the reader has been told which it
+      // is, and `detail` is that sentence.
+      status: 'optional',
+      detail: searchPlan(Boolean(!active.problem && active.definition.grounded?.(active.config))).why,
+    },
+    {
       id: 'spend',
       title: 'Set what one run may spend',
       href: '/setup/spend',
@@ -544,6 +584,16 @@ async function configPayload() {
     // Every host this install needs to reach, gathered from the providers
     // themselves so a firewall change can be written from one place.
     egress: [...new Set(providers().flatMap((p) => p.egress))],
+    // WHERE RESEARCH LOOKS, and what a reader will be told about it. `why` is
+    // the sentence, because "no sources were found" describes a search that
+    // failed and "this install does not look things up" describes a decision.
+    search: {
+      engine: chosenEngine(),
+      pinned: searchIsPinned(),
+      tavilyKeySet: Boolean(tavilyKey()),
+      domains: searchDomains().join(', '),
+      ...searchPlan(Boolean(!active.problem && active.definition.grounded?.(active.config))),
+    },
     // The assessment picker's menu, and whether anybody has touched it. The
     // panel needs to tell "these are the five this build ships with" from "these
     // are the five I chose", because the reset control only makes sense for one.

@@ -1,5 +1,5 @@
-import { providerById } from '$lib/llm/providers';
-import { resolveProvider } from '$lib/llm/client';
+import { instrument, resolveProvider } from '$lib/llm/client';
+import { searchDomains, searchPlan } from '$lib/server/search';
 import {
   search as tavilySearch,
   extract as tavilyExtract,
@@ -35,8 +35,19 @@ import {
  * its precedence and nothing changes for an install that has one.
  */
 
-function haveTavily(): boolean {
-  return Boolean(process.env.TAVILY_API_KEY?.trim());
+/**
+ * WHAT THIS RUN WILL ACTUALLY DO ABOUT SOURCES.
+ *
+ * `search.ts` holds the decision and the sentence that explains it; this asks it
+ * whether the active provider has a grounded endpoint, which is the one fact it
+ * cannot know. The result is used to SHORT-CIRCUIT: an install that has said it
+ * does not look things up should skip the asking, not discover the answer once
+ * per question at the cost of a model call each time.
+ */
+async function plan(): Promise<{ kind: 'tavily' | 'grounded' | 'none'; why: string }> {
+  const { definition, config, problem } = await resolveProvider();
+  const grounded = !problem && Boolean(definition.grounded?.(config));
+  return searchPlan(grounded);
 }
 
 /**
@@ -54,7 +65,20 @@ async function groundedSearch(query: string, maxResults: number, signal?: AbortS
   const grounded = definition.grounded?.(config);
   if (!grounded) return { results: [] };
 
-  const reply = await grounded.client.chat.completions.create(
+  /*
+   * COUNTED AND CHARGED LIKE ANY OTHER CALL.
+   *
+   * These go through the provider's own client, built by `grounded()`, which
+   * never passed through `instrument()` — so up to twenty-four research calls a
+   * run reached neither the token ledger nor the spend ceiling. On a
+   * subscription that bills nothing per call, a budget that cannot see a
+   * quarter of the traffic is a budget that does not exist, which is exactly
+   * what 2026-09-19 demonstrated for the run as a whole.
+   */
+  const client = instrument(definition.id, grounded.client);
+
+  const allowed = searchDomains();
+  const reply = await client.chat.completions.create(
     {
       model: grounded.model,
       messages: [
@@ -66,7 +90,13 @@ async function groundedSearch(query: string, maxResults: number, signal?: AbortS
             'you retrieved it and `content` a faithful extract of what that page says about the question — not a ' +
             'paraphrase of your own view. `score` is 0–1 for how directly the page bears on the question. If you ' +
             'cannot search, return {"results":[]} rather than answering from memory: an invented source is worse ' +
-            'than an acknowledged gap.',
+            'than an acknowledged gap.' +
+            // THE SAME RESTRICTION BOTH WAYS. A reader who has said "only these
+            // domains" means it whichever engine answers, and a model that is
+            // not told will cheerfully cite anything. It is a prompt and not a
+            // guarantee, which is why the filter below also drops what comes
+            // back — belt and braces, because only one of them is enforceable.
+            (allowed.length ? ` Only use pages on these domains: ${allowed.join(', ')}.` : ''),
         },
         { role: 'user', content: query },
       ],
@@ -81,6 +111,10 @@ async function groundedSearch(query: string, maxResults: number, signal?: AbortS
     const parsed = JSON.parse(content) as TavilySearchResponse;
     const results = (parsed.results ?? [])
       .filter((r) => r && typeof r.url === 'string' && r.url.startsWith('http'))
+      // ASKED IN THE PROMPT, ENFORCED HERE. A model told to stay on a list of
+      // domains mostly will; "mostly" is not a restriction an institution can
+      // rely on, and dropping the rest costs nothing.
+      .filter((r) => onAllowedDomain(String(r.url), allowed))
       .slice(0, maxResults)
       .map((r) => ({
         title: String(r.title ?? r.url),
@@ -94,12 +128,35 @@ async function groundedSearch(query: string, maxResults: number, signal?: AbortS
   }
 }
 
-/** Drop-in for `$lib/deepdive/tavily`'s `search`. Tavily where configured, grounded otherwise. */
+/** Whether a URL is on the configured allow-list. An empty list allows everything. */
+function onAllowedDomain(url: string, allowed: string[]): boolean {
+  if (!allowed.length) return true;
+  let host: string;
+  try {
+    host = new URL(url).hostname.toLowerCase();
+  } catch {
+    return false;
+  }
+  // A suffix match on a DOT boundary, so `gov.uk` admits `www.gov.uk` and
+  // `data.gov.uk` and refuses `notgov.uk` — which a bare `endsWith` would let
+  // through, and which is the whole point of an allow-list.
+  return allowed.some((domain) => host === domain || host.endsWith(`.${domain}`));
+}
+
+/** Drop-in for `$lib/deepdive/tavily`'s `search`. Whatever the reader configured. */
 export async function search(
   query: string,
   options?: Parameters<typeof tavilySearch>[1],
 ): Promise<TavilySearchResponse> {
-  if (haveTavily()) return tavilySearch(query, options);
+  const { kind } = await plan();
+  // NOT ASKED AT ALL. The stage records it could not search, exactly as it
+  // already does when a search comes back empty — but it does so without
+  // spending a model call per question to find out.
+  if (kind === 'none') return { results: [] };
+  if (kind === 'tavily') {
+    const allowed = searchDomains();
+    return tavilySearch(query, allowed.length ? { ...options, includeDomains: allowed } : options);
+  }
   return groundedSearch(query, options?.maxResults ?? 3, options?.signal);
 }
 
@@ -110,7 +167,8 @@ export async function search(
  * record. Pretending otherwise would mean inventing page text.
  */
 export async function extract(urls: string[], signal?: AbortSignal): Promise<TavilyExtractResponse> {
-  if (haveTavily()) return tavilyExtract(urls, signal);
+  const { kind } = await plan();
+  if (kind === 'tavily') return tavilyExtract(urls, signal);
   return {
     results: [],
     failed_results: urls.map((url) => ({

@@ -503,6 +503,98 @@ export function SetupSpend() {
 }
 
 /**
+ * WHERE RESEARCH LOOKS, said out loud.
+ *
+ * An install with no route to the open web is a normal, correct configuration —
+ * and until it could be stated it read as twelve failures per run. The page's
+ * job is to make "we do not look things up" an answer a reader gives rather
+ * than a fault they discover.
+ */
+export function SetupSearch() {
+  const { config, errors, busy, run, needsSignIn } = useSetup();
+  const navigate = useNavigate();
+  const [engine, setEngine] = useState<string | null>(null);
+  if (needsSignIn) return <SignInFirst />;
+  if (!config) return <p className="govuk-body" aria-live="polite">Loading…</p>;
+  const chosen = engine ?? config.search.engine;
+
+  return (
+    <Step
+      caption="Set up"
+      title="Looking things up"
+      intro={
+        <p className="govuk-body">
+          One of the eighteen stages goes and checks claims against the outside world. It is
+          optional: without it every finding rests on the paper alone, which is a limit on the
+          assessment rather than a fault in it — as long as the report says so, which it does.
+        </p>
+      }
+    >
+      {errors.length ? <ErrorSummary errors={errors.map((text) => ({ text, href: '#setup-search' }))} /> : null}
+      <InsetText>{config.search.why}</InsetText>
+      {config.search.pinned ? <InsetText>POLICY_SEARCH is set on the server, so this cannot be changed here.</InsetText> : null}
+      <form
+        onSubmit={(e) => {
+          e.preventDefault();
+          const form = new FormData(e.currentTarget);
+          void run(
+            () =>
+              admin.setSearch({
+                engine: chosen,
+                tavilyKey: String(form.get('tavilyKey') ?? ''),
+                domains: String(form.get('domains') ?? ''),
+              }),
+            () => navigate('/setup'),
+          );
+        }}
+        noValidate
+      >
+        <Radios
+          id="setup-search"
+          legend="How it should look things up"
+          legendSize="s"
+          value={chosen}
+          onChange={setEngine}
+          items={[
+            { value: 'auto', text: 'Whatever is available', hint: 'A search service if one is configured, the model’s own search if it has one, otherwise nothing.' },
+            { value: 'tavily', text: 'A search service (Tavily)', hint: 'Ranked results with scores, and it can fetch a page’s full text. The best evidence of the three.' },
+            { value: 'grounded', text: 'The model’s own web search', hint: 'Only some services offer one. Prose with citations rather than ranked pages.' },
+            { value: 'none', text: 'Do not look anything up', hint: 'Right for a network with no route out. The run skips the asking rather than failing at it, and the report says every finding rests on the paper.' },
+          ]}
+        />
+        {chosen === 'tavily' || chosen === 'auto' ? (
+          <Input
+            id="setup-tavily"
+            name="tavilyKey"
+            type="password"
+            label="Tavily API key"
+            labelSize="s"
+            hint={`${config.search.tavilyKeySet ? 'One is stored. Leave blank to keep it.' : 'Nothing is stored.'} It is never shown again once saved.`}
+            autoComplete="off"
+            disabled={busy || config.search.pinned}
+          />
+        ) : null}
+        {chosen !== 'none' ? (
+          <Input
+            id="setup-domains"
+            name="domains"
+            label="Only use these domains"
+            labelSize="s"
+            hint="Comma separated, and optional. gov.uk admits www.gov.uk and data.gov.uk. Leave blank to allow anything."
+            defaultValue={config.search.domains}
+            disabled={busy || config.search.pinned}
+          />
+        ) : null}
+        <ButtonGroup>
+          <Button type="submit" disabled={busy || config.search.pinned}>Save and continue</Button>
+          <Button variant="secondary" onClick={() => navigate('/setup')} disabled={busy}>Back to the list</Button>
+        </ButtonGroup>
+      </form>
+    </Step>
+  );
+}
+
+/**
  * THE LIST A NETWORK TEAM ASKS FOR.
  *
  * Gathered from the providers themselves rather than written down here, so a

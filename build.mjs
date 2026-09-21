@@ -34,7 +34,7 @@ const lib = path.join(root, 'src', 'lib');
  * and is erased before this runs. The importer is checked so a future `./provider`
  * somewhere else cannot be silently swapped too.
  */
-function fixtureProviderPlugin(target, registryTarget) {
+function fixtureProviderPlugin(target, registryTarget, tavilyTarget) {
   return {
     name: 'fixture-provider',
     setup(b) {
@@ -58,6 +58,25 @@ function fixtureProviderPlugin(target, registryTarget) {
        * throws rather than constructing anything.
        */
       b.onResolve({ filter: /^\$lib\/llm\/providers$/ }, () => ({ path: registryTarget }));
+
+      /*
+       * AND THE SEARCH SERVICE.
+       *
+       * Tavily is metered, and it receives the text of the reader's research
+       * questions. A fixture bundle that could call it would spend money and
+       * send a query out — and the only reason the browser walk never did is
+       * that it happens not to configure a key, which is an accident of a test
+       * standing in for a guarantee.
+       *
+       * Redirected here rather than in `web-search.ts`, which is fork-owned and
+       * could have done it: the guarantee should not depend on anyone
+       * remembering to route a new call site through the right module. The
+       * bundle either contains the endpoint or it does not.
+       */
+      b.onResolve({ filter: /tavily$/ }, (args) => {
+        if (!args.path.includes('deepdive')) return null;
+        return { path: tavilyTarget };
+      });
     },
   };
 }
@@ -94,7 +113,8 @@ await bundle({ entry: 'server/index.ts', outfile: path.join(root, 'dist', 'serve
 const fixtureProvider = () => [
   fixtureProviderPlugin(
     path.join(lib, 'policy-analysis', 'server', 'provider.fixture.ts'),
-    path.join(lib, 'llm', 'providers', 'index.fixture.ts')
+    path.join(lib, 'llm', 'providers', 'index.fixture.ts'),
+    path.join(lib, 'deepdive', 'tavily.fixture.ts')
   ),
 ];
 
@@ -139,6 +159,10 @@ const ENDPOINTS = [
   'openai.azure.com',
   'login.microsoftonline.com',
   '169.254.169.254',
+  // Metered, and it receives the reader's research questions. It joined this
+  // list in phase 18 along with `tavily.fixture.ts`, and in that order: adding
+  // the name without the redirect fails the build on the next line.
+  'api.tavily.com',
 ];
 for (const [name, source] of [['cli-fixture.js', fixture], ['server-fixture.js', fixtureServer]]) {
   const found = ENDPOINTS.filter((endpoint) => source.includes(endpoint));

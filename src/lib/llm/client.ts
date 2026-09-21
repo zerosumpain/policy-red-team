@@ -170,12 +170,18 @@ export async function getLLMClient(ctx: ModelContext): Promise<{ client: OpenAI;
  * safe for every caller — the CLI, the admin panel's test button, a persona
  * enrichment — and only the pipeline's own calls are actually collected.
  *
+ * EXPORTED SINCE PHASE 18, for the grounded search client. `grounded()` builds
+ * its own client from the same credentials and it never passed through here, so
+ * up to twenty-four research calls a run reached neither the ledger nor the
+ * spend ceiling — a quarter of the traffic invisible to the thing that is meant
+ * to stop a run that goes wrong.
+ *
  * CACHED TOKENS ARE THE POINT, not a detail. `prompt_tokens_details.cached_tokens`
  * is the only honest way to tell whether the shared-context ordering is working;
  * without it "caching is on" is a claim about configuration rather than about
  * what happened.
  */
-function instrument(providerId: string, client: OpenAI): OpenAI {
+export function instrument(providerId: string, client: OpenAI): OpenAI {
   const completions = client.chat.completions;
   const create = completions.create.bind(completions);
 

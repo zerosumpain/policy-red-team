@@ -233,6 +233,16 @@ export interface AdminConfig {
   adminPasswordPinned: boolean;
   /** Every host this install needs to reach, for a firewall change. */
   egress: string[];
+  /** Where research looks, and the sentence a reader is told about it. */
+  search: {
+    engine: 'auto' | 'tavily' | 'grounded' | 'none';
+    pinned: boolean;
+    tavilyKeySet: boolean;
+    domains: string;
+    /** What will actually happen, which is not always what was chosen. */
+    kind: 'tavily' | 'grounded' | 'none';
+    why: string;
+  };
   /** What a reset would restore. */
   builtIn: OfferedModel[];
   /** Whether the active provider will list what it sells. Azure will not. */
@@ -405,6 +415,13 @@ export const admin = {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ current, next }),
+    }),
+  /** Where research looks for sources. */
+  setSearch: (fields: { engine?: string; tavilyKey?: string; domains?: string }) =>
+    request<AdminConfig>('/api/admin/search', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(fields),
     }),
   /** Who may read the assessments, as opposed to who may configure them. */
   setAccess: (mode: 'open' | 'password', readerPassword?: string) =>
