@@ -99,6 +99,26 @@ describe('stage 4 is handed the public record for the bodies it profiles in full
   });
 });
 
+describe('a body\'s record reaches no later stage it was not minted for', () => {
+  it('stays out of every shared context, and reaches 12 and 17 only where something there cites it', async () => {
+    const { lookup } = oneBodyHasARecord();
+    const seen = new Map<number, Set<string>>();
+    const model: PipelineDeps['model'] = async (stage, key, raw) => {
+      const ids = (raw as { artefacts?: Artefact[] }).artefacts?.map((a) => a.id) ?? [];
+      seen.set(stage, new Set([...(seen.get(stage) ?? []), ...ids.filter((id) => id.startsWith('s4_body_'))]));
+      const out = fixtureModel(stage, key, raw);
+      // A profile that cites the second record, as a real one may.
+      const cited = stage === 4 ? (raw as { artefacts: Artefact[] }).artefacts.find((a) => a.id === 's4_body_1') : null;
+      if (cited) for (const p of out.artefacts) p.data.resources = { value: 'Its 2021 report records a budget under strain.', origin: 'external_evidence', confidence: 0.5, refs: [cited.id] };
+      return out;
+    };
+    await runTo(17, { bodyEvidence: lookup, model });
+    for (const stage of [5, 7, 9, 11, 14, 15, 16]) expect([...(seen.get(stage) ?? [])], `stage ${stage}`).toEqual([]);
+    // Cited by a profile, so the synthesis and the assured report may read it — and only it.
+    for (const stage of [12, 17]) expect([...(seen.get(stage) ?? [])], `stage ${stage}`).toEqual(['s4_body_1']);
+  });
+});
+
 describe('stage 10 sees a body\'s record in that body\'s call', () => {
   it('as the call\'s own material, never in the shared block every call carries', async () => {
     const { lookup } = oneBodyHasARecord();

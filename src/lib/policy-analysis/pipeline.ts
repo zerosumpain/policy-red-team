@@ -492,7 +492,20 @@ export async function executeStage(input: StageInput, deps: PipelineDeps): Promi
    * context, and every pass — is left exactly as it was.
    */
   const declared = STAGE_CONTEXT[stage];
-  const scoped = (artefacts: Artefact[]) => (declared ? artefacts.filter((a) => (declared as readonly string[]).includes(a.kind)) : artefacts);
+  /**
+   * A BODY'S PUBLIC RECORD IS NOT EVERY STAGE'S. The `s4_body_*` records are
+   * `research_source`s, a kind most later stages declare, so they rode into
+   * every shared context from stage 5 on — up to three per fully profiled body,
+   * read by nothing, costing the room the stage's own kinds needed. They belong
+   * to stage 4, which mints them, and stage 10, which hands a body its own in
+   * that body's call. The synthesis and the assured report may read one only
+   * where something in their context CITES it: a profile's field or a play
+   * resting on it, which the report may need to follow to its source.
+   */
+  const bodyRecordCited = [SYNTHESIS_STAGE, ASSURED_SYNTHESIS_STAGE].includes(stage) ? citedIds(input.artefacts.filter((a) => !isBodyEvidence(a))) : new Set<string>();
+  const scoped = (artefacts: Artefact[]) => (declared
+    ? artefacts.filter((a) => (declared as readonly string[]).includes(a.kind) && (!isBodyEvidence(a) || stage === 10 || bodyRecordCited.has(a.id)))
+    : artefacts);
   /**
    * A single call's context, scoped and fitted ONCE, here, in declared order.
    *
@@ -1811,6 +1824,24 @@ export function quotableForJudgements(all: Artefact[]): string[] {
   for (const m of mechanisms) for (const r of m.refs) linked.add(r);
   const claims = all.filter((a) => a.kind === 'claim' && (linked.has(a.id) || (a.sourceId && passages.has(a.sourceId)) || a.refs.some((r) => chosen.has(r))));
   return [...chosen, ...claims.map((a) => a.id)];
+}
+
+/**
+ * Every id these artefacts cite: their `refs`, their `sourceId`, and the
+ * `refs` of a structured field — which is where a profile cites what each of
+ * its twenty-one answers rests on.
+ */
+function citedIds(artefacts: Artefact[]): Set<string> {
+  const out = new Set<string>();
+  for (const a of artefacts) {
+    for (const r of a.refs) out.add(r);
+    if (a.sourceId) out.add(a.sourceId);
+    for (const value of Object.values(a.data)) {
+      const refs = value && typeof value === 'object' && !Array.isArray(value) ? (value as { refs?: unknown }).refs : null;
+      if (Array.isArray(refs)) for (const r of refs) if (typeof r === 'string') out.add(r);
+    }
+  }
+  return out;
 }
 
 /** Full profiles where there are any; every profile otherwise, as before short ones existed. */
