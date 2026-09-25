@@ -1,4 +1,4 @@
-import { artefactSchema, dataSchemas, looseOutputSchema, RESULT_KINDS, stageKinds, stageOutputSchema, type Artefact, type PassKind, type StageOutput } from './contracts';
+import { artefactSchema, dataSchemas, looseOutputSchema, PROFILE_FIELDS, RESULT_KINDS, SHORT_PROFILE_FIELDS, stageKinds, stageOutputSchema, type Artefact, type PassKind, type StageOutput } from './contracts';
 import { locateQuote } from './quotes';
 
 export class PolicyError extends Error {
@@ -23,7 +23,36 @@ function structuralFault(a: Artefact, all: Map<string, Artefact>, stage: number,
   // deliberately treats data as an open record so one malformed member can be
   // triaged; without this assignment defaults such as revision never survive.
   a.data = shape.data as Record<string, unknown>;
+  // Which fields a profile owes depends on its form. Worded as the schema's own
+  // failure was, so a corrective round names the missing field exactly as it did
+  // when all twenty-one were required by the shape.
+  if (a.kind === 'profile') {
+    const owed = a.data.form === 'short' ? SHORT_PROFILE_FIELDS : PROFILE_FIELDS;
+    const absent = owed.filter((key) => a.data[key] == null);
+    if (absent.length) return fault('contract', `An artefact did not match its stage contract (profile ${absent.slice(0, 3).map((key) => `data.${key}: required`).join('; ')}${absent.length > 3 ? `; and ${absent.length - 3} more` : ''}).`);
+  }
   return null;
+}
+
+/**
+ * Stamp a stage-4 response's profiles with the form of the call that asked.
+ *
+ * The server knows whether it asked for a full profile or a short one; the
+ * model does not get a say. Applied BEFORE triage everywhere a response is read
+ * — the provider's live reply, its cached replay, and the pipeline's own fold —
+ * because the form decides which fields triage demands.
+ */
+export function stampProfileForm(raw: unknown, form: 'full' | 'short'): unknown {
+  const items = (raw as { artefacts?: unknown })?.artefacts;
+  if (!Array.isArray(items)) return raw;
+  for (const item of items) {
+    if (!item || typeof item !== 'object' || (item as { kind?: unknown }).kind !== 'profile') continue;
+    const data = (item as { data?: unknown }).data;
+    if (!data || typeof data !== 'object') continue;
+    if (form === 'short') (data as Record<string, unknown>).form = 'short';
+    else delete (data as Record<string, unknown>).form;
+  }
+  return raw;
 }
 
 /**

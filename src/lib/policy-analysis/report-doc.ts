@@ -22,7 +22,7 @@
 import type { Artefact } from './contracts';
 import { KEY_SECTIONS, READING_CHAIN } from './glossary';
 import { beyond, destroyed, headline as handlingHeadline, journey, kept, PLACE_LABEL } from './handling';
-import { REPORT_ACTS, actorBoard, addenda, evidenceMix, fragileAssumptions, findingsBySection, headline, of, plays, recommendations as reportRecommendations, BAND_LABEL, type Band, type PassRow } from './view';
+import { REPORT_ACTS, actorBoard, addenda, evidenceMix, fragileAssumptions, findingsBySection, headline, isShortProfile, of, plays, recommendations as reportRecommendations, BAND_LABEL, type Band, type PassRow } from './view';
 import { checks } from './view';
 import { isBody, network } from './network';
 import { adjacency } from './matrix';
@@ -162,8 +162,16 @@ function cast(artefacts: Artefact[]): string {
     ['outsideOption', 'Does instead'],
     ['gainFromFailure', 'Better off if it fails'],
   ];
+  // What a SHORT profile carries instead: role, wants and powers. Without this a
+  // body with a short profile read "No incentive profile was built", which is
+  // false — one was, in five fields rather than twenty-one.
+  const SHORT: [string, string][] = [
+    ['formalRole', 'Role'],
+    ['operationalObjectives', 'Its position rewards'],
+    ['legalPowers', 'Can compel or block'],
+  ];
   const rows = board.map((view) => {
-    const fields = PERSONA.map(([key, label]) => {
+    const fields = (isShortProfile(view.profile) ? SHORT : PERSONA).map(([key, label]) => {
       const raw = view.profile?.data?.[key] as { value?: string } | undefined;
       return raw?.value ? `- **${label}.** ${clean(raw.value)}` : null;
     }).filter(Boolean);

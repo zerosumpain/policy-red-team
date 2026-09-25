@@ -2,13 +2,14 @@ import { readFileSync } from 'node:fs';
 import { describe, expect, it, vi } from 'vitest';
 import JSZip from 'jszip';
 import PDFDocument from 'pdfkit';
-import { artefact, ASSURED_SYNTHESIS_STAGE, FOLLOW_UP_STAGES, MAX_BYTES, MODEL_KINDS, PATTERNS, PERSONA_STAGE, SCENARIOS, FIT_LIMIT, STAGE_KINDS, SYNTHESIS_STAGE, THEORY_STAGE, type Artefact, type StageInput } from './contracts';
-import { validateOutput, hasSource, PolicyError } from './validation';
+import { artefact, ASSURED_SYNTHESIS_STAGE, DEPTH_LIMITS, FOLLOW_UP_STAGES, FULL_PROFILES, MAX_BYTES, MODEL_KINDS, PATTERNS, PERSONA_STAGE, SCENARIOS, FIT_LIMIT, SHORT_PROFILE_FIELDS, STAGE_KINDS, SYNTHESIS_STAGE, THEORY_STAGE, type Artefact, type StageInput } from './contracts';
+import { validateOutput, hasSource, PolicyError, stampProfileForm, triageOutput } from './validation';
 import { expandIndexed, sentences } from './sentences';
 import { ingest, readSubmission, validateBytes } from './server/ingest';
 import { executeStage, priority, rankActors } from './pipeline';
 import { preserveAmbiguity } from './entities';
 import { runPolicyTests, conflictingReportingLines } from './tests';
+import { stageFacts } from './stage-facts';
 import { fixtureModel } from '../../../tests/fixtures/policy-analysis/model';
 const fixture = readFileSync('tests/fixtures/policy-analysis/policy.txt');
 const neverResearch = async () => ({ artefacts: [], warnings: ['Synthetic test: external research unavailable.'] });
@@ -248,6 +249,99 @@ describe('stage 4 — one profiling call per body, not per row', () => {
     const second = await run(actors);
     expect(second.seen).toEqual(first.seen);
     expect(second.result.artefacts.map((a) => a.id)).toEqual(first.result.artefacts.map((a) => a.id));
+  });
+});
+
+/**
+ * FULL PROFILES FOR THE TOP K, SHORT ONES FOR THE TAIL. Measured on the review
+ * of 25 September 2026: 168 profile calls on one run, 230 of 239 actors
+ * mentioned once.
+ */
+describe('stage 4 — full profiles for the most connected bodies, short ones for the rest', () => {
+  const QUOTE = 'The Council is accountable for delivery and bears implementation costs.';
+  const passage = artefact('passage_0001', 'passage', 'Page 1', QUOTE, {}, { origin: 'extracted_fact', confidence: 1 });
+  const body = (i: number): Artefact =>
+    artefact(`s2_${String(i).padStart(3, '0')}`, 'actor', `Body ${String(i).padStart(3, '0')}`, 'Synthetic actor row.', {
+      entityType: 'agency', aliases: [], mentions: ['passage_0001'], ambiguity: '', dates: [], parent: null,
+    }, { origin: 'extracted_fact', confidence: 1, sourceId: 'passage_0001', sourceQuote: QUOTE, refs: ['passage_0001'] });
+  // Thirty bodies; the LAST thirty-ish by id carry edges, so connectivity — not
+  // id order — has to decide who is in the top K.
+  const bodies = Array.from({ length: FULL_PROFILES + 6 }, (_, i) => body(i));
+  const mechanism = artefact('s1_000_mechanism', 'mechanism', 'A mechanism', QUOTE, { intervention: 'x', implementation: 'y', notes: 'z' },
+    { origin: 'extracted_fact', confidence: 1, sourceId: 'passage_0001', sourceQuote: QUOTE, refs: ['passage_0001'] });
+  const edges = bodies.slice(6).map((b, i) => ({ ...artefact(`s3_${String(i).padStart(3, '0')}_edge`, 'edge', 'accountable', 'x', { notes: 'x' }, { refs: [b.id, mechanism.id] }), fromId: b.id, toId: mechanism.id, relation: 'is_accountable_for' as const, temporal: 'current' as const }));
+  const input: StageInput = { stage: 4, title: 'T', jurisdiction: null, policyArea: null, context: null, artefacts: [passage, mechanism, ...bodies, ...edges] };
+
+  const run = async (model: Parameters<typeof executeStage>[1]['model'] = async (...a) => fixtureModel(...a)) => {
+    const seen: { key: string; ids: string[] | null }[] = [];
+    const result = await executeStage(input, {
+      model: async (stage, key, raw) => {
+        seen.push({ key, ids: (raw as { targetActorIds?: string[] }).targetActorIds ?? null });
+        return model(stage, key, raw);
+      },
+      research: neverResearch, signal: new AbortController().signal,
+    });
+    return { result, seen };
+  };
+
+  it('writes the full profile for the top K by connectivity, and a short one for everybody else', async () => {
+    const { result, seen } = await run();
+    const profiles = result.artefacts.filter((a) => a.kind === 'profile');
+    // Every body has exactly one profile, so "is it profiled" never changes answer.
+    expect(new Set(profiles.map((p) => p.data.actorId))).toEqual(new Set(bodies.map((b) => b.id)));
+    expect(profiles).toHaveLength(bodies.length);
+    const short = profiles.filter((p) => p.data.form === 'short');
+    const full = profiles.filter((p) => p.data.form !== 'short');
+    expect(full).toHaveLength(FULL_PROFILES);
+    // The six without an edge are the six short ones.
+    expect(short.map((p) => p.data.actorId).sort()).toEqual(bodies.slice(0, 6).map((b) => b.id));
+    for (const p of short) for (const field of SHORT_PROFILE_FIELDS) expect(p.data[field]).toBeDefined();
+    // K full calls and ONE batched short call, not thirty.
+    expect(seen).toHaveLength(FULL_PROFILES + 1);
+    expect(seen.filter((c) => c.ids)).toHaveLength(1);
+    expect(result.warnings.join(' ')).toMatch(/6 of 30 bodies were not assessed in full/);
+  });
+
+  it('says once, not once per body, which bodies the model left unprofiled — and drops a profile for a body it was not asked about', async () => {
+    const model: Parameters<typeof executeStage>[1]['model'] = async (stage, key, raw) => {
+      const out = fixtureModel(stage, key, raw);
+      const ids = (raw as { targetActorIds?: string[] }).targetActorIds;
+      if (!ids) return out;
+      // Two of the six answered; a third profile names a top-K body instead.
+      const kept = out.artefacts.slice(0, 2);
+      const stray: Artefact = { ...structuredClone(out.artefacts[2]), data: { ...structuredClone(out.artefacts[2].data), actorId: bodies[29].id }, refs: [bodies[29].id] };
+      for (const field of SHORT_PROFILE_FIELDS) (stray.data[field] as { refs: string[] }).refs = [bodies[29].id];
+      return { ...out, artefacts: [...kept, stray] };
+    };
+    const { result } = await run(model);
+    const missing = result.warnings.filter((w) => w.includes('no incentive profile'));
+    expect(missing).toHaveLength(1);
+    expect(missing[0]).toMatch(/^4 of 30 bodies have no incentive profile/);
+    // Filed as a limit of the run with its own figure, not as an open question.
+    expect(stageFacts(missing).map((f) => [f.kind, f.count, f.of])).toEqual([['not_covered', 4, 30]]);
+    expect(stageFacts(result.warnings).some((f) => f.kind === 'open')).toBe(false);
+    expect(result.warnings.join(' ')).toMatch(/1 short profile named a body the call was not about/);
+    expect(result.artefacts.filter((a) => a.kind === 'profile' && a.data.actorId === bodies[29].id)).toHaveLength(1);
+  });
+
+  it('gives the red team and the persona library full profiles to choose from', () => {
+    // K has to clear the deepest red team, or stage 10 would take a body stage 4
+    // only wrote five lines about.
+    expect(FULL_PROFILES).toBeGreaterThanOrEqual(DEPTH_LIMITS.deep.actors);
+    expect(FULL_PROFILES).toBeGreaterThanOrEqual(DEPTH_LIMITS.standard.actors);
+  });
+
+  it('decides the form itself: a short profile needs five fields, a full one all of them, and the model cannot choose', () => {
+    const fields = (keys: readonly string[]) => Object.fromEntries(keys.map((k) => [k, { value: 'v', origin: 'structural_inference', confidence: null, refs: [] }]));
+    const all = [passage, bodies[0]];
+    const profile = (data: Record<string, unknown>) => ({ artefacts: [artefact('s4_000_profile', 'profile', 'P', 'p', { actorId: bodies[0].id, ...data }, { refs: [bodies[0].id] })], warnings: [] });
+    // Five fields, stamped short: accepted.
+    expect(triageOutput(stampProfileForm(profile(fields(SHORT_PROFILE_FIELDS)), 'short'), 4, all).artefacts).toHaveLength(1);
+    // Five fields on a FULL call, even if the model wrote `form: short`: refused.
+    const claimed = stampProfileForm(profile({ ...fields(SHORT_PROFILE_FIELDS), form: 'short' }), 'full');
+    const refused = triageOutput(claimed, 4, all);
+    expect(refused.artefacts).toHaveLength(0);
+    expect(refused.rejected[0].reason).toMatch(/data\.\w+: required/);
   });
 });
 

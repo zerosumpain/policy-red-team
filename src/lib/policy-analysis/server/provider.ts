@@ -11,7 +11,7 @@ import { coerceModelContext, DEFAULT_NODE_MAX_TOKENS } from '$lib/constants/defa
 import { CONTEXT_LIMIT, FIT_LIMIT, PROMPT_VERSION, WORKFLOW_ID, type Artefact, type Extraction, type PassKind, type StageOutput } from '../contracts';
 import { expandIndexed, type IndexedPassage } from '../sentences';
 import { fitToBudget } from '../budget';
-import { isLegitimateSilence, malformedRetryDelayMs, PolicyError, transportRetryDelayMs, triageOutput, type Rejection } from '../validation';
+import { isLegitimateSilence, malformedRetryDelayMs, PolicyError, stampProfileForm, transportRetryDelayMs, triageOutput, type Rejection } from '../validation';
 import { repairPrompt, systemPrompt } from '../prompts';
 
 export type ModelCall = (stage: number, key: string, input: unknown) => Promise<StageOutput>;
@@ -141,7 +141,14 @@ export function modelCaller(executionId: string, runId: string, signal: AbortSig
      * stored indexed response is stored as the model sent it, and replaying one
      * without expanding it would quarantine every artefact in it.
      */
-    const asEnvelope = (raw: unknown) => (indexed ? expandIndexed(raw, indexed) : raw);
+    // A stage-4 profile's FORM is the call's, stamped before triage for the same
+    // reason: the form decides which fields triage demands. `profileForm` does
+    // reach the model — it is how a short call is told it is one.
+    const profileForm = stage === 4 ? ((payload as { profileForm?: unknown }).profileForm === 'short' ? 'short' : 'full') : null;
+    const asEnvelope = (raw: unknown) => {
+      const envelope = indexed ? expandIndexed(raw, indexed) : raw;
+      return profileForm ? stampProfileForm(envelope, profileForm) : envelope;
+    };
     const encoded = JSON.stringify(input);
     if (encoded.length > CONTEXT_LIMIT) throw new PolicyError('budget', 'This call exceeds the model’s context window even after trimming. Completed work is retained.');
     const inputHash = createHash('sha256').update(encoded).digest('hex');

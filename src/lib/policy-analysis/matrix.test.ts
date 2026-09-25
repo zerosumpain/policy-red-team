@@ -154,6 +154,14 @@ describe('the cast is one table, not nine cards', () => {
     expect(rows[0].profileId).toBe('s5_a');
   });
 
+  it('draws no row for a body with only a short profile, which would be six blanks', () => {
+    // Phase 19: the tail of the cast gets role, wants and powers only — none of
+    // the six columns — and a real paper has two hundred such bodies.
+    const brief = [profileOf('s5_a', 's2_a'), artefact('s5_b', 'profile', 'Profile', 'x', { actorId: 's2_b', form: 'short', formalRole: field('A panel') })];
+    const grid = traitGrid(board(actors, brief, [...actors, ...brief, ...exploits]), []);
+    expect(grid.map((r) => r.id)).toEqual(['s2_a']);
+  });
+
   it('marks a body the reader has met before', () => {
     const known = traitGrid(board(actors, profiles, all), [{ actorId: 's2_b' }]);
     expect(known.find((r) => r.id === 's2_b')?.known).toBe(true);

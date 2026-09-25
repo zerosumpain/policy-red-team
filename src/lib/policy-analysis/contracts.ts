@@ -354,7 +354,32 @@ const unit = z.number().min(0).max(1);
 export const confidenceSchema = unit.nullable().default(null);
 const field = z.object({ value: text, origin: z.enum(ORIGINS), confidence: confidenceSchema, refs: ids }).strict();
 export const PROFILE_FIELDS = ['formalRole', 'statedObjectives', 'operationalObjectives', 'accountableTo', 'successCriteria', 'timeHorizon', 'resources', 'constraints', 'legalPowers', 'informationPossessed', 'informationControlled', 'dependencies', 'costs', 'benefits', 'risks', 'outsideOption', 'gainFromFailure', 'reputationalIncentives', 'politicalIncentives', 'institutionalMotivations', 'strategies'] as const;
-const profileFields = Object.fromEntries(PROFILE_FIELDS.map((k) => [k, field])) as Record<(typeof PROFILE_FIELDS)[number], typeof field>;
+/**
+ * THE FIELDS A SHORT PROFILE CARRIES: its role, what it wants, what it controls.
+ *
+ * Stage 4 wrote all twenty-one fields for every body, one call each — 168 calls
+ * on one real run, where 230 of 239 actors were mentioned once. The top
+ * `FULL_PROFILES` bodies by connectivity still get the full twenty-one; every
+ * other body gets these five, several to a call, so it still HAS a profile —
+ * every view and rule downstream reads "has a profile" — without paying for
+ * sixteen fields the paper cannot support for a body it names once in passing.
+ */
+export const SHORT_PROFILE_FIELDS = ['formalRole', 'statedObjectives', 'operationalObjectives', 'legalPowers', 'resources'] as const satisfies readonly (typeof PROFILE_FIELDS)[number][];
+/**
+ * How many bodies get the full profile. Above `DEPTH_LIMITS.deep.actors`, so
+ * every body the red team or the persona library takes has a full one — a test
+ * holds the two numbers apart.
+ */
+export const FULL_PROFILES = 24;
+/** How many short profiles one call writes. */
+export const SHORT_PROFILE_BATCH = 8;
+/**
+ * OPTIONAL IN THE SHAPE, REQUIRED BY THE FORM. `validation.ts` demands every
+ * field of a full profile and the five of a short one; the schema cannot say
+ * "which fields depends on `form`" without a refinement the prompt's JSON schema
+ * would not show, so the rule lives beside the other contract checks instead.
+ */
+const profileFields = Object.fromEntries(PROFILE_FIELDS.map((k) => [k, field.optional()])) as Record<(typeof PROFILE_FIELDS)[number], z.ZodOptional<typeof field>>;
 /**
  * A persona trait carries its own origin and confidence.
  *
@@ -378,7 +403,11 @@ export const dataSchemas = {
   // label, so this records which rows one profile was drawn for without
   // asserting they are one body. Optional because a profile from before this
   // existed, or from a single-row group, carries none.
-  profile: z.object({ actorId: text, coversActorIds: ids.optional(), ...profileFields }),
+  // `form` is stamped by the SERVER too, from the call the profile came from —
+  // never taken from the model, which could otherwise excuse a full profile
+  // from sixteen of its fields by calling it short. Absent means full, which is
+  // every profile written before short ones existed.
+  profile: z.object({ actorId: text, coversActorIds: ids.optional(), form: z.enum(['full', 'short']).optional(), ...profileFields }),
   research_question: z.object({ importance: unit, uncertainty: unit, consequence: unit, priority: unit.optional(), rationale: text, searchStrategy: text, gap: text }),
   research_source: z.object({ questionId: text, retrievedAt: text, quality: text, qualityBasis: text, freshness: text, jurisdictionalRelevance: text, retrieval: z.enum(['full_text', 'search_excerpt']), gap: text }),
   evidence: z.object({ claimId: z.string().nullable(), mechanismId: z.string().nullable(), actorId: z.string().nullable(), assumptionId: z.string().nullable(), sourceId: text, evidenceType: text, result: z.enum(['supports', 'contradicts', 'mixed', 'insufficient']), sourceQuality: text, relevance: text, freshness: text, dispute: text }),

@@ -27,6 +27,16 @@ export type ActorView = {
   worst: number;
 };
 
+/**
+ * A profile written in the short form: five fields, not twenty-one.
+ *
+ * Since phase 19 only the most connected bodies get a full profile and the rest
+ * a short one (see stage 4 in `pipeline.ts`). Every view still reads "this body
+ * is profiled"; the ones that lay the twenty-one fields out in columns ask this
+ * first, so a short profile is not drawn as a row of blanks.
+ */
+export const isShortProfile = (profile: Artefact | null | undefined): boolean => profile?.data?.form === 'short';
+
 export const FACTOR_KEYS = ['incentive', 'ease', 'impact', 'concealment'] as const;
 
 export const EVIDENCE_RESULTS = [

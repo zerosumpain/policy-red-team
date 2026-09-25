@@ -1,7 +1,7 @@
-import { APPRAISAL_STAGE, ASSURANCE_CATEGORIES, ASSURANCE_STAGE, ASSURED_SYNTHESIS_STAGE, CONCURRENCY_OPTIONS, DEFAULT_CONCURRENCY, DEFAULT_EXTRACTION, DEPTH_LIMITS, FIT_LIMIT, FOLLOW_UP_STAGES, isPassStage, passOf, passOrdinal, passStep, PATTERNS, PERSONA_STAGE, REPORT_SECTIONS, RESULT_KINDS, REVISION_STATUSES, SCENARIOS, STAGE_CONTEXT, SYNTHESIS_STAGE, THEORY_STAGE, type Artefact, type Concurrency, type Extraction, type PassKind, type StageInput, type StageOutput } from './contracts';
+import { APPRAISAL_STAGE, ASSURANCE_CATEGORIES, ASSURANCE_STAGE, ASSURED_SYNTHESIS_STAGE, CONCURRENCY_OPTIONS, DEFAULT_CONCURRENCY, DEFAULT_EXTRACTION, DEPTH_LIMITS, FIT_LIMIT, FOLLOW_UP_STAGES, FULL_PROFILES, isPassStage, passOf, passOrdinal, passStep, PATTERNS, PERSONA_STAGE, REPORT_SECTIONS, RESULT_KINDS, REVISION_STATUSES, SCENARIOS, SHORT_PROFILE_BATCH, STAGE_CONTEXT, SYNTHESIS_STAGE, THEORY_STAGE, type Artefact, type Concurrency, type Extraction, type PassKind, type StageInput, type StageOutput } from './contracts';
 import { consumedSources, encodedSize, fitToBudget } from './budget';
 import { scoreExploits } from './exposure';
-import { clampWarnings, PolicyError, triageArtefacts, triageOutput } from './validation';
+import { clampWarnings, PolicyError, stampProfileForm, triageArtefacts, triageOutput } from './validation';
 import { modelApplicability } from './models';
 import { crossIdentityHints, preserveAmbiguity } from './entities';
 import { runPolicyTests } from './tests';
@@ -210,8 +210,11 @@ export async function executeStage(input: StageInput, deps: PipelineDeps): Promi
     }
   };
 
-  /** One unit of a fan-out: the arguments `attempt` would have been given. */
-  type Unit = { key: string; context: Artefact[]; describe: string; extra?: Record<string, unknown> };
+  /**
+   * One unit of a fan-out: the arguments `attempt` would have been given, and
+   * optionally what the server does to a response before triage reads it.
+   */
+  type Unit = { key: string; context: Artefact[]; describe: string; extra?: Record<string, unknown>; prepare?: (raw: unknown) => unknown };
   type Landed = { raw: unknown; err: unknown; event: number };
 
   /**
@@ -301,7 +304,8 @@ export async function executeStage(input: StageInput, deps: PipelineDeps): Promi
         let result: ReturnType<typeof absorb> | null;
         try {
           if (err) throw err;
-          result = absorb(raw);
+          const prepare = units[k].prepare;
+          result = absorb(prepare ? prepare(raw) : raw);
           consecutive = 0; priorFailure = null;
         } catch (e) {
           if (onFailure) { onFailure(units[k], e); result = null; }
@@ -659,37 +663,103 @@ export async function executeStage(input: StageInput, deps: PipelineDeps): Promi
       const bucket = groups.get(key);
       if (bucket) bucket.push(a); else groups.set(key, [a]);
     }
-    const units = [...groups.values()].map((members) => {
+    const bodies = [...groups.values()].map((members) => {
       // The best-evidenced row speaks for the group, so the call is pinned to an
       // id that genuinely exists and carries the most to reason from.
       const primary = [...members].sort((x, y) => mentionsOf(y) - mentionsOf(x) || x.id.localeCompare(y.id))[0];
       const related = new Set(members.flatMap((m) => [m.id, ...m.refs, ...input.artefacts.filter((a) => a.fromId === m.id || a.toId === m.id || a.refs.includes(m.id)).flatMap((a) => [a.id, ...a.refs, a.fromId ?? '', a.toId ?? ''])]));
       const context = input.artefacts.filter((a) => related.has(a.id));
       const missing = members.filter((m) => !context.includes(m));
+      return { primary, members, context: [...context, ...missing] };
+    });
+    /**
+     * FULL PROFILES FOR THE BODIES THE POLICY RUNS THROUGH, SHORT ONES FOR THE REST.
+     *
+     * Every body got the full twenty-one fields, one call each. On the review of
+     * 25 September 2026 that was 168 calls on one run, and 230 of its 239 actors
+     * were mentioned ONCE — twenty-one evidenced fields about a body the paper
+     * names in passing is sixteen fields of "unknown" at full price, and the
+     * model writes about 50 tokens a second whatever it is writing.
+     *
+     * The graph is built by now, so connectivity is known: `orderActors` ranks
+     * the bodies exactly as the red team and the persona library will rank them,
+     * and the top `FULL_PROFILES` get the full profile. That is more than either
+     * of those stages takes (`DEPTH_LIMITS.deep.actors`), so every body they
+     * reason about has one. The rest get a SHORT profile — role, what it wants,
+     * what it controls — `SHORT_PROFILE_BATCH` to a call. Every body still has a
+     * profile, so nothing downstream that asks "is this body profiled" changes
+     * its answer; what changes is how much was paid to say "unknown".
+     *
+     * The full units keep their order and their slots, so a paper with no more
+     * than `FULL_PROFILES` bodies makes exactly the calls it always made.
+     */
+    const ranking = orderActors(input.artefacts, bodies.map((b) => b.primary)).actors;
+    const fullIds = new Set(ranking.slice(0, FULL_PROFILES).map((a) => a.id));
+    const tail = bodies.filter((b) => !fullIds.has(b.primary.id));
+    const fullUnits = bodies.filter((b) => fullIds.has(b.primary.id)).map((b) => ({
+      key: b.primary.id,
+      context: b.context,
+      describe: b.members.length === 1
+        ? `The incentive profile for ${b.primary.label}`
+        : `The incentive profile for ${b.primary.label} (${b.members.length} source rows)`,
+      extra: { protect: [b.primary.id], priorPersona: priors.get(b.primary.id) ?? null },
+      prepare: (raw: unknown) => stampProfileForm(raw, 'full'),
+    }));
+    const batches: (typeof bodies)[] = [];
+    for (let i = 0; i < tail.length; i += SHORT_PROFILE_BATCH) batches.push(tail.slice(i, i + SHORT_PROFILE_BATCH));
+    const shortUnits = batches.map((batch) => {
+      const wanted = new Set(batch.flatMap((b) => b.context.map((a) => a.id)));
+      const labels = batch.map((b) => b.primary.label);
       return {
-        key: primary.id,
-        members,
-        context: [...context, ...missing],
-        describe: members.length === 1
-          ? `The incentive profile for ${primary.label}`
-          : `The incentive profile for ${primary.label} (${members.length} source rows)`,
-        extra: { protect: [primary.id], priorPersona: priors.get(primary.id) ?? null },
+        key: `brief_${batch[0].primary.id}`,
+        context: input.artefacts.filter((a) => wanted.has(a.id)),
+        describe: `Short profiles for ${labels.length} bod${labels.length === 1 ? 'y' : 'ies'} (${labels.slice(0, 3).join(', ')}${labels.length > 3 ? ', …' : ''})`,
+        // `targetActorId` cleared, `targetActorIds` set: the one field a short
+        // call is told by. `profileForm` reaches the model too, and `provider.ts`
+        // reads it to stamp the form before triage.
+        extra: { targetActorId: null, targetActorIds: batch.map((b) => b.primary.id), profileForm: 'short', protect: batch.map((b) => b.primary.id) },
+        prepare: (raw: unknown) => stampProfileForm(raw, 'short'),
       };
     });
-    const coveredBy = new Map<string, Artefact[]>(units.map((u) => [u.key, u.members]));
-    await fanOut(units, (unit, result) => {
-      const members = coveredBy.get(unit.key) ?? [];
+    const bodyOf = new Map(bodies.map((b) => [b.primary.id, b]));
+    const batchOf = new Map(shortUnits.map((u, i) => [u.key, batches[i]]));
+    // Bodies whose call answered and wrote no profile for them. One sentence for
+    // the lot at the end: a warning per body was ~130 lines on a real paper.
+    const unprofiled: string[] = [];
+    let strays = 0;
+    await fanOut([...fullUnits, ...shortUnits], (unit, result) => {
       const produced = result?.artefacts.filter((a) => a.kind === 'profile') ?? [];
-      // Stamped here, by the server, from what it already knows — never asked of
-      // the model, which cannot be trusted to enumerate a grouping it did not do.
-      for (const profile of produced) profile.data.coversActorIds = members.map((m) => m.id);
-      if (result && !produced.length) {
-        const label = members[0]?.label ?? unit.key;
-        output.warnings.push(members.length === 1
-          ? `${label} has no incentive profile in this assessment; its motivations were not modelled.`
-          : `${label} has no incentive profile in this assessment, covering ${members.length} source rows; its motivations were not modelled.`);
+      const batch = batchOf.get(unit.key);
+      if (!batch) {
+        const members = bodyOf.get(unit.key)?.members ?? [];
+        // Stamped here, by the server, from what it already knows — never asked of
+        // the model, which cannot be trusted to enumerate a grouping it did not do.
+        for (const profile of produced) profile.data.coversActorIds = members.map((m) => m.id);
+        if (result && !produced.length) unprofiled.push(members[0]?.label ?? unit.key);
+        return;
       }
+      // A short call answers for several bodies, so each profile is matched to
+      // the body it names. One naming a body this call was not about, or a body
+      // it has already profiled, is dropped: two profiles for one body would give
+      // it two sets of motives.
+      const named = new Map(batch.map((b) => [b.primary.id, b]));
+      const done = new Set<string>();
+      const dropped = new Set<Artefact>();
+      for (const profile of produced) {
+        const body = named.get(String(profile.data.actorId));
+        if (!body || done.has(body.primary.id)) { dropped.add(profile); continue; }
+        done.add(body.primary.id);
+        profile.data.coversActorIds = body.members.map((m) => m.id);
+      }
+      if (dropped.size) {
+        output.artefacts = output.artefacts.filter((a) => !dropped.has(a));
+        strays += dropped.size;
+      }
+      if (result) for (const body of batch) if (!done.has(body.primary.id)) unprofiled.push(body.primary.label);
     });
+    if (tail.length) output.warnings.push(`${tail.length} of ${bodies.length} bodies were not assessed in full: each has a short profile — its role, what it wants and what it controls — because the policy graph runs less of the policy through them than through the ${fullUnits.length} profiled in full.`);
+    if (strays) output.warnings.push(`${strays} short profile${strays === 1 ? '' : 's'} named a body the call was not about, or one it had already profiled, and ${strays === 1 ? 'was' : 'were'} discarded.`);
+    if (unprofiled.length) output.warnings.push(`${unprofiled.length} of ${bodies.length} bodies have no incentive profile in this assessment: ${unprofiled.slice(0, 8).join(', ')}${unprofiled.length > 8 ? `, and ${unprofiled.length - 8} more` : ''}. The model answered and wrote none, so their motivations were not modelled.`);
   } else if (stage === 7 || stage === 9) {
     const context = input.artefacts.filter((a) => !['passage', 'alias', 'node'].includes(a.kind) && !supersededSource(a) && (a.kind !== 'actor' || a.id.startsWith('s2_')));
     // `modelApplicability` counts the graph assertions that trigger each pattern
@@ -733,7 +803,10 @@ export async function executeStage(input: StageInput, deps: PipelineDeps): Promi
     // an actor nothing depends on has little to exploit — and the rest are named
     // in a warning rather than dropped silently.
     const profiles = input.artefacts.filter((a) => a.kind === 'profile');
-    const { actors: ranked, basis } = rankActors(input.artefacts, profiles);
+    // Full profiles only, where there are any: a short one is three lines of
+    // motive, and the red team needs the whole profile to reason from. Stage 4
+    // wrote full ones for more bodies than this stage takes, ranked the same way.
+    const { actors: ranked, basis } = rankActors(input.artefacts, fullOnly(profiles));
     // Which signal chose them is part of the finding, not a footnote: on a thin
     // graph this is "who the paper talks about most", not "who the policy runs
     // through", and those are different claims.
@@ -771,7 +844,7 @@ export async function executeStage(input: StageInput, deps: PipelineDeps): Promi
     // it — so running the fan-out anyway spends one model call per profiled body
     // to produce artefacts whose only consumer will throw them away.
     const profiles = input.sealed ? [] : input.artefacts.filter((a) => a.kind === 'profile');
-    const ranked = input.sealed ? [] : rankActors(input.artefacts, profiles).actors.slice(0, limits.actors);
+    const ranked = input.sealed ? [] : rankActors(input.artefacts, fullOnly(profiles)).actors.slice(0, limits.actors);
     if (input.sealed) {
       output.warnings.push('This is a sealed assessment, so nothing was written to the persona library and no model call was made for it. A dossier drawn from this paper would outlive the run and survive its purge, which is the residue sealing exists to remove.');
     }
@@ -1409,6 +1482,17 @@ function requireMajority(output: StageOutput, library: readonly string[], of: (a
  * ordering so the assessment can say so.
  */
 export function rankActors(all: Artefact[], profiles: Artefact[]): { actors: Artefact[]; basis: 'connectivity' | 'prominence' } {
+  return orderActors(all, profiles
+    .map((p) => all.find((a) => a.kind === 'actor' && a.id === p.data.actorId))
+    .filter((a): a is Artefact => !!a));
+}
+
+/**
+ * `rankActors` over actors rather than their profiles. Stage 4 needs the same
+ * order BEFORE any profile exists, to decide which bodies get a full one, and a
+ * second copy of the arithmetic would drift from the one stages 10 and 13 use.
+ */
+export function orderActors(all: Artefact[], actors: Artefact[]): { actors: Artefact[]; basis: 'connectivity' | 'prominence' } {
   const degree = new Map<string, number>();
   for (const edge of all) {
     if (edge.kind !== 'edge') continue;
@@ -1425,16 +1509,19 @@ export function rankActors(all: Artefact[], profiles: Artefact[]): { actors: Art
   const mentions = (a: Artefact) => (Array.isArray(a.data.mentions) ? a.data.mentions.length : 0);
   const rows = (a: Artefact) => byLabel.get(a.label.trim().toLowerCase()) ?? 1;
 
-  const actors = profiles
-    .map((p) => all.find((a) => a.kind === 'actor' && a.id === p.data.actorId))
-    .filter((a): a is Artefact => !!a)
-    .sort((a, b) =>
-      (degree.get(b.id) ?? 0) - (degree.get(a.id) ?? 0) ||
-      mentions(b) - mentions(a) ||
-      rows(b) - rows(a) ||
-      a.id.localeCompare(b.id));
+  const ordered = [...actors].sort((a, b) =>
+    (degree.get(b.id) ?? 0) - (degree.get(a.id) ?? 0) ||
+    mentions(b) - mentions(a) ||
+    rows(b) - rows(a) ||
+    a.id.localeCompare(b.id));
 
-  return { actors, basis: actors.some((a) => (degree.get(a.id) ?? 0) > 0) ? 'connectivity' : 'prominence' };
+  return { actors: ordered, basis: ordered.some((a) => (degree.get(a.id) ?? 0) > 0) ? 'connectivity' : 'prominence' };
+}
+
+/** Full profiles where there are any; every profile otherwise, as before short ones existed. */
+function fullOnly(profiles: Artefact[]): Artefact[] {
+  const full = profiles.filter((p) => p.data.form !== 'short');
+  return full.length ? full : profiles;
 }
 
 /**
