@@ -79,8 +79,13 @@ export function staleSources(checks: SourceCheck[], now = new Date()): EvidenceS
 export async function saveAnswers(bodyId: string, answers: SourceAnswer[], now = new Date(), tx: DbExecutor = db): Promise<number> {
   let added = 0;
   for (const answer of answers) {
+    // A skip the PAPER GUARD caused is a fact about one run's paper, not about
+    // the body, and this table is shared by every owner. Stored, it would tell
+    // the next run — anyone's — that the source had been asked, for thirty
+    // days. So it is not stored at all: the source stays unasked.
+    if (answer.guarded && !answer.records.length) continue;
     if (answer.skipped && !answer.records.length) {
-      // Not asked on purpose (no slug, or the name quoted the paper). Recorded
+      // Not asked on purpose (no slug, or a name too short to search). Recorded
       // so it is not "never asked" for ever, and with a full TTL.
       await upsertCheck(tx, bodyId, answer.source, now, new Date(now.getTime() + EVIDENCE_TTL_MS), 0, answer.skipped);
       continue;
@@ -139,7 +144,10 @@ export async function refreshBody(body: RegisterBody, options: RefreshOptions = 
   const checks = (await checksFor([body.id])).get(body.id) ?? [];
   const asked = options.force ? [...EVIDENCE_SOURCES] : staleSources(checks, now);
   if (!asked.length) return { added: 0, asked, failed: [] };
-  const answers = await fetchBodySources({ id: body.id, slug: slugOf(body), name: body.name }, {
+  // Whether the name is the register's own, read from the register rather than
+  // trusted from the caller: only then is it exempt from the paper guard.
+  const registered = (await registerIndex()).bodies.get(body.id)?.name === body.name;
+  const answers = await fetchBodySources({ id: body.id, slug: slugOf(body), name: body.name, registered }, {
     sources: asked, signal: options.signal, corpus: options.corpus, now, fetch: options.fetch, guard: options.guard,
   });
   options.signal?.throwIfAborted();

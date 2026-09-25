@@ -97,6 +97,26 @@ describe('the query comes from the register and is still guarded', () => {
     // The slug is not words from anybody's paper, so GOV.UK is still asked.
     expect(typeof urls.govuk).toBe('string');
   });
+
+  it('does not guard the register\'s own name against the paper: it came from the register, not the paper', () => {
+    // 96 live register bodies have a name of six words or more. A paper that
+    // names one in full — as papers about DSIT, DESNZ or MHCLG do — used to
+    // block that body's record for every owner, for thirty days.
+    const name = 'Department for Science, Innovation and Technology';
+    const passage = artefact('passage_0001', 'passage', 'p', `The ${name} will publish guidance.`, {});
+    const corpus = documentShingles([passage]);
+    const urls = sourceUrls({ id: 'govuk:dsit', slug: 'department-for-science-innovation-and-technology', name, registered: true }, corpus);
+    expect(new URL(String(urls.committees)).searchParams.get('SearchTerm')).toBe(`"${name}"`);
+    expect(typeof urls.hansard).toBe('string');
+  });
+
+  it('marks a skip the guard caused, so it is never stored as an answer', () => {
+    const name = 'Office for Standards in Education, Children’s Services and Skills';
+    const corpus = documentShingles([artefact('passage_0001', 'passage', 'p', `The ${name} will inspect.`, {})]);
+    expect(sourceUrls({ id: 'govuk:x', slug: 'x', name }, corpus).committees).toMatchObject({ guarded: true });
+    // A name too short to search is not the guard's doing.
+    expect(sourceUrls({ id: 'govuk:x', slug: 'x', name: 'X' }, corpus).committees).toMatchObject({ guarded: false });
+  });
 });
 
 describe('fetching', () => {
