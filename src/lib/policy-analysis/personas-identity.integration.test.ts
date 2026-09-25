@@ -139,6 +139,22 @@ describe.skipIf(!local)('actor identity across papers', () => {
     expect(await db.select().from(policyPersonas).where(eq(policyPersonas.id, nao.id))).toHaveLength(0);
   });
 
+  it('takes a deleted paper’s names off the persona too: its aliases, and a name only it used', async () => {
+    const first = await paper('Alpha paper');
+    const second = await paper('Beta paper');
+    await write(first, 'Alpha paper', [link('s13_0_w', 's2_20', 'Alpha Watch', 'agency', [{ key: 'mandate', value: 'Inspects.' }])], [actor('s2_20', 'Alpha Watch', 'agency', ['The Alpha Watchers'])]);
+    const [alpha] = (await mine()).filter((p) => p.name === 'Alpha Watch');
+    // The second paper's link echoes the persona, under its own words for it.
+    await write(second, 'Beta paper', [link('s13_0_w', 's2_21', 'Beta Board', 'agency', [{ key: 'judgedOn', value: 'Judged on reports.' }], { personaId: alpha.id })], [actor('s2_21', 'Beta Board', 'agency', ['BB'])]);
+    const [both] = await db.select().from(policyPersonas).where(eq(policyPersonas.id, alpha.id));
+    expect(both.aliases).toEqual(expect.arrayContaining(['The Alpha Watchers', 'Beta Board', 'BB']));
+
+    expect(await remove(owner, first)).toBe(true);
+    const [after] = await db.select().from(policyPersonas).where(eq(policyPersonas.id, alpha.id));
+    expect(after.name).toBe('Beta Board');
+    expect(after.aliases).toEqual(['BB']);
+  });
+
   it('counts two runs of one document as one paper and shows the re-run no prior', async () => {
     const first = await paper('Redraft, first run', 'the same bytes');
     const second = await paper('Redraft, second run', 'the same bytes');

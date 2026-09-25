@@ -286,7 +286,31 @@ export async function recountSightings(tx: DbExecutor, personaIds: string[]) {
  * observations carried their own summary have nothing to rebuild it from, and
  * nothing has been deleted from under them.
  */
-export async function rebuildPersonas(tx: DbExecutor, personaIds: string[], options: { keepLegacySummary?: boolean } = {}): Promise<{ rebuilt: string[]; removed: string[] }> {
+/**
+ * The names the remaining papers used for a persona, read back from their own
+ * artefacts — the actor row and, where stored, the stage-13 link — oldest
+ * sighting first. Null when any remaining sighting cannot be read that way (a
+ * legacy row with no actor), so the caller leaves the names as they are rather
+ * than dropping ones it simply could not see.
+ */
+async function namesFromSightings(tx: DbExecutor, observations: PersonaObservation[]): Promise<string[] | null> {
+  const assessed = observations.filter((o) => o.kind === 'assessment').sort((a, b) => (a.observedAt ?? '').localeCompare(b.observedAt ?? ''));
+  if (!assessed.length || assessed.some((o) => !o.analysisId || !o.actorId)) return null;
+  const rows = await tx.select({ analysisId: policyArtefacts.analysisId, id: policyArtefacts.id, kind: policyArtefacts.kind, label: policyArtefacts.label, data: policyArtefacts.data })
+    .from(policyArtefacts)
+    .where(and(inArray(policyArtefacts.analysisId, [...new Set(assessed.map((o) => o.analysisId!))]), inArray(policyArtefacts.kind, ['actor', 'persona_link'])));
+  const names: string[] = [];
+  for (const o of assessed) {
+    const actor = rows.find((r) => r.kind === 'actor' && r.analysisId === o.analysisId && r.id === o.actorId);
+    const links = rows.filter((r) => r.kind === 'persona_link' && r.analysisId === o.analysisId && String((r.data as Record<string, unknown>).actorId ?? '') === o.actorId);
+    if (!actor && !links.length) return null;
+    if (actor) names.push(clip(actor.label, 300), ...list<string>((actor.data as Record<string, unknown>).aliases).map((a) => clip(a, 120)));
+    for (const l of links) names.push(clip((l.data as Record<string, unknown>).personaName, 300), ...list<string>((l.data as Record<string, unknown>).aliases).map((a) => clip(a, 120)));
+  }
+  return names.filter(Boolean);
+}
+
+export async function rebuildPersonas(tx: DbExecutor, personaIds: string[], options: { keepLegacySummary?: boolean; names?: boolean } = {}): Promise<{ rebuilt: string[]; removed: string[] }> {
   const rebuilt: string[] = [];
   const removed: string[] = [];
   for (const id of new Set(personaIds)) {
@@ -299,10 +323,31 @@ export async function rebuildPersonas(tx: DbExecutor, personaIds: string[], opti
       continue;
     }
     const { dossier, summary } = rebuildDossier(observations);
+    /**
+     * THE NAMES, TOO, WHEN A PAPER HAS GONE. Aliases were only ever unioned, so
+     * a deleted paper's words for a body — and, for a body not on the register,
+     * a name only that paper used — outlived it on the persona, and went on
+     * matching other papers' actors. Rebuilt from what the remaining papers
+     * called it. A register body keeps its official name.
+     */
+    let names: { name?: string; aliases?: string[] } = {};
+    if (options.names) {
+      const used = await namesFromSightings(tx, observations);
+      if (used) {
+        const official = row.bodyId ? (await registerIndex(tx)).bodies.get(row.bodyId)?.name ?? null : null;
+        const seen = new Set(used.map(normaliseName));
+        const name = official && normaliseName(official) === normaliseName(row.name) ? row.name
+          : seen.has(normaliseName(row.name)) ? row.name
+            : official ?? used[0];
+        const aliases = [...new Map(used.filter((n) => normaliseName(n) !== normaliseName(name)).map((n) => [normaliseName(n), n])).values()].slice(0, 40);
+        names = { name, aliases };
+      }
+    }
     await tx.update(policyPersonas).set({
       dossier,
       summary: summary ?? (options.keepLegacySummary && row.summary ? travellingValue(row.summary) : null),
       dossierVersion: 1,
+      ...names,
       updatedAt: new Date(),
     }).where(eq(policyPersonas.id, id));
     rebuilt.push(id);

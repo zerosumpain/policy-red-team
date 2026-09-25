@@ -501,7 +501,7 @@ export async function remove(owner: string, id: string): Promise<boolean> {
     // longer exists. `policy_stages.run_id` has no cascade, which is why they
     // survived every delete this feature has ever done.
     if (runIds.length) await tx.delete(workflowRuns).where(inArray(workflowRuns.id, runIds));
-    await rebuildPersonas(tx, contributed);
+    await rebuildPersonas(tx, contributed, { names: true });
     return true;
   });
 }
