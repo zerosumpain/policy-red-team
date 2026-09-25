@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { ASSURANCE_CATEGORIES, ASSURANCE_STAGE, ASSURED_SYNTHESIS_STAGE, SYNTHESIS_STAGE, SHORT_PROFILE_FIELDS, dataSchemas, FOLLOW_UP_STAGES, indexedOutputSchema, isPassStage, modelKinds, passStep, RECONCILE_RELATIONS, REPORT_SECTIONS, REVISION_STATUSES, stageName, stageOutputSchema, PROMPT_VERSION, PATTERNS, PERSONA_TRAITS, SCENARIOS, CROSS_PATTERNS, type Extraction, type PassKind, RELATIONS } from './contracts';
+import { ASSURANCE_CATEGORIES, ASSURANCE_STAGE, ASSURED_SYNTHESIS_STAGE, MAX_KEY_JUDGEMENTS, SYNTHESIS_STAGE, SHORT_PROFILE_FIELDS, dataSchemas, FOLLOW_UP_STAGES, indexedOutputSchema, isPassStage, modelKinds, passStep, RECONCILE_RELATIONS, REPORT_SECTIONS, REVISION_STATUSES, stageName, stageOutputSchema, PROMPT_VERSION, PATTERNS, PERSONA_TRAITS, SCENARIOS, CROSS_PATTERNS, type Extraction, type PassKind, RELATIONS } from './contracts';
 import { EXPOSURE_FACTORS } from './exposure';
 import { RELATION_FAMILIES } from './glossary';
 import type { Rejection } from './validation';
@@ -74,6 +74,32 @@ const CHALLENGE_REMIT: Record<(typeof ASSURANCE_CATEGORIES)[number], string> = {
   unanswered_play: 'a severe play that no recommendation answers — see playPatterns.unansweredSeverePlays. Name each one and say what answering it would take',
 };
 const CHALLENGE_REMITS = ASSURANCE_CATEGORIES.map((category) => `- ${category}: ${CHALLENGE_REMIT[category]}.`).join('\n');
+
+/**
+ * WHAT A KEY JUDGEMENT IS, in the words stage 17 is given.
+ *
+ * The busy-official test is the whole of it: one sentence, a named body, a
+ * named mechanism, a quote, a play, and who does what. Every "must" here is one
+ * `validation.ts` enforces or one the reader will miss if it is left out —
+ * the quote rule especially, which is why the instruction says where to copy it
+ * from: stage 17 is not sent the passages, but every mechanism and claim it is
+ * sent carries a verbatim `sourceQuote` and the `sourceId` it was located in.
+ */
+const KEY_JUDGEMENT_PROMPT = `
+KEY JUDGEMENTS. Lead the report with between one and ${MAX_KEY_JUDGEMENTS} key_judgement artefacts: the few things a busy official must know about THIS policy, ranked from 1, the most important. For each:
+- statement: ONE plain sentence, under 30 words, saying what will happen, to whom and why. Name the body and the mechanism. Do not write "may", "potentially" or "could" unless the doubt is the point.
+- label: a headline of about six words.
+- mechanismId: the mechanism it is about.
+- sourceId and sourceQuote: the words in the paper it is about. Copy the sourceQuote and sourceId of that mechanism, or of a claim, exactly as supplied.
+- playIds: at least one exploitation play that shows it. Prefer the sharpest play of a leading pattern.
+- assumptionId: the assumption it rests on.
+- wouldChangeIf: the evidence that would prove it wrong.
+- decision: the decision it bears on, for example "whether to fund the second wave".
+- action and owner: who should do what. Name a body or role and give a verb: "The Department for Education should publish completion rates by college before funding the second wave", not "stakeholders should consider monitoring".
+- findingIds: the assured findings it sums up, if any.
+- rank: its place, 1 first.
+A key judgement that would fit any white paper is not a key judgement. The report sections below still follow, as the appendix.
+`;
 
 const instructions: Record<number, string> = {
   1: `Build a structured inventory covering ALL supplied passages: objectives, problem statements, interventions and implementation, named actors, responsibilities, decision rights, funding, dependencies, data flows, measures, legal/institutional constraints, assumptions, risks, expected benefits, claims and cited evidence. Create separate claim, mechanism, assumption and actor rows. At THIS stage a claim, mechanism or actor is a literal extraction: origin must be extracted_fact with a quote from the passage. Anything you infer, including a gap the paper leaves open, belongs in an assumption row instead — never a claim. Extract at least one mechanism and assumption, including an explicit uncertainty when the paper omits implementation details. An actor here is a source mention; entity resolution follows. Exact quotes are mandatory for extracted facts; extract from the supplied passage only. A paper's claim is not verified truth. Link related items with refs. Every assumption must refer to an affected actor or mechanism from this output.`,
@@ -151,8 +177,8 @@ ${CHALLENGE_REMITS}
 
 A report can be too vague as easily as it can be too confident. Hedging is not a fix for a weakness: "may", "potentially" and "further work is needed" make a finding safer and less useful at the same time. Where a finding is weak, say what would make it SPECIFIC — the play, the body, the mechanism, the decision and who takes it — not what would make it more cautious. Your resolutionNeeded should ask for specificity wherever that is the problem.`,
   17: `ASSURED SYNTHESIS. Revise the INITIAL report after reading the programme logic model, every causal chain, option appraisal, evaluation plan and independent challenge. Produce a complete replacement set of findings with revision=assured, including all report sections where evidence permits: ${REPORT_SECTIONS.join(', ')}. Every assured finding must name the initial findings it reviewed in reviewedFindingIds, the challenges that affected it in challengeIds, a qualitative judgement, resultIds and hypothesisIds; put every one of those identifiers in refs. Produce one assurance_response for every assurance_challenge, stating accepted, partly accepted, rejected or unresolved and what changed. Preserve disagreement where it remains. Produce replacement recommendations with revision=assured and one review_summary. The server recomputes the review_summary counts and decision-use level; do not use a numerical confidence or claim formal assurance. A recommendation is a normative judgement. An automated independent challenge can support decision use, but human sign-off and specialist legal, economic or scientific review remain outside scope.
-
-If a "coverageGap" list is supplied, this is a SECOND call about a report you have already written, and the list names assurance_challenge identifiers that your previous response left with no assurance_response. Return ONLY the missing assurance_response artefacts — exactly one for each identifier listed — and nothing else. Do not restate the findings, the recommendations or the review summary: they are already recorded, and repeating them would replace them with duplicates. Answer each challenge on its merits; "rejected" and "unresolved" are proper answers and a disposition you cannot support is worse than an honest refusal.`,
+${KEY_JUDGEMENT_PROMPT}
+If a "coverageGap" list is supplied, this is a SECOND call about a report you have already written, and the list names assurance_challenge identifiers that your previous response left with no assurance_response. Return ONLY the missing assurance_response artefacts — exactly one for each identifier listed — and nothing else. Do not restate the findings, the recommendations or the review summary: they are already recorded, and repeating them would replace them with duplicates. Answer each challenge on its merits; "rejected" and "unresolved" are proper answers and a disposition you cannot support is worse than an honest refusal. If the list includes "key_judgements", your previous response had no usable key judgement: return between one and ${MAX_KEY_JUDGEMENTS} key_judgement artefacts as well, following the KEY JUDGEMENTS rules above exactly.`,
 };
 /**
  * The addendum pass, keyed by STEP within the pass rather than by ordinal.

@@ -97,8 +97,11 @@ export function passOrdinal(pass: number, step: number): number { return PASS_BA
  * stops an old reply being replayed; this names the generation for a person
  * reading the log. 3.1 is phase 19: every relationship type offered to stage 3,
  * short profiles at stage 4, and a plain-English writing rule on every call.
+ * 3.2 is phase 19's analysis: key judgements at stage 17, four more challenge
+ * remits, the play patterns handed to 12, 16 and 17, a programme logic model
+ * with deep chains at 14, and a labelled precedent at 10.
  */
-export const PROMPT_VERSION = 'policy-analysis/3.1';
+export const PROMPT_VERSION = 'policy-analysis/3.2';
 export const MAX_BYTES = 10 * 1024 * 1024;
 export const MAX_CHARACTERS = 600_000;
 export const MAX_PAGES = 400;
@@ -548,6 +551,29 @@ export const dataSchemas = {
     acceptedChallenges: z.number().int().nonnegative(), unresolvedMaterialChallenges: z.number().int().nonnegative(),
     scope: text, limitations: strings,
   }).strict(),
+  /**
+   * THE "SO WHAT", in at most `MAX_KEY_JUDGEMENTS` ranked sentences.
+   *
+   * On the one completed real run the headline read "the policy is ambitious and
+   * potentially relevant … not decision-ready for full-scale implementation",
+   * none of the 19 final findings named a play, and the four recommendations
+   * would fit any white paper. The nineteen template sections are an inventory;
+   * a busy official needs the few things that matter and what to do about them.
+   *
+   * So a key judgement cannot be generic by construction. The one sentence is
+   * the artefact's `statement`, and it must carry: the mechanism it is about,
+   * a verbatim quote from the paper (`sourceId` + `sourceQuote`, located exactly
+   * as an extracted fact is), at least one play, the assumption it rests on,
+   * what would prove it wrong, the decision it bears on, and who should do what.
+   * `validation.ts` refuses one without a mechanism or a play. `rank` is the
+   * model's order; the server renumbers it 1..n after dropping a surplus.
+   */
+  key_judgement: z.object({
+    rank: z.number().int().min(1).max(50),
+    mechanismId: text, playIds: ids.min(1), assumptionId: text,
+    wouldChangeIf: text, decision: text, action: text, owner: text,
+    findingIds: ids.default([]),
+  }).strict(),
   finding: z.object({
     section: z.enum(['executive_assessment', 'scope_methodology', 'objectives', 'actors', 'mechanisms', 'theory_of_change', 'options_appraisal', 'evaluation_plan', 'assurance', 'high_risk_assumptions', 'test_results', 'strategic_responses', 'scenarios', 'exploitation', 'cross_policy', 'evidence_gaps', 'confidence_uncertainty', 'distribution', 'unresolved_questions']),
     resultIds: ids.min(1), hypothesisIds: ids.min(1), revision: z.enum(['initial', 'assured']).default('initial'),
@@ -634,6 +660,12 @@ export const dataSchemas = {
  * citing anything else, and synthesis pins exactly these into its model call so
  * the context budget can never shed what the rule then demands.
  */
+/**
+ * The most key judgements a report leads with. Five is what fits on the first
+ * screen and in one breath; a sixth is a surplus the server reconciles, not a
+ * failure (see `reconcileKeyJudgements`).
+ */
+export const MAX_KEY_JUDGEMENTS = 5;
 export const RESULT_KINDS = ['test', 'model', 'scenario', 'exploit', 'cross_policy', 'causal_chain', 'logic_model', 'option_appraisal', 'evaluation_plan'] as const;
 
 export const REPORT_SECTIONS = ['executive_assessment', 'scope_methodology', 'objectives', 'actors', 'mechanisms', 'theory_of_change', 'options_appraisal', 'evaluation_plan', 'assurance', 'high_risk_assumptions', 'test_results', 'strategic_responses', 'scenarios', 'exploitation', 'cross_policy', 'evidence_gaps', 'confidence_uncertainty', 'distribution', 'unresolved_questions'] as const;
@@ -731,7 +763,7 @@ export const STAGE_KINDS: Kind[][] = [
   ['edge'], ['profile'], ['research_question', 'research_source'], ['evidence'], ['model', 'assumption', 'research_question', 'research_source'], ['test'], ['scenario', 'assumption', 'research_question', 'research_source'],
   ['exploit', 'assumption', 'research_question', 'research_source'], ['cross_policy'], ['finding', 'recommendation', 'assumption'], ['persona_link'],
   ['causal_chain', 'logic_model', 'assumption', 'research_question', 'research_source'], ['option_appraisal', 'evaluation_plan', 'assumption', 'research_question', 'research_source'],
-  ['assurance_challenge', 'research_question', 'research_source'], ['finding', 'recommendation', 'assurance_response', 'review_summary', 'assumption'],
+  ['assurance_challenge', 'research_question', 'research_source'], ['key_judgement', 'finding', 'recommendation', 'assurance_response', 'review_summary', 'assumption'],
 ];
 /**
  * What the MODEL is told it may write, per stage.
@@ -799,7 +831,7 @@ export const ADDENDUM_KINDS: Kind[][] = [
   ['revision', 'addendum_summary'],
 ];
 /** A restatement runs the assured-synthesis contract verbatim. */
-export const RESTATEMENT_KINDS: Kind[][] = [['finding', 'recommendation', 'assurance_response', 'review_summary', 'assumption']];
+export const RESTATEMENT_KINDS: Kind[][] = [['key_judgement', 'finding', 'recommendation', 'assurance_response', 'review_summary', 'assumption']];
 export const PASS_KIND_TABLE: Record<PassKind, Kind[][]> = { addendum: ADDENDUM_KINDS, restatement: RESTATEMENT_KINDS };
 
 /**

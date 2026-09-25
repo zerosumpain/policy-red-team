@@ -1,4 +1,4 @@
-import { APPRAISAL_STAGE, ASSURANCE_CATEGORIES, ASSURANCE_STAGE, ASSURED_SYNTHESIS_STAGE, CONCURRENCY_OPTIONS, DEEP_CHAINS, DEFAULT_CONCURRENCY, DEFAULT_EXTRACTION, DEPTH_LIMITS, FIT_LIMIT, FOLLOW_UP_STAGES, FULL_PROFILES, isPassStage, passOf, passOrdinal, passStep, PATTERNS, PERSONA_STAGE, REPORT_SECTIONS, RESULT_KINDS, REVISION_STATUSES, SCENARIOS, SHORT_PROFILE_BATCH, STAGE_CONTEXT, SYNTHESIS_STAGE, THEORY_STAGE, type Artefact, type Concurrency, type Extraction, type PassKind, type StageInput, type StageOutput } from './contracts';
+import { APPRAISAL_STAGE, ASSURANCE_CATEGORIES, ASSURANCE_STAGE, ASSURED_SYNTHESIS_STAGE, CONCURRENCY_OPTIONS, DEEP_CHAINS, DEFAULT_CONCURRENCY, DEFAULT_EXTRACTION, DEPTH_LIMITS, FIT_LIMIT, FOLLOW_UP_STAGES, FULL_PROFILES, MAX_KEY_JUDGEMENTS, isPassStage, passOf, passOrdinal, passStep, PATTERNS, PERSONA_STAGE, REPORT_SECTIONS, RESULT_KINDS, REVISION_STATUSES, SCENARIOS, SHORT_PROFILE_BATCH, STAGE_CONTEXT, SYNTHESIS_STAGE, THEORY_STAGE, type Artefact, type Concurrency, type Extraction, type PassKind, type StageInput, type StageOutput } from './contracts';
 import { consumedSources, encodedSize, fitToBudget } from './budget';
 import { scoreExploits } from './exposure';
 import { clampWarnings, PolicyError, stampProfileForm, triageArtefacts, triageOutput } from './validation';
@@ -12,6 +12,7 @@ import type { ModelCall } from './server/provider';
 import type { Research } from './server/research';
 import { isAffectedGroup, type PersonaPrior } from './personas';
 import { patternBrief } from './patterns';
+import { reconcileKeyJudgements } from './judgements';
 
 /** Compact summaries of this reader's OTHER completed assessments, for stage 11. */
 export type Neighbour = { id: string; title: string; policyArea: string | null; jurisdiction: string | null; completedAt: string | null; artefacts: { id: string; kind: string; label: string; statement: string; entityType?: string; aliases?: string[] }[] };
@@ -1059,10 +1060,13 @@ export async function executeStage(input: StageInput, deps: PipelineDeps): Promi
      * source mentions since before the fork, applied to the two stages whose
      * coverage rule can end a run over a single absence.
      */
+    // `KEY_JUDGEMENT_GAP` joins the challenge ids when the report came back with
+    // no usable key judgement: one ask for the "so what", in the same call.
     const gap = stage === ASSURED_SYNTHESIS_STAGE
-      ? input.artefacts.filter((a) => a.kind === 'assurance_challenge')
+      ? [...input.artefacts.filter((a) => a.kind === 'assurance_challenge')
         .filter((c) => !output.artefacts.some((a) => a.kind === 'assurance_response' && a.data.challengeId === c.id))
-        .map((a) => a.id)
+        .map((a) => a.id),
+      ...(output.artefacts.some((a) => a.kind === 'key_judgement') ? [] : [KEY_JUDGEMENT_GAP])]
       : stage === APPRAISAL_STAGE
         // Mirrors the appraisal rule below. Written out rather than shared with it
         // because the two sit 120 lines apart and this is a recorded divergence:
@@ -1135,7 +1139,7 @@ export async function executeStage(input: StageInput, deps: PipelineDeps): Promi
        */
       const wanted = new Set(gap);
       const answers = (a: Artefact) => stage === ASSURED_SYNTHESIS_STAGE
-        ? a.kind === 'assurance_response' && wanted.has(String(a.data.challengeId))
+        ? (a.kind === 'assurance_response' && wanted.has(String(a.data.challengeId))) || (a.kind === 'key_judgement' && wanted.has(KEY_JUDGEMENT_GAP))
         : (a.kind === 'option_appraisal' && wanted.has(String(a.data.optionType))) || (a.kind === 'evaluation_plan' && wanted.has('evaluation_plan'));
       const added = output.artefacts.slice(before);
       const byId = new Map(added.map((a) => [a.id, a]));
@@ -1379,6 +1383,21 @@ export async function executeStage(input: StageInput, deps: PipelineDeps): Promi
       output.artefacts = output.artefacts.filter((a) => !superseded.has(a.id));
       output.warnings.push(`The revised assessment came back with ${summaries.length} review summaries, one per corrective round. The last is kept; the earlier ${superseded.size} ${superseded.size === 1 ? 'is' : 'are'} discarded as superseded.`);
     }
+    /**
+     * THE "SO WHAT": AT LEAST ONE KEY JUDGEMENT, AT MOST FIVE.
+     *
+     * Two different events, the phase 16/17 lesson applied from the start. NONE
+     * is an absence — the report has nothing to lead with — and it fails, after
+     * the top-up above has asked for exactly that once. A SURPLUS is the
+     * correction arriving with the rest of the revised report, because
+     * `provider.ts` accumulates corrective rounds; `reconcileKeyJudgements`
+     * keeps the last of each rank and the top five, and says what it dropped.
+     * Throwing on a surplus would be the review-summary trap again: asking a
+     * second time could only add more.
+     */
+    const judged = reconcileKeyJudgements(output.artefacts);
+    if (!judged.kept.length) throw new PolicyError('coverage', `The revised assessment must lead with at least one key judgement — naming a mechanism, a play, a quote from the paper, and who should do what — and this one has none, after the model was asked a second time for them.${fault.last ? ` Last reason: ${fault.last.message}` : ''}`);
+    dropSurplusJudgements(output, judged.dropped);
     const issueIds = new Set(challenges.filter((a) => a.data.finding === 'issue').map((a) => a.id));
     const accepted = responses.filter((a) => issueIds.has(String(a.data.challengeId)) && ['accepted', 'partly_accepted'].includes(String(a.data.disposition))).length;
     const unresolved = responses.filter((a) => issueIds.has(String(a.data.challengeId)) && a.data.disposition === 'unresolved');
@@ -1389,6 +1408,10 @@ export async function executeStage(input: StageInput, deps: PipelineDeps): Promi
     summary.data.unresolvedMaterialChallenges = material;
     summary.data.decisionUse = material ? 'exploratory' : unresolved.length ? 'decision_support' : 'independently_challenged';
   }
+  // A restatement runs the stage-17 contract, so its surplus is reconciled the
+  // same way. No floor: a restatement has never had coverage rules of its own,
+  // and the report falls back to the previous generation's judgements.
+  if (isPassStage(stage) && deps.passKind === 'restatement') dropSurplusJudgements(output, reconcileKeyJudgements(output.artefacts).dropped);
   if (isPassStage(stage) && deps.passKind === 'addendum') {
     const step = passStep(stage);
     if (step === 2 && !output.artefacts.length) {
@@ -1515,6 +1538,26 @@ export async function executeStage(input: StageInput, deps: PipelineDeps): Promi
     a.refs = a.refs.slice(0, MAX_REFS);
   }
   return { artefacts: kept, warnings: clampWarnings(warnings), rejected };
+}
+
+/**
+ * What the stage-17 top-up names when the report came back with no key
+ * judgement. Not an artefact id — instruction 17 tells the model what it means.
+ */
+const KEY_JUDGEMENT_GAP = 'key_judgements';
+
+/**
+ * Remove the key judgements a reconcile dropped, and say so once.
+ *
+ * Worded "N … were discarded" so `stage-facts.ts` counts them with everything
+ * else the run discarded, rather than filing the sentence as an open question.
+ */
+function dropSurplusJudgements(output: StageOutput, dropped: Artefact[]) {
+  if (!dropped.length) return;
+  const gone = new Set(dropped);
+  output.artefacts = output.artefacts.filter((a) => !gone.has(a));
+  const kept = output.artefacts.filter((a) => a.kind === 'key_judgement').length;
+  output.warnings.push(`${dropped.length} key judgement${dropped.length === 1 ? ' was' : 's were'} discarded: the revised assessment came back with ${dropped.length + kept}, as a corrective round restated them or more were written than the ${MAX_KEY_JUDGEMENTS} a reader is given. The last of each rank and the ${kept} ranked highest are kept.`);
 }
 
 /**

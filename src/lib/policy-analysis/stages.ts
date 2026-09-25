@@ -136,9 +136,9 @@ export const STAGE_NOTES: StageNote[] = [
     given: 'The first report and every result behind it', emits: 'Challenges',
     limit: 'This is an automated second pass, not formal human assurance. It is never described as one.',
     lands: 'Independent challenge' },
-  { phase: 'write', name: 'Assured synthesis', what: 'Rewrites the report answering every challenge. This is the version you read.',
-    detail: 'Each challenge gets a disposition — accepted, partly accepted, rejected or unresolved — and the rewritten findings carry the challenge ids they answer. Anything still unresolved is counted on the verdict rather than buried, so the report cannot quietly close its own objections.',
-    given: 'The first report and every challenge', emits: 'The report · recommendations · responses · a review summary',
+  { phase: 'write', name: 'Assured synthesis', what: 'Rewrites the report answering every challenge, and leads it with up to five key judgements. This is the version you read.',
+    detail: 'It opens with at most five key judgements, ranked: each one sentence that names the part of the policy it is about, quotes the paper, names the play that shows it and the assumption it rests on, says what would prove it wrong, and says who should do what. The full sections follow as the appendix. Each challenge gets a disposition — accepted, partly accepted, rejected or unresolved — and the rewritten findings carry the challenge ids they answer. Anything still unresolved is counted on the verdict rather than buried, so the report cannot quietly close its own objections.',
+    given: 'The first report and every challenge', emits: 'Key judgements · the report · recommendations · responses · a review summary',
     limit: 'A challenge it could not settle is reported as open rather than quietly closed.',
     lands: 'Verdict — step 01' },
 ];

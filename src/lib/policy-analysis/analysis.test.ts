@@ -8,7 +8,7 @@
 // the pure views have their own files.
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
-import { artefact, ASSURANCE_CATEGORIES, ASSURANCE_STAGE, ASSURED_SYNTHESIS_STAGE, DEEP_CHAINS, SYNTHESIS_STAGE, THEORY_STAGE, type Artefact, type StageInput } from './contracts';
+import { artefact, ASSURANCE_CATEGORIES, ASSURANCE_STAGE, ASSURED_SYNTHESIS_STAGE, DEEP_CHAINS, MAX_KEY_JUDGEMENTS, SYNTHESIS_STAGE, THEORY_STAGE, type Artefact, type StageInput } from './contracts';
 import { scoreExploits } from './exposure';
 import { systemPrompt } from './prompts';
 import { assessmentMarkdown } from './report-doc';
@@ -196,6 +196,87 @@ describe('the theory of change is one programme model and deep chains where the 
     const kept = triageArtefacts({ artefacts: [mixed], warnings: [] }, THEORY_STAGE, all).artefacts[0];
     expect(kept.data.mechanismIds).toEqual([mechanisms[3].id]);
     expect(kept.refs).toContain(mechanisms[3].id);
+  });
+});
+
+describe('the assured report leads with key judgements', () => {
+  const withhold = (drop: (a: Artefact) => boolean, rounds = Infinity) => {
+    let calls = 0;
+    const keys: string[] = [];
+    const gaps: unknown[] = [];
+    const model = async (...args: Parameters<typeof fixtureModel>) => {
+      keys.push(args[1]);
+      gaps.push((args[2] as { coverageGap?: unknown }).coverageGap);
+      const out = fixtureModel(...args);
+      return calls++ < rounds ? { ...out, artefacts: out.artefacts.filter((a) => !drop(a)) } : out;
+    };
+    return { model, keys, gaps };
+  };
+
+  it('writes them on the fixture run, each naming a mechanism, a play, an assumption and a located quote', async () => {
+    const all = await inventory();
+    const result = await executeStage(base(ASSURED_SYNTHESIS_STAGE, all), { model: async (...a) => fixtureModel(...a), research, signal, neighbours: none, personas: none });
+    const [judgement] = result.artefacts.filter((a) => a.kind === 'key_judgement');
+    expect(judgement.data.rank).toBe(1);
+    const kinds = new Set(judgement.refs.map((id) => all.find((a) => a.id === id)?.kind));
+    for (const kind of ['mechanism', 'exploit', 'assumption', 'passage']) expect(kinds).toContain(kind);
+    // Located exactly as an extracted fact is: the offsets are the server's.
+    expect(judgement.startOffset).not.toBeNull();
+    expect(result.warnings.join(' ')).not.toContain('key judgement');
+  });
+
+  it('asks once more when the report came back without one, and takes only what was asked for', async () => {
+    const all = await inventory();
+    // The top-up here ignores the instruction and restates the whole report —
+    // the fixture always does — so only the key judgement must be taken from it.
+    const { model, keys, gaps } = withhold((a) => a.kind === 'key_judgement', 1);
+    const result = await executeStage(base(ASSURED_SYNTHESIS_STAGE, all), { model, research, signal, neighbours: none, personas: none });
+    expect(keys).toEqual(['main', 'topup']);
+    expect(gaps[1]).toEqual(['key_judgements']);
+    expect(result.artefacts.filter((a) => a.kind === 'key_judgement')).toHaveLength(1);
+    expect(result.artefacts.filter((a) => a.kind === 'review_summary')).toHaveLength(1);
+    expect(result.warnings.join(' ')).toContain('already holds');
+  });
+
+  it('fails a report that has none after the second ask: an absence is not a surplus', async () => {
+    const all = await inventory();
+    const { model, keys } = withhold((a) => a.kind === 'key_judgement');
+    await expect(executeStage(base(ASSURED_SYNTHESIS_STAGE, all), { model, research, signal, neighbours: none, personas: none }))
+      .rejects.toMatchObject({ code: 'coverage', message: expect.stringContaining('key judgement') });
+    // One ask, one top-up — not a loop.
+    expect(keys).toHaveLength(2);
+  });
+
+  it('reconciles a surplus — every corrective round restating them, and more than five — rather than failing', async () => {
+    // The review-summary trap: `provider.ts` accumulates corrective rounds, so
+    // the same judgements arrive once per round. A rule that threw on more than
+    // five would be failed by the correction itself.
+    const all = await inventory();
+    const model = async (...args: Parameters<typeof fixtureModel>) => {
+      const out = fixtureModel(...args);
+      const one = out.artefacts.find((a) => a.kind === 'key_judgement');
+      if (!one) return out;
+      const extra = [2, 3, 4, 5, 6, 7].map((rank) => ({ ...structuredClone(one), id: `${one.id}_r${rank}`, data: { ...one.data, rank } }));
+      const repeat = { ...structuredClone(one), id: `${one.id}_repair1`, statement: 'The restated judgement.' };
+      return { ...out, artefacts: [...out.artefacts, ...extra, repeat] };
+    };
+    const result = await executeStage(base(ASSURED_SYNTHESIS_STAGE, all), { model, research, signal, neighbours: none, personas: none });
+    const kept = result.artefacts.filter((a) => a.kind === 'key_judgement');
+    expect(kept).toHaveLength(MAX_KEY_JUDGEMENTS);
+    expect(kept.map((a) => a.data.rank).sort()).toEqual([1, 2, 3, 4, 5]);
+    // The last of rank 1 is the revised one.
+    expect(kept.find((a) => a.data.rank === 1)!.statement).toBe('The restated judgement.');
+    const discarded = stageFacts(result.warnings).find((f) => f.kind === 'discarded')!;
+    expect(discarded.detail.join(' ')).toContain('3 key judgements were discarded');
+  });
+
+  it('tells the model what a key judgement is, in plain words', () => {
+    const prompt = systemPrompt(ASSURED_SYNTHESIS_STAGE);
+    expect(prompt).toContain('KEY JUDGEMENTS');
+    expect(prompt).toContain('A key judgement that would fit any white paper is not a key judgement');
+    expect(prompt).toContain('"key_judgements"');
+    // A restatement runs the same contract, and may write them.
+    expect(systemPrompt(100, 'restatement')).toContain('KEY JUDGEMENTS');
   });
 });
 

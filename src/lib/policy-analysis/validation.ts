@@ -72,17 +72,11 @@ function semanticFault(a: Artefact, all: Map<string, Artefact>, stage: number, n
   if (a.refs.some((id) => id === a.id || !all.has(id))) return fault('provenance', 'An artefact cites an unavailable source.');
   if (stage === 1 && ['claim', 'mechanism', 'actor'].includes(a.kind) && a.origin !== 'extracted_fact') return fault('extraction', 'The document inventory must distinguish literal extraction from assumptions.');
   if (a.kind === 'edge' && (!a.fromId || !a.toId || !all.has(a.fromId) || !all.has(a.toId) || !a.relation || !a.temporal)) return fault('graph', 'A graph assertion has invalid endpoints or provenance.');
-  if (a.origin === 'extracted_fact' && a.kind !== 'passage') {
-    const source = a.sourceId ? all.get(a.sourceId) : null;
-    if (source?.kind !== 'passage' || !a.sourceQuote || !a.refs.includes(source.id)) return fault('span', 'An extracted assertion could not be located in the policy text.');
-    // Line wrapping, hyphenation and smart punctuation are extraction artefacts,
-    // not misquotation. A quote absent even after folding them is fabricated.
-    const found = locateQuote(source.statement, a.sourceQuote);
-    if (!found) return fault('span', 'An extracted assertion could not be located in the policy text.');
-    a.sourceQuote = found.quote;
-    a.page = source.page; a.section = source.section;
-    a.startOffset = (source.startOffset ?? 0) + found.start;
-    a.endOffset = (source.startOffset ?? 0) + found.end;
+  // A key judgement quotes the paper whatever its origin: it is a judgement,
+  // and the quote is what stops it being a judgement about any paper at all.
+  if ((a.origin === 'extracted_fact' || a.kind === 'key_judgement') && a.kind !== 'passage') {
+    const located = locate(a, all);
+    if (located) return located;
   }
   // URLs originate exclusively in trusted research adapter results, never model output.
   if (a.url && a.kind !== 'research_source') return fault('citation', 'Model-authored URLs are not accepted as evidence.');
@@ -168,6 +162,26 @@ function semanticFault(a: Artefact, all: Map<string, Artefact>, stage: number, n
     if (real.length !== named.length) a.data.mechanismIds = real;
     for (const id of real) if (!a.refs.includes(id)) a.refs = [...a.refs, id];
   }
+  /**
+   * A KEY JUDGEMENT NAMES ITS MECHANISM AND ITS PLAY, or it is not one.
+   *
+   * These two are what separate "stage the pilots" from a judgement about THIS
+   * policy, which is the whole reason the kind exists — so they are refused,
+   * not narrowed away. The play list is narrowed the way a play's
+   * preconditions are: a real play among the ids keeps it. Everything cited is
+   * folded into `refs`, because provenance is what a citation means.
+   */
+  if (a.kind === 'key_judgement') {
+    if (all.get(String(a.data.mechanismId))?.kind !== 'mechanism') return fault('traceability', 'A key judgement must name the mechanism it concerns in mechanismId.');
+    const named = (a.data.playIds as string[]) ?? [];
+    const plays = named.filter((id) => all.get(id)?.kind === 'exploit');
+    if (!plays.length) return fault('traceability', 'A key judgement must name at least one exploitation play in playIds.');
+    if (plays.length !== named.length) a.data.playIds = plays;
+    if (all.get(String(a.data.assumptionId))?.kind !== 'assumption') return fault('traceability', 'A key judgement must name the assumption it rests on in assumptionId.');
+    const findings = ((a.data.findingIds as string[]) ?? []).filter((id) => all.get(id)?.kind === 'finding');
+    a.data.findingIds = findings;
+    for (const id of [String(a.data.mechanismId), ...plays, String(a.data.assumptionId), ...findings]) if (!a.refs.includes(id)) a.refs = [...a.refs, id];
+  }
   if (a.origin === 'normative_judgement' && a.kind === 'research_source') return fault('source', 'A recommendation is not an external source.');
   if (a.kind === 'recommendation' && a.origin !== 'normative_judgement') return fault('recommendation', 'Redesign options must be labelled as normative recommendations.');
   if (a.kind === 'profile') {
@@ -182,7 +196,7 @@ function semanticFault(a: Artefact, all: Map<string, Artefact>, stage: number, n
     const value = a.data[field];
     if (typeof value === 'string' && !all.has(value)) return fault('reference', 'An artefact contains an invalid entity reference.');
   }
-  for (const field of ['players', 'assumptions', 'resultIds', 'hypothesisIds', 'findingIds', 'reviewedFindingIds', 'challengeIds', 'targetIds', 'candidates', 'mentions', 'dependencies', 'affectedOutcomes', 'targets', 'preconditions', 'reconciliationIds', 'mechanismIds']) {
+  for (const field of ['players', 'assumptions', 'resultIds', 'hypothesisIds', 'findingIds', 'reviewedFindingIds', 'challengeIds', 'targetIds', 'candidates', 'mentions', 'dependencies', 'affectedOutcomes', 'targets', 'preconditions', 'reconciliationIds', 'mechanismIds', 'playIds']) {
     const values = a.data[field];
     if (Array.isArray(values) && values.some((v) => typeof v !== 'string' || !all.has(v))) return fault('reference', 'An artefact contains an invalid relationship.');
   }
@@ -560,7 +574,7 @@ export function clampWarnings(warnings: string[], limit = 60): string[] {
 // enumeration: exponential in a dense provenance graph, and now run once per
 // artefact per triage pass. Reachability does not care which path reached a node,
 // so a shared set is both correct and linear.
-const PRUNABLE = ['players', 'assumptions', 'resultIds', 'hypothesisIds', 'findingIds', 'reviewedFindingIds', 'challengeIds', 'targetIds', 'candidates', 'mentions', 'dependencies', 'affectedOutcomes', 'targets', 'preconditions', 'mechanismIds'];
+const PRUNABLE = ['players', 'assumptions', 'resultIds', 'hypothesisIds', 'findingIds', 'reviewedFindingIds', 'challengeIds', 'targetIds', 'candidates', 'mentions', 'dependencies', 'affectedOutcomes', 'targets', 'preconditions', 'mechanismIds', 'playIds'];
 
 /**
  * Drop identifiers that name nothing, keeping the artefact.
@@ -584,6 +598,24 @@ function prune(a: Artefact, all: Map<string, Artefact>, note: (what: string) => 
     note(`${values.length - trimmed.length} unresolvable entr${values.length - trimmed.length === 1 ? 'y' : 'ies'} in ${field}`);
     a.data = candidate;
   }
+}
+
+/**
+ * Find an artefact's `sourceQuote` in the passage it names, and take the page,
+ * section and offsets from the passage rather than from the model.
+ */
+function locate(a: Artefact, all: Map<string, Artefact>): Fault | null {
+  const source = a.sourceId ? all.get(a.sourceId) : null;
+  if (source?.kind !== 'passage' || !a.sourceQuote || !a.refs.includes(source.id)) return fault('span', a.kind === 'key_judgement' ? 'A key judgement must quote the paper: sourceId must name a passage and sourceQuote must be copied from it exactly.' : 'An extracted assertion could not be located in the policy text.');
+  // Line wrapping, hyphenation and smart punctuation are extraction artefacts,
+  // not misquotation. A quote absent even after folding them is fabricated.
+  const found = locateQuote(source.statement, a.sourceQuote);
+  if (!found) return fault('span', a.kind === 'key_judgement' ? 'A key judgement must quote the paper, and its sourceQuote could not be found in the passage it names. Copy the quote exactly from a mechanism or claim, with its sourceId.' : 'An extracted assertion could not be located in the policy text.');
+  a.sourceQuote = found.quote;
+  a.page = source.page; a.section = source.section;
+  a.startOffset = (source.startOffset ?? 0) + found.start;
+  a.endOffset = (source.startOffset ?? 0) + found.end;
+  return null;
 }
 
 /** A link anywhere in model prose. URLs come from the retrieval adapter and nowhere else. */

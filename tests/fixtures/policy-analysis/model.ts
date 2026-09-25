@@ -61,6 +61,7 @@ export function fixtureModel(stage: number, _key: string, raw: unknown): StageOu
       }, [challenge.id])));
       items.push({ ...make('redesign', 'recommendation', { findingIds: [items[0].id], change: 'Commit resources and review authority.', tradeoffs: 'Additional public expenditure.', beneficiaries: ['Service users'], burdenBearers: ['Department'], validationNeeded: 'Verify capacity.', revision: 'assured', challengeIds: challenges.map((c) => c.id), judgement: 'supported_with_limits' }, [items[0].id, ...challenges.map((c) => c.id)]), origin: 'normative_judgement' });
       items.push(make('summary', 'review_summary', { decisionUse: 'independently_challenged', judgement: 'supported_with_limits', openChallenges: 0, acceptedChallenges: 0, unresolvedMaterialChallenges: 0, scope: 'Restated after material was attached.', limitations: ['No human sign-off.'] }, challenges.map((c) => c.id)));
+      items.push(...keyJudgements(input, [items[0].id]));
     }
   } else if (stage === 1) {
     const p = one('passage');
@@ -166,6 +167,25 @@ export function fixtureModel(stage: number, _key: string, raw: unknown): StageOu
     }, [challenge.id])));
     items.push({ ...make('redesign', 'recommendation', { findingIds: [items[0].id], change: 'Commit resources and review authority.', tradeoffs: 'Additional public expenditure.', beneficiaries: ['Service users'], burdenBearers: ['Department'], validationNeeded: 'Verify capacity and legal powers.', revision: 'assured', challengeIds: challenges.map((c) => c.id), judgement: 'supported_with_limits' }, [items[0].id, ...challenges.map((c) => c.id)]), origin: 'normative_judgement' });
     items.push(make('summary', 'review_summary', { decisionUse: 'independently_challenged', judgement: 'supported_with_limits', openChallenges: 0, acceptedChallenges: 0, unresolvedMaterialChallenges: 0, scope: 'Automated independent challenge.', limitations: ['No human sign-off.'] }, challenges.map((c) => c.id)));
+    items.push(...keyJudgements(input, [items[0].id]));
   }
   return { artefacts: items, warnings: [] };
+}
+
+/**
+ * The key judgements a revised report leads with: one, quoting the mechanism
+ * it is about exactly as stage 1 located it, naming the sharpest play.
+ */
+function keyJudgements(input: StageInput & { idPrefix: string }, findingIds: string[]): Artefact[] {
+  const mechanism = input.artefacts.find((a) => a.kind === 'mechanism' && a.sourceId && a.sourceQuote);
+  const play = input.artefacts.find((a) => a.kind === 'exploit');
+  const assumption = input.artefacts.find((a) => a.kind === 'assumption');
+  if (!mechanism || !play || !assumption) return [];
+  return [artefact(`${input.idPrefix}judgement_1`, 'key_judgement', 'Councils can comply on paper', 'Councils can report against the access measure without changing practice, so the shared access programme can look delivered when it is not.', {
+    rank: 1, mechanismId: mechanism.id, playIds: [play.id], assumptionId: assumption.id,
+    wouldChangeIf: 'An independent check found practice changing where the measure improves.',
+    decision: 'Whether to fund the programme beyond its first year.',
+    action: 'Add an independent check of practice before the second year of funding.', owner: 'The funding department',
+    findingIds,
+  }, { refs: [mechanism.id, play.id, assumption.id, ...findingIds], sourceId: mechanism.sourceId, sourceQuote: mechanism.sourceQuote, origin: 'structural_inference', confidence: null })];
 }
