@@ -1,3 +1,4 @@
+import { z } from 'zod';
 import { artefactSchema, dataSchemas, looseOutputSchema, PROFILE_FIELDS, RESULT_KINDS, SHORT_PROFILE_FIELDS, stageKinds, stageOutputSchema, type Artefact, type PassKind, type StageOutput } from './contracts';
 import { locateQuote } from './quotes';
 
@@ -177,6 +178,23 @@ function semanticFault(a: Artefact, all: Map<string, Artefact>, stage: number, n
     const plays = named.filter((id) => all.get(id)?.kind === 'exploit');
     if (!plays.length) return fault('traceability', 'A key judgement must name at least one exploitation play in playIds.');
     if (plays.length !== named.length) a.data.playIds = plays;
+    /**
+     * NARROWED, like a play's preconditions and a chain's assumptions: an
+     * `assumptionId` that resolves to a claim or a mechanism is a real artefact
+     * filed under the wrong heading. The assumption the judgement's own play
+     * rests on stands in for it, and what it named stays in `refs`. Refused only
+     * when it names nothing, or no play offers an assumption to rest on.
+     */
+    const filed = all.get(String(a.data.assumptionId));
+    if (filed && filed.kind !== 'assumption') {
+      const stand = plays.flatMap((id) => (Array.isArray(all.get(id)?.data.preconditions) ? all.get(id)!.data.preconditions as unknown[] : []))
+        .map(String).find((id) => all.get(id)?.kind === 'assumption');
+      if (stand) {
+        a.data.assumptionId = stand;
+        if (!a.refs.includes(filed.id)) a.refs = [...a.refs, filed.id];
+        note?.(`“${a.label}” named a ${filed.kind} as the assumption it rests on; the assumption its play rests on was used instead.`);
+      }
+    }
     if (all.get(String(a.data.assumptionId))?.kind !== 'assumption') return fault('traceability', 'A key judgement must name the assumption it rests on in assumptionId.');
     const findings = ((a.data.findingIds as string[]) ?? []).filter((id) => all.get(id)?.kind === 'finding');
     a.data.findingIds = findings;
@@ -320,7 +338,7 @@ function relationalFault(a: Artefact, all: Map<string, Artefact>): Fault | null 
  * `triageOutput`, which applies exactly these rules per artefact instead.
  */
 export function validateOutput(raw: unknown, stage: number, prior: Artefact[], passKind?: PassKind | null): StageOutput {
-  const parsed = stageOutputSchema.safeParse(raw);
+  const parsed = stageOutputSchema.safeParse(normaliseReply(raw));
   if (!parsed.success) throw new PolicyError('contract', 'The model returned an invalid structured result. Resume to retry.');
   const output = parsed.data;
   const all = new Map(prior.map((a) => [a.id, a]));
@@ -434,6 +452,83 @@ export function malformedRetryDelayMs(truncated: boolean, attemptsSoFar: number)
 }
 
 /**
+ * PLAUSIBLE SPELLINGS, READ AS WHAT THEY MEAN — before any schema sees them.
+ *
+ * Several kinds are `.strict()` and their enums are exact, so `precedentBasis:
+ * null`, `"unverified recall"`, `findingIds: null` or `rank: "1"` each cost the
+ * artefact and a corrective round. At stage 17 a round rewrites the whole
+ * report against the output cap, and a reply cut off there is not retried. None
+ * of those is a model saying something different; each is one saying the same
+ * thing in another spelling. So, field by field against the kind's own schema:
+ *
+ *   null on a field that is optional or defaulted (not nullable) → the key is
+ *     REMOVED, so the schema's own default applies
+ *   a string on an enum field → the enum value it spells, if exactly one
+ *     matches once case, spaces and hyphens are set aside; otherwise unchanged
+ *   a numeric string on a number field → the number
+ *
+ * THIS ONLY EVER REMOVES OR REWRITES A KEY THE MODEL SENT, never adds one: a
+ * key added to a reply before a strict schema is a key that schema refuses (the
+ * lesson of the stage-4 `form` stamp). And it works on a COPY — the stored
+ * reply is the model's own words, and the replay diagnostic depends on that.
+ * Anything it cannot read as one of these is left exactly as it came, for the
+ * schema to refuse as before.
+ */
+type Shape = Record<string, z.ZodType>;
+const WRAPPERS = new Set(['optional', 'default', 'prefault', 'nullable', 'readonly', 'catch']);
+function unwrapField(schema: z.ZodType): { base: z.ZodType; optional: boolean; nullable: boolean } {
+  let s = schema;
+  let optional = false;
+  let nullable = false;
+  for (let depth = 0; depth < 8; depth++) {
+    const def = (s as unknown as { _zod: { def: { type: string; innerType?: z.ZodType } } })._zod.def;
+    if (!WRAPPERS.has(def.type) || !def.innerType) break;
+    if (def.type === 'nullable') nullable = true; else optional = true;
+    s = def.innerType;
+  }
+  return { base: s, optional, nullable };
+}
+const spelling = (v: string) => v.trim().toLowerCase().replace(/[\s-]+/g, '_');
+function normaliseFields(value: Record<string, unknown>, shape: Shape): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  for (const [key, v] of Object.entries(value)) {
+    const schema = shape[key];
+    if (!schema) { out[key] = v; continue; }
+    const { base, optional, nullable } = unwrapField(schema);
+    if (v === null && optional && !nullable) continue;
+    const def = (base as unknown as { _zod: { def: { type: string; entries?: Record<string, unknown> } } })._zod.def;
+    if (typeof v === 'string' && def.type === 'enum' && def.entries) {
+      const options = Object.values(def.entries).filter((o): o is string => typeof o === 'string');
+      if (!options.includes(v)) {
+        const matches = options.filter((o) => spelling(o) === spelling(v));
+        out[key] = matches.length === 1 ? matches[0] : v;
+        continue;
+      }
+    }
+    if (typeof v === 'string' && def.type === 'number' && /^\s*-?\d+(?:\.\d+)?\s*$/.test(v)) { out[key] = Number(v); continue; }
+    out[key] = v;
+  }
+  return out;
+}
+const ARTEFACT_SHAPE = (artefactSchema as unknown as { shape: Shape }).shape;
+/** One artefact as the model sent it, with its spellings read. A copy; non-objects pass through. */
+export function normaliseArtefact(candidate: unknown): unknown {
+  if (!candidate || typeof candidate !== 'object' || Array.isArray(candidate)) return candidate;
+  const top = normaliseFields(candidate as Record<string, unknown>, ARTEFACT_SHAPE);
+  const kind = typeof top.kind === 'string' ? top.kind : null;
+  const schema = kind && Object.hasOwn(dataSchemas, kind) ? (dataSchemas[kind as keyof typeof dataSchemas] as unknown as { shape?: Shape }) : null;
+  if (schema?.shape && top.data && typeof top.data === 'object' && !Array.isArray(top.data)) {
+    top.data = normaliseFields(top.data as Record<string, unknown>, schema.shape);
+  }
+  return top;
+}
+/** A whole reply, normalised artefact by artefact. The reply itself is not touched. */
+export function normaliseReply(raw: unknown): unknown {
+  if (!raw || typeof raw !== 'object' || !Array.isArray((raw as { artefacts?: unknown }).artefacts)) return raw;
+  return { ...(raw as Record<string, unknown>), artefacts: (raw as { artefacts: unknown[] }).artefacts.map(normaliseArtefact) };
+}
+
+/**
  * The lenient gate, and the one every live model response goes through.
  *
  * WHY. The strict gate is all-or-nothing: one bad artefact out of twenty-five
@@ -452,7 +547,7 @@ export function triageOutput(raw: unknown, stage: number, prior: Artefact[], pas
   // one array of strict members put the all-or-nothing failure back a level: on
   // 2026-09-09 a live assessment lost a whole passage because one artefact of
   // eighteen left out a field that means nothing for its kind.
-  const envelope = looseOutputSchema.safeParse(raw);
+  const envelope = looseOutputSchema.safeParse(normaliseReply(raw));
   if (!envelope.success) throw new PolicyError('contract', 'The model returned an invalid structured result. Resume to retry.');
   const malformed: Rejection[] = [];
   const artefacts: Artefact[] = [];
