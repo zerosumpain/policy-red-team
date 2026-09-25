@@ -41,6 +41,50 @@ const GRAPH_LOSS_CEILING = 0.34;
  */
 export type GraphReach = { discarded?: number; uncovered?: number };
 
+/**
+ * WHAT STAGE 1 EXTRACTED THAT A RELATION WOULD HAVE BEEN DRAWN FROM.
+ *
+ * A check that finds no `is_measured_by` edge was reporting a defect in the
+ * PAPER: "43 of 43 relevant assertions have no documented matching
+ * is_measured_by relationship", high risk. On that run stage 1 had extracted
+ * 39 measures from the paper. The paper stated them; the graph stage — offered
+ * 8 of 26 relation types at the time — never wired one. That is a limit of the
+ * run, and printing it as a finding about the paper is the most damaging thing
+ * a check can say wrongly, because it is the one a reader will quote.
+ *
+ * So each relation a check reads is paired, where one exists, with the stage-1
+ * inventory it would have been drawn from: a claim category, or for `delivers`
+ * the mechanisms themselves. Only relations with a clear source are listed —
+ * `sanctions`, `can_veto`, `reciprocates` and the rest have no category of their
+ * own, and guessing one would move the error rather than remove it.
+ */
+const EXTRACTED_AS: Partial<Record<string, { what: string; of: (a: Artefact) => boolean }>> = {
+  is_accountable_for: { what: 'responsibilities', of: (a) => a.kind === 'claim' && a.data.category === 'responsibility' },
+  has_authority_over: { what: 'decision rights', of: (a) => a.kind === 'claim' && a.data.category === 'decision_right' },
+  funds: { what: 'funding commitments', of: (a) => a.kind === 'claim' && a.data.category === 'funding' },
+  is_measured_by: { what: 'measures', of: (a) => a.kind === 'claim' && a.data.category === 'measure' },
+  owns_data: { what: 'data flows', of: (a) => a.kind === 'claim' && a.data.category === 'data_flow' },
+  supplies_data_to: { what: 'data flows', of: (a) => a.kind === 'claim' && a.data.category === 'data_flow' },
+  depends_on: { what: 'dependencies', of: (a) => a.kind === 'claim' && a.data.category === 'dependency' },
+  receives_benefit_from: { what: 'benefits', of: (a) => a.kind === 'claim' && a.data.category === 'benefit' },
+  delivers: { what: 'mechanisms', of: (a) => a.kind === 'mechanism' },
+};
+
+/** The paper's own stage-1 items behind a relation — never an addendum's, which are not the paper. */
+function extractedFor(all: Artefact[], relation: string): { relation: string; what: string; count: number; ids: string[] } | null {
+  const source = EXTRACTED_AS[relation];
+  if (!source) return null;
+  const ids = all.filter((a) => a.id.startsWith('s1_') && source.of(a)).map((a) => a.id);
+  return ids.length ? { relation, what: source.what, count: ids.length, ids } : null;
+}
+
+/**
+ * How many of those items a gap cites. They are its evidence — the reader can
+ * open the measures the paper stated — and a check with no references at all is
+ * discarded by triage, so without them the gap would vanish rather than be read.
+ */
+const GAP_REFS = 40;
+
 export function runPolicyTests(all: Artefact[], reach: number | GraphReach = 0): Artefact[] {
   const { discarded = 0, uncovered = 0 } = typeof reach === 'number' ? { discarded: reach } : reach;
   const graphLoss = Math.max(discarded, uncovered);
@@ -67,7 +111,17 @@ export function runPolicyTests(all: Artefact[], reach: number | GraphReach = 0):
     // 'high_risk' used to be unreachable: every shortfall, however total, read as
     // moderate. A check where EVERY relevant assertion lacks its counterpart, over
     // more than one assertion, is a different finding from one where some do.
-    const result = gutted || !relevant.length ? 'indeterminate'
+    // AN EXTRACTION GAP: the paper states what this check reads, and the graph
+    // this run built does not link it. Either the trigger relation is absent
+    // although stage 1 extracted what it is drawn from, or a counterpart is
+    // missing and the graph holds NO edge of that type at all while stage 1
+    // extracted what it is drawn from. Some edges of the type and some missing is
+    // a real shortfall: the graph could wire it, and here did not find it.
+    const gap = gutted ? null
+      : !relevant.length ? extractedFor(all, trigger)
+      : missing.length && !edges.some((e) => e.relation === counterpart) ? extractedFor(all, counterpart)
+      : null;
+    const result = gutted || gap || !relevant.length ? 'indeterminate'
       : !missing.length ? 'low_risk'
       : missing.length === relevant.length && relevant.length >= 2 ? 'high_risk'
       : 'moderate_risk';
@@ -75,13 +129,15 @@ export function runPolicyTests(all: Artefact[], reach: number | GraphReach = 0):
     const related = new Set(relevant.flatMap((e) => [e.fromId, e.toId]));
     const relevantModels = models.filter((m) => m.data.pattern === patterns[testId]);
     const relevantAssumptions = assumptions.filter((a) => a.refs.some((id) => related.has(id)) || relevantModels.some((m) => (m.data.assumptions as string[]).includes(a.id)));
-    const refs = [...new Set([...inputs, ...relevantAssumptions.map((a) => a.id), ...relevantModels.map((a) => a.id)])];
+    const refs = [...new Set([...inputs, ...relevantAssumptions.map((a) => a.id), ...relevantModels.map((a) => a.id), ...(gap?.ids.slice(0, GAP_REFS) ?? [])])];
     const label = (id: string | null) => all.find((a) => a.id === id)?.label ?? null;
     const named = [...new Set(missing.map((e) => label(e.fromId)).filter((n): n is string => !!n))].slice(0, 6);
     const extra = testId === 'coordination'
       ? ` ${conflictingReportingLines(edges).length} actor(s) have multiple reporting targets; whether these conflict needs institutional interpretation.` : '';
     const reasoning = gutted
       ? `${guttedReason}, so no verdict is available. Evidence is insufficient; this is not a pass.`
+      : gap
+      ? `This run could not make this check. The paper states ${gap.count} ${gap.what}, but the relationship graph built on this run records no ${gap.relation} link, so there was nothing to compare. This is a limit of this run, not a gap in the paper, and it is not a pass.`
       : !relevant.length
       ? 'No applicable graph assertion was extracted. Evidence is insufficient; this is not a pass.'
       : missing.length
@@ -92,7 +148,12 @@ export function runPolicyTests(all: Artefact[], reach: number | GraphReach = 0):
       rule: `${trigger} requires a corresponding ${counterpart}; absent trigger = indeterminate; missing counterpart = moderate review risk; matched = low structural risk.`,
       reasoning: reasoning + extra, result, severity: result === 'indeterminate' ? 'unknown' : result === 'high_risk' ? 'high' : result === 'moderate_risk' ? 'moderate' : 'low',
       actors: [...new Set(relevant.map((e) => e.fromId).filter((id): id is string => !!id))],
-      mitigation: named.length ? `${mitigation} Here that means: ${named.join(', ')}.` : mitigation,
+      mitigation: gap
+        ? `Nothing to change in the paper on this evidence. Read its ${gap.what} directly: this run did not link them into the graph.`
+        : named.length ? `${mitigation} Here that means: ${named.join(', ')}.` : mitigation,
+      // Where the check stands: a verdict drawn from the graph, or a limit of
+      // the run. The report and the stage facts read this, not the prose.
+      ...(gap ? { basis: 'extraction_gap', extracted: { relation: gap.relation, what: gap.what, count: gap.count } } : {}),
     }, { origin: 'structural_inference', confidence: relevant.length ? Math.min(0.6, ...relevant.map((e) => e.confidence ?? 0)) : null, refs });
   });
 }

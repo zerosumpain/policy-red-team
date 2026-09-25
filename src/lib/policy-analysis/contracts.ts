@@ -412,7 +412,10 @@ export const dataSchemas = {
   research_source: z.object({ questionId: text, retrievedAt: text, quality: text, qualityBasis: text, freshness: text, jurisdictionalRelevance: text, retrieval: z.enum(['full_text', 'search_excerpt']), gap: text }),
   evidence: z.object({ claimId: z.string().nullable(), mechanismId: z.string().nullable(), actorId: z.string().nullable(), assumptionId: z.string().nullable(), sourceId: text, evidenceType: text, result: z.enum(['supports', 'contradicts', 'mixed', 'insufficient']), sourceQuality: text, relevance: text, freshness: text, dispute: text }),
   model: z.object({ pattern: z.enum(PATTERNS), players: ids, strategies: strings, decisionOrder: text, information: text, costs: text, benefits: text, rewards: text, sanctions: text, dependencies: ids, assumptions: ids.min(1), responses: strings, equilibria: strings, explanation: text, applicability: text }),
-  test: z.object({ testId: text, rationale: text, inputs: ids, rule: text, reasoning: text, result: z.enum(['low_risk', 'moderate_risk', 'high_risk', 'indeterminate']), severity: z.enum(['low', 'moderate', 'high', 'unknown']), actors: ids, mitigation: text }),
+  // `basis` and `extracted` are written by `tests.ts`, never by a model: a check
+  // the run could not make because its own graph did not link what the paper
+  // states is an EXTRACTION GAP, and says which relation and how many items.
+  test: z.object({ testId: text, rationale: text, inputs: ids, rule: text, reasoning: text, result: z.enum(['low_risk', 'moderate_risk', 'high_risk', 'indeterminate']), severity: z.enum(['low', 'moderate', 'high', 'unknown']), actors: ids, mitigation: text, basis: z.literal('extraction_gap').optional(), extracted: z.object({ relation: text, what: text, count: z.number().int().positive() }).optional() }),
   scenario: z.object({ scenario: z.enum(SCENARIOS), changedConditions: text, firstActor: z.string().nullable(), strategy: text, downstreamEffects: strings, affectedOutcomes: ids, detectability: text, correction: text, weaknesses: strings, assumptions: ids.min(1), sensitivity: strings.min(1) }),
   exploit: z.object({
     actorId: text, motivation: text, play: text, legality: z.enum(LEGALITY),

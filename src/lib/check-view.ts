@@ -55,6 +55,12 @@ export type CheckRow = {
   mitigation: string;
   /** The check could not decide, and the reason is that its trigger is never stated. */
   neverStated: boolean;
+  /**
+   * The check could not decide because THIS RUN'S graph did not link what the
+   * paper states — a limit of the run, not a finding about the paper. Never
+   * also `neverStated`: the whole point is that the paper does state it.
+   */
+  extractionGap: boolean;
 };
 
 export type CheckLedger = {
@@ -96,6 +102,7 @@ export function checkLedger(
     const found = RULE.exec(rule);
     const trigger = at(found?.[1]);
     const result = str(artefact.data.result);
+    const extractionGap = artefact.data.basis === 'extraction_gap';
     return {
       artefact,
       result,
@@ -104,7 +111,8 @@ export function checkLedger(
       rule,
       reasoning: str(artefact.data.reasoning),
       mitigation: str(artefact.data.mitigation),
-      neverStated: result === 'indeterminate' && trigger !== null && trigger.count === 0,
+      neverStated: result === 'indeterminate' && !extractionGap && trigger !== null && trigger.count === 0,
+      extractionGap,
     };
   });
 
@@ -137,6 +145,21 @@ function ledgerReading(rows: CheckRow[]): string | null {
   const stuck = rows.filter((row) => row.result === 'indeterminate');
   if (!stuck.length) return null;
   const never = stuck.filter((row) => row.neverStated).length;
+  const gaps = stuck.filter((row) => row.extractionGap).length;
+  /*
+   * A RUN'S OWN GAP IS SAID AS ONE. "The paper never states the relation" was
+   * the reading for every stuck check whose relation the graph lacked — and on
+   * the run that prompted phase 19 the paper stated 39 measures the graph never
+   * linked. Those checks now carry `extractionGap`, and the sentence says whose
+   * limit it is.
+   */
+  if (gaps) {
+    const parts = [
+      ...(never ? [`${never} because the paper never states the relation ${never === 1 ? 'it tests' : 'they test'}`] : []),
+      `${gaps} because this run did not link what the paper does state — a limit of this run, not of the paper`,
+    ];
+    return `${stuck.length} of the ${rows.length} checks could not decide: ${parts.join('; ')}.`;
+  }
   if (never === stuck.length) {
     return `${stuck.length} of the ${rows.length} checks could not run: the paper never states `
       + `${stuck.length === 1 ? 'the relation it tests' : 'the relations they test'}.`;

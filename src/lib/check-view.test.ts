@@ -95,6 +95,20 @@ describe('checkLedger', () => {
     expect(checkLedger([world().checks[0]], world().graph, RESULTS).reading).toBeNull();
   });
 
+  it('says a gap in this run is the run’s, never that the paper is silent', () => {
+    // Phase 19: the paper stated 39 measures and the graph linked none. That
+    // check is an extraction gap, and "the paper never states it" would be false.
+    const gap = { ...check('t8', 'is_accountable_for', 'is_measured_by', 'indeterminate') };
+    gap.data = { ...gap.data, basis: 'extraction_gap', extracted: { relation: 'is_measured_by', what: 'measures', count: 39 } };
+    const delivered = { ...check('t9', 'delivers', 'can_adapt', 'indeterminate') };
+    delivered.data = { ...delivered.data, basis: 'extraction_gap', extracted: { relation: 'delivers', what: 'mechanisms', count: 12 } };
+    const { rows, reading } = checkLedger([...world().checks, gap, delivered], world().graph, RESULTS);
+    expect(rows.map((row) => [row.extractionGap, row.neverStated])).toEqual([
+      [false, false], [false, false], [false, true], [false, true], [true, false], [true, false],
+    ]);
+    expect(reading).toBe('4 of the 6 checks could not decide: 2 because the paper never states the relation they test; 2 because this run did not link what the paper does state — a limit of this run, not of the paper.');
+  });
+
   it('gives up cleanly on a rule it does not recognise', () => {
     const odd = artefact('t7', 'test', 'Odd', 'Statement.', { result: 'indeterminate', rule: 'Something else entirely.' });
     const { rows } = checkLedger([odd], world().graph, RESULTS);

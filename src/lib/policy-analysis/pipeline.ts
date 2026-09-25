@@ -797,6 +797,11 @@ export async function executeStage(input: StageInput, deps: PipelineDeps): Promi
     await attempt('main', fitOnce(inventory, claims), 'Evidence drawn from the policy document itself', { protect: claims });
   } else if (stage === 8) {
     output.artefacts = runPolicyTests(input.artefacts, { discarded: input.graphLoss ?? 0, uncovered: graphUncovered(input.artefacts) });
+    // Said once, as a limit of the run and in the sentence `stage-facts.ts`
+    // counts — "N of 12 … were not assessed" — so it is filed as something this
+    // run did not cover, never as a question the paper failed to answer.
+    const gaps = output.artefacts.filter((a) => a.data.basis === 'extraction_gap');
+    if (gaps.length) output.warnings.push(`${gaps.length} of ${output.artefacts.length} structural checks were not assessed: ${gaps.map((a) => a.label).join(', ')}. The paper states what ${gaps.length === 1 ? 'it tests' : 'they test'}, but the relationship graph built on this run did not link it. This is a limit of this run, not a gap in the paper.`);
   } else if (stage === 10) {
     // Every resolved actor with a profile is a candidate for the red team, and
     // `limits.actors` bounds how many get one. The most connected go first —

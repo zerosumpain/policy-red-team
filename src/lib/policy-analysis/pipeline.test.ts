@@ -604,6 +604,55 @@ describe('the persona library fans out like every other stage', () => {
   });
 });
 
+/**
+ * A THIN GRAPH IS A LIMIT OF THE RUN, NOT A DEFECT IN THE PAPER. On the run the
+ * review of 25 September 2026 read, observability said "43 of 43 … no
+ * is_measured_by → high risk" while stage 1 had extracted 39 measures.
+ */
+describe('a structural check says "extraction gap" when the paper states what the graph did not link', () => {
+  // Everything traces to a passage, or triage discards the checks that cite it.
+  const passage = artefact('passage_0001', 'passage', 'Page 1', 'The paper.', {}, { origin: 'extracted_fact', confidence: 1 });
+  const accountable = Array.from({ length: 3 }, (_, i) => artefact(`s3_${i}_edge`, 'edge', 'Accountable', 'x', { notes: 'x' }, { fromId: `s2_${i}`, toId: 's1_0_mech', relation: 'is_accountable_for', confidence: 0.8, refs: [passage.id] }));
+  const measures = Array.from({ length: 4 }, (_, i) => artefact(`s1_${i}_measure`, 'claim', `Measure ${i}`, 'A measure.', { category: 'measure', notes: 'n' }, { refs: [passage.id] }));
+  const observability = (all: Artefact[]) => runPolicyTests(all).find((t) => t.data.testId === 'observability')!;
+
+  it('files a missing counterpart as a gap in this run when stage 1 extracted what it is drawn from', () => {
+    const check = observability([...accountable, ...measures]);
+    expect(check.data.result).toBe('indeterminate');
+    expect(check.data.basis).toBe('extraction_gap');
+    expect(check.data.extracted).toEqual({ relation: 'is_measured_by', what: 'measures', count: 4 });
+    expect(check.statement).toMatch(/The paper states 4 measures/);
+    expect(check.statement).toMatch(/limit of this run, not a gap in the paper/);
+  });
+
+  it('still reports the paper when the paper itself states nothing', () => {
+    const check = observability(accountable);
+    expect(check.data.result).toBe('high_risk');
+    expect(check.data.basis).toBeUndefined();
+  });
+
+  it('keeps a real shortfall a finding: the graph wired the relation for some, and not the rest', () => {
+    const measured = { ...artefact('s3_9_edge', 'edge', 'Measured', 'x', { notes: 'x' }), fromId: 's2_0', toId: 's1_0_measure', relation: 'is_measured_by' as const, confidence: 0.8 };
+    const check = observability([...accountable, measured, ...measures]);
+    expect(check.data.result).toBe('moderate_risk');
+    expect(check.data.basis).toBeUndefined();
+  });
+
+  it('files an absent trigger as a gap too, and says so once as a counted limit of stage 8', async () => {
+    const mechanism = artefact('s1_0_mech', 'mechanism', 'A programme', 'x', { intervention: 'i', implementation: 'x', notes: 'n' }, { refs: [passage.id] });
+    // Mechanisms extracted, no `delivers` edge: adaptability could not be made.
+    const output = await executeStage({ stage: 8, title: 'T', jurisdiction: null, policyArea: null, context: null, artefacts: [passage, mechanism, ...accountable, ...measures] }, { model: vi.fn(), research: neverResearch, signal: new AbortController().signal });
+    const adaptability = output.artefacts.find((t) => t.data.testId === 'adaptability')!;
+    expect(adaptability.data.basis).toBe('extraction_gap');
+    // It cites what the paper stated, so it survives triage and can be opened.
+    expect(adaptability.refs).toContain(mechanism.id);
+    const gaps = output.artefacts.filter((t) => t.data.basis === 'extraction_gap').length;
+    const facts = stageFacts(output.warnings);
+    expect(facts.find((f) => f.kind === 'not_covered')).toMatchObject({ count: gaps, of: 12 });
+    expect(facts.some((f) => f.kind === 'open')).toBe(false);
+  });
+});
+
 describe('identity, graph and deterministic checks', () => {
   it('retains ambiguous same-name people as separate resolution candidates', () => {
     const a = artefact('mention_a', 'actor', 'Alex Smith', 'A synthetic source mention.', { entityType: 'person', aliases: [], mentions: [], ambiguity: 'Unknown', dates: [], parent: null });
