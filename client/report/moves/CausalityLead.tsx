@@ -3,7 +3,6 @@ import { BAND_LABEL, type Band, type Play } from '$lib/policy-analysis/view';
 import type { Artefact } from '$lib/policy-analysis/contracts';
 import { assumptionsFor, chainsFor, mechanismChart } from '$lib/mechanisms';
 import { filterPlays, mechanismsOf, narrowExcept, type Selection } from '../selection';
-import { BandKey } from '../Metrics';
 import { MechanismChain } from '../MechanismChain';
 import { useRoving } from '../useRoving';
 import { Details, InsetText } from '../../govuk';
@@ -41,17 +40,17 @@ import { Details, InsetText } from '../../govuk';
  */
 
 /**
- * HOW MANY BARS ARE DRAWN. The rest are a table.
+ * THE BARS ARE GONE; THE TABLE IS EVERY ROW (phase 19, workstream B).
  *
- * The chart drew 28 bars and 13 chips on the real assessment — 41 rows, about
- * two screens — and after the first ten every bar is two or three plays long,
- * the same length drawn eighteen times. Phase 19 caps the drawing at the ten
- * that differ and puts the rest in a table behind a details, where every one
- * is still selectable. A later workstream replaces the lead with a pattern ×
- * mechanism grid; until then this is the shortest honest form.
+ * R capped the drawing at the ten bars that differed and put the other 31 in
+ * a table behind a details, and said a later workstream would replace the
+ * drawing with a pattern × mechanism grid. It has: the grid leads Threats, its
+ * columns are the twelve parts of the policy most aimed at, and a column
+ * number there is the same selection a bar was. What stays here is the table,
+ * now of every row, because it is the only place every part of the policy a
+ * way to beat it rests on is listed and selectable — and it is ONE tab stop,
+ * with arrow keys inside it, for the reason `useRoving` gives.
  */
-const DRAWN = 10;
-
 const BANDS = ['severe', 'significant', 'moderate', 'limited'] as const;
 
 /** "3 severe · 2 significant · 1 limited" — the split, in words, for the row. */
@@ -111,8 +110,7 @@ export function CausalityLead({ artefacts, list, selection, onSelect, mechanismI
    * barely differ, so drawing them compares nothing. Every row of the table is
    * still a selection control — nothing is lost from the carried selection.
    */
-  const bars = rows.slice(0, DRAWN);
-  const tail = rows.slice(DRAWN);
+  const tail = rows;
 
   const selectedId = selection?.kind === 'mechanism' ? selection.id : null;
   const selected = selectedId ? byId.get(selectedId) ?? null : null;
@@ -135,7 +133,7 @@ export function CausalityLead({ artefacts, list, selection, onSelect, mechanismI
     [list, selection, mechanismIds],
   );
 
-  const barRoving = useRoving(bars.length, bars.findIndex((row) => row.id === selectedId));
+  const tableRoving = useRoving<HTMLTableSectionElement>(tail.length, tail.findIndex((row) => row.id === selectedId));
 
   /*
    * NEVER SCROLL A TARGET ALREADY ON SCREEN. Two nested frames because the
@@ -156,7 +154,6 @@ export function CausalityLead({ artefacts, list, selection, onSelect, mechanismI
 
   if (!rows.length && !orphans.length) return null;
 
-  const widest = bars[0]?.plays.length ?? 1;
   const onMechanism = counted.length - orphans.length;
   const resting = selectedId ? assumptions.get(selectedId)?.size ?? 0 : 0;
   /** The mechanism resting on the most unestablished assumptions, among those drawn. */
@@ -187,7 +184,7 @@ export function CausalityLead({ artefacts, list, selection, onSelect, mechanismI
         {pairs > onMechanism
           ? ` One can rest on more than one part, so the counts below add up to ${pairs} rather than ${onMechanism}.`
           : ''}
-        {tail.length ? ` The ${bars.length} with the most are drawn; the other ${tail.length} are in a table below.` : ''}
+        {' '}Which kinds of way to beat it land on each is the grid at the top of Threats.
       </p>
 
       {selected ? (
@@ -258,104 +255,11 @@ export function CausalityLead({ artefacts, list, selection, onSelect, mechanismI
         </div>
       ) : null}
 
-      {bars.length ? (
-        <ul
-          className="prt-nodebars prt-nodebars--mechanisms"
-          /* A COMPOSITE CONTROL, WHICH IS WHAT IT ALWAYS WAS. See `useRoving`
-             for why this is a toolbar and not a radiogroup, and for the 22
-             leading tab stops that made the case. `role="presentation"` on the
-             items is the same pairing `Tabs` uses for its tablist, and the
-             reason axe stays clean about a list whose children have had their
-             semantics taken away. */
-          role="toolbar"
-          aria-orientation="vertical"
-          aria-label="Parts of the policy by how many ways to beat it rest on each"
-          ref={barRoving.container}
-          onKeyDown={barRoving.onKeyDown}
-        >
-          {bars.map((row, index) => {
-            const mechanism = byId.get(row.id);
-            const label = mechanism?.label ?? row.id;
-            const isSelected = row.id === selectedId;
-            const split = splitOf(row.plays);
-            return (
-              <li key={row.id} className="prt-nodebar" role="presentation">
-                <button
-                  type="button"
-                  data-roving=""
-                  className="prt-nodebar__name"
-                  aria-pressed={isSelected}
-                  tabIndex={barRoving.tabIndexFor(index)}
-                  onClick={() => select({ id: row.id, label }, isSelected)}
-                >
-                  {label}
-                </button>
-                {/* THE BAR IS THE TRACK AND THE FILL IS INSIDE IT. It used to be
-                    the fill alone, sized by an inline percentage in a
-                    `minmax(0, 1fr)` column, so a one-play stub was a mark
-                    floating in about 310px of bare page with no ceiling to read
-                    it against — while the exposure bars 800px away have had a
-                    track since they were drawn. */}
-                <span className="prt-nodebar__bar" aria-hidden="true">
-                  <span
-                    className="prt-nodebar__fill"
-                    style={{ width: `${(row.plays.length / widest) * 100}%` }}
-                  >
-                    {split.map((entry) => (
-                      <span
-                        key={entry.band}
-                        className={`prt-nodebar__seg prt-band--${entry.band}`}
-                        style={{ flexGrow: entry.n }}
-                      />
-                    ))}
-                  </span>
-                </span>
-                <span className="prt-nodebar__n">
-                  <strong>{row.plays.length}</strong> {row.plays.length === 1 ? 'way' : 'ways'}
-                  {/* THE SPLIT IS VISIBLE TEXT NOW, not a hidden span. Two bars
-                      both reading "2 plays" were 1 severe + 1 moderate and 2
-                      significant, and the only thing separating them was two
-                      steps of a ramp whose lighter half sits below 3:1 against
-                      the page. A screen reader was told; nobody looking at it
-                      was. */}
-                  <span className="prt-nodebar__split">
-                    {split.map((entry) => `${entry.n} ${BAND_LABEL[entry.band].toLowerCase()}`).join(' · ')}
-                  </span>
-                </span>
-              </li>
-            );
-          })}
-        </ul>
-      ) : null}
-
-      {/* THE PLAYS NO MECHANISM CLOSES, drawn as the last row of the chart
-          rather than dropped out of it. Not a control: `Selection` has three
-          kinds and none of them can express "the complement of every
-          mechanism", so a fourth would have to be threaded through the URL and
-          all five moves for one row. The dashed rule and the black, unlinked
-          name are what say it is not one. */}
+      {/* THE PLAYS NO MECHANISM CLOSES, said rather than dropped. Not a
+          control: no kind of selection can express "the complement of every
+          mechanism". */}
       {orphans.length ? (
         <>
-          <div className="prt-nodebar prt-nodebar--none">
-            <span className="prt-nodebar__none">No named part of the policy</span>
-            <span className="prt-nodebar__bar" aria-hidden="true">
-              <span className="prt-nodebar__fill" style={{ width: `${Math.min(orphans.length / widest, 1) * 100}%` }}>
-                {splitOf(orphans).map((entry) => (
-                  <span
-                    key={entry.band}
-                    className={`prt-nodebar__seg prt-band--${entry.band}`}
-                    style={{ flexGrow: entry.n }}
-                  />
-                ))}
-              </span>
-            </span>
-            <span className="prt-nodebar__n">
-              <strong>{orphans.length}</strong> {orphans.length === 1 ? 'way' : 'ways'}
-              <span className="prt-nodebar__split">
-                {splitOf(orphans).map((entry) => `${entry.n} ${BAND_LABEL[entry.band].toLowerCase()}`).join(' · ')}
-              </span>
-            </span>
-          </div>
           <Details summary={`The ${orphans.length} ${orphans.length === 1 ? 'way to beat it that names' : 'ways to beat it that name'} no part of the policy`}>
             <p className="govuk-body-s">
               These name no part of the policy, so no bar can carry them and selecting a part never
@@ -374,47 +278,41 @@ export function CausalityLead({ artefacts, list, selection, onSelect, mechanismI
       ) : null}
 
       {tail.length ? (
-        <Details summary={`The other ${tail.length} parts of the policy`}>
-          <table className="govuk-table prt-mechtail">
-            <caption className="govuk-table__caption govuk-table__caption--s govuk-visually-hidden">
-              The other {tail.length} parts of the policy, by how many ways to beat it rest on each
-            </caption>
-            <thead className="govuk-table__head">
-              <tr className="govuk-table__row">
-                <th scope="col" className="govuk-table__header">Part of the policy</th>
-                <th scope="col" className="govuk-table__header govuk-table__header--numeric">Ways to beat it</th>
-                <th scope="col" className="govuk-table__header">How exposed</th>
-              </tr>
-            </thead>
-            <tbody className="govuk-table__body">
-              {tail.map((row) => {
-                const isSelected = row.id === selectedId;
-                return (
-                  <tr key={row.id} className="govuk-table__row">
-                    <th scope="row" className="govuk-table__header">
-                      {/* Still a selection control, as every row of the chart is:
-                          a button, pressed when it is the carried selection. */}
-                      <button type="button" className="prt-chips__chip" aria-pressed={isSelected}
-                              onClick={() => select({ id: row.id, label: nameOf(row.id) }, isSelected)}>
-                        {nameOf(row.id)}
-                      </button>
-                    </th>
-                    <td className="govuk-table__cell govuk-table__cell--numeric">{row.plays.length}</td>
-                    <td className="govuk-table__cell">
-                      {splitOf(row.plays).map((entry) => `${entry.n} ${BAND_LABEL[entry.band].toLowerCase()}`).join(' · ')}
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </Details>
+        <table className="govuk-table prt-mechtail">
+          <caption className="govuk-table__caption govuk-table__caption--s">
+            All {tail.length} parts of the policy a way to beat it rests on, most first
+          </caption>
+          <thead className="govuk-table__head">
+            <tr className="govuk-table__row">
+              <th scope="col" className="govuk-table__header">Part of the policy</th>
+              <th scope="col" className="govuk-table__header govuk-table__header--numeric">Ways to beat it</th>
+              <th scope="col" className="govuk-table__header">How exposed</th>
+            </tr>
+          </thead>
+          <tbody className="govuk-table__body" ref={tableRoving.container} onKeyDown={tableRoving.onKeyDown}>
+            {tail.map((row, index) => {
+              const isSelected = row.id === selectedId;
+              return (
+                <tr key={row.id} className="govuk-table__row">
+                  <th scope="row" className="govuk-table__header">
+                    {/* Still a selection control, as every row of the chart is:
+                        a button, pressed when it is the carried selection. */}
+                    <button type="button" className="prt-chips__chip" aria-pressed={isSelected}
+                            data-roving="" tabIndex={tableRoving.tabIndexFor(index)}
+                            onClick={() => select({ id: row.id, label: nameOf(row.id) }, isSelected)}>
+                      {nameOf(row.id)}
+                    </button>
+                  </th>
+                  <td className="govuk-table__cell govuk-table__cell--numeric">{row.plays.length}</td>
+                  <td className="govuk-table__cell">
+                    {splitOf(row.plays).map((entry) => `${entry.n} ${BAND_LABEL[entry.band].toLowerCase()}`).join(' · ')}
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
       ) : null}
-
-      {/* The bars stack four bands and said nowhere what the shades were. A
-          ramp with no key is a decoration; the counts are already read out to
-          anyone not looking at it, so this is the same fact for anyone who is. */}
-      <BandKey label="Each bar is split by how exposed:" />
 
       {heaviest && (assumptions.get(heaviest.id)?.size ?? 0) > 0 ? (
         <p className="govuk-body">

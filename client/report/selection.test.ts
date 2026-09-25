@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { artefact } from '$lib/policy-analysis/contracts';
 import {
   describeSelection, filterPlays, isEmptyUnder, mechanismIdsOf, mechanismOf, mechanismsOf,
-  narrowExcept, nothingUnder, parseSelection,
+  narrowExcept, nothingUnder, parseSelection, selectionParam,
 } from './selection';
 import type { Play } from '$lib/policy-analysis/view';
 
@@ -91,7 +91,7 @@ describe('finding the mechanism a play hangs off', () => {
 
 describe('saying what is selected, in words', () => {
   it('states the unfiltered case as an invitation, not a blank', () => {
-    expect(describeSelection(null)).toMatch(/Select a level of exposure, a part of the policy or a body/);
+    expect(describeSelection(null)).toMatch(/Select a level of exposure, a kind of way to beat it, a part of the policy or a body/);
   });
 
   it('names the object rather than showing a bare chip', () => {
@@ -189,5 +189,44 @@ describe('the two play lists narrow by a band, which they did not', () => {
     const band = { kind: 'band', id: 'limited' } as const;
     expect(narrowExcept(list, band, ids, 'band')).toBe(list);
     expect(filterPlays(list, band, ids).map((p) => p.artefact.id)).toEqual(['p4']);
+  });
+});
+
+describe('a kind of way to beat it, from the pattern grid (phase 19)', () => {
+  // Labels chosen so `patternOf` files them: "cream" is picking the easy cases,
+  // "minimal" is doing the minimum that shows.
+  const pp = (id: string, label: string, targets: string[]): Play => ({
+    artefact: artefact(id, 'exploit', label, 'x', { targets }, { refs: targets }),
+    actor: null, band: 'severe', exposure: 0.5, factors: [],
+  });
+  const plays = [
+    pp('q1', 'Cream-skimming the easy learners', ['m1']),
+    pp('q2', 'Cream-skimming again', ['m2']),
+    pp('q3', 'Minimal visible compliance', ['m1']),
+  ];
+  const row = { kind: 'pattern', id: 'selective_take_up', label: 'Picking the easy cases' } as const;
+  const cell = { ...row, mechanism: { id: 'm1', label: 'Mechanism m1' } };
+
+  it('narrows to a row, and to a cell by what the play says it is aimed at', () => {
+    expect(filterPlays(plays, row, ids).map((p) => p.artefact.id)).toEqual(['q1', 'q2']);
+    expect(filterPlays(plays, cell, ids).map((p) => p.artefact.id)).toEqual(['q1']);
+  });
+
+  it('says both halves in one sentence, and the same in the negative', () => {
+    expect(describeSelection(cell)).toBe('Showing “picking the easy cases” aimed at “Mechanism m1”.');
+    expect(nothingUnder(cell)).toBe('Nothing here is “picking the easy cases” aimed at “Mechanism m1”.');
+  });
+
+  it('round-trips through the URL, and refuses a key or a mechanism that is not one', () => {
+    expect(selectionParam(cell)).toBe('pattern:selective_take_up@m1');
+    expect(parseSelection('pattern:selective_take_up@m1', mechanisms)).toEqual(cell);
+    expect(parseSelection('pattern:selective_take_up', mechanisms)).toEqual(row);
+    expect(parseSelection('pattern:not_a_pattern', mechanisms)).toBeNull();
+    expect(parseSelection('pattern:selective_take_up@p1', [...mechanisms, list[0].artefact])).toBeNull();
+  });
+
+  it('is left alone by the grid that sets it, and narrows every other picker', () => {
+    expect(narrowExcept(plays, row, ids, 'pattern')).toBe(plays);
+    expect(narrowExcept(plays, row, ids, 'band')).toHaveLength(2);
   });
 });

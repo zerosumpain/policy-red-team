@@ -27,12 +27,14 @@ import { useRef, useState, type KeyboardEvent, type RefObject } from 'react';
  * means the same thing as Right. Home and End are included because 41 rows is
  * long enough to want them.
  */
-export function useRoving(count: number, current: number): {
-  container: RefObject<HTMLUListElement | null>;
+export function useRoving<T extends HTMLElement = HTMLUListElement>(count: number, current: number): {
+  container: RefObject<T | null>;
   tabIndexFor: (index: number) => 0 | -1;
-  onKeyDown: (event: KeyboardEvent<HTMLUListElement>) => void;
+  onKeyDown: (event: KeyboardEvent<T>) => void;
 } {
-  const container = useRef<HTMLUListElement | null>(null);
+  // GENERIC SINCE PHASE 19: the pattern grid is a table, not a list, and is one
+  // tab stop for the same reason the mechanism bars were.
+  const container = useRef<T | null>(null);
   const [at, setAt] = useState(current > 0 ? current : 0);
 
   /*
@@ -54,7 +56,7 @@ export function useRoving(count: number, current: number): {
 
   const items = () => [...(container.current?.querySelectorAll<HTMLElement>('[data-roving]') ?? [])];
 
-  const onKeyDown = (event: KeyboardEvent<HTMLUListElement>) => {
+  const onKeyDown = (event: KeyboardEvent<T>) => {
     const step: Record<string, number> = { ArrowUp: -1, ArrowLeft: -1, ArrowDown: 1, ArrowRight: 1 };
     let next: number | null = null;
     if (event.key in step) next = (at + step[event.key] + count) % count;
