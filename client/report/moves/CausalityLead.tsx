@@ -68,7 +68,7 @@ function splitOf(plays: Play[]): { band: Band; n: number }[] {
  */
 const ABSENT = /does not (describe|specify|state)|not described|not specified|omits/i;
 
-export function CausalityLead({ artefacts, list, selection, onSelect, mechanismIds, linkTo }: {
+export function CausalityLead({ artefacts, list, selection, onSelect, mechanismIds, linkTo, offline }: {
   artefacts: Artefact[];
   list: Play[];
   selection: Selection;
@@ -77,6 +77,8 @@ export function CausalityLead({ artefacts, list, selection, onSelect, mechanismI
   mechanismIds: Set<string>;
   /** Optional, exactly as on `Report`: a report rendered without links still renders. */
   linkTo?: (artefact: Artefact, label?: string) => React.ReactNode;
+  /** The pack: every disclosure starts open, because Ctrl-F is its interface. */
+  offline?: boolean;
 }) {
   /*
    * COUNTED UNDER THE SELECTION, except when a mechanism is the selection — the
@@ -260,7 +262,7 @@ export function CausalityLead({ artefacts, list, selection, onSelect, mechanismI
           mechanism". */}
       {orphans.length ? (
         <>
-          <Details summary={`The ${orphans.length} ${orphans.length === 1 ? 'way to beat it that names' : 'ways to beat it that name'} no part of the policy`}>
+          <Details open={offline} summary={`The ${orphans.length} ${orphans.length === 1 ? 'way to beat it that names' : 'ways to beat it that name'} no part of the policy`}>
             <p className="govuk-body-s">
               These name no part of the policy, so no bar can carry them and selecting a part never
               reaches them. They are in the list on the Threats tab.

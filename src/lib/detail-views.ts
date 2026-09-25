@@ -1,5 +1,6 @@
 import type { Artefact } from './policy-analysis/contracts';
 import { runCost, type RunCost } from './policy-analysis/view';
+import { stepFlags } from './change-strip';
 
 /**
  * TWO NARROWER ANSWERS TO "GIVE ME THIS ASSESSMENT".
@@ -65,6 +66,11 @@ export function stubForReport(artefact: Artefact): Artefact {
   }
   if (artefact.kind === 'causal_chain') {
     if (typeof artefact.data?.mechanismId === 'string') data.mechanismId = artefact.data.mechanismId;
+    // The chain's own reading of where it breaks (stage 14 since prompt 3.2),
+    // drawn on its strip; and how each entry reads, from the UNCLIPPED text,
+    // so the clipped copy below is classified exactly as the pack's full one.
+    if (typeof artefact.data?.weakestLink === 'string') data.weakestLink = artefact.data.weakestLink;
+    data.stepFlags = stepFlags(artefact);
     for (const key of CHAIN_STEPS) {
       const steps = artefact.data?.[key];
       if (!Array.isArray(steps)) continue;

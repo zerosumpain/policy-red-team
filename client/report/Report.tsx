@@ -33,7 +33,7 @@ import { ChangeStrips } from './ChangeStrips';
 import { RestsOnWhat } from './RestsOnWhat';
 import { Glossary } from './Glossary';
 import { rankFindings } from '$lib/writeup-view';
-import { changeStrips } from '$lib/change-strip';
+import { changeStrips, programmeStrip } from '$lib/change-strip';
 import { NetworkSection } from './Network';
 import { StressLab } from './StressLab';
 import { Shares } from './Shares';
@@ -451,6 +451,8 @@ export function Report({ detail, offline, linkTo, onChanged }: {
     mechanismIds,
     6,
   ), [artefacts, list, mechanismIds]);
+  /** The programme's one logic model (stage 14, prompt 3.2 on), which leads the strips. */
+  const programme = useMemo(() => programmeStrip(artefacts), [artefacts]);
   /** The watch list narrows by everything selected, like the ranked list it sits under. */
   const watchPlays = useMemo(() => filterPlays(list, selection, mechanismIds), [list, selection, mechanismIds]);
 
@@ -621,16 +623,16 @@ export function Report({ detail, offline, linkTo, onChanged }: {
     <>
       <RestsOnWhat artefacts={artefacts} levers={levers} shown={shownConclusions} linkTo={link}
                    onStress={() => goTo('threats', 'stress')} />
-      <Details summary="Two ways to rank the assumptions, and why they disagree">
+      <Details summary="Two ways to rank the assumptions, and why they disagree" open={offline}>
         <Fragile artefacts={artefacts} levers={levers} />
       </Details>
     </>
   ) : null);
 
   lead('mechanisms', 'The parts of the policy most ways to beat it rest on', 'causality',
-    <CausalityLead artefacts={artefacts} list={list} selection={selection} onSelect={setSelection} mechanismIds={mechanismIds} linkTo={link} />);
+    <CausalityLead artefacts={artefacts} list={list} selection={selection} onSelect={setSelection} mechanismIds={mechanismIds} linkTo={link} offline={offline} />);
   section('change', 'How each part is meant to work', 'causality',
-    strips.length ? <ChangeStrips strips={strips} linkTo={link} /> : null,
+    strips.length || programme ? <ChangeStrips strips={strips} programme={programme} linkTo={link} /> : null,
     { count: { n: strips.length, noun: 'parts' } });
   lead('weights', 'Ways to beat it', 'threats',
     <ThreatsLead
@@ -693,7 +695,7 @@ export function Report({ detail, offline, linkTo, onChanged }: {
    * mechanism that sat under it are in the watch list now, one row per play.
    */
   section('scores', 'Every way to beat it, scored', 'threats', shownPlays.length ? (
-    <Details summary={`Show all ${shownPlays.length} with their four scores`}>
+    <Details summary={`Show all ${shownPlays.length} with their four scores`} open={offline}>
       <ScoresTable plays={shownPlays} linkTo={link} />
     </Details>
   ) : null);

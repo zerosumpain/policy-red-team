@@ -1,98 +1,13 @@
 @use "../govuk" as govuk;
 @use "../tokens" as *;
 
-// ── The mechanism chart's own rows ────────────────────────────────────────
+// ── The mechanism chart's rows went in phase 19 ───────────────────────────
 //
-// `_base.scss` builds the three-column nodebar grid, which `BarChart` now uses
-// too. Everything here belongs to the mechanism chart alone — the band split in
-// words, the wider figures column it needs, and the row for the plays no
-// mechanism accounts for — so it is scoped, and the shared vocabulary in
-// `parts/_nodebar-track` is not.
-
-// THE FIGURES COLUMN HOLDS TWO LINES NOW, so it gets a stated width.
-//
-// `auto` sized it to the longest count, about 5em. The band split — "3 severe ·
-// 2 significant · 1 limited" — is text, and left in an `auto` column it would
-// set the column to its own max-content and take about 230px off the bar on
-// every row including the eighteen whose split is two words long. Capped at
-// 13em, the three- and four-band rows wrap onto a second line and the rest do
-// not.
-//
-// The narrow collapse is restated because this selector is more specific than
-// the base's, media query or not: without it the grid would keep three columns
-// at 320px, where the base deliberately drops to one.
-.prt-nodebars--mechanisms .prt-nodebar,
-.prt-nodebar--none {
-  grid-template-columns: minmax(12em, 24em) minmax(0, 1fr) minmax(0, 13em);
-
-  @include govuk.govuk-media-query($until: tablet) {
-    grid-template-columns: 1fr;
-    gap: govuk.govuk-spacing(1);
-  }
-}
-
-// THE "NO NAMED MECHANISM" ROW IS THE LAST ROW OF THE CHART, so the list must
-// not put its own 25px bottom margin between the two. `:has()` pays for it only
-// where the row exists — a run in which every play cites a mechanism keeps the
-// spacing it has — and a browser too old for `:has()` falls back to a gap
-// rather than to nothing.
-.prt-nodebars--mechanisms:has(+ .prt-nodebar--none) {
-  margin-bottom: 0;
-}
-
-// A JOIN BETWEEN TWO BANDS NEEDS A LINE, and `.prt-stack__seg` has had one
-// since Move 1 was drawn. Computed from `BAND_FILL`, adjacent steps of the ramp
-// are 2.17:1 (severe/significant), 2.42:1 (significant/moderate) and 1.87:1
-// (moderate/limited) — all three below the 3:1 a graphical boundary needs — so
-// where two bands abut inside a bar the join is a gradient. "Improved
-// higher-education information", three plays split significant and moderate,
-// had effectively none.
-//
-// `last-child` drops the trailing rule so the fill ends on its own border
-// rather than a doubled one, exactly as the stacked bar does.
-.prt-nodebars--mechanisms .prt-nodebar__seg,
-.prt-nodebar--none .prt-nodebar__seg {
-  border-right: 1px solid govuk.govuk-colour("black");
-
-  &:last-child { border-right: 0; }
-}
-
-// THE SPLIT, IN WORDS, UNDER THE COUNT.
-//
-// Two bars both reading "2 plays" were 1 severe + 1 moderate and 2 significant,
-// and the only thing separating them was two steps of a ramp whose lighter half
-// sits below 3:1 against the page. It used to be in a `govuk-visually-hidden`
-// span, so the report told a screen-reader user which bands a bar held and told
-// nobody looking at it.
-.prt-nodebar__split {
-  display: block;
-  // `.prt-nodebar__n` is `white-space: nowrap`, which is right for "7 plays"
-  // and wrong for a sentence of up to four band names.
-  white-space: normal;
-  @include govuk.govuk-font($size: 16);
-  color: govuk.govuk-colour("black", $variant: "tint-25");
-}
-
-// ── The plays no mechanism accounts for ───────────────────────────────────
-//
-// Five of the forty-seven cite no mechanism at all. They used to be dropped by
-// `if (!id) continue`, so the bars summed to 42 under a report that says 47
-// everywhere else. They are the last row of the chart and they are NOT a
-// control: `Selection` has three kinds and none of them can express "the
-// complement of every mechanism".
-//
-// A DASHED RULE AND BLACK, UNLINKED TEXT ARE WHAT SAY SO. Every other name in
-// this chart is a link-coloured button; the one row that is not has to look
-// unlike them before it is reached, not after it fails to respond.
-.prt-nodebar--none {
-  border-top: 1px dashed govuk.govuk-colour("black", $variant: "tint-50");
-  margin-top: govuk.govuk-spacing(2);
-}
-
-.prt-nodebar__none {
-  @include govuk.govuk-font($size: 19, $weight: bold);
-  color: govuk.govuk-colour("black");
-}
+// The capped bars in Causes were replaced by the pattern grid that leads
+// Threats (`parts/_pgrid`), and their table there is every row now. Their
+// rules — the band split in words, the "no named part" row, the joins between
+// band segments — went with them; `npm run a11y` fails on a rule nothing
+// renders. `BarChart` keeps the shared track in `parts/_nodebar-track`.
 
 // ── The selected mechanism's block ────────────────────────────────────────
 //

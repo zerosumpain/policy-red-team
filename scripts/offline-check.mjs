@@ -151,9 +151,25 @@ try {
   // service, which is `overflow: hidden` — so the hidden text is out of Ctrl-F as
   // well as out of sight, and Ctrl-F is the only interface a single file:// page
   // has. A pack renders every section open.
-  const clipped = await page.evaluate(() =>
-    [...document.querySelectorAll('.prt-writeup__body')].filter((el) => el.scrollHeight > el.clientHeight + 2).length);
-  if (clipped) failures.push(`${clipped} write-up sections are clipped in the pack, so their text cannot be searched`);
+  //
+  // IT COUNTED A CLASS THAT NO LONGER EXISTS. `.prt-writeup__body` went with
+  // phase 19's write-up rewrite, so this matched nothing and could not fail —
+  // while the theory-of-change strips clamped each step to four lines with
+  // `overflow: hidden` in the pack too. It now measures what is there — the
+  // strip text and the findings appendix — and fails if it finds nothing to
+  // measure, so the next rename cannot silence it the same way.
+  const clipping = await page.evaluate(() => {
+    const measured = [...document.querySelectorAll('.prt-toc__text, .prt-appendix__item .govuk-details__text')];
+    return {
+      measured: measured.length,
+      clipped: measured.filter((el) => el.scrollHeight > el.clientHeight + 2 && getComputedStyle(el).overflow !== 'visible').length,
+      shut: document.querySelectorAll('.prt-appendix__item:not([open])').length,
+    };
+  });
+  if (!clipping.measured) failures.push('the clipping check found no strip text and no appendix to measure — it can no longer fail');
+  if (clipping.clipped) failures.push(`${clipping.clipped} blocks of text are clipped in the pack, so they cannot be searched`);
+  if (clipping.shut) failures.push(`${clipping.shut} findings in the appendix are shut in the pack`);
+  note(`nothing clipped: ${clipping.measured} blocks measured`);
 
   /*
    * EVERY CONTROL IN THE PACK GETS PRESSED.

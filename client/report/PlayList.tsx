@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import { BAND_LABEL, type Play } from '$lib/policy-analysis/view';
+import { BAND_LABEL, precedentOf, type Play } from '$lib/policy-analysis/view';
 import type { Artefact } from '$lib/policy-analysis/contracts';
 import { Details } from '../govuk';
 import { Bar } from './Metrics';
@@ -184,6 +184,23 @@ export function PlayList({ plays, linkTo, rank, trailing, exposureMax, rankValue
                     </p>
                   );
                 })}
+                {/*
+                  WHERE IT HAS HAPPENED BEFORE, AND WHETHER ANYONE CHECKED. It
+                  was printed on the drill page only, so the offline pack — which
+                  has no drill — never showed a precedent, nor the "not checked"
+                  that a precedent from the model's own recall must carry.
+                */}
+                {(() => {
+                  const precedent = precedentOf(play.artefact);
+                  if (!precedent.text.trim() || precedent.basis === 'none') return null;
+                  return (
+                    <p className="govuk-body-s prt-play__closing-line">
+                      <span className="prt-play__closing-label">Where it has happened before</span>
+                      {precedent.text}
+                      {precedent.label ? <strong> ({precedent.label})</strong> : null}
+                    </p>
+                  );
+                })()}
               </Details>
             </div>
           ) : null}

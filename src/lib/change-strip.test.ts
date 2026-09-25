@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { Artefact } from '$lib/policy-analysis/contracts';
-import { changeStrips, isBlank, isUnspecified, stripOf } from './change-strip';
+import { changeStrips, isBlank, isUnspecified, programmeStrip, stepNamed, stripOf } from './change-strip';
 
 const base = (id: string, kind: Artefact['kind'], data: Record<string, unknown> = {}, refs: string[] = []): Artefact => ({
   id, kind, label: `${id} title`, statement: '', origin: 'structural_inference', confidence: null, refs,
@@ -93,5 +93,26 @@ describe('changeStrips', () => {
 
   it('skips a mechanism whose chains carry no steps', () => {
     expect(changeStrips(artefacts, [{ id: 's1_mechanism_c', plays: 9 }], ids)).toEqual([]);
+  });
+});
+
+describe('the assessment\'s own weakest link, and the programme (stage 14, prompt 3.2)', () => {
+  it('finds the step a written weakest link names, and only when it names one', () => {
+    expect(stepNamed('The outcomes step: nothing measures whether learners progress.')).toBe(3);
+    expect(stepNamed('What goes in: the budget is not set.')).toBe(0);
+    expect(stepNamed('The jump from outputs to outcomes rests on employers joining.')).toBeNull();
+    expect(stepNamed('Employers may not join.')).toBeNull();
+  });
+
+  it('draws the programme logic model as one more strip of the same shape', () => {
+    const assumption = base('s1_assumption_a', 'assumption');
+    const model = base('s14_000_logic_model_001', 'logic_model', { ...stated, assumptions: [assumption.id], mechanismIds: ['m'], weakestLink: 'Impacts: no baseline for vacancies.' });
+    const strip = programmeStrip([assumption, model]);
+    expect(strip?.model.id).toBe(model.id);
+    expect(strip?.steps.map((s) => s.key)).toEqual(['inputs', 'activities', 'outputs', 'outcomes', 'impacts']);
+    expect(strip?.stated).toBe('Impacts: no baseline for vacancies.');
+    expect(strip?.statedStep).toBe(4);
+    expect(strip?.assumptions.map((a) => a.id)).toEqual([assumption.id]);
+    expect(programmeStrip([assumption])).toBeNull();
   });
 });
