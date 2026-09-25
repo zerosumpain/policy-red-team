@@ -8,7 +8,8 @@
 // the pure views have their own files.
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
-import { ASSURANCE_STAGE, ASSURED_SYNTHESIS_STAGE, SYNTHESIS_STAGE, type Artefact, type StageInput } from './contracts';
+import { ASSURANCE_CATEGORIES, ASSURANCE_STAGE, ASSURED_SYNTHESIS_STAGE, SYNTHESIS_STAGE, type Artefact, type StageInput } from './contracts';
+import { systemPrompt } from './prompts';
 import { executeStage } from './pipeline';
 import { ingest } from './server/ingest';
 import { fixtureModel } from '../../../tests/fixtures/policy-analysis/model';
@@ -64,5 +65,25 @@ describe('the stages that write about the plays are handed them as ranked patter
     const { sent, model } = recording();
     await executeStage(base(9, without(all, 9)), { model, research, signal, neighbours: none, personas: none });
     expect(sent.every((payload) => !('playPatterns' in payload))).toBe(true);
+  });
+});
+
+describe('the challenge looks for a useless report as hard as for a wrong one', () => {
+  it('sends a remit for each of the four new failures, with equal weight', () => {
+    const prompt = systemPrompt(ASSURANCE_STAGE);
+    for (const category of ['generic', 'actionability', 'sharpest_play', 'unanswered_play']) {
+      expect(ASSURANCE_CATEGORIES).toContain(category);
+      expect(prompt).toContain(`- ${category}: `);
+    }
+    expect(prompt).toContain('equal weight');
+    expect(prompt).toContain('Hedging is not a fix');
+  });
+
+  it('runs every remit as its own call', async () => {
+    const all = await inventory();
+    const { sent, model } = recording();
+    const result = await executeStage(base(ASSURANCE_STAGE, without(all, ASSURANCE_STAGE)), { model, research, signal, neighbours: none, personas: none });
+    expect(sent.map((s) => s.targetCategory)).toEqual([...ASSURANCE_CATEGORIES]);
+    expect(new Set(result.artefacts.map((a) => a.data.category)).size).toBe(ASSURANCE_CATEGORIES.length);
   });
 });

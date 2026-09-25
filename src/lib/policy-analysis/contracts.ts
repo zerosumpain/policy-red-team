@@ -353,7 +353,23 @@ export const RECONCILE_RELATIONS = ['confirms', 'extends', 'qualifies', 'contrad
 /** Where a conclusion stands once the material has been read against it. */
 export const REVISION_STATUSES = ['upheld', 'strengthened', 'weakened', 'overturned', 'superseded'] as const;
 export const JUDGEMENTS = ['well_supported', 'supported_with_limits', 'contested', 'provisional', 'unknown'] as const;
-export const ASSURANCE_CATEGORIES = ['omission', 'citation', 'causality', 'counterevidence', 'confidence', 'recommendation', 'completeness'] as const;
+/**
+ * The challenge remits, one call each, all with equal weight.
+ *
+ * The first seven test whether the report is WRONG. On the one completed real
+ * run they pushed it toward hedging: of five challenges raised as issues, three
+ * said "overconfident" or "under-evidenced", and the answer to each was a
+ * softer sentence — which is how the headline became "ambitious and potentially
+ * relevant … not decision-ready". Nothing asked whether the report was USEFUL.
+ *
+ * The last four do. `generic` — would this apply to any white paper?
+ * `actionability` — does it say who should decide or do what? `sharpest_play`
+ * — did it miss the play that matters most? `unanswered_play` — is a severe
+ * play left with no recommendation answering it? Appended, never inserted: a
+ * stored challenge carries its category as a string and nothing reads the
+ * position.
+ */
+export const ASSURANCE_CATEGORIES = ['omission', 'citation', 'causality', 'counterevidence', 'confidence', 'recommendation', 'completeness', 'generic', 'actionability', 'sharpest_play', 'unanswered_play'] as const;
 const text = z.string().min(1).max(12000);
 const strings = z.array(text).max(80);
 const ids = z.array(z.string().max(100)).max(10000);

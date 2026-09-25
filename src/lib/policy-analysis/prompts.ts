@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { ASSURANCE_STAGE, ASSURED_SYNTHESIS_STAGE, SYNTHESIS_STAGE, SHORT_PROFILE_FIELDS, dataSchemas, FOLLOW_UP_STAGES, indexedOutputSchema, isPassStage, modelKinds, passStep, RECONCILE_RELATIONS, REPORT_SECTIONS, REVISION_STATUSES, stageName, stageOutputSchema, PROMPT_VERSION, PATTERNS, PERSONA_TRAITS, SCENARIOS, CROSS_PATTERNS, type Extraction, type PassKind, RELATIONS } from './contracts';
+import { ASSURANCE_CATEGORIES, ASSURANCE_STAGE, ASSURED_SYNTHESIS_STAGE, SYNTHESIS_STAGE, SHORT_PROFILE_FIELDS, dataSchemas, FOLLOW_UP_STAGES, indexedOutputSchema, isPassStage, modelKinds, passStep, RECONCILE_RELATIONS, REPORT_SECTIONS, REVISION_STATUSES, stageName, stageOutputSchema, PROMPT_VERSION, PATTERNS, PERSONA_TRAITS, SCENARIOS, CROSS_PATTERNS, type Extraction, type PassKind, RELATIONS } from './contracts';
 import { EXPOSURE_FACTORS } from './exposure';
 import { RELATION_FAMILIES } from './glossary';
 import type { Rejection } from './validation';
@@ -52,6 +52,29 @@ const RELATION_GUIDE = RELATION_FAMILIES.map((family) =>
   `${family.label} — ${family.what}\n${family.relations.map((relation) => `  ${relation}: the first ${RELATION_MEANINGS[relation]}`).join('\n')}`,
 ).join('\n');
 
+/**
+ * WHAT EACH CHALLENGE REMIT TESTS, in the words the reviewer is given.
+ *
+ * Typed against `ASSURANCE_CATEGORIES`, so a remit added to the contract without
+ * a description here fails to compile rather than being sent to a reviewer who
+ * does not know what it is for. The last four are phase 19's: the first seven
+ * only ever asked whether the report was wrong, never whether it was useful.
+ */
+const CHALLENGE_REMIT: Record<(typeof ASSURANCE_CATEGORIES)[number], string> = {
+  omission: 'an actor, impact or play the report leaves out that would change its conclusions',
+  citation: 'a citation that does not actually support the claim it is attached to',
+  causality: 'a causal leap — an outcome claimed without the steps that would produce it',
+  counterevidence: 'evidence against a conclusion that the report does not deal with',
+  confidence: 'a conclusion stated more strongly than its evidence allows',
+  recommendation: 'a recommendation that does not follow from the findings it cites',
+  completeness: 'an appraisal or evaluation that is missing a part the method needs',
+  generic: 'a finding or recommendation that would apply to any white paper — "pilot it first", "pre-register the measures", "publish an accountability matrix". Name the ones that say nothing specific to THIS policy, and what the specific version would say',
+  actionability: 'a finding or recommendation with no owner and no decision: it does not say who should do what, or which decision it bears on',
+  sharpest_play: 'the report missing its sharpest play: the exploitation play or pattern that ranks highest (see playPatterns, rank 1 leads) and that no finding names by id',
+  unanswered_play: 'a severe play that no recommendation answers — see playPatterns.unansweredSeverePlays. Name each one and say what answering it would take',
+};
+const CHALLENGE_REMITS = ASSURANCE_CATEGORIES.map((category) => `- ${category}: ${CHALLENGE_REMIT[category]}.`).join('\n');
+
 const instructions: Record<number, string> = {
   1: `Build a structured inventory covering ALL supplied passages: objectives, problem statements, interventions and implementation, named actors, responsibilities, decision rights, funding, dependencies, data flows, measures, legal/institutional constraints, assumptions, risks, expected benefits, claims and cited evidence. Create separate claim, mechanism, assumption and actor rows. At THIS stage a claim, mechanism or actor is a literal extraction: origin must be extracted_fact with a quote from the passage. Anything you infer, including a gap the paper leaves open, belongs in an assumption row instead — never a claim. Extract at least one mechanism and assumption, including an explicit uncertainty when the paper omits implementation details. An actor here is a source mention; entity resolution follows. Exact quotes are mandatory for extracted facts; extract from the supplied passage only. A paper's claim is not verified truth. Link related items with refs. Every assumption must refer to an affected actor or mechanism from this output.`,
   2: `Resolve source actor mentions into a canonical entity register. Use separate NEW actor IDs, retaining every mention through refs and mentions. Preserve aliases, type, dates, parent organisation and ambiguity. Do not infer identity from a shared name alone. Retain ambiguous identities separately and emit resolution_candidate records with candidate IDs and resolved=false. Create alias records pointing to canonical actors. Do not silently drop entities. If an "unclaimedMentions" list is supplied, those source mentions are the ONLY thing to resolve on this call: every one of them must end up in some actor's mentions, either a new canonical actor or by re-emitting an existing one from the supplied context with its mentions extended. Ignore everything else.`,
@@ -100,7 +123,12 @@ Keep \`observed\` to what TRAVELS between policies — what this body is, what i
   15: `APPRAISAL AND EVALUATION. Produce option_appraisal rows for all four option types: business_as_usual, minimum_intervention, proposed_policy and at least one alternative. Compare objective fit, social and financial costs and benefits, risks, distribution, affordability, deliverability and reversibility. Do not invent monetary values. State where comparison is impossible because the paper supplies no evidence. Also produce exactly one evaluation_plan covering process, impact and value-for-money questions, a defensible counterfactual, indicators with baselines, targets, data source, owner and cadence, decision rules and data gaps. "Not specified" is a valid and important answer. Link every option and the evaluation plan to causal chains, findings, evidence and assumptions. Use qualitative judgements only.
 
 If a "coverageGap" list is supplied, this is a SECOND call about an appraisal you have already written, and the list names the option types — and possibly the evaluation plan — that your previous response omitted. Return ONLY those artefacts, one for each entry, and nothing else. Everything else you produced is already recorded and must not be restated.`,
-  16: `INDEPENDENT CHALLENGE. Act as the second analytical reviewer, separate from the analyst who produced the supplied findings. Review only targetCategory. Produce exactly one assurance_challenge. Set finding=issue when a material weakness exists, otherwise finding=cleared and explain the test that cleared it. Check the strongest relevant conclusion, not an easy example. Inspect provenance rather than trusting a citation count. Test for omitted actors or impacts, a citation that does not entail the claim, an unsupported causal leap, neglected counter-evidence, confidence stronger than the evidence, a recommendation that does not follow, or incomplete appraisal according to the assigned category. Name the target artefact IDs and cite the evidence used in refs. Do not rewrite the report and do not assume that an automated review is formal human assurance.`,
+  16: `INDEPENDENT CHALLENGE. Act as the second analytical reviewer, separate from the analyst who produced the supplied findings. Review only targetCategory. Produce exactly one assurance_challenge. Set finding=issue when a material weakness exists, otherwise finding=cleared and explain the test that cleared it. Check the strongest relevant conclusion, not an easy example. Inspect provenance rather than trusting a citation count. Name the target artefact IDs and cite the evidence used in refs. Do not rewrite the report and do not assume that an automated review is formal human assurance.
+
+What each category tests — they carry equal weight, and a report can fail any of them:
+${CHALLENGE_REMITS}
+
+A report can be too vague as easily as it can be too confident. Hedging is not a fix for a weakness: "may", "potentially" and "further work is needed" make a finding safer and less useful at the same time. Where a finding is weak, say what would make it SPECIFIC — the play, the body, the mechanism, the decision and who takes it — not what would make it more cautious. Your resolutionNeeded should ask for specificity wherever that is the problem.`,
   17: `ASSURED SYNTHESIS. Revise the INITIAL report after reading every causal chain, option appraisal, evaluation plan and independent challenge. Produce a complete replacement set of findings with revision=assured, including all report sections where evidence permits: ${REPORT_SECTIONS.join(', ')}. Every assured finding must name the initial findings it reviewed in reviewedFindingIds, the challenges that affected it in challengeIds, a qualitative judgement, resultIds and hypothesisIds; put every one of those identifiers in refs. Produce one assurance_response for every assurance_challenge, stating accepted, partly accepted, rejected or unresolved and what changed. Preserve disagreement where it remains. Produce replacement recommendations with revision=assured and one review_summary. The server recomputes the review_summary counts and decision-use level; do not use a numerical confidence or claim formal assurance. A recommendation is a normative judgement. An automated independent challenge can support decision use, but human sign-off and specialist legal, economic or scientific review remain outside scope.
 
 If a "coverageGap" list is supplied, this is a SECOND call about a report you have already written, and the list names assurance_challenge identifiers that your previous response left with no assurance_response. Return ONLY the missing assurance_response artefacts — exactly one for each identifier listed — and nothing else. Do not restate the findings, the recommendations or the review summary: they are already recorded, and repeating them would replace them with duplicates. Answer each challenge on its merits; "rejected" and "unresolved" are proper answers and a disposition you cannot support is worse than an honest refusal.`,

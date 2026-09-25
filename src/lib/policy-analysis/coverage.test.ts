@@ -169,7 +169,7 @@ describe('a gate that is still short degrades instead of ending the run', () => 
     // Nineteen sections of work is nineteen sections of work.
     expect(result.artefacts.filter((a) => a.kind === 'finding').length).toBeGreaterThan(10);
     expect(result.artefacts.some((a) => a.kind === 'review_summary')).toBe(true);
-    expect(result.warnings.join(' ')).toContain('1 of 7 independent challenges were not assessed');
+    expect(result.warnings.join(' ')).toContain(`1 of ${ASSURANCE_CATEGORIES.length} independent challenges were not assessed`);
   });
 
   it('still refuses a revised report that answered a minority of them', async () => {
