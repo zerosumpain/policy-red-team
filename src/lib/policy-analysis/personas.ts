@@ -2,8 +2,10 @@ import { assessIdentity, type IdentityDecision } from '$lib/jkai/intel/resolve/p
 import { isAcronymPair, normaliseName } from '$lib/jkai/intel/resolve/match';
 import { PERSONA_TRAITS, TRAIT_LABELS, type Artefact, type TraitKey } from './contracts';
 import { quotesDocument } from './query-guard';
+import { travellingValue, travelsOf } from './travels';
 
 export { PERSONA_TRAITS, TRAIT_LABELS, type TraitKey };
+export { travellingValue, travelsOf };
 
 /**
  * The persona library — a body the reader keeps meeting, remembered between
@@ -61,6 +63,8 @@ export type PersonaObservation = {
   note: string | null;
   /** That paper's own one-paragraph summary of the body. */
   summary?: string | null;
+  /** The document's hash, where the reader is shown it: two runs of one document are one paper. */
+  documentSha?: string | null;
   observedAt: string | null;
 };
 
@@ -236,50 +240,6 @@ export function onePerActor(links: Artefact[]): { kept: Artefact[]; dropped: num
   }
   return { kept: [...best.values()], dropped: links.length - best.size };
 }
-
-/**
- * WHAT TRAVELS TO ANOTHER POLICY, and what stays with this paper.
- *
- * Measured on the live library: dossiers held "£523 million annually for the
- * Families First Partnership" and "by 2028" as extracted facts — true of one
- * paper, and exactly what a persona read against a different policy next year
- * must not import. The prompt already said "keep the dossier to what travels";
- * a prompt is not a control, so this is.
- *
- * Sentence by sentence. A sentence carrying a money amount, a year, a month, a
- * percentage or the name of a programme is left out of the STANDING dossier and
- * kept in the paper's own observation, where it is true. The paper's own
- * programme names come from its `programme` actors; a capitalised
- * "… Programme / Partnership / Pilot / Initiative" is caught without them.
- */
-const PAPER_SPECIFIC: RegExp[] = [
-  /[£$€]\s?\d/,
-  /\b\d[\d,.]*\s?(?:million|billion|bn|m|k|thousand)\b/i,
-  /\b(?:19|20)\d{2}\b/,
-  /\b\d+(?:\.\d+)?\s?(?:%|per\s?cent)/i,
-  // A month only beside a number: "May direct a local authority" is a power, not a date.
-  /\b\d{1,2}(?:st|nd|rd|th)?\s+(?:January|February|March|April|May|June|July|August|September|October|November|December)\b|\b(?:January|February|March|April|May|June|July|August|September|October|November|December)\s+\d/,
-  /\b(?:[A-Z][\p{L}'’-]+\s+){1,5}(?:Programme|Partnership|Pilot|Initiative)s?\b/u,
-];
-
-const escapeRegExp = (v: string) => v.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-
-export function travellingValue(value: string, paperNames: string[] = []): string | null {
-  const own = paperNames
-    .map((n) => n.replace(/\s+/g, ' ').trim())
-    .filter((n) => n.length >= 4)
-    .map((n) => new RegExp(`\\b${escapeRegExp(n)}\\b`, 'i'));
-  const kept = value
-    .replace(/\s+/g, ' ')
-    .trim()
-    .split(/(?<=[.;!?])\s+/)
-    .filter((sentence) => sentence && !PAPER_SPECIFIC.some((re) => re.test(sentence)) && !own.some((re) => re.test(sentence)));
-  return kept.join(' ').trim() || null;
-}
-
-/** The travelling form of a trait, preferring what was computed when it was written. */
-export const travelsOf = (trait: PersonaTrait): string | null =>
-  trait.travels !== undefined ? (trait.travels || null) : travellingValue(trait.value);
 
 /**
  * THE STANDING DOSSIER, COMPUTED FROM WHAT IS LEFT.

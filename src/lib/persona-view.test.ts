@@ -233,3 +233,24 @@ describe('nothing at all', () => {
     expect(contested([])).toEqual([]);
   });
 });
+
+describe('phase 19: papers are compared on what travels, and counted by document', () => {
+  it('does not call two papers’ different budgets and deadlines a disagreement about the body', () => {
+    // Measured: dossiers carried "£523 million ... by 2028", so every paper that
+    // named its own figure read as contradicting every other.
+    const out = dossier([
+      sighting({ analysisTitle: 'One', traits: [trait('resources', 'Funds councils. Committed £523 million by 2028.')] }),
+      sighting({ analysisId: 'a2', analysisTitle: 'Two', traits: [trait('resources', 'Funds councils. Committed £40 million from April 2026.')] }),
+    ]);
+    expect(out.contested).toEqual([]);
+    expect(out.agreed).toEqual([{ key: 'resources', label: 'resources', value: 'Funds councils.', where: ['One', 'Two'] }]);
+  });
+
+  it('does not claim agreement between two runs of the same document', () => {
+    const out = dossier([
+      sighting({ id: 'o1', analysisId: 'a1', analysisTitle: 'Draft', documentSha: 'abc', traits: [trait('capacity', 'Stretched')] }),
+      sighting({ id: 'o2', analysisId: 'a2', analysisTitle: 'Draft, run again', documentSha: 'abc', traits: [trait('capacity', 'Stretched')] }),
+    ]);
+    expect(out.agreed).toEqual([]);
+  });
+});

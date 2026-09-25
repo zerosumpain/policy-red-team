@@ -434,6 +434,12 @@ export async function personaDetail(owner: string, id: string) {
   const analyses = analysisIds.length
     ? await db.select({ id: policyAnalyses.id, title: policyAnalyses.title, status: policyAnalyses.status, completedAt: policyAnalyses.completedAt, policyArea: policyAnalyses.policyArea }).from(policyAnalyses).where(and(eq(policyAnalyses.owner, owner), inArray(policyAnalyses.id, analysisIds)))
     : [];
+  // Each paper's document hash, so the page counts two runs of one document as
+  // one paper — the same rule `recountSightings` applies to the figure.
+  const shas = analysisIds.length
+    ? new Map((await db.select({ analysisId: policyDocuments.analysisId, sha256: policyDocuments.sha256 }).from(policyDocuments).where(inArray(policyDocuments.analysisId, analysisIds))).map((d) => [d.analysisId, d.sha256]))
+    : new Map<string, string>();
+  for (const o of observations) o.documentSha = o.analysisId ? shas.get(o.analysisId) ?? null : null;
   const persona = toRecord(row);
   const index = await registerIndex();
   const body: BodyFacts | null = persona.bodyId && index.bodies.get(persona.bodyId) ? bodyFacts(index.bodies.get(persona.bodyId)!, index) : null;
