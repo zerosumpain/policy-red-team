@@ -677,9 +677,17 @@ try {
   // The library only earns its place on the SECOND paper that names a body, so
   // the walk runs one — without which the page under test is the single case
   // where a dossier adds nothing the assessment did not already say.
+  //
+  // A DIFFERENT DOCUMENT, not the same file twice. Since phase 19 two runs of
+  // one document are one paper to the library — a redraft is not another
+  // policy — so resubmitting the fixture would rightly leave "seen in 1 paper".
   await page.goto(`http://127.0.0.1:${PORT}/new`, { waitUntil: 'networkidle' });
   await page.getByLabel('What is this paper called?', { exact: true }).fill('Walk second paper');
-  await page.getByLabel('The paper', { exact: true }).setInputFiles(path.join(ROOT, 'tests', 'fixtures', 'policy-analysis', 'policy.txt'));
+  const secondPaper = Buffer.concat([
+    await readFile(path.join(ROOT, 'tests', 'fixtures', 'policy-analysis', 'policy.txt')),
+    Buffer.from('\n\nThis note is a separate policy about the same Council.\n'),
+  ]);
+  await page.getByLabel('The paper', { exact: true }).setInputFiles({ name: 'second-policy.txt', mimeType: 'text/plain', buffer: secondPaper });
   await page.getByRole('button', { name: 'Start the assessment' }).click();
   await page.waitForURL('**/assessments/**', { timeout: 20000 });
   await page.getByRole('heading', { name: 'What it found' }).waitFor({ timeout: 120000 });
@@ -712,8 +720,55 @@ try {
       failures.push('personas: the dossier does not link back to both papers that named it');
     }
     if (!(await page.title()).startsWith(personaName)) failures.push('personas: the tab does not name the body');
+    if (!dossierText.includes('On the GOV.UK list of public bodies')) failures.push('personas: the dossier does not say where it stands on the GOV.UK list');
     await audit('/personas/:id');
     note(`dossier opens on "${personaName}", seen in two papers`);
+
+    /*
+     * 9b′ — WHO A BODY IS: the four pages a reader rules on identity with.
+     *
+     * Parameterised routes, so `npm run a11y` cannot reach them; this is the
+     * only gate that audits them. The walk splits one paper out into a record
+     * of its own and then combines the two again — the round trip leaves the
+     * library as it found it for anything later in the walk, and it proves the
+     * split, the merge and the rebuild through the real HTTP layer.
+     */
+    const personaUrl = page.url();
+    const personaId = personaUrl.split('/personas/')[1].split(/[?#/]/)[0];
+
+    await page.goto(`http://127.0.0.1:${PORT}/personas/${personaId}/register`, { waitUntil: 'networkidle' });
+    await page.getByRole('heading', { name: 'Which public body is this?', level: 1 }).waitFor({ timeout: 20000 });
+    await page.getByText(/Nothing on the list matches|Which of these is/).first().waitFor({ timeout: 20000 });
+    await audit('/personas/:id/register');
+
+    await page.goto(`http://127.0.0.1:${PORT}/personas/${personaId}/merge`, { waitUntil: 'networkidle' });
+    await page.getByRole('heading', { level: 1 }).waitFor({ timeout: 20000 });
+    await audit('/personas/:id/merge');
+
+    await page.goto(personaUrl, { waitUntil: 'networkidle' });
+    const split = page.getByRole('link', { name: /This paper meant a different body/ }).first();
+    if (!(await split.count())) {
+      failures.push('personas: a body seen in two papers offers no way to separate one of them');
+    } else {
+      await split.click();
+      await page.getByRole('heading', { name: 'Did this paper mean a different body?', level: 1 }).waitFor({ timeout: 20000 });
+      await audit('/personas/:id/sightings/:observationId');
+      await page.getByRole('button', { name: 'Yes, move it to its own record' }).click();
+      await page.waitForURL((u) => u.pathname.startsWith('/personas/') && !u.pathname.includes(personaId), { timeout: 20000 });
+      await page.getByRole('heading', { name: 'Where it has been seen', level: 2 }).waitFor({ timeout: 20000 });
+      const splitId = new URL(page.url()).pathname.split('/')[2];
+      if (!/seen in 1 paper\b/.test(await page.locator('#main-content').innerText())) failures.push('personas: the separated paper is not a record of its own');
+
+      await page.goto(`http://127.0.0.1:${PORT}/personas/${personaId}/merge/${splitId}`, { waitUntil: 'networkidle' });
+      await page.getByRole('heading', { name: 'Are these the same body?', level: 1 }).waitFor({ timeout: 20000 });
+      await audit('/personas/:id/merge/:other');
+      await page.getByLabel(/Yes — combine them into one record/).check();
+      await page.getByRole('button', { name: 'Save' }).click();
+      await page.waitForURL(`**/personas/${personaId}`, { timeout: 20000 });
+      await page.getByRole('heading', { name: 'Where it has been seen', level: 2 }).waitFor({ timeout: 20000 });
+      if (!/seen in 2 papers/.test(await page.locator('#main-content').innerText())) failures.push('personas: combining the two records again did not bring both papers back');
+      note('a paper separated into its own record and combined back, through the pages a reader would use');
+    }
   }
 
   // 9c — THE ADMIN PANEL, and the lock on it.

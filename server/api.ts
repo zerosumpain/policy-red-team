@@ -211,9 +211,30 @@ export async function handleApi(
 
   // The persona library. Before the /:id routes, or "personas" is read as an id.
   if (segments[0] === 'personas') {
-    const { listPersonas, personaDetail, removePersona } = await import('$lib/policy-analysis/server/personas');
+    const { affectedGroups, duplicateSuggestions, listPersonas, personaDetail, removePersona } = await import('$lib/policy-analysis/server/personas');
     if (segments.length === 1 && method === 'GET') {
-      sendJson(res, 200, { personas: await listPersonas(owner()), readOnly: isReadOnly() });
+      sendJson(res, 200, {
+        personas: await listPersonas(owner()),
+        // Phase 19: the groups of people papers named, kept apart from bodies,
+        // and the pairs of rows that may be one body recorded twice.
+        groups: await affectedGroups(owner()),
+        duplicates: await duplicateSuggestions(owner()),
+        readOnly: isReadOnly(),
+      });
+      return true;
+    }
+    /*
+     * GET /api/policy-analysis/personas/register?q= — search the GOV.UK list of
+     * organisations. Before `/:id`, or "register" is read as an id.
+     *
+     * PUBLIC DATA, so nothing here needs to be kept from anyone — but it is
+     * behind the reader gate with the rest of the API, because the page that
+     * asks is.
+     */
+    if (segments.length === 2 && segments[1] === 'register' && method === 'GET') {
+      const { searchBodies } = await import('$lib/policy-analysis/server/personas');
+      const q = (url.searchParams.get('q') ?? '').slice(0, 120);
+      sendJson(res, 200, { results: q.trim() ? await searchBodies(q) : [] });
       return true;
     }
     if (segments.length === 2 && method === 'GET') {
@@ -317,6 +338,46 @@ export async function handleApi(
         return researchPersona(owner(), segments[1], controller.signal);
       });
       sendJson(res, 200, result);
+      return true;
+    }
+    /*
+     * A READER'S RULINGS ON IDENTITY — phase 19.
+     *
+     *   POST …/personas/:id/merge     { other }             fold `other` into this one
+     *   POST …/personas/:id/different { other }             never offer these as one body again
+     *   POST …/personas/:id/body      { bodyId, verdict }   this is (or is not) that GOV.UK body
+     *   POST …/personas/:id/split     { observationId }     that paper meant a different body
+     *
+     * Mutations, so the read-only gate at the top of `handleApi` refuses every
+     * one of them, and the reader gate and cross-site check in `server/index.ts`
+     * stand in front as they do for every other write. None spends money.
+     */
+    if (segments.length === 3 && method === 'POST' && ['merge', 'different', 'body', 'split'].includes(segments[2])) {
+      const actions = await import('$lib/policy-analysis/server/personas');
+      const body = await readJson(req);
+      const text = (key: string) => (typeof body[key] === 'string' ? (body[key] as string).trim().slice(0, 200) : '');
+      const id = segments[1];
+      if (!(await personaDetail(owner(), id))) throw new HttpError(404, 'No such persona.');
+      if (segments[2] === 'merge') {
+        if (!text('other')) throw new HttpError(400, 'Choose the body to combine this one with.');
+        sendJson(res, 200, await actions.mergePersonas(owner(), id, text('other')));
+        return true;
+      }
+      if (segments[2] === 'different') {
+        if (!text('other')) throw new HttpError(400, 'Choose the body this one is not.');
+        await actions.markDifferent(owner(), id, text('other'));
+        sendJson(res, 200, { recorded: true });
+        return true;
+      }
+      if (segments[2] === 'body') {
+        const verdict = text('verdict');
+        if (!text('bodyId')) throw new HttpError(400, 'Choose an organisation from the list.');
+        if (verdict !== 'same' && verdict !== 'different') throw new HttpError(400, 'Say whether it is that organisation or not.');
+        sendJson(res, 200, await actions.linkBody(owner(), id, text('bodyId'), verdict));
+        return true;
+      }
+      if (!text('observationId')) throw new HttpError(400, 'Choose the paper to separate.');
+      sendJson(res, 200, await actions.splitSighting(owner(), id, text('observationId')));
       return true;
     }
     if (segments.length === 2 && method === 'DELETE') {

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router';
 import { dossier } from '$lib/persona-view';
-import { api, type PersonaDossier } from '../api';
+import { api, type BodyFacts, type PersonaDossier } from '../api';
 import { Button, ButtonGroup, Details, InsetText, SummaryList, Table, WarningText } from '../govuk';
 import { selectionParam } from '../report/selection';
 import { BandMark } from '../BandMark';
@@ -182,6 +182,34 @@ export function Persona() {
         </div>
       </div>
 
+      {/* WHO IT OFFICIALLY IS. Public data from GOV.UK, not drawn from any paper —
+          which is why it can sit at the top of a page that otherwise must not read
+          like a finding. */}
+      <section aria-labelledby="persona-register">
+        <h2 className="govuk-heading-m" id="persona-register">On the GOV.UK list of public bodies</h2>
+        <div className="govuk-grid-row">
+          <div className="govuk-grid-column-two-thirds">
+            {detail.body ? <RegisterFacts body={detail.body} /> : (
+              <p className="govuk-body">
+                The library has not matched this to a body on GOV.UK’s list. Not every body is on
+                it: councils, charities, companies and Parliament’s own offices are not.
+              </p>
+            )}
+            {detail.notBody.length ? (
+              <p className="govuk-body-s prt-meta">You said it is not: {detail.notBody.map((b) => b.name).join(', ')}.</p>
+            ) : null}
+            {!readOnly ? (
+              <p className="govuk-body">
+                <Link className="govuk-link" to={`/personas/${id}/register`}>
+                  {detail.body ? 'This is the wrong body' : 'Find it on the list'}
+                  <span className="govuk-visually-hidden"> for {persona.name}</span>
+                </Link>
+              </p>
+            ) : null}
+          </div>
+        </div>
+      </section>
+
       {/* WHAT ONLY A LIBRARY CAN SAY, and therefore what leads. */}
       {view.contested.length ? (
         <section aria-labelledby="persona-contested">
@@ -334,6 +362,16 @@ export function Persona() {
                   {sighting.plays.length ? ` · ${sighting.plays.length} ${sighting.plays.length === 1 ? 'play' : 'plays'}` : ''}
                 </p>
                 {sighting.note ? <p className="govuk-body">{sighting.note}</p> : null}
+                {/* THE SPLIT, for a paper that meant a different body. Only where
+                    there is something to split it from. */}
+                {!readOnly && view.sightings.length > 1 ? (
+                  <p className="govuk-body-s">
+                    <Link className="govuk-link" to={`/personas/${id}/sightings/${sighting.id}`}>
+                      This paper meant a different body
+                      <span className="govuk-visually-hidden"> ({sighting.title})</span>
+                    </Link>
+                  </p>
+                ) : null}
                 {sighting.traits.length ? (
                   <Details summary="What this paper said about it">
                     <SummaryList
@@ -419,6 +457,41 @@ export function Persona() {
         </div>
       </section>
 
+      <section aria-labelledby="persona-same">
+        <h2 className="govuk-heading-m" id="persona-same">Is another record the same body?</h2>
+        <div className="govuk-grid-row">
+          <div className="govuk-grid-column-two-thirds">
+            {detail.suggestions.length ? (
+              <>
+                <p className="govuk-body">These may be {persona.name} recorded twice:</p>
+                <ul className="govuk-list govuk-list--bullet">
+                  {detail.suggestions.map((s) => (
+                    <li key={s.id}>
+                      {readOnly ? s.name : (
+                        <Link className="govuk-link" to={`/personas/${id}/merge/${s.id}`}>
+                          Compare with {s.name}
+                        </Link>
+                      )}{' '}
+                      <span className="prt-meta">— {s.reason}</span>
+                    </li>
+                  ))}
+                </ul>
+              </>
+            ) : (
+              <p className="govuk-body">The library has not found another record that looks like this one.</p>
+            )}
+            {detail.notSameAs.length ? (
+              <p className="govuk-body-s prt-meta">You said it is not the same as: {detail.notSameAs.map((n) => n.name).join(', ')}.</p>
+            ) : null}
+            {!readOnly ? (
+              <p className="govuk-body">
+                <Link className="govuk-link" to={`/personas/${id}/merge`}>Combine it with another record</Link>
+              </p>
+            ) : null}
+          </div>
+        </div>
+      </section>
+
       {!readOnly ? (
         <section aria-labelledby="persona-forget">
           <h2 className="govuk-heading-m" id="persona-forget">Forget this body</h2>
@@ -458,6 +531,49 @@ export function Persona() {
           </div>
         </section>
       ) : null}
+    </>
+  );
+}
+
+/**
+ * What GOV.UK says about the body, in plain words.
+ *
+ * "Executive non-departmental public body" is spelled out, a closed body says
+ * why and what replaced it, and the parent department is named — the delivery
+ * hierarchy a policy paper almost never states. The licence line is the
+ * attribution the Open Government Licence asks for.
+ */
+function RegisterFacts({ body }: { body: BodyFacts }) {
+  const date = (iso: string | null) => (iso && !Number.isNaN(Date.parse(iso))
+    ? new Date(iso).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })
+    : null);
+  const closed = [
+    body.closedBecause,
+    date(body.closedOn) ? `Closed on ${date(body.closedOn)}.` : null,
+    body.replacedBy.length ? `Replaced by ${body.replacedBy.map((b) => b.name).join(' and ')}.` : null,
+  ].filter(Boolean).join(' ');
+  return (
+    <>
+      <SummaryList
+        rows={[
+          { key: 'Official name', value: `${body.name}${body.acronym ? ` (${body.acronym})` : ''}` },
+          { key: 'What kind of body', value: body.kind ? `${body.kind}${body.kindMeans ? ` — ${body.kindMeans}` : ''}` : 'Not given' },
+          { key: 'Part of', value: body.parents.length ? body.parents.map((p) => p.name).join(', ') : 'Not part of another body' },
+          { key: 'Status', value: body.open ? body.status : <>{body.status}. {closed}</> },
+          ...(body.url ? [{
+            key: 'GOV.UK page',
+            value: (
+              <a className="govuk-link" href={body.url} rel="noreferrer noopener external" target="_blank">
+                {body.name} on GOV.UK (opens in a new tab)
+              </a>
+            ),
+          }] : []),
+        ]}
+      />
+      <p className="govuk-body-s prt-meta">
+        From the GOV.UK list of organisations. Contains public sector information licensed under the
+        Open Government Licence v3.0.
+      </p>
     </>
   );
 }

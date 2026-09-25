@@ -45,6 +45,10 @@ const SetupSpend = lazy(() => import('./pages/Setup').then((m) => ({ default: m.
 const SetupSearch = lazy(() => import('./pages/Setup').then((m) => ({ default: m.SetupSearch })));
 const SetupEgress = lazy(() => import('./pages/Setup').then((m) => ({ default: m.SetupEgress })));
 const Persona = lazy(() => import('./pages/Persona').then((m) => ({ default: m.Persona })));
+const PersonaRegister = lazy(() => import('./pages/PersonaIdentity').then((m) => ({ default: m.PersonaRegister })));
+const PersonaMerge = lazy(() => import('./pages/PersonaIdentity').then((m) => ({ default: m.PersonaMerge })));
+const PersonaMergeConfirm = lazy(() => import('./pages/PersonaIdentity').then((m) => ({ default: m.PersonaMergeConfirm })));
+const PersonaSplit = lazy(() => import('./pages/PersonaIdentity').then((m) => ({ default: m.PersonaSplit })));
 const Gallery = lazy(() => import('./pages/Gallery').then((m) => ({ default: m.Gallery })));
 const Accessibility = lazy(() => import('./pages/Accessibility').then((m) => ({ default: m.Accessibility })));
 const About = lazy(() => import('./pages/About').then((m) => ({ default: m.About })));
@@ -87,6 +91,11 @@ export function App() {
       <Route path="/setup/egress" element={<Template backLink={{ href: '/setup' }}><SetupEgress /></Template>} />
       <Route path="/personas" element={<Template wide backLink={{ href: '/' }}><Personas /></Template>} />
       <Route path="/personas/:id" element={<Template wide backLink={{ href: '/personas', text: 'Back to the library' }}><Persona /></Template>} />
+      {/* Phase 19: a reader's rulings on who a body is. Routes, never dialogs. */}
+      <Route path="/personas/:id/register" element={<Template backLink={{ href: '/personas', text: 'Back to the library' }}><PersonaRegister /></Template>} />
+      <Route path="/personas/:id/merge" element={<Template backLink={{ href: '/personas', text: 'Back to the library' }}><PersonaMerge /></Template>} />
+      <Route path="/personas/:id/merge/:other" element={<Template backLink={{ href: '/personas', text: 'Back to the library' }}><PersonaMergeConfirm /></Template>} />
+      <Route path="/personas/:id/sightings/:observationId" element={<Template backLink={{ href: '/personas', text: 'Back to the library' }}><PersonaSplit /></Template>} />
       {/* The design system, kept as a route: it is what `npm run a11y` scans and
           the cheapest place to argue about a component before it is spread over
           five pages. */}
