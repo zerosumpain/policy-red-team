@@ -120,10 +120,10 @@ export function RunProfile({ analysis, stages, models, cost, offline }: {
       {stopped.length ? (
         <InsetText>
           <p className="govuk-body">
-            {stopped.length === 1 ? 'One stage did not finish' : `${stopped.length} stages did not finish`}
+            {stopped.length === 1 ? 'One step did not finish' : `${stopped.length} steps did not finish`}
             {': '}
-            {stopped.map((row) => `${row.name.toLowerCase()} (stage ${row.ordinal + 1})`).join(', ')}.
-            {' '}Everything below is what the run produced before that, and the work those stages
+            {stopped.map((row) => `${row.name.toLowerCase()} (step ${row.ordinal + 1})`).join(', ')}.
+            {' '}Everything below is what the run produced before that, and the work those steps
             would have written is absent rather than filled in.
           </p>
           {stopped.map((row) => (row.error ? (
@@ -137,7 +137,7 @@ export function RunProfile({ analysis, stages, models, cost, offline }: {
           Ran for <strong>{inWords(runMs)}</strong>, {utcInstant(from)} to {utcInstant(to)} UTC.
           {dominant ? (
             <>
-              {' '}The longest stage was <strong>{dominant.name}</strong> at {inWords(dominant.ms!)} —{' '}
+              {' '}The longest step was <strong>{dominant.name}</strong> at {inWords(dominant.ms!)} —{' '}
               {Math.round((dominant.ms! / runMs) * 100)}% of the whole run.
             </>
           ) : null}
@@ -146,8 +146,8 @@ export function RunProfile({ analysis, stages, models, cost, offline }: {
 
       {lopsided ? (
         <p className="govuk-body">
-          Two of the {rows.length} stages recorded {Math.round((concentrated / limits) * 100)}% of the{' '}
-          {limits.toLocaleString()} limits between them: {lopsided[0].name} ({lopsided[0].limits}) and{' '}
+          Two of the {rows.length} steps noted {Math.round((concentrated / limits) * 100)}% of the{' '}
+          {limits.toLocaleString()} gaps between them: {lopsided[0].name} ({lopsided[0].limits}) and{' '}
           {lopsided[1].name} ({lopsided[1].limits}). The rest are spread across the run.
         </p>
       ) : null}
@@ -161,9 +161,9 @@ export function RunProfile({ analysis, stages, models, cost, offline }: {
           would be describing a column that is not there. */}
       <p className="govuk-body-s prt-meta">
         {started
-          ? `Each stage is timed on its own wall clock, and the figure beside it is its share of the run.${
-            inSeries ? ' The elapsed times sum to the whole run, so the stages ran one after another.' : ''}`
-          : 'This copy carries no stage timings, so the ladder shows what each stage produced and what it recorded.'}
+          ? `Each step is timed on its own clock, and the figure beside it is its share of the run.${
+            inSeries ? ' The times add up to the whole run, so the steps ran one after another.' : ''}`
+          : 'This copy carries no step timings, so the ladder shows what each step produced and what it noted.'}
       </p>
 
       {selected && selectedRow ? (
@@ -195,7 +195,7 @@ export function RunProfile({ analysis, stages, models, cost, offline }: {
           { key: 'Sealed', value: analysis.sealed ? 'Yes — none of the paper is stored in the clear' : 'No' },
           ...(known
             ? [{
-                key: 'Stages',
+                key: 'Steps',
                 value: `${stages.filter((row) => row.status === 'completed').length} of ${stages.length} completed`,
               }]
             : []),
@@ -307,7 +307,7 @@ function StageDetail({ stage, row, runMs, onClear }: {
   return (
     <div className="prt-stagedetail">
       <h3 className="govuk-heading-s">
-        Stage {stage.ordinal + 1} of the pipeline — {stage.name}
+        Step {stage.ordinal + 1} of the run — {stage.name}
       </h3>
       {/* ONE SENTENCE PER FACT THIS READING ACTUALLY HAS. A pack made before the
           timings travelled has no duration and no artefact count, and a
@@ -321,7 +321,7 @@ function StageDetail({ stage, row, runMs, onClear }: {
             : `Ran for ${spent(row.ms)}${runMs ? `, ${Math.round((row.ms / runMs) * 100)}% of the run` : ''}`,
           row.kept === null
             ? null
-            : `minted ${row.kept.toLocaleString()} ${row.kept === 1 ? 'artefact' : 'artefacts'}`,
+            : `kept ${row.kept.toLocaleString()} ${row.kept === 1 ? 'item' : 'items'}`,
           `recorded ${row.limits} ${row.limits === 1 ? 'limit' : 'limits'}`,
         ].filter(Boolean).join(', ')}.
       </p>
@@ -353,7 +353,7 @@ function StageDetail({ stage, row, runMs, onClear }: {
       ) : null}
 
       <button type="button" className="prt-linkbutton" onClick={onClear}>
-        Show every stage again
+        Show every step again
       </button>
     </div>
   );

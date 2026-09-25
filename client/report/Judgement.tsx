@@ -25,7 +25,16 @@ import type { Artefact } from '$lib/policy-analysis/contracts';
  * the treatment is never carrying the meaning on its own.
  */
 export function Judgement({ artefact, className }: { artefact: Artefact; className?: string }) {
-  const { key, label } = judgementOf(artefact);
+  return <JudgementWord judgement={judgementOf(artefact)} className={className} />;
+}
+
+/**
+ * The same chip, from a judgement already worked out — the Verdict lead holds
+ * `KeyJudgement`s, and a key judgement from a later stage may have no finding
+ * artefact to read one from.
+ */
+export function JudgementWord({ judgement, className }: { judgement: { key: string; label: string }; className?: string }) {
+  const { key, label } = judgement;
   // A run whose findings carry no judgement and no confidence reads "Unknown",
   // which is a real answer and is drawn. Nothing is rendered only where the
   // function returns nothing at all, which it cannot — but an empty string is
@@ -33,7 +42,7 @@ export function Judgement({ artefact, className }: { artefact: Artefact; classNa
   if (!label) return null;
   return (
     <p className={`prt-judgement${key ? ` prt-judgement--${key}` : ''}${className ? ` ${className}` : ''}`}>
-      <span className="govuk-visually-hidden">Judgement: </span>{label}
+      <span className="govuk-visually-hidden">How well supported: </span>{label}
     </p>
   );
 }

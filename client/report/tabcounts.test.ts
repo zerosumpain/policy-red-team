@@ -27,11 +27,11 @@ const RUN: MoveSizes = {
 describe('moveCounts', () => {
   it('sizes the five moves of the real run', () => {
     expect(moveCounts(RUN)).toEqual({
-      verdict: '19 findings · 4 suggestions',
-      causality: '41 mechanisms · 106 relationships',
-      threats: '47 plays · 20 severe',
+      verdict: '19 findings · 4 recommendations',
+      causality: '41 parts · 106 links',
+      threats: '47 ways to beat it · 20 severe',
       actors: '12 bodies · 99 targets',
-      provenance: '270 limits recorded',
+      provenance: '270 gaps noted',
     });
   });
 
@@ -40,10 +40,10 @@ describe('moveCounts', () => {
       findings: 1, suggestions: 1, mechanisms: 1, relationships: 1,
       plays: 1, severe: 1, bodies: 1, targets: 1, limits: 1,
     });
-    expect(one.verdict).toBe('1 finding · 1 suggestion');
-    expect(one.causality).toBe('1 mechanism · 1 relationship');
+    expect(one.verdict).toBe('1 finding · 1 recommendation');
+    expect(one.causality).toBe('1 part · 1 link');
     expect(one.actors).toBe('1 body · 1 target');
-    expect(one.provenance).toBe('1 limit recorded');
+    expect(one.provenance).toBe('1 gap noted');
   });
 
   it('drops a clause that would print a zero, and the whole phrase when both are', () => {
@@ -51,7 +51,7 @@ describe('moveCounts', () => {
     // A run that produced no recommendations must not advertise "0 suggestions"
     // in the one control every reader of the report passes through.
     expect(none.verdict).toBe('19 findings');
-    expect(none.threats).toBe('47 plays');
+    expect(none.threats).toBe('47 ways to beat it');
     expect(none.provenance).toBeUndefined();
 
     const empty = moveCounts({
@@ -62,6 +62,6 @@ describe('moveCounts', () => {
   });
 
   it('groups a four-figure count, because 1270 limits is read as a year', () => {
-    expect(moveCounts({ ...RUN, limits: 1270 }).provenance).toBe('1,270 limits recorded');
+    expect(moveCounts({ ...RUN, limits: 1270 }).provenance).toBe('1,270 gaps noted');
   });
 });

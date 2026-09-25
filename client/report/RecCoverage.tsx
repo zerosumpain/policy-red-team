@@ -44,7 +44,7 @@ import type { ArtefactLink } from './Report';
 
 /** "13 severe plays", "1 limited play" — the visually-hidden reading of a cell. */
 const plural = (n: number, band: string | null) =>
-  `${n} ${band ? `${band.toLowerCase()} ` : ''}${n === 1 ? 'play' : 'plays'}`;
+  `${n} ${band ? `${band.toLowerCase()} ` : ''}${n === 1 ? 'way' : 'ways'} to beat it`;
 
 /** The column that is not a band: every play the row reaches, however banded. */
 const ALL = 'all';
@@ -109,7 +109,7 @@ export function RecCoverage({ recs, artefacts, list, linkTo }: {
   ];
   const cols: MatrixAxis[] = [
     ...coverage.bands.map((band) => ({ id: band, label: BAND_LABEL[band as keyof typeof BAND_LABEL] ?? band })),
-    { id: ALL, label: 'Any band' },
+    { id: ALL, label: 'Any level' },
   ];
 
   const severeNone = coverage.none.counts.severe ?? 0;
@@ -117,8 +117,8 @@ export function RecCoverage({ recs, artefacts, list, linkTo }: {
   return (
     <div className="prt-coverage">
       <Matrix
-        caption="How many plays each recommendation answers, by exposure band"
-        corner="Recommendation / band →"
+        caption="How many ways to beat it each recommendation answers, by how exposed"
+        corner="Recommendation / how exposed →"
         rows={rows}
         cols={cols}
         cell={(row, col) => {
@@ -139,7 +139,7 @@ export function RecCoverage({ recs, artefacts, list, linkTo }: {
               : `${row.label}: ${plural(count, col.id === ALL ? null : col.label)}`,
           };
         }}
-        note="Nothing counted here walks more than two edges — recommendation to finding, then finding to what it cites. That bound is the reason the counts mean anything."
+        note="Nothing counted here follows more than two links — recommendation to finding, then finding to what it cites. That limit is the reason the counts mean anything."
       />
 
       {/*
@@ -157,17 +157,17 @@ export function RecCoverage({ recs, artefacts, list, linkTo }: {
       </ul>
 
       <p className="govuk-body-s prt-meta">
-        {coverage.none.total} of the {coverage.plays} plays are reached by none of the {coverage.rows.length}{' '}
+        {coverage.none.total} of the {coverage.plays} ways to beat it are answered by none of the {coverage.rows.length}{' '}
         {coverage.rows.length === 1 ? 'recommendation' : 'recommendations'}
-        {severeNone ? ` — ${severeNone} of them severe` : ''}. A play answered by more than one recommendation is
+        {severeNone ? ` — ${severeNone} of them severe` : ''}. One answered by more than one recommendation is
         counted in every row that answers it, so the rows do not add up to {coverage.plays}. Of the{' '}
         {coverage.rows.reduce((n, row) => n + row.total, 0)} links the grid counts, {tiers.named}{' '}
-        {tiers.named === 1 ? 'is a play' : 'are plays'} a finding the recommendation answers cites directly;
-        the rest are reached through a shared assumption or a shared mechanism.
+        {tiers.named === 1 ? 'is one' : 'are ones'} a finding the recommendation answers names directly;
+        the rest are reached through a shared assumption or a shared part of the policy.
       </p>
 
       {coverage.none.playIds.length ? (
-        <Details summary={`The ${coverage.none.playIds.length} plays no recommendation answers`}>
+        <Details summary={`The ${coverage.none.playIds.length} ways to beat it no recommendation answers`}>
           {/*
             NAMED, NOT COUNTED. A reader who has just been told twelve plays are
             unanswered has exactly one next question, and a figure that made
@@ -210,7 +210,7 @@ export function ChallengeNote({ recs, artefacts }: { recs: Artefact[]; artefacts
   if (!round.earlier || round.earlier === round.assured) return null;
   return (
     <p className="govuk-body prt-suggests__standfirst">
-      {round.assured} recommendations, rewritten by the independent challenge from {round.earlier}.
+      {round.assured} recommendations, rewritten in the final review from {round.earlier}.
       {round.dropped.length
         ? ` ${round.dropped.length} of the ${round.earlier} ${round.dropped.length === 1 ? 'is' : 'are'} carried forward by none of them.`
         : ''}
@@ -232,7 +232,7 @@ export function DroppedRecs({ recs, artefacts, linkTo }: {
   const round = useMemo(() => challengeRound(of(artefacts, 'recommendation'), recs), [artefacts, recs]);
   if (!round.dropped.length) return null;
   return (
-    <Details summary={`${round.dropped.length} earlier recommendations no assured one replaces`}>
+    <Details summary={`${round.dropped.length} earlier recommendations the final review dropped`}>
       {/*
         TRACED THROUGH `refs`, NOT THROUGH WORDING. An assured recommendation
         that rewrote an earlier one cites it; these are the earlier ones nobody

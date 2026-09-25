@@ -48,12 +48,12 @@ export function PressureMatrix({ targets, bodies, links, note }: {
 
   return (
     <Matrix
-      caption="Which body is aimed at which part — the worst play each one could run against it"
+      caption="Which body is aimed at which part — the worst way to beat it each one has there"
       corner="Part of the policy / body"
       rows={targets.map((target) => ({ id: target.id, label: target.label }))}
       cols={bodies.map((body) => ({ id: body.id, label: body.label }))}
       numbered
-      emptyText="No play aimed at it"
+      emptyText="Nothing aimed at it"
       note={note}
       cell={(row, col) => {
         const mine = links.filter((link) => link.targetId === row.id && link.actorId === col.id);
@@ -62,7 +62,7 @@ export function PressureMatrix({ targets, bodies, links, note }: {
         return {
           text: worst.exposure.toFixed(2),
           band: worst.band,
-          sentence: `${row.label}, ${col.label}, ${mine.length} ${mine.length === 1 ? 'play' : 'plays'}, worst band ${BAND_LABEL[worst.band].toLowerCase()} at ${worst.exposure.toFixed(2)}`,
+          sentence: `${row.label}, ${col.label}, ${mine.length} ${mine.length === 1 ? 'way' : 'ways'} to beat it, the worst ${BAND_LABEL[worst.band].toLowerCase()} at ${worst.exposure.toFixed(2)}`,
         };
       }}
     />

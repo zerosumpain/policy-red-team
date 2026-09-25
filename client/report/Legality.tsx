@@ -81,7 +81,7 @@ export function Legality({ list }: { list: Play[] }) {
           </li>
         ))}
       </ol>
-      <BandKey label="Exposure band" />
+      <BandKey label="How exposed" />
       <figcaption className="prt-caption">
         {/*
           THE AXIS, AND NOT THE READING. Both rows are drawn against the whole
@@ -90,22 +90,22 @@ export function Legality({ list }: { list: Play[] }) {
           is the two sentences above the figure; repeating it here put the same
           claim on the screen twice in 400 pixels.
         */}
-        Each row is drawn against all {tab.total} plays, so the length is how many and the
-        divisions are which bands.
+        Each row is drawn against all {tab.total} ways to beat it, so the length is how many and the
+        divisions are how exposed.
       </figcaption>
     </figure>
   );
 
   const table = (
     <Table
-      caption="Exposure band against legality"
+      caption="How exposed, against whether it breaks a rule"
       captionSize="s"
       scroll
       firstCellIsHeader
       columns={[
-        { header: 'Band' },
+        { header: 'How exposed' },
         ...tab.columns.map((column) => ({ header: column.label, numeric: true })),
-        { header: 'All plays', numeric: true },
+        { header: 'All of them', numeric: true },
       ]}
       rows={tab.bands.map((band) => [
         band.label,
@@ -128,7 +128,7 @@ export function Legality({ list }: { list: Play[] }) {
         drops the printed digits at that width for a reader who presses Diagram
         anyway, and the table below 641px carries every count in words.
       */}
-      <Figure label="exposure band against legality" diagram={diagram} table={table} />
+      <Figure label="how exposed, against whether it breaks a rule" diagram={diagram} table={table} />
     </>
   );
 }

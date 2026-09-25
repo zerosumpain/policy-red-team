@@ -99,8 +99,8 @@ export function ProvenanceLead({ stages, playsKept }: {
     <section aria-labelledby="discarded">
       <h2 className="govuk-heading-l" id="discarded">What was discarded, and why</h2>
       <p className="govuk-body">
-        An assessment is what survived. This is the rest: every piece of model output the pipeline
-        refused, every reference it could not resolve, and the reason it gave in each case.
+        An assessment is what survived. This is the rest: everything the model wrote that the run
+        refused, every reference it could not follow, and the reason it gave in each case.
       </p>
 
       {/*
@@ -113,10 +113,10 @@ export function ProvenanceLead({ stages, playsKept }: {
       {refused ? (
         <p className="govuk-body">
           {playsKept
-            ? <>The run wrote <strong>{(playsKept + refused).toLocaleString()}</strong> exploitation plays and kept{' '}
+            ? <>The run wrote <strong>{(playsKept + refused).toLocaleString()}</strong> ways to beat the policy and kept{' '}
               <strong>{playsKept.toLocaleString()}</strong>. The {refused} it refused are row one below.</>
-            : <>The run refused <strong>{refused}</strong> exploitation plays for resting on something other than an
-              assumption — row one below. The playbook is what was left.</>}
+            : <>The run refused <strong>{refused}</strong> ways to beat the policy for resting on something other than an
+              assumption — row one below. The list on the Threats tab is what was left.</>}
         </p>
       ) : null}
 
@@ -138,15 +138,15 @@ export function ProvenanceLead({ stages, playsKept }: {
         <>
           <h3 className="govuk-heading-m" id="why-refused">Why output was refused</h3>
           <p className="govuk-body">
-            Each stage validates its own output against a contract, and anything that fails is
-            dropped rather than repaired. <strong>{thrown.explained.toLocaleString()}</strong> pieces
+            Each step checks what the model wrote against a fixed set of rules, and anything that
+            fails is dropped rather than repaired. <strong>{thrown.explained.toLocaleString()}</strong> pieces
             of model output were refused with a reason recorded. These are those reasons, rolled up
             across the run.
           </p>
           <Table
             caption="Reasons output was refused, largest first"
             columns={[
-              { header: 'Artefacts', numeric: true },
+              { header: 'Items', numeric: true },
               { header: `Share of the ${thrown.explained}`, numeric: true },
               { header: 'What happened' },
             ]}
@@ -160,7 +160,7 @@ export function ProvenanceLead({ stages, playsKept }: {
                 value={entry.count}
                 max={reasons[0].count}
                 digits={0}
-                scale={`artefacts refused, 0 to ${reasons[0].count} on this table`}
+                scale={`items refused, 0 to ${reasons[0].count} on this table`}
               />,
               `${Math.round((entry.count / thrown.explained) * 100)}%`,
               <>
@@ -171,7 +171,7 @@ export function ProvenanceLead({ stages, playsKept }: {
                     AND THE SUMMARY SAYS WHAT IT HOLDS. Eleven disclosures all
                     reading "The contract's own words" is eleven identical links
                     down the page for anyone tabbing the table. */}
-                <Details summary={`The contract’s wording, and the ${entry.count} ${entry.count === 1 ? 'artefact' : 'artefacts'} it refused`}>
+                <Details summary={`The rule’s wording, and the ${entry.count} ${entry.count === 1 ? 'item' : 'items'} it refused`}>
                   {/* `<pre>` rather than a paragraph: a zod union lists twenty-nine
                       quoted kinds and reflowing it as prose made a wall nobody
                       could read a value out of. It scrolls in its own box. */}

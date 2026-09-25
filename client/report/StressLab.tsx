@@ -193,14 +193,14 @@ export function StressLab({ artefacts, levers, linkTo, failed: given, onFailedCh
       <div className="govuk-grid-row">
         <div className="govuk-grid-column-two-thirds">
           <p className="govuk-body">
-            Suppose an assumption turns out to be false. This walks the citations the assessment
-            already made — a play names the preconditions it needs, a conclusion names its
-            hypotheses and its results — and reports what stops standing. It reasons from what is
+            Suppose an assumption turns out to be false. This follows the links the assessment
+            already made — a way to beat the policy names what has to be true for it to work, a
+            conclusion names what it rests on — and reports what stops standing. It reasons from what is
             written down, so the same switches always give the same answer and nothing here costs
             a model call.
           </p>
           <WarningText>
-            A conclusion that loses its footing is not thereby wrong. It is no longer supported by
+            A conclusion that loses its support is not thereby wrong. It is no longer supported by
             what was offered for it, which is a different and more useful thing to know.
           </WarningText>
         </div>
@@ -216,7 +216,7 @@ export function StressLab({ artefacts, levers, linkTo, failed: given, onFailedCh
               reason: GOV.UK has no toggle, and a solid green button would make
               a sort control the loudest object in the section. */}
           <div className="govuk-button-group prt-figtoggle">
-            {sortButton('plays', 'Most plays removed')}
+            {sortButton('plays', 'Most ways to beat it removed')}
             {sortButton('rested', 'Most rested on')}
           </div>
           <Checkboxes
@@ -233,8 +233,8 @@ export function StressLab({ artefacts, levers, linkTo, failed: given, onFailedCh
                 {levers.length > offered.length
                   ? `${levers.length} assumptions have something resting on them, and the ${offered.length} most rested on are offered here — the cut runs to the end of a tie rather than through the middle of one. `
                   : `Only assumptions something actually rests on are offered — ${levers.length} of them. `}
-                The two figures beside each are what it would do on its own: plays it would take off
-                the table, out of {previews.population.plays}, and conclusions it would undercut,
+                The two figures beside each are what it would do on its own: ways to beat the policy
+                it would take off the table, out of {previews.population.plays}, and conclusions it would undercut,
                 out of {previews.population.conclusions}.
               </>
             }
@@ -302,17 +302,17 @@ export function StressLab({ artefacts, levers, linkTo, failed: given, onFailedCh
             {!failed.length
               ? 'Nothing failed yet. Tick an assumption and the meter below moves — and this becomes a list of what the assessment would lose, and, separately, of what a threat would lose with it.'
               : `${result.moved
-                  ? `${result.moved} of ${result.population} conclusions and results lose their footing.`
-                  : `No conclusion loses its footing. All ${result.population} stand without ${failed.length === 1 ? 'that assumption' : 'those assumptions'}.`}${result.disarmed.length
+                  ? `${result.moved} of ${result.population} conclusions and results lose their support.`
+                  : `No conclusion loses its support. All ${result.population} stand without ${failed.length === 1 ? 'that assumption' : 'those assumptions'}.`}${result.disarmed.length
                   ? ` ${result.disarmed.length} of ${result.plays} ways to beat the policy are taken off the table.`
                   : ''}`}
           </p>
           <StandingMeter rows={meter} />
           {result.unmovable ? (
             <p className="govuk-body-s prt-meta">
-              The {result.unmovable} structural {result.unmovable === 1 ? 'check is' : 'checks are'} untouched
-              whatever is failed here: they walk the relationships the policy itself states, so
-              they are the part of the assessment that does not move when a hypothesis does.
+              The {result.unmovable} {result.unmovable === 1 ? 'check' : 'checks'} on how the policy is set
+              up {result.unmovable === 1 ? 'is' : 'are'} untouched whatever is failed here: they test the
+              links the policy itself states, so they do not move when an assumption does.
             </p>
           ) : null}
         </div>
@@ -397,12 +397,12 @@ export function StressLab({ artefacts, levers, linkTo, failed: given, onFailedCh
                 Taken off the table — {result.disarmed.length} of {result.plays}
               </h3>
               <p className="govuk-body-s prt-meta">
-                The good news on this page. An actor needed the failed assumption to be true to run
-                these, so they are not available if it is false.
+                The good news on this page. Whoever would do these needed the failed assumption to be
+                true, so they stop working if it is false.
               </p>
               {byCause(result.disarmed).map((cause) => (
                 <Cause key={cause.direct.join('|') || 'consequential'} group={cause}
-                       fallback="A precondition they needed is gone." name={name} />
+                       fallback="Something they needed to be true is gone." name={name} />
               ))}
             </section>
           ) : null}

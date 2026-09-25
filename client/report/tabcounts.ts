@@ -66,14 +66,14 @@ function phrase(...parts: (string | null)[]): string | undefined {
 
 export function moveCounts(sizes: MoveSizes): MoveCounts {
   return {
-    verdict: phrase(clause(sizes.findings, 'finding'), clause(sizes.suggestions, 'suggestion')),
-    causality: phrase(clause(sizes.mechanisms, 'mechanism'), clause(sizes.relationships, 'relationship')),
+    verdict: phrase(clause(sizes.findings, 'finding'), clause(sizes.suggestions, 'recommendation')),
+    causality: phrase(clause(sizes.mechanisms, 'part', 'parts'), clause(sizes.relationships, 'link')),
     /*
      * "20 severe" CARRIES NO NOUN OF ITS OWN, deliberately: the noun is the
      * clause before it, and "47 plays · 20 severe plays" says plays twice in
      * eleven characters of column.
      */
-    threats: phrase(clause(sizes.plays, 'play'), sizes.severe ? `${sizes.severe} severe` : null),
+    threats: phrase(clause(sizes.plays, 'way to beat it', 'ways to beat it'), sizes.severe ? `${sizes.severe} severe` : null),
     actors: phrase(clause(sizes.bodies, 'body', 'bodies'), clause(sizes.targets, 'target')),
     /*
      * ONE CLAUSE, AND THE VERB STAYS IN IT. "270 limits" invites the reading
@@ -82,7 +82,7 @@ export function moveCounts(sizes: MoveSizes): MoveCounts {
      * itself opens with.
      */
     provenance: sizes.limits
-      ? `${sizes.limits.toLocaleString()} ${sizes.limits === 1 ? 'limit' : 'limits'} recorded`
+      ? `${sizes.limits.toLocaleString()} ${sizes.limits === 1 ? 'gap' : 'gaps'} noted`
       : undefined,
   };
 }

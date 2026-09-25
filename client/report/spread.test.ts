@@ -70,8 +70,8 @@ describe('what each band actually spans', () => {
 describe('the caption under the strip', () => {
   it('states the cluster and the real daylight at each cut, from the plays', () => {
     expect(exposureSpread(plays).caption).toBe(
-      '38 of the 47 plays sit between 0.54 and 0.77 — 23% of the scale. '
-      + 'The cuts are not alike: the plays either side of 0.70 are 0.0039 apart, '
+      '38 of the 47 ways to beat it sit between 0.54 and 0.77 — 23% of the scale. '
+      + 'The cuts are not alike: the scores either side of 0.70 are 0.0039 apart, '
       + 'either side of 0.50 are 0.0847 apart, either side of 0.30 are 0.1256 apart.',
     );
   });

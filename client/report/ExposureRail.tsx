@@ -35,9 +35,9 @@ export function ExposureRail({ bands, total, selection, onSelect }: {
   const selected = (band: Band) => selection?.kind === 'band' && selection.id === band;
 
   return (
-    <section className="prt-verdictband" aria-label="Plays by exposure band">
+    <section className="prt-verdictband" aria-label="Ways to beat it, by how exposed">
       <StackedBar
-        label="Plays by exposure band. Select a band to narrow every view."
+        label="Ways to beat it, by how exposed the policy is to each. Select a level to narrow every tab."
         total={total}
         segments={bands.map((entry) => ({
           id: entry.band,
@@ -63,7 +63,7 @@ export function ExposureRail({ bands, total, selection, onSelect }: {
         row and nothing says they can be pressed.
       */}
       <p className="govuk-body-s prt-meta prt-verdictband__say">
-        {total} ways to beat this policy, by exposure. Select a band to narrow every move.
+        {total} ways to beat this policy, by how exposed it is to each. Select a level to narrow every tab.
       </p>
     </section>
   );

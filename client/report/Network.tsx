@@ -182,7 +182,7 @@ export function NetworkSection({ net, artefacts, linkTo, selection, onClearSelec
         {origin.withPage} of the {origin.total} name a page of the document; the rest cite none. Only
         relationships whose both ends resolve are counted — a dangling end is a reference, not a
         relationship — so a body the paper names but never connects to anything is not in this
-        count. Move 4 counts those.
+        count. The &ldquo;Who is involved&rdquo; tab counts those.
       </p>
 
       <h3 className="govuk-heading-m" id="net-depth">How deep the wiring goes</h3>
@@ -349,8 +349,8 @@ export function NetworkSection({ net, artefacts, linkTo, selection, onClearSelec
         <Insights net={net} nodeById={nodeById} populations={populations} name={name} />
       ) : (
         <p className="govuk-body">
-          Nothing structural stood out. With this few stated relationships there is not enough
-          wiring to find a missing counterpart in.
+          Nothing stood out. With this few stated relationships there is not enough to find a
+          missing counterpart in.
         </p>
       )}
     </>
@@ -403,8 +403,8 @@ function MechanismDossier({ net, selection, name, onClearSelection }: {
         </>
       ) : (
         <WarningText>
-          The paper states no relationship touching this mechanism at all — it generates a play and
-          is wired to nothing.
+          The paper states no link touching this part of the policy at all — it opens up a way to
+          beat the policy and is connected to nothing.
         </WarningText>
       )}
       {onClearSelection ? (

@@ -157,8 +157,8 @@ export function legalityReading(tab: BandLegality): string[] {
    */
   lines.push(
     tab.breaches === 0
-      ? `Not one of the ${tab.total} plays breaks a rule.`
-      : `${tab.breaches} of the ${tab.total} plays would break a rule; the other ${tab.total - tab.breaches} would not.`,
+      ? `Not one of the ${tab.total} ways to beat it breaks a rule.`
+      : `${tab.breaches} of the ${tab.total} ways to beat it would break a rule; the other ${tab.total - tab.breaches} would not.`,
   );
 
   /*
@@ -170,7 +170,7 @@ export function legalityReading(tab: BandLegality): string[] {
    */
   if (tab.worst && tab.worst.compliant) {
     lines.push(
-      `${tab.worst.compliant} of the ${tab.worst.total} ${tab.worst.label.toLowerCase()} plays are `
+      `${tab.worst.compliant} of the ${tab.worst.total} ${tab.worst.label.toLowerCase()} ways to beat it are `
       + 'things nobody is forbidden to do, so enforcement is not the answer to them.',
     );
   }

@@ -71,7 +71,7 @@ export function StageLadder({ rows, runMs, selected, onSelect }: {
     return percent >= 1 ? `${percent}%` : '';
   };
 
-  const keptScale = `artefacts minted, 0 to ${keptMax.toLocaleString()} across this run`;
+  const keptScale = `items kept, 0 to ${keptMax.toLocaleString()} across this run`;
   const limitScale = `limits recorded, 0 to ${limitMax.toLocaleString()} across this run`;
 
   /*
@@ -101,9 +101,9 @@ export function StageLadder({ rows, runMs, selected, onSelect }: {
         heading nineteen times.
       */}
       <div className="prt-ladder__legend" aria-hidden="true">
-        <span>Stage</span>
+        <span>Step</span>
         {timed ? <span>Ran for</span> : null}
-        {counted ? <span>Artefacts</span> : null}
+        {counted ? <span>Items kept</span> : null}
         <span>Limits</span>
       </div>
       <ol className="prt-ladder__rows">
@@ -167,15 +167,15 @@ export function StageLadder({ rows, runMs, selected, onSelect }: {
 
   const table = (
     <Table
-      caption="Every stage, in the order it ran"
+      caption="Every step, in the order it ran"
       captionSize="s"
       scroll
       firstCellIsHeader
       columns={[
-        { header: 'Stage' },
+        { header: 'Step' },
         ...(timed ? [{ header: 'Ran for' }] : []),
         ...(timed && runMs ? [{ header: 'Share of the run', numeric: true }] : []),
-        ...(counted ? [{ header: 'Artefacts', numeric: true }] : []),
+        ...(counted ? [{ header: 'Items kept', numeric: true }] : []),
         { header: 'Limits', numeric: true },
         { header: 'Status' },
       ]}
@@ -192,7 +192,7 @@ export function StageLadder({ rows, runMs, selected, onSelect }: {
 
   return (
     <Figure
-      label="the eighteen stages of this run"
+      label="the steps of this run"
       /* HTML AND CSS, SO IT DOES NOT NEED THE NARROW FLIP. The flip exists for
          SVG, whose text resolves to about 7px at the 460px floor; this is a
          grid that drops to one column on a phone and scales with the reader's

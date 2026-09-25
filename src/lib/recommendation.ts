@@ -116,11 +116,11 @@ export function linkRecommendation(
 export const TIER_RULE: Record<Tier, string> = {
   named: 'Cited by a finding this answers — the assessment made this link itself.',
   assumption: 'Needs an assumption those findings also rest on, so the same thing being wrong moves both.',
-  mechanism: 'Targets a mechanism those findings name.',
+  mechanism: 'Targets a part of the policy those findings name.',
 };
 
 export const TIER_LABEL: Record<Tier, string> = {
   named: 'Named in the findings this answers',
   assumption: 'Rests on the same assumption',
-  mechanism: 'Targets the same mechanism',
+  mechanism: 'Targets the same part of the policy',
 };

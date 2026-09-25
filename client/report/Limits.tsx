@@ -85,9 +85,9 @@ export function Limits({ stages }: { stages: { ordinal: number; name: string; wa
   return (
     <>
       <p className="govuk-body">
-        The run recorded {recorded.reduce((n, stage) => n + stage.warnings.length, 0).toLocaleString()} limits
-        across {recorded.length} of its {stages.length} stages. Grouped on the fact each one states, they
-        are {all.toLocaleString()} different limits. Nothing here is dropped —
+        The run noted {recorded.reduce((n, stage) => n + stage.warnings.length, 0).toLocaleString()} gaps
+        across {recorded.length} of its {stages.length} steps. Grouped on the fact each one states, they
+        are {all.toLocaleString()} different gaps. Nothing here is dropped —
         this is the record of what the assessment could not do.
       </p>
 
@@ -103,12 +103,12 @@ export function Limits({ stages }: { stages: { ordinal: number; name: string; wa
         can trust. The `Details` around it prints open for the same reason every
         other disclosure in this report does.
       */}
-      <Details summary={`Show only certain stages (${recorded.length} recorded something)`} open>
+      <Details summary={`Show only certain steps (${recorded.length} noted something)`} open>
         <div className="prt-stagefilter">
           <Checkboxes
             id="limit-stages"
             small
-            legend="Stages"
+            legend="Steps"
             legendSize="s"
             hint="Leave every box clear to read the whole run."
             items={recorded.map((stage) => ({

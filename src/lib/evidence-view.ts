@@ -149,7 +149,7 @@ function evidenceReading(shape: Omit<EvidenceShape, 'reading'>): string[] {
 
   lines.push(
     `They reach ${shape.claims.covered} of the ${shape.claims.of} claims the run extracted and `
-    + `${shape.mechanisms.covered} of its ${shape.mechanisms.of} mechanisms.`,
+    + `${shape.mechanisms.covered} of its ${shape.mechanisms.of} parts of the policy.`,
   );
 
   /*

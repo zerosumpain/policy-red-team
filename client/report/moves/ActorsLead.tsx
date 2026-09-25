@@ -191,11 +191,11 @@ export function ActorsLead({ artefacts = [], plays = [], interplay, personas, se
       {interplay.links.length ? (
         <>
           <p className="govuk-body">
-            Every play in the playbook names the body that runs it and the part of the policy it
-            defeats. The three figures below are that join read three ways: what is under the most
+            Every way to beat the policy names the body that would do it and the part of the policy
+            it defeats. The three figures below read that three ways: which parts are under the most
             pressure, which body is aimed at which part, and how far each body reaches. Nothing here
-            is scored that the assessment did not already score — a target&rsquo;s pressure is the
-            sum of the exposure of the plays aimed at it.
+            is scored that the assessment did not already score — a part&rsquo;s pressure is the
+            scores of every way to beat it aimed at that part, added up.
           </p>
 
           <Table
@@ -204,8 +204,8 @@ export function ActorsLead({ artefacts = [], plays = [], interplay, personas, se
             scroll
             columns={[
               { header: 'Part of the policy' },
-              { header: 'Plays aimed at it', numeric: true, width: '9rem' },
-              { header: 'Pressure (summed exposure)', numeric: true, width: '14rem' },
+              { header: 'Ways to beat it aimed at it', numeric: true, width: '9rem' },
+              { header: 'Pressure (scores added up)', numeric: true, width: '14rem' },
             ]}
             rows={interplay.targets.map((target) => [
               targetCell(target),
@@ -219,22 +219,21 @@ export function ActorsLead({ artefacts = [], plays = [], interplay, personas, se
               A reader comparing a full pressure bar with a full worst-play bar
               was comparing a rank with a magnitude, and the only cue was the
               number of decimal places, which was an accident of the axis. */}
-          <BandKey label="Each bar is divided by band:" />
+          <BandKey label="Each bar is split by how exposed:" />
           {/* The caption closes the figure, so the key belongs above it: the
               rule `.prt-caption` draws is where the figure ends, and a legend
               printed below that line reads as the next thing the report says. */}
           <p className="govuk-body-s prt-caption">
-            Pressure is the sum of the exposure of every play aimed at a part, so these bars compare
-            parts with each other and not with the 0 to 1 exposure scale used everywhere else in the
-            report.
+            Pressure adds up the scores of every way to beat it aimed at a part, so these bars compare
+            parts with each other and not with the 0 to 1 score used everywhere else in the report.
           </p>
 
           {tail.length ? (
             <Details summary={`The other ${tail.length} parts under pressure`}>
               <p className="govuk-body-s">
                 The {allTargets} parts under pressure are{' '}
-                {kindLine(board.targets.map((t) => ({ kind: t.kind })))}. Every play aimed at any of
-                them is in the playbook on Move 3.
+                {kindLine(board.targets.map((t) => ({ kind: t.kind })))}. Every way to beat it aimed at
+                any of them is in the list on the Threats tab.
               </p>
               <Table
                 caption={`Under pressure, ranked ${INTERPLAY_TARGETS + 1} to ${allTargets}`}
@@ -243,7 +242,7 @@ export function ActorsLead({ artefacts = [], plays = [], interplay, personas, se
                 columns={[
                   { header: 'Part of the policy' },
                   { header: 'Kind' },
-                  { header: 'Plays aimed at it', numeric: true, width: '9rem' },
+                  { header: 'Ways to beat it aimed at it', numeric: true, width: '9rem' },
                   { header: 'Pressure', numeric: true, width: '8rem' },
                 ]}
                 rows={tail.map((target) => [
@@ -262,9 +261,9 @@ export function ActorsLead({ artefacts = [], plays = [], interplay, personas, se
             links={board.links}
             note={elsewhere.length ? (
               <>
-                {list(elsewhere.map((body) => `${body.label} (${body.plays} ${body.plays === 1 ? 'play' : 'plays'})`))}{' '}
-                {elsewhere.length === 1 ? 'is' : 'are'} not in the grid: every play{' '}
-                {elsewhere.length === 1 ? 'it runs is' : 'they run is'} aimed at a part below the
+                {list(elsewhere.map((body) => `${body.label} (${body.plays})`))}{' '}
+                {elsewhere.length === 1 ? 'is' : 'are'} not in the grid: every way to beat it{' '}
+                {elsewhere.length === 1 ? 'it has is' : 'they have is'} aimed at a part below the
                 cap. The body table below counts all {board.bodies.length}.
               </>
             ) : null}
@@ -274,7 +273,7 @@ export function ActorsLead({ artefacts = [], plays = [], interplay, personas, se
             <>
               <div className="prt-actors__bodies">
                 <Table
-                  caption="Who can aim it — every body positioned to run a play"
+                  caption="Who could do it — every body with a way to beat the policy"
                   captionSize="s"
                   scroll
                   firstCellIsHeader
@@ -290,13 +289,13 @@ export function ActorsLead({ artefacts = [], plays = [], interplay, personas, se
                       name: 'parts it can reach',
                       order: { asc: 'fewest first', desc: 'furthest first' },
                     },
-                    { header: 'Plays', numeric: true, width: '6rem', sortable: true, name: 'Plays', order: { asc: 'fewest first', desc: 'most first' } },
+                    { header: 'Ways to beat it', numeric: true, width: '6rem', sortable: true, name: 'ways to beat it', order: { asc: 'fewest first', desc: 'most first' } },
                     {
-                      header: 'Worst play',
+                      header: 'The worst of them',
                       numeric: true,
                       width: '11rem',
                       sortable: true,
-                      name: 'worst play',
+                      name: 'the worst of them',
                       order: { asc: 'least exposed first', desc: 'worst first' },
                     },
                     { header: 'Legality', width: '13rem' },
@@ -339,7 +338,7 @@ export function ActorsLead({ artefacts = [], plays = [], interplay, personas, se
                  like the next section. */
               <div className="prt-mech" id="positioned">
                 <h3 className="govuk-heading-m govuk-!-margin-bottom-1">
-                  What {selectedBody.label} is positioned to run
+                  What {selectedBody.label} could do
                 </h3>
                 <ol className="govuk-list govuk-list--spaced">
                   {running.map((play) => (
@@ -375,8 +374,8 @@ export function ActorsLead({ artefacts = [], plays = [], interplay, personas, se
                 the next paper. */}
             {clean.length ? (
               <p className="govuk-body">
-                No body here has to break a rule to run a play. {list(clean.map((b) => b.label))}{' '}
-                {clean.length === 1 ? 'has' : 'have'} no grey-area play at all.
+                No body here has to break a rule to beat the policy. {list(clean.map((b) => b.label))}{' '}
+                {clean.length === 1 ? 'has' : 'have'} nothing even in a grey area.
               </p>
             ) : null}
             </>
@@ -413,8 +412,8 @@ export function ActorsLead({ artefacts = [], plays = [], interplay, personas, se
             columns={[
               { header: 'Body' },
               { header: 'Seen in', numeric: true, width: '8rem' },
-              { header: 'Plays here', numeric: true, width: '8rem' },
-              { header: 'Worst play here', numeric: true, width: '11rem' },
+              { header: 'Ways to beat it here', numeric: true, width: '8rem' },
+              { header: 'The worst here', numeric: true, width: '11rem' },
             ]}
             rows={priors(personas).map((group) => [
               /* THE ACTOR'S OWN LABEL, and the library's name only where they

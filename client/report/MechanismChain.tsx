@@ -105,8 +105,8 @@ export function MechanismChain({ mechanism, chains, byId, linkTo }: {
             points the wrong way in the other. */}
         <p className="prt-chain__rel">has to hold for</p>
 
-        <section className="prt-chain__band prt-chain__band--subject" aria-label="The mechanism">
-          <h5 className="prt-chain__head">The mechanism</h5>
+        <section className="prt-chain__band prt-chain__band--subject" aria-label="The part of the policy">
+          <h5 className="prt-chain__head">The part of the policy</h5>
           <div className="prt-chain__box prt-chain__box--subject">
             {linkTo ? linkTo(mechanism) : mechanism.label}
           </div>
@@ -135,12 +135,12 @@ export function MechanismChain({ mechanism, chains, byId, linkTo }: {
       */}
       <p className="govuk-body-s prt-meta">
         {chains.length === 1
-          ? `One chain in the run names this mechanism: it ${drawn.passages.length ? 'names a passage' : 'names no passage'} and ${drawn.produces.length ? 'names a claim or conclusion' : 'names neither a claim nor a conclusion'}.`
-          : `${chains.length} chains name this mechanism. ${withPassage} of them name a passage and ${withProduct} name a claim or conclusion.`}
+          ? `One chain of cause and effect names this part of the policy: it ${drawn.passages.length ? 'names a passage' : 'names no passage'} and ${drawn.produces.length ? 'names a claim or conclusion' : 'names neither a claim nor a conclusion'}.`
+          : `${chains.length} chains of cause and effect name this part of the policy. ${withPassage} of them name a passage and ${withProduct} name a claim or conclusion.`}
       </p>
 
       {rest.length ? (
-        <Details summary={`The other ${rest.length} ${rest.length === 1 ? 'chain' : 'chains'} through this mechanism`}>
+        <Details summary={`The other ${rest.length} ${rest.length === 1 ? 'chain' : 'chains'} through this part of the policy`}>
           {/* BY CITATION COUNT, NOT BY NAME. Two of the six chains through
               "Provider specialisation and collaboration" carry the identical
               label "Theory of change for provider specialisation and

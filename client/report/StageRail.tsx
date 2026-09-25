@@ -114,7 +114,7 @@ export function ChainRail({ stages, own, rungs, rungId }: {
           because three labels is what fits and the ends are what a reader needs
           to place the middle. */}
       <p className="govuk-body-s prt-meta prt-chainwalk__axis">
-        Stage 1 on the left, stage {stages.length} on the right. This was written at stage{' '}
+        Step 1 on the left, step {stages.length} on the right. This was written at step{' '}
         {own + 1}.
       </p>
       <div className="prt-chainwalk__plot">
