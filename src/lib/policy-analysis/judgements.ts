@@ -24,7 +24,8 @@ import { patternOf, playPatterns, type PatternKey } from './patterns';
  *   - What is kept is renumbered 1..n, so a reader never sees "judgement 7 of 5".
  *
  * An ABSENCE is a different thing — the report has no "so what" — and the
- * stage's own rule fails on it after the top-up has asked once.
+ * stage says so as a counted limit after the top-up has asked once. It does
+ * not fail: a retry would replay the same cached calls to the same absence.
  *
  * Mutates the kept artefacts' `rank` and returns what was dropped, so the caller
  * can remove it and say so.

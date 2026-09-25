@@ -1446,20 +1446,26 @@ export async function executeStage(input: StageInput, deps: PipelineDeps): Promi
       output.warnings.push(`The revised assessment came back with ${summaries.length} review summaries, one per corrective round. The last is kept; the earlier ${superseded.size} ${superseded.size === 1 ? 'is' : 'are'} discarded as superseded.`);
     }
     /**
-     * THE "SO WHAT": AT LEAST ONE KEY JUDGEMENT, AT MOST FIVE.
+     * THE "SO WHAT": AT MOST FIVE KEY JUDGEMENTS, AND NONE IS A COUNTED LIMIT.
      *
-     * Two different events, the phase 16/17 lesson applied from the start. NONE
-     * is an absence — the report has nothing to lead with — and it fails, after
-     * the top-up above has asked for exactly that once. A SURPLUS is the
-     * correction arriving with the rest of the revised report, because
-     * `provider.ts` accumulates corrective rounds; `reconcileKeyJudgements`
+     * A SURPLUS is the correction arriving with the rest of the revised report,
+     * because `provider.ts` accumulates corrective rounds; `reconcileKeyJudgements`
      * keeps the last of each rank and the top five, and says what it dropped.
      * Throwing on a surplus would be the review-summary trap again: asking a
      * second time could only add more.
+     *
+     * NONE USED TO THROW, and that was the 36ebca37 trap in a new place. The
+     * worker retries a failed stage; the cache is keyed on (stage row, input
+     * hash, prompt) and the top-up's `idPrefix` comes from `seq`, which restarts
+     * at 0 on every execution — so the retry replays `main`, its repair rounds
+     * and `topup` from the cache, reaches the same absence, and throws a finished
+     * report away three times. The top-up above is the one genuinely different
+     * question. A report without key judgements is still a report; the views
+     * already read `[]` from `keyJudgements()`. So the absence is said once, as
+     * a limit of the run, AFTER the final triage (below) — which can still drop
+     * the last one.
      */
-    const judged = reconcileKeyJudgements(output.artefacts);
-    if (!judged.kept.length) throw new PolicyError('coverage', `The revised assessment must lead with at least one key judgement — naming a mechanism, a play, a quote from the paper, and who should do what — and this one has none, after the model was asked a second time for them.${fault.last ? ` Last reason: ${fault.last.message}` : ''}`);
-    dropSurplusJudgements(output, judged.dropped);
+    dropSurplusJudgements(output, reconcileKeyJudgements(output.artefacts).dropped);
     const issueIds = new Set(challenges.filter((a) => a.data.finding === 'issue').map((a) => a.id));
     const accepted = responses.filter((a) => issueIds.has(String(a.data.challengeId)) && ['accepted', 'partly_accepted'].includes(String(a.data.disposition))).length;
     const unresolved = responses.filter((a) => issueIds.has(String(a.data.challengeId)) && a.data.disposition === 'unresolved');
@@ -1598,6 +1604,19 @@ export async function executeStage(input: StageInput, deps: PipelineDeps): Promi
     if (a.refs.length <= MAX_REFS) continue;
     warnings.push(`“${a.label}” cited ${a.refs.length} sources; only the first ${MAX_REFS} are recorded.`);
     a.refs = a.refs.slice(0, MAX_REFS);
+  }
+  if (stage === ASSURED_SYNTHESIS_STAGE || (isPassStage(stage) && deps.passKind === 'restatement')) {
+    // Renumbered on what SURVIVED, so a judgement the final triage took leaves
+    // no hole in the ranks ("1, 3").
+    reconcileKeyJudgements(kept);
+    // The floor, on what the stage keeps. Worded "N of M … were not assessed",
+    // the sentence `stage-facts.ts` files as a limit of this run; anything else
+    // it does not recognise becomes an open QUESTION about the paper, which
+    // this is not. A restatement has no floor: its report falls back to the
+    // previous generation's judgements.
+    if (stage === ASSURED_SYNTHESIS_STAGE && !kept.some((a) => a.kind === 'key_judgement')) {
+      warnings.push('1 of 1 key judgement sections were not assessed: the revised assessment came back with no usable key judgement, after the model was asked a second time for one, so the report leads with its findings instead. This is a limit of this run, not a gap in the paper.');
+    }
   }
   return { artefacts: kept, warnings: clampWarnings(warnings), rejected };
 }
