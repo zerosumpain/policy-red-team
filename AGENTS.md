@@ -132,6 +132,22 @@ delete.** Do not weaken it.
 - **GDS has no modal component, on purpose.** A layer over a page wants a focus
   trap, its own Escape handling and a back stack. The pattern here is a route —
   see `client/pages/Drill.tsx`.
+- **A persona's `dossier` and `summary` are COMPUTED — never write them.**
+  `rebuildPersonas` folds them from the observations that remain, keeping only
+  sentences that travel (`travels.ts`). Write an observation and rebuild. A
+  value written straight into the dossier survives the paper it came from,
+  which is the leak phase 19 closed.
+- **Groups of people are not personas.** A `user_group` actor goes to
+  `policy_affected_groups` and never reaches the matcher. "Children" as a
+  persona is what split the live library.
+- **The GOV.UK register is a committed file, not a fetch.**
+  `register/govuk-organisations.json` is bundled into the server; `npm run
+  register:refresh` rewrites it. It is not under `data/`, which is gitignored
+  for the settings key. `build.mjs` fails if the refresher's page URL reaches a
+  fixture bundle.
+- **"Seen in N papers" counts documents.** Two runs of one file are one paper,
+  in the figure, in a prior and on the dossier page. The walk submits a
+  DIFFERENT second document for exactly this reason.
 - **Node must be 22.23.2 or newer.** `pdfjs-dist` calls `Promise.try` and
   `Uint8Array.toHex`, both ES2025. `src/lib/polyfills.ts` carries them for older
   Node; if a THIRD one appears, upgrade rather than adding to that file.
