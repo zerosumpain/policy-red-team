@@ -228,6 +228,23 @@ describe.skipIf(!local)('actor identity across papers', () => {
     expect(rulings.map((r) => r.subject)).toContain(`persona:${id}`);
   });
 
+  it('types a persona by its actor before its link, as the group filter does — so no boot upgrade can take it for a group', async () => {
+    const id = await paper('Mistyped paper');
+    // The model called a body a user group; the paper's own actor says department.
+    await write(id, 'Mistyped paper', [link('s13_0_m', 's2_30', 'Ministry of Defence', 'user_group', [{ key: 'mandate', value: 'Runs defence.' }])], [actor('s2_30', 'Ministry of Defence', 'department')]);
+    const [mod] = (await mine()).filter((p) => p.bodyId === 'govuk:ministry-of-defence');
+    expect(mod.entityType).toBe('department');
+    await db.transaction((tx) => upgradePersonaLibrary(tx));
+    expect(await db.select().from(policyPersonas).where(eq(policyPersonas.id, mod.id))).toHaveLength(1);
+  });
+
+  it('leaves a library it has already upgraded alone: a group-typed row written since is not the upgrade\'s to move', async () => {
+    const [since] = await db.insert(policyPersonas).values({ owner, name: 'Carers', entityType: 'user_group', dossier: [], dossierVersion: 1 }).returning();
+    expect(await db.transaction((tx) => upgradePersonaLibrary(tx))).toMatchObject({ groups: 0, rebuilt: 0 });
+    expect(await db.select().from(policyPersonas).where(eq(policyPersonas.id, since.id))).toHaveLength(1);
+    await db.delete(policyPersonas).where(eq(policyPersonas.id, since.id));
+  });
+
   it('upgrades a pre-phase-19 library: groups out, dossiers recomputed, bodies matched', async () => {
     const id = await paper('Legacy paper');
     const [group] = await db.insert(policyPersonas).values({ owner, name: 'Parents', entityType: 'user_group', dossier: [], dossierVersion: 0 }).returning();

@@ -190,7 +190,11 @@ export async function applyPersonaLinks(tx: DbExecutor, owner: string, analysisI
     const name = clip(data.personaName, 300) || link.label;
     const aliases = list<string>(data.aliases).map((a) => clip(a, 120)).filter(Boolean).slice(0, 24);
     const label = actor?.label ?? name;
-    const entityType = clip(data.entityType, 60) || String(actor?.data.entityType ?? '') || 'concept';
+    // THE ACTOR'S TYPE FIRST, the order `isGroupLink` reads them in. Read the
+    // other way round, a body the model mistyped `user_group` passed the group
+    // filter (its actor is a department) and was filed as a group-typed persona
+    // — which the boot upgrade then moved out and deleted.
+    const entityType = clip(actor?.data.entityType, 60) || clip(data.entityType, 60) || 'concept';
     const names = [...new Set([label, name, ...list<string>(actor?.data.aliases), ...aliases].filter(Boolean))];
     const resolved = resolveBody({ label, aliases: names.slice(1), entityType }, index);
     const subjects = [...names.map(nameSubject), ...(resolved ? [bodySubject(resolved.body.id)] : [])];
@@ -375,7 +379,12 @@ export async function rebuildPersonas(tx: DbExecutor, personaIds: string[], opti
  * nobody saw is exactly the silent contamination `matchPersona` exists to avoid.
  */
 export async function upgradePersonaLibrary(tx: DbExecutor = db): Promise<{ groups: number; rebuilt: number; removed: number; linked: number }> {
-  const groupPersonas = await tx.select().from(policyPersonas).where(eq(policyPersonas.entityType, 'user_group'));
+  // PRE-PHASE-19 ROWS ONLY (`dossier_version` 0), like the rest of the upgrade.
+  // It runs at every boot, so anything it touches must be something only the
+  // old library could hold — otherwise a row written since, by any path, is
+  // deleted on the next restart with nobody having asked. After the first
+  // success there is no version-0 row left, and the whole upgrade is a no-op.
+  const groupPersonas = await tx.select().from(policyPersonas).where(and(eq(policyPersonas.entityType, 'user_group'), eq(policyPersonas.dossierVersion, 0)));
   let groups = 0;
   for (const persona of groupPersonas) {
     const observations = await tx.select().from(policyPersonaObservations).where(and(eq(policyPersonaObservations.personaId, persona.id), eq(policyPersonaObservations.kind, 'assessment')));
