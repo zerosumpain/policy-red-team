@@ -411,3 +411,50 @@ passing; `npm run offline` passing (29 blocks measured, nothing clipped);
   part of the policy and 43 parts are too rarely aimed at to be drawn. Both are
   counted under the grid.
 - Key judgements have not met a real paper yet; the fixture proves the path.
+
+## Verified on a real paper, 25 September 2026
+
+*Giving every child the best start in life* (`44dd5420`), submitted through the
+live service on porkserv, Codex/luna, six lanes. Earlier runs of the same paper
+had failed at stage 17: two before this phase, and this run's own first attempt.
+
+| | before (Post-16 `36ebca37`, or Best Start `03c83ea5`) | phase 19 |
+|---|---|---|
+| stages 0–16 | ~126 min real work (623 with the stage 17 loop) | **75 min** |
+| decomposition | 25.1 min | 10.2 min |
+| graph + profiles | ~46 min on this paper | 22.4 min |
+| theory of change | 38.1 min, 154 calls | 10.1 min, ≤9 chains |
+| stage 17 | failed in every Best Start run | **completed**, first real key judgements |
+
+**Stage 17 took three root causes, each found by replaying a stored reply through
+triage offline** (`reaches`, the provenance walk, against the real inventory):
+
+1. **Theory-of-change assumptions cited against results older than them.**
+   Scenarios, tests and plays can never reach an `s14_` assumption, and the
+   corrective round never said which results do. A traceability rejection now
+   carries a `hint` for the corrective round only (the reason text is unchanged,
+   because `warnings.ts` parses it). Stage 17's instruction says the same up front.
+2. **A key judgement cannot copy the paper at a stage that is not sent it.** It now
+   quotes through its mechanism's located quote when its own copy cannot be found.
+   A cited id under the wrong heading is refiled by its kind, not refused.
+3. **A summing-up fell with any sibling refused in the same reply.** The review
+   summary and recommendations now shed those citations. A recommendation all of
+   whose findings fell is still refused.
+
+The first real cross-paper link: **Jobcentre Plus**, 2 sightings (Post-16 +
+Best Start).
+
+### Open
+
+- The library holds two "Best Start Family Hubs" and two "Childcare providers"
+  from one run. Candidate splits of one body each opened a persona inside the same
+  write-back. The library page offers them as possible duplicates. The matcher
+  should see its own earlier links within one write-back.
+- Only 2 key judgements survived on this run (the ceiling is 5). Watch this across
+  papers before tuning.
+- `Math.sumPrecise is not a function` warnings come from pdfjs's worker thread,
+  where `polyfills.ts` does not run. Glyph sizing only, not text. The third missing
+  ES2025 API means upgrade Node, per AGENTS.md.
+- Attempts 2 and 3 of a failing stage still replay the cached main call.
+  Everything above makes attempt 1 succeed; it does not make a retry ask a new
+  question.
