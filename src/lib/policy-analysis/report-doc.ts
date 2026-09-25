@@ -27,6 +27,7 @@ import { checks } from './view';
 import { keyJudgements } from './judgements';
 import { isBody, network } from './network';
 import { adjacency } from './matrix';
+import type { Brief } from '../brief';
 
 export type DocMeta = {
   title: string;
@@ -512,6 +513,59 @@ function handling(meta: DocMeta): string {
     '### Nobody there can reach',
     beyond(sealed, searched).map((line) => `- ${line}`).join('\n'),
   ]);
+}
+
+/**
+ * THE ONE-PAGE BRIEF, ALONE — a document scope of its own.
+ *
+ * The full document runs to dozens of Word pages; the brief is what a busy
+ * official is sent. It holds exactly what the page's brief holds, because both
+ * draw `briefOf` (`$lib/brief`): the headline and one sentence, at most five
+ * key judgements, and at most three things the assessment could not check.
+ * Nothing else — no playbook, no appendix, no key — and a line at the foot
+ * saying the full assessment is a separate file, so a reader never mistakes
+ * one page for the whole.
+ *
+ * A SHARED COPY IS HANDED THE REDACTED ARTEFACTS, never redacted here. The
+ * export route runs `shareableReport` once and both documents render from its
+ * output; a key judgement's quote travels exactly as a finding's does.
+ */
+export function briefMarkdown(artefacts: Artefact[], meta: DocMeta, brief: Brief): string {
+  const context = [meta.jurisdiction, meta.policyArea].filter(Boolean).join(' · ');
+  const done = date(meta.completedAt);
+  const heading = brief.source === 'judgements' ? 'Key judgements' : 'The findings that matter most';
+  const items = brief.items.map((item) => {
+    const play = item.play;
+    const act = [clean(item.owner), clean(item.action)].filter(Boolean).join(': ');
+    return block([
+      `### ${item.rank}. ${clean(item.title)}`,
+      `**${clean(item.statement)}**`,
+      item.quote ? `> “${clean(item.quote.text)}”${item.quote.page ? ` (page ${item.quote.page})` : ''}` : null,
+      [
+        item.about && `- **Part of the policy.** ${clean(item.about.label)}`,
+        play && `- **The way to beat it.** ${clean(play.artefact.label)} — ${BAND_LABEL[play.band].toLowerCase()}, ${play.pattern.toLowerCase()}.${item.morePlays ? ` It names ${item.morePlays} more.` : ''}`,
+        play?.earlyWarning && `- **Early warning.** ${play.earlyWarning}`,
+        play?.fix && `- **The fix.** ${play.fix}`,
+        item.wouldChangeIf && `- **What would change our mind.** ${clean(item.wouldChangeIf)}`,
+        act && (item.owner ? `- **Who should act.** ${act}` : `- **What to do.** ${act}`),
+      ].filter(Boolean).join('\n'),
+    ]);
+  });
+  return block([
+    `# ${meta.title} — the brief`,
+    [context, done ? `Assessment completed ${done}` : null].filter(Boolean).join(' · ') || null,
+    'A red-team read: it looks for what a body governed by the policy could do to serve itself. It finds weak points; it does not predict that anyone will use them.',
+    meta.withheld?.length
+      ? `> **This is a shared copy.** It withholds ${meta.withheld.length > 1 ? `${meta.withheld.slice(0, -1).join('; ')}; and ${meta.withheld[meta.withheld.length - 1]}` : meta.withheld[0]}.`
+      : null,
+    '## In short',
+    [brief.headline, brief.standfirst].filter(Boolean).join(' ') || 'The assessment did not reach a conclusion.',
+    brief.items.length ? block([`## ${heading}`, ...items]) : null,
+    brief.limits.length
+      ? block(['## What we could not check', brief.limits.map((line) => `- ${line}`).join('\n')])
+      : null,
+    '*This is the one-page brief. The full assessment, with every way to beat the policy and the working behind each judgement, is a separate download.*',
+  ]).replace(/\n{3,}/g, '\n\n') + '\n';
 }
 
 /** `Post-16 Education and Skills` → `post-16-education-and-skills`. */

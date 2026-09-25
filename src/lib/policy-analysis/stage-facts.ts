@@ -202,3 +202,89 @@ export function stageFacts(warnings: string[]): StageFact[] {
 /** Every warning a stage recorded, whatever kind it was read as. */
 export const factTotal = (facts: StageFact[]): number =>
   facts.reduce((n, f) => n + f.detail.length, 0);
+
+/** A stage that reasoned with less than the whole inventory, and by how much. */
+export type Truncation = {
+  name: string;
+  ordinal: number;
+  /** How many of the stage's calls were reduced. */
+  calls: number;
+  /** The largest single call's withholding — the deepest the stage ever cut. */
+  withheld: number;
+  /** The largest single call's clipping, summed across both clip lengths. */
+  clipped: number;
+  /** The kinds that call held NONE of, in the contract's own spelling. */
+  kinds: string[];
+  /** The run said so itself: "Read this stage as partial." */
+  partial: boolean;
+};
+
+/*
+ * TWO PARSING TRAPS, BOTH HIT WHILE MEASURING THIS.
+ *
+ * The clip sentence occurs TWICE in one warning — "7 long items clipped to 500
+ * characters" and "196 long items clipped to 250 characters" — so a non-global
+ * pattern silently reads only the first and reports a third of the clipping.
+ *
+ * And all 44 of these warnings use a STRAIGHT apostrophe in "this call's
+ * context" while six other warnings in the same run use a curly one, so the
+ * apostrophe is matched as any single character. A rule that looks right and
+ * matches nothing after a producer reword is worse than no rule.
+ */
+const CONTEXT = /context window/i;
+const WITHHELD = /([\d,]+) items were withheld from this call entirely/g;
+const CLIPPED = /([\d,]+) long items clipped to \d+ characters/g;
+const KINDS = /No ([a-z_, ]+?) (?:was|were) left in this call.s context at all/i;
+const PARTIAL = /Read this stage as partial\./i;
+
+const whole = (text: string) => Number(text.replace(/,/g, ''));
+
+/**
+ * WHERE THE MODEL COULD NOT SEE EVERYTHING.
+ *
+ * 44 of the run's 270 warnings are context-window truncations across 10 of the
+ * 18 stages, and nine of them carry the literal instruction "Read this stage as
+ * partial." — seven of those in Independent challenge, the stage whose entire
+ * job is to challenge the assessment. On the page they were five near-identical
+ * grey rows behind a disclosure nobody opens. Nothing above them said the last
+ * three stages were written by a model that could not see most of the
+ * inventory.
+ *
+ * ONE ROW PER STAGE, NOT PER CALL, and the figures are the LARGEST single
+ * call's rather than a sum: twelve calls that each withheld 191 items did not
+ * withhold 2,292 items, and adding them would invent a number.
+ */
+export function truncations(stages: { name: string; ordinal: number; warnings: string[] }[]): Truncation[] {
+  const rows: Truncation[] = [];
+  for (const stage of stages) {
+    const hits = (stage.warnings ?? []).filter((text) => CONTEXT.test(text));
+    if (!hits.length) continue;
+    let withheld = 0;
+    let clipped = 0;
+    let kinds: string[] = [];
+    for (const text of hits) {
+      const here = [...text.matchAll(WITHHELD)].reduce((n, m) => Math.max(n, whole(m[1])), 0);
+      // The kinds belong to the DEEPEST call, not to the last one read: a stage
+      // whose worst call held none of fourteen kinds is not described by a
+      // later call that held none of two.
+      if (here >= withheld) {
+        withheld = here;
+        kinds = KINDS.exec(text)?.[1].split(',').map((k) => k.trim()).filter(Boolean) ?? [];
+      }
+      clipped = Math.max(clipped, [...text.matchAll(CLIPPED)].reduce((n, m) => n + whole(m[1]), 0));
+    }
+    rows.push({
+      name: stage.name,
+      ordinal: stage.ordinal,
+      calls: hits.length,
+      withheld,
+      clipped,
+      kinds,
+      partial: hits.some((text) => PARTIAL.test(text)),
+    });
+  }
+  // Stage order, because the pipeline order is itself the reading: the cutting
+  // gets deeper as the inventory grows, and the three stages that write the
+  // report's conclusions are the three at the bottom.
+  return rows.sort((a, b) => a.ordinal - b.ordinal);
+}
