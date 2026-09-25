@@ -471,6 +471,24 @@ function personaAction<T>(id: string, action: string, body: Record<string, strin
 }
 
 /**
+ * The READER gate — who may read the assessments at all, as opposed to who may
+ * configure them. The server has had this door since phase 18
+ * (`server/reader-gate.ts`); nothing in the client ever opened it, so a
+ * password-gated install showed every visitor an empty shell and a string of
+ * 401s, with no form anywhere to type the password into. `ReaderGate` is that form.
+ */
+export const reader = {
+  status: () => request<{ gated: boolean; signedIn: boolean }>('/api/reader/status'),
+  signIn: (password: string) =>
+    request<{ signedIn: boolean }>('/api/reader/session', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ password }),
+    }),
+  signOut: () => request<{ signedIn: boolean }>('/api/reader/session', { method: 'DELETE' }),
+};
+
+/**
  * The admin panel, which is the only part of this service behind a password.
  *
  * A secret goes in and never comes back: `config()` reports whether each one is

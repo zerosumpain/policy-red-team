@@ -3,6 +3,7 @@ import { Route, Routes, useParams, useSearchParams } from 'react-router';
 import { MOVES } from './moves';
 import { Template } from './layout/Template';
 import { Home } from './pages/Home';
+import { ReaderGate } from './pages/ReaderGate';
 
 /**
  * EVERY PAGE BUT THE LANDING ONE IS SPLIT OFF.
@@ -67,6 +68,8 @@ export function App() {
         <p className="govuk-body">Fetching this page.</p>
       </Template>
     )}>
+    {/* The reader password's own door — see client/pages/ReaderGate.tsx. */}
+    <ReaderGate>
     <Routes>
       <Route path="/" element={<Template wide><Home /></Template>} />
       <Route path="/new" element={<Template backLink={{ href: '/' }}><New /></Template>} />
@@ -106,6 +109,7 @@ export function App() {
       <Route path="/accessibility" element={<Template backLink={{ href: '/' }}><Accessibility /></Template>} />
       <Route path="/about" element={<Template backLink={{ href: '/' }}><About /></Template>} />
     </Routes>
+    </ReaderGate>
     </Suspense>
   );
 }
