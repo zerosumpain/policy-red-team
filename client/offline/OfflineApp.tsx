@@ -139,7 +139,6 @@ export function OfflineApp({ payload }: { payload: PackPayload }) {
               <span className="prt-meta">
                 Pack made {new Date(payload.generatedAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })}
               </span>
-              <span className="prt-meta">{payload.artefacts.length.toLocaleString()} artefacts</span>
             </p>
           </header>
 

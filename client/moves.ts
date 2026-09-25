@@ -8,6 +8,10 @@
  * same five things, and a second hand-typed copy is a pair of surfaces that
  * drift the first time a move is renamed.
  *
+ * PLAIN WORDS SINCE PHASE 19. "Causality", "Actors" and "Provenance" were an
+ * analyst's names for three questions a reader asks in ordinary words; the ids
+ * stay, so `?move=causality` and every anchor still work. See `$lib/plain-words`.
+ *
  * IT IS A LEAF MODULE AT THE CLIENT ROOT, not an export from `Report.tsx`, and
  * that is a bundling decision rather than a tidy-up. `Home` is the one page
  * `App.tsx` imports eagerly — every other route is `lazy()` precisely so that
@@ -29,9 +33,9 @@ export type MoveEntry = {
 };
 
 export const MOVES: readonly MoveEntry[] = [
-  { id: 'verdict', step: 'Move 1', label: 'Verdict', hint: 'What did it conclude' },
-  { id: 'causality', step: 'Move 2', label: 'Causality', hint: 'Why is any of it possible' },
-  { id: 'threats', step: 'Move 3', label: 'Threats', hint: 'What could be done to it' },
-  { id: 'actors', step: 'Move 4', label: 'Actors', hint: 'Who would do it' },
-  { id: 'provenance', step: 'Last', label: 'Provenance', hint: 'What the run discarded' },
+  { id: 'verdict', step: 'Move 1', label: 'Verdict', hint: 'What did it find' },
+  { id: 'causality', step: 'Move 2', label: 'Causes', hint: 'Why could it happen' },
+  { id: 'threats', step: 'Move 3', label: 'Threats', hint: 'How could it be beaten' },
+  { id: 'actors', step: 'Move 4', label: 'Who is involved', hint: 'Who would do it' },
+  { id: 'provenance', step: 'Last', label: 'Where this comes from', hint: 'How it was made' },
 ];

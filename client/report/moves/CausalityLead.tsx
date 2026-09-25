@@ -41,14 +41,16 @@ import { Details, InsetText } from '../../govuk';
  */
 
 /**
- * Below how many one-play mechanisms the tail is left as bars.
+ * HOW MANY BARS ARE DRAWN. The rest are a table.
  *
- * Folding thirteen identical minimum-length rows into chips recovers about
- * 570px of chart that carried no comparison — every one of them was the same
- * one-seventh of the track with the same "1 play" beside it. Folding three
- * would be two lists where one would do.
+ * The chart drew 28 bars and 13 chips on the real assessment — 41 rows, about
+ * two screens — and after the first ten every bar is two or three plays long,
+ * the same length drawn eighteen times. Phase 19 caps the drawing at the ten
+ * that differ and puts the rest in a table behind a details, where every one
+ * is still selectable. A later workstream replaces the lead with a pattern ×
+ * mechanism grid; until then this is the shortest honest form.
  */
-const FOLD_AT = 5;
+const DRAWN = 10;
 
 const BANDS = ['severe', 'significant', 'moderate', 'limited'] as const;
 
@@ -104,18 +106,13 @@ export function CausalityLead({ artefacts, list, selection, onSelect, mechanismI
   const chains = useMemo(() => chainsFor(artefacts, mechanismIds), [artefacts, mechanismIds]);
 
   /*
-   * THE TAIL IS A ROW OF CHIPS, NOT THIRTEEN MORE BARS. The bar-length
-   * distribution on this run is {7:1, 5:2, 4:5, 3:6, 2:14, 1:13}, and the
-   * thirteen at the bottom are the same length drawn thirteen times. A chip
-   * keeps every one of them selectable — nothing is lost from the carried
-   * selection — and the cut is the section's own thesis, "generates more than
-   * one play", rather than an arbitrary top-N.
+   * THE TAIL IS A TABLE, NOT MORE BARS. The bar-length distribution on the real
+   * run is {7:1, 5:2, 4:5, 3:6, 2:14, 1:13}: past the first ten the lengths
+   * barely differ, so drawing them compares nothing. Every row of the table is
+   * still a selection control — nothing is lost from the carried selection.
    */
-  const many = rows.filter((row) => row.plays.length > 1);
-  const ones = rows.filter((row) => row.plays.length === 1);
-  const folded = many.length > 0 && ones.length >= FOLD_AT;
-  const bars = folded ? many : rows;
-  const chips = folded ? ones : [];
+  const bars = rows.slice(0, DRAWN);
+  const tail = rows.slice(DRAWN);
 
   const selectedId = selection?.kind === 'mechanism' ? selection.id : null;
   const selected = selectedId ? byId.get(selectedId) ?? null : null;
@@ -139,7 +136,6 @@ export function CausalityLead({ artefacts, list, selection, onSelect, mechanismI
   );
 
   const barRoving = useRoving(bars.length, bars.findIndex((row) => row.id === selectedId));
-  const chipRoving = useRoving(chips.length, chips.findIndex((row) => row.id === selectedId));
 
   /*
    * NEVER SCROLL A TARGET ALREADY ON SCREEN. Two nested frames because the
@@ -172,28 +168,12 @@ export function CausalityLead({ artefacts, list, selection, onSelect, mechanismI
 
   const nameOf = (id: string) => byId.get(id)?.label ?? id;
 
-  const chipButton = (row: { id: string }, index: number, roving: ReturnType<typeof useRoving>) => {
-    const isSelected = row.id === selectedId;
-    return (
-      <button
-        type="button"
-        data-roving=""
-        className="prt-chips__chip"
-        aria-pressed={isSelected}
-        tabIndex={roving.tabIndexFor(index)}
-        onClick={() => select({ id: row.id, label: nameOf(row.id) }, isSelected)}
-      >
-        {nameOf(row.id)}
-      </button>
-    );
-  };
-
   return (
     <section aria-labelledby="mechanisms">
-      <h2 className="govuk-heading-l" id="mechanisms">The mechanisms that generate the most plays</h2>
+      <h2 className="govuk-heading-l" id="mechanisms">The parts of the policy most ways to beat it rest on</h2>
       <p className="govuk-body">
-        One mechanism can generate several plays, which is why closing a mechanism is worth more
-        than answering a play. Select one to carry it into the other three moves.
+        One part of the policy can open up several ways to beat it, so fixing that part does more
+        than answering any one of them. Select a part to carry it into the other tabs.
       </p>
       {/* THE DENOMINATOR, GENERATED FROM THE ROWS THEMSELVES, so the sentence
           and the chart cannot disagree. Every other capped or partial list in
@@ -201,12 +181,13 @@ export function CausalityLead({ artefacts, list, selection, onSelect, mechanismI
           other 223" — and the one figure that is the head of a move did not. */}
       <p className="govuk-body">
         {orphans.length
-          ? `${onMechanism} of the ${counted.length} plays here rest on `
-          : 'Every play here rests on '}
-        {rows.length} of the {mechanismIds.size} mechanisms the paper names.
+          ? `${onMechanism} of the ${counted.length} ways to beat it here rest on `
+          : 'Every way to beat it here rests on '}
+        {rows.length} of the {mechanismIds.size} parts of the policy the paper sets up.
         {pairs > onMechanism
-          ? ` A play can rest on more than one, so the counts below sum to ${pairs} rather than ${onMechanism}.`
+          ? ` One can rest on more than one part, so the counts below add up to ${pairs} rather than ${onMechanism}.`
           : ''}
+        {tail.length ? ` The ${bars.length} with the most are drawn; the other ${tail.length} are in a table below.` : ''}
       </p>
 
       {selected ? (
@@ -243,13 +224,13 @@ export function CausalityLead({ artefacts, list, selection, onSelect, mechanismI
           {resting ? (
             <p className="govuk-body-s prt-meta">
               Rests on {resting} {resting === 1 ? 'assumption' : 'assumptions'} the paper has not
-              established — counted both where an assumption names this mechanism and where one of
-              its causal chains names both.
+              proven — counted where an assumption names this part of the policy, and where a chain
+              of cause and effect names both.
             </p>
           ) : null}
 
           <h4 className="govuk-heading-s govuk-!-margin-bottom-1" id="follows-plays">
-            {follows.length} {follows.length === 1 ? 'play' : 'plays'} rest on it
+            {follows.length} {follows.length === 1 ? 'way to beat the policy rests' : 'ways to beat the policy rest'} on it
           </h4>
           <ol className="govuk-list govuk-list--spaced" aria-labelledby="follows-plays">
             {follows.map((play) => (
@@ -270,8 +251,8 @@ export function CausalityLead({ artefacts, list, selection, onSelect, mechanismI
 
           {linkTo ? (
             <p className="govuk-body-s prt-meta">
-              {linkTo(selected, 'Open the full record for this mechanism')} — every relationship,
-              every assumption and every play it appears in.
+              {linkTo(selected, 'Open the full record for this part of the policy')} — every link,
+              every assumption and every way to beat it that it appears in.
             </p>
           ) : null}
         </div>
@@ -288,7 +269,7 @@ export function CausalityLead({ artefacts, list, selection, onSelect, mechanismI
              semantics taken away. */
           role="toolbar"
           aria-orientation="vertical"
-          aria-label="Mechanisms by the number of plays they generate"
+          aria-label="Parts of the policy by how many ways to beat it rest on each"
           ref={barRoving.container}
           onKeyDown={barRoving.onKeyDown}
         >
@@ -330,7 +311,7 @@ export function CausalityLead({ artefacts, list, selection, onSelect, mechanismI
                   </span>
                 </span>
                 <span className="prt-nodebar__n">
-                  <strong>{row.plays.length}</strong> {row.plays.length === 1 ? 'play' : 'plays'}
+                  <strong>{row.plays.length}</strong> {row.plays.length === 1 ? 'way' : 'ways'}
                   {/* THE SPLIT IS VISIBLE TEXT NOW, not a hidden span. Two bars
                       both reading "2 plays" were 1 severe + 1 moderate and 2
                       significant, and the only thing separating them was two
@@ -356,7 +337,7 @@ export function CausalityLead({ artefacts, list, selection, onSelect, mechanismI
       {orphans.length ? (
         <>
           <div className="prt-nodebar prt-nodebar--none">
-            <span className="prt-nodebar__none">No named mechanism</span>
+            <span className="prt-nodebar__none">No named part of the policy</span>
             <span className="prt-nodebar__bar" aria-hidden="true">
               <span className="prt-nodebar__fill" style={{ width: `${Math.min(orphans.length / widest, 1) * 100}%` }}>
                 {splitOf(orphans).map((entry) => (
@@ -369,16 +350,16 @@ export function CausalityLead({ artefacts, list, selection, onSelect, mechanismI
               </span>
             </span>
             <span className="prt-nodebar__n">
-              <strong>{orphans.length}</strong> {orphans.length === 1 ? 'play' : 'plays'}
+              <strong>{orphans.length}</strong> {orphans.length === 1 ? 'way' : 'ways'}
               <span className="prt-nodebar__split">
                 {splitOf(orphans).map((entry) => `${entry.n} ${BAND_LABEL[entry.band].toLowerCase()}`).join(' · ')}
               </span>
             </span>
           </div>
-          <Details summary={`The ${orphans.length} ${orphans.length === 1 ? 'play' : 'plays'} no mechanism accounts for`}>
+          <Details summary={`The ${orphans.length} ${orphans.length === 1 ? 'way to beat it that names' : 'ways to beat it that name'} no part of the policy`}>
             <p className="govuk-body-s">
-              These cite no mechanism at all, so no bar can carry them and no mechanism selection
-              reaches them. They are in the playbook on Move 3.
+              These name no part of the policy, so no bar can carry them and selecting a part never
+              reaches them. They are in the list on the Threats tab.
             </p>
             <ul className="govuk-list govuk-list--spaced govuk-!-margin-bottom-0">
               {orphans.map((play) => (
@@ -392,40 +373,56 @@ export function CausalityLead({ artefacts, list, selection, onSelect, mechanismI
         </>
       ) : null}
 
-      {chips.length ? (
-        <>
-          <p className="govuk-body-s prt-meta" id="mechanisms-ones">
-            {chips.length} more mechanisms generate one play each. Every one is still selectable.
-          </p>
-          <ul
-            className="prt-chips"
-            role="toolbar"
-            aria-orientation="horizontal"
-            aria-labelledby="mechanisms-ones"
-            ref={chipRoving.container}
-            onKeyDown={chipRoving.onKeyDown}
-          >
-            {chips.map((row, index) => (
-              <li key={row.id} className="prt-chips__item" role="presentation">
-                {chipButton(row, index, chipRoving)}
-              </li>
-            ))}
-          </ul>
-        </>
+      {tail.length ? (
+        <Details summary={`The other ${tail.length} parts of the policy`}>
+          <table className="govuk-table prt-mechtail">
+            <caption className="govuk-table__caption govuk-table__caption--s govuk-visually-hidden">
+              The other {tail.length} parts of the policy, by how many ways to beat it rest on each
+            </caption>
+            <thead className="govuk-table__head">
+              <tr className="govuk-table__row">
+                <th scope="col" className="govuk-table__header">Part of the policy</th>
+                <th scope="col" className="govuk-table__header govuk-table__header--numeric">Ways to beat it</th>
+                <th scope="col" className="govuk-table__header">How exposed</th>
+              </tr>
+            </thead>
+            <tbody className="govuk-table__body">
+              {tail.map((row) => {
+                const isSelected = row.id === selectedId;
+                return (
+                  <tr key={row.id} className="govuk-table__row">
+                    <th scope="row" className="govuk-table__header">
+                      {/* Still a selection control, as every row of the chart is:
+                          a button, pressed when it is the carried selection. */}
+                      <button type="button" className="prt-chips__chip" aria-pressed={isSelected}
+                              onClick={() => select({ id: row.id, label: nameOf(row.id) }, isSelected)}>
+                        {nameOf(row.id)}
+                      </button>
+                    </th>
+                    <td className="govuk-table__cell govuk-table__cell--numeric">{row.plays.length}</td>
+                    <td className="govuk-table__cell">
+                      {splitOf(row.plays).map((entry) => `${entry.n} ${BAND_LABEL[entry.band].toLowerCase()}`).join(' · ')}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </Details>
       ) : null}
 
       {/* The bars stack four bands and said nowhere what the shades were. A
           ramp with no key is a decoration; the counts are already read out to
           anyone not looking at it, so this is the same fact for anyone who is. */}
-      <BandKey label="Each bar is divided by band:" />
+      <BandKey label="Each bar is split by how exposed:" />
 
       {heaviest && (assumptions.get(heaviest.id)?.size ?? 0) > 0 ? (
         <p className="govuk-body">
-          {nameOf(heaviest.id)} generates {heaviest.plays.length}{' '}
-          {heaviest.plays.length === 1 ? 'play' : 'plays'} and rests
-          on {assumptions.get(heaviest.id)?.size} unestablished assumptions — more than any other
-          mechanism on this chart. A bar says how many ways in there are; it does not say how much
-          has to hold for the thing to work at all.
+          {nameOf(heaviest.id)} opens up {heaviest.plays.length}{' '}
+          {heaviest.plays.length === 1 ? 'way' : 'ways'} to beat the policy and rests
+          on {assumptions.get(heaviest.id)?.size} unproven assumptions — more than any other part
+          counted here. A bar says how many ways in there are; it does not say how much has to hold
+          for the thing to work at all.
         </p>
       ) : null}
     </section>

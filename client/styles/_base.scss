@@ -745,137 +745,10 @@
 .govuk-tabs__panel table,
 .prt-pack table { width: 100%; }
 
-// ── The write-up, as an editorial front page ──────────────────────────────
+// ── The write-up ───────────────────────────────────────────────────────────
 //
-// It was nineteen collapsed accordion rows reading "Executive assessment — 1
-// finding — Show", identical down the page, with every word the assessment
-// wrote behind a separate click. A reader could not tell whether the report
-// said anything at all.
-//
-// An editorial page leads with the piece that matters, sets it wider and larger
-// than the rest, and lets the eye fall through the others by weight. The
-// hierarchy IS the navigation.
-.prt-writeup {
-  &__lead {
-    border-top: 5px solid govuk.govuk-colour("black");
-    padding-top: govuk.govuk-spacing(3);
-    margin-bottom: govuk.govuk-spacing(6);
-  }
-
-  &__kicker {
-    @include govuk.govuk-font($size: 16, $weight: bold);
-    text-transform: uppercase;
-    letter-spacing: 0.08em;
-    color: govuk.govuk-colour("black", $variant: "tint-25");
-    margin: 0 0 govuk.govuk-spacing(2);
-  }
-
-  // The standfirst: the assessment's own conclusion, set as the thing a reader
-  // came for. Held to a measure because it is genuinely prose.
-  &__standfirst {
-    @include govuk.govuk-font($size: 27);
-    margin: 0 0 govuk.govuk-spacing(3);
-    max-width: $prt-measure;
-    text-wrap: pretty;
-  }
-
-  // A GRID OF EQUAL CARDS — after two wrong answers.
-  //
-  // A plain grid gave every cell the height of the tallest in its row, so a
-  // six-line section left a 400px hole beneath it. Multicol fixed the holes and
-  // broke the alignment instead: each column ran at its own rhythm, so nineteen
-  // headings sat at nineteen different heights and the eye had no row to follow
-  // across.
-  //
-  // Both are true at once only if every card is the SAME height, which means
-  // fixing the body rather than letting the content decide it. Then there is no
-  // tallest cell to leave a hole, and every heading in a row starts level.
-  &__columns {
-    display: grid;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-    gap: govuk.govuk-spacing(5) govuk.govuk-spacing(6);
-
-    @include govuk.govuk-media-query($until: desktop) {
-      grid-template-columns: repeat(2, minmax(0, 1fr));
-    }
-    @include govuk.govuk-media-query($until: tablet) {
-      grid-template-columns: minmax(0, 1fr);
-    }
-  }
-
-  &__col {
-    // Head, body, foot — the heading at the top of the card and the control at
-    // the bottom of it, both level with their neighbours.
-    display: grid;
-    grid-template-rows: auto 1fr auto;
-    // A SHUT CARD DOES NOT STRETCH TO AN OPENED NEIGHBOUR.
-    //
-    // Grid items stretch by default, so opening one card grew its row from 285px
-    // to 424px and dragged its two row-mates with it — while their text stayed at
-    // nine clamped lines, leaving a 139px void inside each card and a 149px gap
-    // between the last line and the control that `align-self: end` pins to the
-    // bottom. The clamp is a line count and cannot be made into a fit, so the
-    // honest answer is to let the shut cards keep their own height: the slack
-    // then falls outside the hairline, where it reads as page whitespace.
-    align-self: start;
-    // A hairline rather than a box: this is a column of a page, not a card on a
-    // dashboard.
-    border-top: 1px solid govuk.govuk-colour("black", $variant: "tint-80");
-    padding-top: govuk.govuk-spacing(2);
-    margin-bottom: 0;
-  }
-
-  &__head {
-    @include govuk.govuk-font($size: 19, $weight: bold);
-    margin: 0 0 govuk.govuk-spacing(2);
-  }
-
-  &__title {
-    @include govuk.govuk-font($size: 16, $weight: bold);
-    margin: 0 0 2px;
-  }
-
-  // THE FIXED HEIGHT. `line-clamp` cuts at nine lines and `min-height` holds a
-  // shorter section open to the same nine, so a card is nine lines of body
-  // whatever it holds. Opening one releases both — the reader asked, and a row
-  // that grows because somebody opened a card is not the defect a row that was
-  // never level is.
-  &__body {
-    display: -webkit-box;
-    -webkit-box-orient: vertical;
-    -webkit-line-clamp: 9;
-    line-clamp: 9;
-    overflow: hidden;
-    min-height: calc(9 * 1.45 * 16px);
-  }
-
-  .is-open &__body {
-    display: block;
-    -webkit-line-clamp: none;
-    line-clamp: none;
-    overflow: visible;
-    min-height: 0;
-  }
-
-  &__text {
-    @include govuk.govuk-font($size: 16);
-    line-height: 1.45;
-    margin: 0;
-  }
-
-  &__item { margin-top: govuk.govuk-spacing(3); }
-
-  &__foot {
-    @include govuk.govuk-font($size: 16);
-    margin: govuk.govuk-spacing(2) 0 0;
-    align-self: end;
-  }
-
-  // `&__more` used to live here — the colour and underline this card's control
-  // needed, written for it and applied by nothing. It is gone because
-  // `.prt-linkbutton` now carries both, which fixes every link-shaped button at
-  // once rather than this one; the stress lab's control had the same bug.
-}
+// Its rules went with it in phase 19. The findings lead the Verdict as a ranked
+// list and the rest are GOV.UK details — `parts/_verdict.scss` styles both.
 
 // ── A list of plays a reader can scan ─────────────────────────────────────
 //
@@ -1124,25 +997,15 @@
   // the report hid behind "read the rest" is opened for the printed copy.
   details > summary { display: none; }
   details > *:not(summary) { display: block !important; }
+  // AND CHROMIUM 131+ HIDES A SHUT DETAILS' CONTENTS through `::details-content`,
+  // which no `display` on the children reaches — `_beats.scss` found it for the
+  // scenarios. Phase 19 put the findings appendix, the scores table and the
+  // assumption rankings behind details, so the rule is general now.
+  details::details-content { content-visibility: visible !important; display: block !important; }
 
-  // AND SO DOES A LINE CLAMP, which is the same defect wearing CSS rather than
-  // markup and was missed when the write-up's disclosure became a clamp. Measured
-  // on the real run in print emulation: all twelve sections still cut at nine
-  // lines, 1,701px of the assessment's own prose — about 74 lines — gone from the
-  // paper copy, four of them mid-word, each under a "Read it in full" control
-  // that a reader cannot press.
-  //
-  // `WriteUp` also opens every section on `beforeprint`, which is the half of
-  // this CSS cannot do: a shut card renders only the first of its items, so the
-  // siblings are not in the document for any stylesheet to reach. This rule is
-  // what catches a browser that prints without firing that event.
-  .prt-writeup__body {
-    display: block;
-    -webkit-line-clamp: none;
-    line-clamp: none;
-    overflow: visible;
-    min-height: 0;
-  }
+  // A line clamp is the same defect as a shut details, wearing CSS rather than
+  // markup: each clamped block releases itself in its own partial's print rule
+  // (`.prt-toc__text` in `parts/_verdict.scss`).
 
   // The control is not a `.govuk-button`, so hiding those missed it and the PDF
   // carried a live-looking "Read it in full" exactly where the missing text was.
@@ -1157,8 +1020,7 @@
 
   .prt-metric,
   .prt-play,
-  .prt-rec,
-  .prt-writeup__col { break-inside: avoid; }
+  .prt-rec { break-inside: avoid; }
 
   /*
    * NO URL IS STAMPED INTO AN INTERNAL LINK.

@@ -1,104 +1,88 @@
-import { useState } from 'react';
-import { type Band, type Play } from '$lib/policy-analysis/view';
+import type { ReactNode } from 'react';
 import type { Artefact } from '$lib/policy-analysis/contracts';
-import { Button } from '../../govuk';
-import { PlayList } from '../PlayList';
-import { filterPlays, type Selection } from '../selection';
-import { NoneUnder } from './NoneUnder';
+import type { KeyJudgement } from '$lib/writeup-view';
+import { JudgementWord } from '../Judgement';
 
 /**
- * READ THESE FIRST — the three plays a reader should start on.
+ * THE VERDICT LEADS WITH WHAT IT CONCLUDED.
  *
- * THE BAR IS NOT HERE ANY MORE. The segmented exposure bar is the one figure
- * that answers "where does the exposure sit", and inside this panel it opened
- * 1,372px down, behind a masthead, a phase banner, a status banner, the
- * headline, the selection banner, the tab strip and a six-item contents list —
- * so the first screen of the report a reader lands on was chrome, one sentence
- * and a strip of tabs. It is `ExposureRail` now, rendered above the tab strip,
- * where it is true of all five moves rather than of this one.
+ * The review of the real assessment (25 September) found the first things a
+ * reader met were about the machine — "2,296 artefacts held", "10h 23m" — then
+ * a bland headline, then the exposure bar, and the write-up arrived as section
+ * 8 of 12: nineteen equal cards clipped to nine lines. Nothing on the page said
+ * which of the nineteen mattered.
  *
- * THREE, THEN ALL OF THEM. Forty-seven plays is a wall, and a reader who meets
- * a wall reads none of it. Three is a start that can be finished, and the
- * control says how many it is hiding rather than saying "more".
+ * So the move opens with the findings that matter most, ranked by
+ * `rankFindings()` and each carrying the reason for its place: how serious the
+ * worst thing it cites is, and how well supported the final review judged it.
+ * The rest are in "All findings", further down the same move.
+ *
+ * IT TAKES JUDGEMENTS, NOT FINDINGS. Phase 19's analysis workstream adds a "key
+ * judgements" artefact and a one-page brief. When they land, the judgements
+ * are mapped into `KeyJudgement` (their extra fields go in `details`) and the
+ * brief goes in the `brief` slot, which renders above the list and nothing
+ * else here changes.
+ *
+ * NO ROUTER, NO FETCH: `linkTo` is optional, exactly as on `Report`, because
+ * this renders in the offline pack.
  */
-export function VerdictLead({ list, selection, onSelect, mechanismIds, linkTo }: {
-  list: Play[];
-  /**
-   * STILL ACCEPTED, DELIBERATELY UNREAD, after the bar moved to `ExposureRail`.
-   *
-   * `Report` computes `bandCounts(list)` once and hands the same array to the
-   * rail, to this lead and to the plot's section. Dropping it from the type
-   * would turn moving the bar out into an edit of the spine as well, and the
-   * spine is the file every other change in this wave also wants.
-   */
-  bands?: { band: Band; note: string; count: number }[];
-  selection: Selection;
-  onSelect: (selection: Selection) => void;
-  /** Passed in, never rebuilt: a `new Set()` here made every mechanism selection a no-op. */
-  mechanismIds: Set<string>;
-  /** Optional, exactly as on `Report`: a report rendered without links still renders. */
-  linkTo?: (artefact: Artefact, label?: string) => React.ReactNode;
+export function VerdictLead({ judgements, standfirst, brief, remaining, linkTo }: {
+  judgements: KeyJudgement[];
+  /** The rest of the executive assessment, after the headline sentence. */
+  standfirst?: string;
+  /** The one-page brief, when there is one. Empty until the brief workstream lands. */
+  brief?: ReactNode;
+  /** How many findings are in the appendix, for the sentence that points at it. */
+  remaining?: number;
+  linkTo?: (artefact: Artefact, label?: string) => ReactNode;
 }) {
-  const [all, setAll] = useState(false);
-  /*
-   * RESET WHEN THE SELECTION CHANGES. Expand to all 47, select "severe", and
-   * the control disappears once the list is short — leaving `all` true, so
-   * clearing the selection dropped the reader straight back into the 47-item
-   * wall the "three, then all" rule exists to prevent.
-   */
-  const [lastSelection, setLastSelection] = useState(selection);
-  if (lastSelection !== selection) {
-    setLastSelection(selection);
-    setAll(false);
-  }
-  if (!list.length) return null;
-
-  /*
-   * `filterPlays`, NOT `narrowExcept`.
-   *
-   * This read `narrowExcept(list, selection, mechanismIds, 'band' as never)`.
-   * `narrowExcept` returns the list UNFILTERED when the selection's kind is the
-   * one it is told this control owns — and this list owns nothing; the band
-   * PICKER was the `StackedBar` above it, which has since moved out to the rail.
-   * So every band selection was silently cancelled here: at `?sel=band:limited`,
-   * where the run holds two limited plays, the heading read "Read these first,
-   * under this selection", the button read "Show all 47 under this selection",
-   * and the three cards on screen were all severe.
-   */
-  const ranked = filterPlays(list, selection, mechanismIds);
-  const visible = all ? ranked : ranked.slice(0, 3);
-  const worst = Math.max(...list.map((play) => play.exposure));
+  if (!judgements.length && !standfirst && !brief) return null;
 
   return (
-    <section aria-labelledby="exposure-profile">
-      <h2 className="govuk-heading-l" id="exposure-profile">Read these first</h2>
-      <p className="govuk-body">
-        The {list.length} ways to beat this policy, worst first. Selecting a band in the exposure
-        strip carries it into every view on this page.
-      </p>
-      {/*
-        THE SECOND HEADING IS GONE WITH THE BAR IT SEPARATED. With the stacked
-        bar between them, "Where the exposure sits" and "Read these three first"
-        were two sections; without it they were two consecutive headings saying
-        the same thing, and the state the h3 carried — whether the three are the
-        run's three or this selection's — is a fact about the list rather than a
-        title for it.
-      */}
-      {selection ? (
-        <p className="govuk-body-s prt-meta">
-          {ranked.length} {ranked.length === 1 ? 'play' : 'plays'} under this selection.
-        </p>
-      ) : null}
-      {visible.length ? (
-        <PlayList plays={visible} linkTo={linkTo} rank exposureMax={worst} rankValue={(play) => play.exposure} />
-      ) : (
-        <NoneUnder selection={selection} onClear={() => onSelect(null)} />
-      )}
+    <section aria-labelledby="main-findings" className="prt-verdict">
+      <h2 className="govuk-heading-l" id="main-findings">Main findings</h2>
+      {standfirst ? <p className="govuk-body-l prt-verdict__standfirst">{standfirst}</p> : null}
+      {brief ? <div className="prt-verdict__brief">{brief}</div> : null}
 
-      {ranked.length > 3 ? (
-        <Button variant="secondary" onClick={() => setAll(!all)}>
-          {all ? 'Show three' : `Show all ${ranked.length}${selection ? ' under this selection' : ''}`}
-        </Button>
+      {judgements.length ? (
+        <>
+          <p className="govuk-body">
+            {judgements.length === 1 ? 'The finding' : `The ${judgements.length} findings`} that
+            matter most, most serious first.
+            {remaining ? ` The other ${remaining} are under “All findings” further down.` : ''}
+          </p>
+          <ol className="prt-verdict__list">
+            {judgements.map((judgement, i) => (
+              <li key={judgement.id} className={`prt-verdict__item prt-verdict__item--${judgement.severity.level}`}>
+                <h3 className="govuk-heading-m prt-verdict__title">
+                  <span className="prt-verdict__rank" aria-hidden="true">{i + 1}</span>
+                  {judgement.artefact && linkTo ? linkTo(judgement.artefact, judgement.title) : judgement.title}
+                </h3>
+                <div className="prt-verdict__tags">
+                  <p className="prt-verdict__severity">
+                    How serious: <strong>{judgement.severity.label.toLowerCase()}</strong>
+                  </p>
+                  <JudgementWord judgement={judgement.judgement} />
+                </div>
+                <p className="govuk-body prt-verdict__text">{judgement.statement}</p>
+                {judgement.details?.length ? (
+                  <dl className="govuk-summary-list govuk-summary-list--no-border prt-verdict__details">
+                    {judgement.details.map((row) => (
+                      <div key={row.label} className="govuk-summary-list__row">
+                        <dt className="govuk-summary-list__key">{row.label}</dt>
+                        <dd className="govuk-summary-list__value">{row.value}</dd>
+                      </div>
+                    ))}
+                  </dl>
+                ) : null}
+                <p className="govuk-body-s prt-meta">
+                  {judgement.severity.reason}
+                  {judgement.sectionLabel ? ` From the part of the report on ${judgement.sectionLabel.toLowerCase()}.` : ''}
+                </p>
+              </li>
+            ))}
+          </ol>
+        </>
       ) : null}
     </section>
   );

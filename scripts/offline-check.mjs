@@ -123,7 +123,7 @@ try {
   page.on('pageerror', (err) => failures.push(`page error: ${err.message}`));
 
   await page.goto(`file://${path.join(packDir, 'index.html')}`, { waitUntil: 'load' });
-  await page.getByRole('heading', { name: 'What it found' }).waitFor({ timeout: 30000 })
+  await page.getByRole('heading', { name: 'Main findings' }).waitFor({ timeout: 30000 })
     .catch(() => failures.push('the report did not render from file://'));
 
   const body = await page.locator('#main-content').innerText().catch(() => '');

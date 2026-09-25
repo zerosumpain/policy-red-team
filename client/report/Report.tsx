@@ -1,44 +1,49 @@
 import {
   actorBoard, bandCounts, checks, evidenceMix, findingsBySection,
-  headlineSentence, interplay, ledger, personaBoard, plays, recommendations,
+  headlineSentence, interplay, personaBoard, plays, recommendations,
 } from '$lib/policy-analysis/view';
 import type { Artefact } from '$lib/policy-analysis/contracts';
 import { Fragment, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { network } from '$lib/policy-analysis/network';
 import { leverage } from '$lib/policy-analysis/stress';
-import { stageFacts } from '$lib/policy-analysis/stage-facts';
 import { mechanismChart } from '$lib/mechanisms';
 import { scenarioViews } from '$lib/scenario-view';
 import type { Detail } from '../api';
-import { InsetText, Tabs } from '../govuk';
+import { Details, InsetText, Tabs } from '../govuk';
 import { MOVES } from '../moves';
 import {
-  mechanismIdsOf, mechanismsOf, narrowExcept, parseSelection, selectionParam, type Selection,
+  filterPlays, mechanismIdsOf, mechanismsOf, narrowExcept, parseSelection, selectionParam, type Selection,
 } from './selection';
 import { byReason, groupLimits, truncations } from './warnings';
 import { Metrics } from './Metrics';
 import { WriteUp } from './WriteUp';
 import { SelectionBanner } from './moves/SelectionBanner';
 import { VerdictLead } from './moves/VerdictLead';
+import { WorstPlays } from './moves/WorstPlays';
 import { CausalityLead } from './moves/CausalityLead';
 import { ThreatsLead } from './moves/ThreatsLead';
 import { ProvenanceLead } from './moves/ProvenanceLead';
 import { ActorsLead } from './moves/ActorsLead';
-import { ExposurePlot } from './ExposurePlot';
+import { ScoresTable } from './ScoresTable';
+import { WatchList } from './WatchList';
+import { ChangeStrips } from './ChangeStrips';
+import { RestsOnWhat } from './RestsOnWhat';
+import { Glossary } from './Glossary';
+import { rankFindings, withoutEcho } from '$lib/writeup-view';
+import { changeStrips } from '$lib/change-strip';
 import { NetworkSection } from './Network';
 import { StressLab } from './StressLab';
 import { Shares } from './Shares';
 import { Addenda, AddendumNotice } from './Addenda';
 import { ExposureRail } from './ExposureRail';
 import { ExposureSpread } from './ExposureSpread';
-import { Counters } from './Counters';
 import { NoneUnder, ScopeNote } from './moves/NoneUnder';
 import { Contents, type ContentsEntry } from './Contents';
 import { moveCounts } from './tabcounts';
 /* Move 1: the four figures, the legality shape, the challenge round and the
    evaluation plan — every one of them already in the payload and drawn nowhere. */
 import { FactorProfile } from './FactorProfile';
-import { Legality, LegalityLead } from './Legality';
+import { Legality } from './Legality';
 import { EvidenceCoverage } from './EvidenceCoverage';
 import { CheckLedger } from './CheckLedger';
 import { Assurance } from './Assurance';
@@ -156,10 +161,10 @@ const TABS: Move[] = MOVE_ORDER.filter((move) => move !== ACTIONS);
  */
 const MOVE_LABEL: Record<Move, string> = {
   verdict: 'Move 1, Verdict',
-  causality: 'Move 2, Causality',
+  causality: 'Move 2, Causes',
   threats: 'Move 3, Threats',
-  actors: 'Move 4, Actors',
-  provenance: 'Provenance',
+  actors: 'Move 4, Who is involved',
+  provenance: 'Where this comes from',
   do: 'What you can do with this',
 };
 
@@ -267,15 +272,6 @@ export function Report({ detail, offline, linkTo, onChanged }: {
     [linkTo, at],
   );
 
-  /**
-   * The name of a thing, and — where the caller can offer one — the way into it.
-   *
-   * DECLARED AFTER `link`, which is the pack's rule rather than a style choice:
-   * a function a closure calls is declared before the closure is built, because
-   * the pack's minifier once hoisted a `const` past its use and left a reader
-   * offline on a dead control with no console to see it in.
-   */
-  const name = (artefact: Artefact): ReactNode => (link ? link(artefact) : artefact.label);
 
   /*
    * THE URL IS WHERE YOU ARE IN THE REPORT.
@@ -381,29 +377,28 @@ export function Report({ detail, offline, linkTo, onChanged }: {
   const personaGroups = useMemo(() => personaBoard(board, detail.personas), [board, detail.personas]);
   const warnings = useMemo(() => stages.flatMap((s) => s.warnings), [stages]);
   /*
-   * ONE REPORT, ONE NUMBER FOR ONE WORD.
-   *
-   * The ledger's fourth cell is labelled "Open questions" and was handed the raw
-   * count of every stage warning — 256 on the real run. Three tabs later the
-   * Provenance move runs the repo's own classifier over the identical array and
-   * prints 156 open questions, because 100 of those sentences are discards,
-   * dropped references, pages never reached and things the paper did not cover.
-   * `stage-facts.ts` says so itself: "'Open question' is also the site's own word
-   * for them: it is what the ink ledger's fourth cell counts." It did not.
-   *
-   * So the cell reads the same classifier the Provenance panel does. The raw 256
-   * is still on the page, in the gaps section, where it is labelled "limits
-   * recorded" and is the right number for that sentence.
+   * THE FOUR-CELL LEDGER ("What it found") WAS CUT IN PHASE 19. Its figures —
+   * ways to beat it, inside the rules, checks that fell short, open questions —
+   * each lead a section of their own now, and a row of counts at the foot of
+   * the Verdict said nothing those sections do not.
    */
-  const openQuestions = useMemo(
-    () => stageFacts(warnings).find((fact) => fact.kind === 'open')?.count ?? 0,
-    [warnings],
-  );
-  const figures = ledger(artefacts, list, openQuestions);
   const headline = headlineSentence(artefacts);
   const sectionFindings = findingsBySection(artefacts);
   const recs = recommendations(artefacts);
   const bands = bandCounts(list);
+  /*
+   * THE FINDINGS, RANKED. `rankFindings` is arithmetic over fields every
+   * finding carries — how serious the worst thing it cites is, how well
+   * supported the final review judged it, how much it cites — and it is cheap:
+   * nineteen findings on the real run.
+   */
+  const ranked = rankFindings(sectionFindings, artefacts);
+  const execStatement = sectionFindings.find((group) => group.section === 'executive_assessment')?.items[0]?.statement ?? '';
+  /** What the report prints as its conclusions — the current generation only, for "what rests on what". */
+  const shownConclusions = useMemo(() => new Set([
+    ...findingsBySection(artefacts).flatMap((group) => group.items.map((item) => item.id)),
+    ...recommendations(artefacts).map((rec) => rec.id),
+  ]), [artefacts]);
   /*
    * NARROWED, EXCEPT BY A BAND — the plays the Threats figures actually show.
    *
@@ -444,6 +439,19 @@ export function Report({ detail, offline, linkTo, onChanged }: {
   const net = useMemo(() => network(artefacts), [artefacts]);
   /** Run here rather than inside the panel, so the section can decide whether to exist. */
   const levers = useMemo(() => leverage(artefacts), [artefacts]);
+  /*
+   * THE THEORY-OF-CHANGE STRIPS, for the parts of the policy the most plays
+   * rest on. The ranking is `mechanismChart`'s own rows over the WHOLE list —
+   * the strips describe the paper, so a selection does not reshuffle them.
+   */
+  const strips = useMemo(() => changeStrips(
+    artefacts,
+    mechanismChart(list, (play) => mechanismsOf(play, mechanismIds)).rows.map((row) => ({ id: row.id, plays: row.plays.length })),
+    mechanismIds,
+    6,
+  ), [artefacts, list, mechanismIds]);
+  /** The watch list narrows by everything selected, like the ranked list it sits under. */
+  const watchPlays = useMemo(() => filterPlays(list, selection, mechanismIds), [list, selection, mechanismIds]);
 
 
   /**
@@ -504,8 +512,27 @@ export function Report({ detail, offline, linkTo, onChanged }: {
    * Pushed FIRST, in move order, because `inMove()` preserves push order and
    * the lead is the head of its panel.
    */
-  lead('exposure-profile', 'Read these first', 'verdict',
-    <VerdictLead list={list} bands={bands} selection={selection} onSelect={setSelection} mechanismIds={mechanismIds} linkTo={link} />);
+  /*
+   * THE VERDICT LEADS WITH WHAT IT FOUND. Phase 19: the move opened with the
+   * worst three plays and reached the write-up at section 8 of 12, as nineteen
+   * equal cards. The findings that matter now come first, ranked; the rest are
+   * the appendix at the foot of the move. The executive assessment is the
+   * headline above the tabs plus the standfirst here, so it is not repeated in
+   * the appendix.
+   */
+  const standfirst = execStatement ? withoutEcho(execStatement, headline) : '';
+  const appendix = standfirst
+    ? ranked.rest.filter((entry) => entry.chapter.section !== 'executive_assessment')
+    : ranked.rest;
+  lead('main-findings', 'Main findings', 'verdict',
+    <VerdictLead
+      judgements={ranked.top}
+      standfirst={standfirst !== headline ? standfirst : undefined}
+      remaining={appendix.length}
+      linkTo={link}
+    />);
+  lead('exposure-profile', 'The worst ways to beat it', 'verdict',
+    <WorstPlays list={list} selection={selection} onSelect={setSelection} mechanismIds={mechanismIds} linkTo={link} />);
   /*
    * THE SHAPE UNDERNEATH THE FOUR BANDS. The rail says twenty of the forty-seven
    * plays are severe; measured on this run the cut it used has 0.0039 between
@@ -513,7 +540,15 @@ export function Report({ detail, offline, linkTo, onChanged }: {
    * the 47 sit inside 23% of the scale. It reads the same `list` and holds no
    * selection of its own — the rail keeps that job.
    */
-  section('spread', 'How the exposure is spread', 'verdict', <ExposureSpread list={list} />);
+  /*
+   * THE EXPOSURE BAR LEADS THREATS NOW. It sat above the tab strip, which made
+   * it the second thing every reader met — before a single finding — on every
+   * move. It is the band picker too, and a band chosen here still narrows every
+   * move: the selection banner above the tabs says so wherever the reader is.
+   */
+  section('bands', 'How exposed the policy is', 'threats',
+    list.length ? <ExposureRail bands={bands} total={list.length} selection={selection} onSelect={setSelection} /> : null);
+  section('spread', 'How the scores are spread', 'threats', <ExposureSpread list={list} />);
   /*
    * EVERY SECTION BELOW IS GATED ON ITS OWN INPUT, and six of tonight's were
    * handed over ungated. `section()` keeps any TRUTHY body and a JSX element is
@@ -528,7 +563,7 @@ export function Report({ detail, offline, linkTo, onChanged }: {
    * layer since the fork was made, documented as a figure the verdict shows
    * beside the headline, and its only caller was its own test.
    */
-  section('factors', 'What makes them work', 'verdict',
+  section('factors', 'What makes them work', 'threats',
     list.length ? <FactorProfile list={list} linkTo={link} /> : null);
   /*
    * THE SHARPEST CLAIM, WITH A MAGNITUDE ON IT. Band and legality are both on
@@ -548,12 +583,28 @@ export function Report({ detail, offline, linkTo, onChanged }: {
    * it after until this merge. The three together read as the claim, the rule it
    * does not break, and what the claim rests on.
    */
-  section('rests', 'What the conclusion rests on', 'verdict', levers.length ? (
-    <Fragile artefacts={artefacts} levers={levers} onStress={() => goTo('threats', 'stress')} />
+  /*
+   * WHAT RESTS ON WHAT, FOR THE ASSUMPTIONS THAT CARRY THE MOST. The stress
+   * test, run once per assumption before anybody ticks anything, as a short
+   * tree each. The two rankings `Fragile` compares are still here, one click
+   * down: they explain why these assumptions and not the ones the run itself
+   * judged most important.
+   */
+  section('rests', 'What rests on what', 'verdict', levers.length ? (
+    <>
+      <RestsOnWhat artefacts={artefacts} levers={levers} shown={shownConclusions} linkTo={link}
+                   onStress={() => goTo('threats', 'stress')} />
+      <Details summary="Two ways to rank the assumptions, and why they disagree">
+        <Fragile artefacts={artefacts} levers={levers} />
+      </Details>
+    </>
   ) : null);
 
-  lead('mechanisms', 'The mechanisms that generate the most plays', 'causality',
+  lead('mechanisms', 'The parts of the policy most ways to beat it rest on', 'causality',
     <CausalityLead artefacts={artefacts} list={list} selection={selection} onSelect={setSelection} mechanismIds={mechanismIds} linkTo={link} />);
+  section('change', 'How each part is meant to work', 'causality',
+    strips.length ? <ChangeStrips strips={strips} linkTo={link} /> : null,
+    { count: { n: strips.length, noun: 'parts' } });
   lead('weights', 'Ways to beat it', 'threats',
     <ThreatsLead
       list={list}
@@ -581,6 +632,23 @@ export function Report({ detail, offline, linkTo, onChanged }: {
       mechanismIds={mechanismIds}
       linkTo={link}
     />);
+  /*
+   * THE MACHINE'S FIGURES, WHERE A READER ASKING ABOUT THE MACHINE LOOKS. They
+   * were the six cells above the headline on every move — "2,296 artefacts
+   * held", "10h 23m" — so the first thing anyone read was about the run rather
+   * than the paper. How long it ran and what it cost are in "How this was
+   * produced" below.
+   */
+  section('machine', 'What the run made', 'provenance', (
+    <Metrics
+      columns={3}
+      metrics={[
+        { label: 'Items the run kept', value: artefacts.length.toLocaleString(), note: 'findings, evidence and everything between' },
+        { label: 'Passages of the paper read', value: artefacts.filter((a) => a.kind === 'passage').length.toLocaleString() },
+        { label: 'Steps finished', value: `${stages.filter((stage) => stage.status === 'completed').length} of ${stages.length}` },
+      ]}
+    />
+  ));
   lead('discarded', 'What was discarded, and why', 'provenance',
     <>
       {/* The one panel that is about the RUN and not the paper, under a banner
@@ -591,55 +659,28 @@ export function Report({ detail, offline, linkTo, onChanged }: {
     </>);
 
   /*
-   * FIGURES, DRAWN AS FIGURES. This was a two-column summary list, so the
-   * numbers a reader takes away sat in the right-hand cell at the same weight
-   * as the sentence naming them — the least prominent thing in the section they
-   * are the point of.
+   * THE SCATTER IS GONE. "Ease against impact" drew 47 marks and 38 of them sat
+   * in one clump, so it said less than a sentence would. Its table stays — the
+   * only place each play's four scores are side by side — behind a details,
+   * because 47 rows is three screens. The counter-measures grouped by
+   * mechanism that sat under it are in the watch list now, one row per play.
    */
-  section('found', 'What it found', 'verdict',
-    <Metrics
-      metrics={figures.map((figure) => ({
-        label: figure.label,
-        value: figure.figure,
-        note: figure.sub,
-      }))}
-    />
-  );
+  section('scores', 'Every way to beat it, scored', 'threats', shownPlays.length ? (
+    <Details summary={`Show all ${shownPlays.length} with their four scores`}>
+      <ScoresTable plays={shownPlays} linkTo={link} />
+    </Details>
+  ) : null);
 
   /*
-   * NAMED AFTER WHAT IS IN IT. This section was called "Ways to beat it" and
-   * contained no ways to beat it — the forty-seven plays are in the lead above,
-   * which is now called that. What is actually here is the scatter, so that is
-   * the name.
-   *
-   * THE BAND ROW IS GONE. It restated the rail's own figure in a third place,
-   * and did it from the UNNARROWED `bands` — so it printed 20/18/7/2 under a
-   * banner saying the panel was filtered.
-   *
-   * The method sentence goes with it: the geometric mean is now explained once,
-   * on the figure that draws the four judgements, rather than in each of the
-   * four places a reader passes through in one session.
+   * THE WATCH LIST. Every play's early warning, what would stop it, and the
+   * recommendation that answers it — one table, and a CSV built in the browser
+   * so it works from the pack too. Narrowed by the carried selection like the
+   * ranked list above it.
    */
-  section('plays', 'Ease against impact', 'threats', list.length ? (
-    <>
-      {/* Move 3 never counted its own sharpest claim: the legality pill is on
-          each of the ten cards it shows and the shape of the whole 47 is on no
-          panel. The figure stays in the Verdict move; this is the consequence,
-          printed where the threats are. */}
-      <LegalityLead list={list} />
-      {shownPlays.length
-        ? <ExposurePlot plays={shownPlays} linkTo={link} />
-        : <NoneUnder selection={selection} onClear={() => setSelection(null)} />}
-      <Counters
-        list={list}
-        artefacts={artefacts}
-        mechanismIds={mechanismIds}
-        selection={selection}
-        onSelect={setSelection}
-        linkTo={link}
-      />
-    </>
-  ) : null, { count: { n: list.length, noun: 'plays' } });
+  section('watch', 'What to watch for', 'threats', watchPlays.length ? (
+    <WatchList list={watchPlays} recs={recs} artefacts={artefacts} linkTo={link} offline={offline}
+               filename={`${(analysis.title || 'assessment').replace(/[^\w-]+/g, '-').replace(/^-+|-+$/g, '').toLowerCase() || 'assessment'}-watch-list.csv`} />
+  ) : null, { count: { n: watchPlays.length, noun: 'rows' } });
 
   /*
    * MOVE 3'S SECOND SECTION, and the first time anything has called
@@ -707,10 +748,10 @@ export function Report({ detail, offline, linkTo, onChanged }: {
         neither used to say which it was.
       */}
       <p className="govuk-body">
-        {namedActive} of the {namedAll} distinct bodies the paper names are positioned to run at
-        least one play — named, whether or not the paper connects them to anything. Every one of
-        them is in the body table on &ldquo;Who is coming for what&rdquo;, with what it can reach,
-        the worst play it could run and whether that play breaks a rule.
+        {namedActive} of the {namedAll} different bodies the paper names could use at least one way
+        to beat the policy — whether or not the paper connects them to anything. Every one of them
+        is in the table under &ldquo;Who is coming for what&rdquo;, with what it can reach, the
+        worst thing it could do and whether that breaks a rule.
       </p>
       {/*
         THE TABLE THAT WAS HERE IS THE TABLE IN THE LEAD. Move 4 printed the same
@@ -758,7 +799,7 @@ export function Report({ detail, offline, linkTo, onChanged }: {
    * `refs` and `data.category`, so nothing is un-stubbed and nothing is added
    * to the payload.
    */
-  section('composition', 'What the paper is made of', 'causality',
+  section('composition', 'What the paper is made of', 'provenance',
     artefacts.some((a) => a.kind === 'claim' || a.kind === 'mechanism') ? (
       <Composition artefacts={artefacts} list={list} mechanismIds={mechanismIds} />
     ) : null);
@@ -808,7 +849,7 @@ export function Report({ detail, offline, linkTo, onChanged }: {
     </>
   ) : null);
 
-  section('evidence', 'What is backed up', 'verdict', mix.length ? (
+  section('evidence', 'What is backed up by evidence', 'provenance', mix.length ? (
     <EvidenceCoverage artefacts={artefacts} mix={mix} linkTo={link} />
   ) : null);
 
@@ -819,20 +860,20 @@ export function Report({ detail, offline, linkTo, onChanged }: {
    * severity, which the bare string did not — and `indeterminate` is grey
    * rather than green, because "the test could not decide" is not a pass.
    */
-  section('checks', 'Structural checks', 'verdict', structural.length ? (
+  section('checks', 'Checks on how the policy is set up', 'verdict', structural.length ? (
     <CheckLedger checks={structural} net={net} linkTo={link} />
   ) : null, { count: { n: structural.length, noun: 'checks' } });
 
-  section('writeup', 'The write-up', 'verdict', sectionFindings.length ? (
-    <WriteUp groups={sectionFindings} name={name} offline={offline} echoed={headline} />
-  ) : null, { count: { n: sectionFindings.length, noun: 'sections' } });
+  section('writeup', 'All findings', 'verdict', appendix.length ? (
+    <WriteUp rest={appendix} linkTo={link} offline={offline} echoed={headline} ranked={ranked.top.length} />
+  ) : null, { count: { n: appendix.length, noun: 'more' } });
 
   /*
    * THE STAGE THAT ATTACKS THE ASSESSMENT, ON A PAGE. Seven challenges, seven
    * responses and a review summary were in the payload and referenced nowhere
    * in the client outside the drill route's kind list.
    */
-  section('assurance', 'What survived challenge', 'verdict',
+  section('assurance', 'How the findings were challenged', 'provenance',
     artefacts.some((a) => a.kind === 'assurance_challenge' || a.kind === 'assurance_response' || a.kind === 'review_summary') ? (
       <Assurance artefacts={artefacts} />
     ) : null);
@@ -857,7 +898,7 @@ export function Report({ detail, offline, linkTo, onChanged }: {
    * recommendation says gains and who carries it, which of the forty-seven
    * plays the four together answer, and what the challenge round removed.
    */
-  section('suggests', 'What it suggests', 'verdict', recs.length ? (
+  section('suggests', 'What it recommends', 'verdict', recs.length ? (
     <>
       <ChallengeNote recs={recs} artefacts={artefacts} />
       <Recommendations recs={recs} linkTo={link} />
@@ -865,7 +906,7 @@ export function Report({ detail, offline, linkTo, onChanged }: {
       <RecCoverage recs={recs} artefacts={artefacts} list={list} linkTo={link} />
       <DroppedRecs recs={recs} artefacts={artefacts} linkTo={link} />
     </>
-  ) : null, { count: { n: recs.length, noun: 'suggestions' } });
+  ) : null, { count: { n: recs.length, noun: 'recommendations' } });
 
   /*
    * FORTY-THREE STRUCTURED ITEMS THAT PRINTED AS ONE PARAGRAPH. The single
@@ -887,7 +928,7 @@ export function Report({ detail, offline, linkTo, onChanged }: {
   const cutShort = useMemo(() => truncations(stages), [stages]);
   section('withheld', 'Where the model could not see everything', 'provenance',
     cutShort.length ? <Withheld stages={stages} /> : null,
-    { count: { n: cutShort.length, noun: 'stages' } });
+    { count: { n: cutShort.length, noun: 'steps' } });
 
   /*
    * THE SAME LIMIT, SAID ONCE. The dedupe key was the whole warning while the
@@ -904,7 +945,7 @@ export function Report({ detail, offline, linkTo, onChanged }: {
   const limitGroups = useMemo(() => groupLimits(stages), [stages]);
   section('gaps', 'What it could not establish', 'provenance',
     limitGroups.length ? <Limits stages={stages} /> : null,
-    { count: { n: limitGroups.length, noun: 'distinct limits' } });
+    { count: { n: limitGroups.length, noun: 'different gaps' } });
 
   /*
    * ONE SECTION, BECAUSE THE DIFFERENCE BETWEEN SIX DOWNLOADS IS TWO FACTS.
@@ -1061,11 +1102,34 @@ export function Report({ detail, offline, linkTo, onChanged }: {
    * were, and `found` stays last — it is the figures, and a reader who has read
    * this far has met every one of them in context.
    */
+  /*
+   * PHASE 19 REWROTE ALL FIVE, to one rule: conclusions before figures, and
+   * figures about the paper before figures about the run.
+   *
+   * VERDICT: the main findings, the worst three ways to beat it, the rule none
+   * of them breaks, what to do, how you would know, what rests on what — then
+   * the appendix of every other finding and the checks behind them. Exposure,
+   * its spread and its factors went to Threats; evidence, the challenge round
+   * and the machine's own figures went to Where this comes from.
+   *
+   * THREATS opens with the exposure bar (the band picker), then the ranked
+   * list, the watch list, and the scores table behind a details.
+   *
+   * WHERE THIS COMES FROM opens with what the run made, then what it threw
+   * away, then how it ran.
+   */
   const READING_ORDER: Partial<Record<Move, string[]>> = {
     verdict: [
-      'exposure-profile', 'spread', 'factors', 'legality',
+      'main-findings', 'exposure-profile', 'legality',
       'suggests', 'howyoudknow', 'rests',
-      'writeup', 'assurance', 'checks', 'evidence', 'found',
+      'writeup', 'checks',
+    ],
+    threats: [
+      'bands', 'weights', 'watch', 'spread', 'factors', 'scores', 'scenarios', 'stress',
+    ],
+    causality: ['mechanisms', 'change', 'network'],
+    provenance: [
+      'machine', 'discarded', 'provenance', 'withheld', 'gaps', 'composition', 'evidence', 'assurance', 'paper',
     ],
   };
   const inMove = (move: Move) => {
@@ -1106,10 +1170,11 @@ export function Report({ detail, offline, linkTo, onChanged }: {
             A red-team read, not an assurance review. Every profile is a hypothesis about a
             body&rsquo;s incentives — never a finding about a named person.
           </p>
+          <Glossary />
         </div>
-        {/* THE PACK GETS THE RAIL TOO, or the pack loses the bar outright — the
-            one figure that says how much of this there is. */}
-        <ExposureRail bands={bands} total={list.length} selection={selection} onSelect={setSelection} />
+        {/* THE RAIL IS A SECTION OF THREATS NOW, in the pack as in the
+            service: the pack reads in move order, so it arrives at the head of
+            Move 3 rather than above the first finding. */}
         {/* THE PACK COULD NARROW ITSELF AND NOT SAY SO. Measured on a real pack
             driven from `file://`: 88,333px of document, 26 selection controls, 0
             banners and 0 controls reading "Clear the selection" — press a band
@@ -1202,6 +1267,17 @@ export function Report({ detail, offline, linkTo, onChanged }: {
     limits: warnings.length,
   });
 
+  /* Declared before `panel`, which calls them: the pack's rule, kept here too. */
+  const leadsFirst = (move: Move) => move === 'verdict' && inMove(move)[0]?.id === 'main-findings';
+  const renderEntry = (entry: Section) => (entry.bare ? (
+    <Fragment key={entry.id}>{entry.body}</Fragment>
+  ) : (
+    <section key={entry.id} aria-labelledby={entry.id}>
+      <h2 className="govuk-heading-l" id={entry.id}>{entry.title}</h2>
+      {entry.body}
+    </section>
+  ));
+
   const panel = (move: Move) => (
     <>
       {/*
@@ -1211,8 +1287,14 @@ export function Report({ detail, offline, linkTo, onChanged }: {
         reader lands on, with nothing naming it. The component and every anchor
         already existed; only the pack was getting them.
       */}
-      <Contents sections={inMove(move)} id={`contents-${move}`} of={MOVE_LABEL[move]} />
-      {inMove(move).map((entry) => (entry.bare ? (
+      {/*
+        THE VERDICT'S FINDINGS COME BEFORE ITS INDEX. Phase 19: the first thing
+        in the move a reader lands on is what the assessment found, not a list
+        of eight links to it. Every other move keeps its contents first.
+      */}
+      {leadsFirst(move) ? renderEntry(inMove(move)[0]) : null}
+      <Contents sections={leadsFirst(move) ? inMove(move).slice(1) : inMove(move)} id={`contents-${move}`} of={MOVE_LABEL[move]} />
+      {(leadsFirst(move) ? inMove(move).slice(1) : inMove(move)).map((entry) => (entry.bare ? (
         <Fragment key={entry.id}>{entry.body}</Fragment>
       ) : (
         <section key={entry.id} aria-labelledby={entry.id}>
@@ -1240,16 +1322,15 @@ export function Report({ detail, offline, linkTo, onChanged }: {
           A red-team read, not an assurance review. Every profile is a hypothesis about a
           body&rsquo;s incentives — never a finding about a named person.
         </p>
+        <Glossary />
       </div>
 
       {/*
-        ABOVE THE SPINE, BECAUSE IT IS TRUE OF ALL FIVE MOVES. The bar was inside
-        the Verdict panel, 1,372px down, behind the contents list — so the figure
-        that answers "how much of this is there" was visible on one tab out of
-        five and only after scrolling. It is also the band picker, and a picker
-        that lives inside one panel cannot be used from the other four.
+        THE EXPOSURE BAR WAS HERE, above the spine, from phase 16 to 19. It made
+        the bar the second thing every reader met, before a single finding. It
+        is the first section of Threats now; a band picked there still narrows
+        every move, and the banner on the tab strip says so wherever you are.
       */}
-      <ExposureRail bands={bands} total={list.length} selection={selection} onSelect={setSelection} />
 
       <Tabs
         id="report"

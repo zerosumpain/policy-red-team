@@ -17,7 +17,6 @@
 @use "./base";
 
 @use "./parts/actors";
-@use "./parts/acts";
 @use "./parts/assurance";
 @use "./parts/beats";
 @use "./parts/cast";
@@ -26,7 +25,6 @@
 @use "./parts/chips";
 @use "./parts/composition";
 @use "./parts/contents";
-@use "./parts/counters";
 @use "./parts/degree";
 @use "./parts/diverge";
 @use "./parts/evidence";
@@ -47,7 +45,6 @@
 @use "./parts/picker";
 @use "./parts/pipeline";
 @use "./parts/playlist";
-@use "./parts/plot";
 @use "./parts/pressure";
 @use "./parts/range-scale";
 @use "./parts/rec";
@@ -63,9 +60,9 @@
 @use "./parts/suggests";
 @use "./parts/tabcount";
 @use "./parts/typeroles";
+@use "./parts/verdict";
 @use "./parts/verdictband";
 @use "./parts/vocab";
 @use "./parts/width";
 @use "./parts/withheld";
-@use "./parts/writeup";
 @use "./parts/writeup-judgement";

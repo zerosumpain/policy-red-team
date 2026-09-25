@@ -1,0 +1,289 @@
+@use "../govuk" as govuk;
+@use "../tokens" as *;
+
+// ── Phase 19: the report says what it found first ─────────────────────────
+//
+// One partial for the pieces phase 19 added to the report — the main findings,
+// the findings appendix, the watch list, the theory-of-change strips, "what
+// rests on what" and the glossary — because they share a rule set: GOV.UK
+// type, the band ramp only where it means "how bad", and nothing that carries
+// meaning by colour alone.
+
+// ── Main findings ─────────────────────────────────────────────────────────
+.prt-verdict__standfirst { max-width: $prt-measure; }
+
+.prt-verdict__list {
+  list-style: none;
+  margin: 0 0 govuk.govuk-spacing(6);
+  padding: 0;
+}
+
+// A left rule in the band ramp says how serious, and the words say it too:
+// "How serious: high" is printed on every item.
+.prt-verdict__item {
+  border-left: 6px solid govuk.govuk-colour("black", $variant: "tint-80");
+  padding: govuk.govuk-spacing(1) 0 govuk.govuk-spacing(1) govuk.govuk-spacing(4);
+  margin-bottom: govuk.govuk-spacing(6);
+
+  &--3 { border-left-color: var(--band-severe); }
+  &--2 { border-left-color: var(--band-significant); }
+  &--1 { border-left-color: var(--band-moderate); }
+
+  p { max-width: $prt-measure; }
+}
+
+.prt-verdict__title {
+  display: flex;
+  gap: govuk.govuk-spacing(2);
+  align-items: baseline;
+  margin-bottom: govuk.govuk-spacing(2);
+}
+
+.prt-verdict__rank {
+  @include govuk.govuk-font($size: 19, $weight: bold);
+  color: govuk.govuk-colour("black", $variant: "tint-25");
+  flex: none;
+  min-width: 1.2em;
+}
+
+.prt-verdict__tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: govuk.govuk-spacing(2);
+  align-items: center;
+  margin-bottom: govuk.govuk-spacing(2);
+}
+
+.prt-verdict__severity {
+  @include govuk.govuk-font($size: 16);
+  margin: 0;
+}
+
+.prt-verdict__text { margin-bottom: govuk.govuk-spacing(2); }
+
+// ── All findings: the appendix ────────────────────────────────────────────
+.prt-appendix__act {
+  margin-top: govuk.govuk-spacing(6);
+
+  .govuk-details { margin-bottom: govuk.govuk-spacing(2); }
+}
+
+// How well supported, visible while the details is shut. Words, not colour.
+.prt-appendix__judgement {
+  @include govuk.govuk-font($size: 16);
+  display: inline-block;
+  margin-left: govuk.govuk-spacing(2);
+  color: govuk.govuk-colour("black", $variant: "tint-25");
+  text-decoration: none;
+}
+
+// ── What to watch for ─────────────────────────────────────────────────────
+.prt-watch {
+  margin-bottom: govuk.govuk-spacing(4);
+}
+
+.prt-watch__table {
+  // Four text columns: they share the width rather than sizing to content.
+  min-width: 48rem;
+
+  td, th { @include govuk.govuk-font($size: 16); }
+}
+
+.prt-watch__table {
+  table-layout: fixed;
+
+  th:nth-child(1) { width: 22%; }
+  th:nth-child(2), th:nth-child(3) { width: 29%; }
+  th:nth-child(4) { width: 20%; }
+}
+
+.prt-watch__who {
+  display: block;
+  margin-top: govuk.govuk-spacing(1);
+  font-weight: 400;
+}
+
+// ── How each part is meant to work: the strips ────────────────────────────
+.prt-toc {
+  margin-bottom: govuk.govuk-spacing(6);
+  padding-bottom: govuk.govuk-spacing(4);
+  border-bottom: 1px solid govuk.govuk-colour("black", $variant: "tint-80");
+}
+
+.prt-toc__head { margin-bottom: govuk.govuk-spacing(2); }
+
+// Five steps in a row. Wrapping, not a breakpoint: below about 45rem it
+// becomes a column, which is also how it prints in a narrow page.
+.prt-toc__steps {
+  display: flex;
+  flex-wrap: wrap;
+  gap: govuk.govuk-spacing(2);
+  list-style: none;
+  margin: 0 0 govuk.govuk-spacing(3);
+  padding: 0;
+  counter-reset: none;
+}
+
+.prt-toc__step {
+  flex: 1 1 9rem;
+  min-width: 0;
+  border: 1px solid govuk.govuk-colour("black", $variant: "tint-50");
+  padding: govuk.govuk-spacing(2);
+  background: govuk.govuk-colour("white");
+
+  // "Mostly uncertain": dotted, the report's mark for provisional.
+  &--hedged { border-style: dotted; border-color: govuk.govuk-colour("black"); }
+
+  // "Not specified": a visible gap, hatched in grey, drawn as an absence.
+  &--missing {
+    border-style: dashed;
+    border-color: govuk.govuk-colour("black", $variant: "tint-25");
+    background: repeating-linear-gradient(
+      45deg,
+      govuk.govuk-colour("black", $variant: "tint-95"),
+      govuk.govuk-colour("black", $variant: "tint-95") 6px,
+      govuk.govuk-colour("black", $variant: "tint-80") 6px,
+      govuk.govuk-colour("black", $variant: "tint-80") 8px
+    );
+    print-color-adjust: exact;
+    -webkit-print-color-adjust: exact;
+  }
+
+  // The weakest link: a thick black border, and the words "Weakest link".
+  &--weakest { border: 4px solid govuk.govuk-colour("black"); }
+}
+
+.prt-toc__label {
+  @include govuk.govuk-font($size: 16, $weight: bold);
+  margin: 0 0 govuk.govuk-spacing(1);
+}
+
+.prt-toc__text {
+  @include govuk.govuk-font($size: 16);
+  margin: 0 0 govuk.govuk-spacing(1);
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 4;
+  line-clamp: 4;
+  overflow: hidden;
+}
+
+.prt-toc__gap {
+  @include govuk.govuk-font($size: 16, $weight: bold);
+  display: inline-block;
+  background: govuk.govuk-colour("white");
+  padding: 0 govuk.govuk-spacing(1);
+  margin: 0 0 govuk.govuk-spacing(1);
+}
+
+// Detail the paper leaves open: a hatched band inside the box, in words.
+.prt-toc__gapnote {
+  @include govuk.govuk-font($size: 16, $weight: bold);
+  margin: 0 0 govuk.govuk-spacing(1);
+  padding: 2px govuk.govuk-spacing(1);
+  border: 1px dashed govuk.govuk-colour("black", $variant: "tint-25");
+  background: repeating-linear-gradient(
+    45deg,
+    govuk.govuk-colour("white"),
+    govuk.govuk-colour("white") 6px,
+    govuk.govuk-colour("black", $variant: "tint-80") 6px,
+    govuk.govuk-colour("black", $variant: "tint-80") 8px
+  );
+  print-color-adjust: exact;
+  -webkit-print-color-adjust: exact;
+}
+
+.prt-toc__state {
+  @include govuk.govuk-font($size: 16);
+  margin: 0;
+  color: govuk.govuk-colour("black", $variant: "tint-25");
+
+  strong { color: govuk.govuk-colour("black"); }
+}
+
+.prt-toc__restshead { margin-bottom: govuk.govuk-spacing(1); }
+
+.prt-toc__badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: govuk.govuk-spacing(1);
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.prt-toc__badge {
+  @include govuk.govuk-font($size: 16);
+  border: 1px solid govuk.govuk-colour("black", $variant: "tint-50");
+  padding: 0 govuk.govuk-spacing(1);
+  background: govuk.govuk-colour("black", $variant: "tint-95");
+
+  &--more { background: none; border-style: dotted; }
+}
+
+// ── What rests on what ────────────────────────────────────────────────────
+.prt-rests-tree {
+  list-style: none;
+  margin: 0 0 govuk.govuk-spacing(4);
+  padding: 0;
+}
+
+.prt-rests-tree__item {
+  margin-bottom: govuk.govuk-spacing(4);
+  max-width: $prt-measure * 1.3;
+}
+
+.prt-rests-tree__head { margin-bottom: govuk.govuk-spacing(1); }
+
+// An indented tree: each branch hangs off a rule on the left.
+.prt-rests-tree__branches {
+  @include govuk.govuk-font($size: 16);
+  list-style: none;
+  margin: 0;
+  padding: 0 0 0 govuk.govuk-spacing(3);
+  border-left: 2px solid govuk.govuk-colour("black", $variant: "tint-50");
+
+  > li { margin-bottom: govuk.govuk-spacing(2); }
+}
+
+.prt-rests-tree__names {
+  list-style: none;
+  margin: govuk.govuk-spacing(1) 0 0;
+  padding: 0 0 0 govuk.govuk-spacing(3);
+  border-left: 1px solid govuk.govuk-colour("black", $variant: "tint-80");
+}
+
+// ── What these words mean ─────────────────────────────────────────────────
+.prt-glossary { margin: 0; }
+
+.prt-glossary__row { margin-bottom: govuk.govuk-spacing(2); }
+
+.prt-glossary__term {
+  @include govuk.govuk-font($size: 16, $weight: bold);
+}
+
+.prt-glossary__meaning {
+  @include govuk.govuk-font($size: 16);
+  margin: 0;
+  max-width: $prt-measure;
+}
+
+// ── The page head's one line about gaps ───────────────────────────────────
+.prt-gapsline { max-width: $prt-measure; }
+
+// ── The mechanism chart's tail ────────────────────────────────────────────
+.prt-mechtail td, .prt-mechtail th { @include govuk.govuk-font($size: 16); }
+
+@media print {
+  // A clamp is a fold; paper has no way to open it.
+  .prt-toc__text {
+    display: block;
+    -webkit-line-clamp: none;
+    line-clamp: none;
+    overflow: visible;
+  }
+
+  .prt-verdict__item,
+  .prt-toc,
+  .prt-rests-tree__item { break-inside: avoid; }
+}

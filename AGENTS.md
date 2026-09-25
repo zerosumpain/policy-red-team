@@ -203,6 +203,17 @@ carries a `move` — `verdict`, `causality`, `threats`, `actors` or `provenance`
 and the tabs group them. A reader arrives with one of four questions and a single
 scroll answers whichever is uppermost by making them pass the other three.
 
+- **The Verdict leads with what it FOUND.** Since phase 19 the move opens with
+  `VerdictLead` — the ranked findings (`rankFindings` in `src/lib/writeup-view.ts`)
+  — and the rest are the "All findings" appendix. The lead takes
+  `KeyJudgement[]` and has a `brief` slot, so the key-judgements artefact and the
+  one-page brief wire in as a mapping, not a rewrite. Machine figures (items
+  held, run time, tokens) live in "Where this comes from", never above the tabs.
+- **The visible words are chosen, and written down** in `src/lib/plain-words.ts`:
+  "ways to beat it", not plays; "parts of the policy", not mechanisms; "how
+  exposed", "final review", "steps". Ids, routes and CSS classes keep the old
+  names (`?move=causality`, `#mechanisms`) — only text changed. A new label
+  checks itself against that list, and a word that must stay goes in `GLOSSARY`.
 - **Adding a section means choosing its move.** `section(id, title, move, body)`
   will not compile without one. A section in the wrong move still renders — just
   never where the reader looking for it will be — so the walk visits every move
