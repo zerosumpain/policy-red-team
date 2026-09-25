@@ -78,7 +78,7 @@ async function groundedSearch(query: string, maxResults: number, signal?: AbortS
   const client = instrument(definition.id, grounded.client);
 
   const allowed = searchDomains();
-  const reply = await client.chat.completions.create(
+  const reply = await retrying((attempt) => client.chat.completions.create(
     {
       model: grounded.model,
       messages: [
@@ -103,8 +103,8 @@ async function groundedSearch(query: string, maxResults: number, signal?: AbortS
       response_format: { type: 'json_object' },
       max_tokens: 4_000,
     },
-    { signal, maxRetries: 0 },
-  );
+    { signal: attempt, maxRetries: 0 },
+  ), { signal });
 
   const content = reply.choices[0]?.message?.content ?? '';
   try {
@@ -125,6 +125,48 @@ async function groundedSearch(query: string, maxResults: number, signal?: AbortS
     return { results, answer: typeof parsed.answer === 'string' ? parsed.answer : undefined };
   } catch {
     return { results: [] };
+  }
+}
+
+/**
+ * A GROUNDED SEARCH IS ASKED AGAIN WHEN THE SERVICE SAID "NOT NOW", within bounds.
+ *
+ * Research runs the run's own lanes — six by default — so a grounded endpoint
+ * that rate-limits is now met six requests at a time, and a single 429 used to
+ * cost its question for good: "Research unavailable" for something that would
+ * have answered two seconds later. And a call with no deadline of its own could
+ * hold a lane for as long as the service cared to take.
+ *
+ * So each try gets its own deadline, and a 429 or a 5xx is tried again after a
+ * short wait, at most twice. Nothing else is: a 4xx is the service refusing the
+ * request on its merits, and a try that ran out of time is the deadline doing
+ * its job. The run's own signal still ends everything at once.
+ */
+export const GROUNDED_TIMEOUT_MS = 120_000;
+const GROUNDED_BACKOFF_MS = [2_000, 8_000] as const;
+const retryable = (err: unknown) => {
+  const status = (err as { status?: unknown })?.status;
+  return typeof status === 'number' && (status === 429 || status >= 500);
+};
+const pause = (ms: number, signal?: AbortSignal) => new Promise<void>((resolve, reject) => {
+  const timer = setTimeout(resolve, ms);
+  signal?.addEventListener('abort', () => { clearTimeout(timer); reject(signal.reason); }, { once: true });
+});
+export async function retrying<T>(
+  call: (signal: AbortSignal) => Promise<T>,
+  options: { signal?: AbortSignal; timeoutMs?: number; sleep?: (ms: number, signal?: AbortSignal) => Promise<void> } = {},
+): Promise<T> {
+  const sleep = options.sleep ?? pause;
+  for (let attempt = 0; ; attempt++) {
+    options.signal?.throwIfAborted();
+    const deadline = AbortSignal.timeout(options.timeoutMs ?? GROUNDED_TIMEOUT_MS);
+    try {
+      return await call(options.signal ? AbortSignal.any([options.signal, deadline]) : deadline);
+    } catch (err) {
+      const wait = GROUNDED_BACKOFF_MS[attempt];
+      if (wait === undefined || !retryable(err) || options.signal?.aborted) throw err;
+      await sleep(wait, options.signal);
+    }
   }
 }
 
