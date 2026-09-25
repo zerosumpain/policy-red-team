@@ -269,8 +269,12 @@ export function rebuildDossier(observations: PersonaObservation[]): { dossier: P
   }
   // The newest paper's summary, or a commissioned enquiry's where that is newer:
   // both describe the body, and neither survives the observation it came with.
-  const latest = [...oldestFirst].reverse().find((o) => o.summary);
-  return { dossier: dossier.slice(0, 30), summary: latest?.summary ?? null };
+  // A paper's summary is filtered exactly as its traits are — it reaches other
+  // papers' prompts as `PersonaPrior.summary`, and "committed £523 million to
+  // the Families First Partnership" is no truer of the next policy there than
+  // in a trait. Public-source research is kept as recorded, as its traits are.
+  const summaries = [...oldestFirst].reverse().map((o) => (o.summary ? (o.kind === 'research' ? o.summary : travellingValue(o.summary)) : null));
+  return { dossier: dossier.slice(0, 30), summary: summaries.find(Boolean) ?? null };
 }
 
 /**
@@ -313,7 +317,7 @@ export function personaPrior(
   const traits = rebuilt?.dossier ?? persona.dossier;
   // The stored summary may be the excluded run's own words; it is only used
   // when nothing was excluded and no observation carries a summary of its own.
-  const summary = rebuilt?.summary ?? (remaining.length === mine.length ? persona.summary : null);
+  const summary = rebuilt?.summary ?? (remaining.length === mine.length && persona.summary ? travellingValue(persona.summary) : null);
   const trackRecord = remaining
     .filter((o) => o.personaId === persona.id)
     .flatMap((o) => o.plays.map((p) => ({ ...p, policy: o.analysisTitle })))

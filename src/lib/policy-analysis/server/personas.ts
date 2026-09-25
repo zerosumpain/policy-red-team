@@ -246,7 +246,10 @@ export async function applyPersonaLinks(tx: DbExecutor, owner: string, analysisI
       // been shown able to do is the part a later red team leans on hardest.
       plays: playsFor(actorId, all),
       note: [clip(data.continuity, 1200), clip(data.divergence, 1200)].filter(Boolean).join('\n\n') || null,
-      summary: clip(data.summary, 2000) || null,
+      // Filtered on the way in, with this paper's own programme names to hand —
+      // the one moment they are known. The summary leaves this paper as a
+      // prior in other papers' prompts, exactly as the traits do.
+      summary: travellingValue(clip(data.summary, 2000), programmes),
     });
     touched.add(persona.id);
   }
@@ -298,7 +301,7 @@ export async function rebuildPersonas(tx: DbExecutor, personaIds: string[], opti
     const { dossier, summary } = rebuildDossier(observations);
     await tx.update(policyPersonas).set({
       dossier,
-      summary: summary ?? (options.keepLegacySummary ? row.summary : null),
+      summary: summary ?? (options.keepLegacySummary && row.summary ? travellingValue(row.summary) : null),
       dossierVersion: 1,
       updatedAt: new Date(),
     }).where(eq(policyPersonas.id, id));

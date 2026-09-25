@@ -109,6 +109,17 @@ describe.skipIf(!local)('actor identity across papers', () => {
     expect(observation.traits[0].value).toContain('£523 million');
   });
 
+  it('keeps the paper’s own programme out of the summary too, with the names only this paper knows', async () => {
+    const id = await paper('Hubs paper');
+    await write(id, 'Hubs paper', [link('s13_0_h', 's2_9', 'Department of Health and Social Care', 'department', [{ key: 'mandate', value: 'Sets health policy.' }], {
+      summary: 'Sets health and care policy. Runs Best Start Family Hubs directly.',
+    })], [actor('s2_9', 'Department of Health and Social Care', 'department'), actor('s2_10', 'Best Start Family Hubs', 'programme')]);
+    const [dhsc] = (await mine()).filter((p) => p.bodyId === 'govuk:department-of-health-and-social-care');
+    expect(dhsc.summary).toBe('Sets health and care policy.');
+    const [observation] = await db.select().from(policyPersonaObservations).where(eq(policyPersonaObservations.personaId, dhsc.id));
+    expect(observation.summary).toBe('Sets health and care policy.');
+  });
+
   it('rebuilds the dossier and summary from what is left when a paper is deleted, and deletes a persona left with none', async () => {
     const keep = await paper('Kept paper');
     const drop = await paper('Dropped paper');
