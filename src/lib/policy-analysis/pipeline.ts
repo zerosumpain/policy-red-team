@@ -1017,7 +1017,9 @@ export async function executeStage(input: StageInput, deps: PipelineDeps): Promi
       safe = safe.slice(0, affordable);
     }
     if (!safe.length) return;
-    const researched = await deps.research(safe, deps.signal, limits.results);
+    // The run's own lanes: a question's search and its full reads are I/O, and
+    // were the one part of a research stage still going one request at a time.
+    const researched = await deps.research(safe, deps.signal, limits.results, lanes);
     output.artefacts.push(...researched.artefacts);
     output.warnings.push(...researched.warnings.map((w) => round > 1 ? `Enquiry round ${round}: ${w}` : w));
   };
