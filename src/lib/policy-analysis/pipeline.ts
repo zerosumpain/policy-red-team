@@ -11,12 +11,25 @@ import { numbered, sentences } from './sentences';
 import type { ModelCall } from './server/provider';
 import type { Research } from './server/research';
 import { isAffectedGroup, type PersonaPrior } from './personas';
+import { evidenceArtefacts, isBodyEvidence, type BodyEvidenceRecord } from './body-evidence';
 
-/** Compact summaries of this reader's OTHER completed assessments, for stage 11. */
-export type Neighbour = { id: string; title: string; policyArea: string | null; jurisdiction: string | null; completedAt: string | null; artefacts: { id: string; kind: string; label: string; statement: string; entityType?: string; aliases?: string[] }[] };
+/**
+ * Compact summaries of this reader's OTHER completed assessments, for stage 11.
+ * An actor carries its GOV.UK register `bodyId` where the library knows it, and
+ * `sharedBodies` names the register bodies the two papers have in common — the
+ * reason this neighbour was chosen (phase 19, workstream X).
+ */
+export type Neighbour = { id: string; title: string; policyArea: string | null; jurisdiction: string | null; completedAt: string | null; sharedBodies?: { id: string; name: string }[]; artefacts: { id: string; kind: string; label: string; statement: string; entityType?: string; aliases?: string[]; bodyId?: string }[] };
 export type Neighbours = () => Promise<Neighbour[]>;
 /** What this reader's persona library already holds about the actors in this run. */
 export type Personas = (actors: Artefact[]) => Promise<PersonaPrior[]>;
+/**
+ * The public record about the register bodies among these actors: a few dated
+ * records per body, and what could not be checked. Phase 19, workstream X.
+ */
+export type BodyEvidence = (actors: Artefact[]) => Promise<{ bundles: { actorId: string; bodyName: string; records: BodyEvidenceRecord[] }[]; warnings: string[] }>;
+/** Which GOV.UK register body each actor is, where the register knows it: actor id → body id. */
+export type RegisterBodies = (actors: Artefact[]) => Promise<Map<string, string>>;
 /**
  * `concurrency` lives HERE and not on `StageInput`, and that is load-bearing.
  *
@@ -27,7 +40,7 @@ export type Personas = (actors: Artefact[]) => Promise<PersonaPrior[]>;
  * How many agents a stage uses is how it is EXECUTED, never what the model is
  * asked, so it belongs beside `signal` with the other execution concerns.
  */
-export type PipelineDeps = { model: ModelCall; research: Research; signal: AbortSignal; neighbours?: Neighbours; personas?: Personas; concurrency?: Concurrency | null; passKind?: PassKind | null; material?: MaterialBrief | null; extraction?: Extraction | null; sharedContextFirst?: boolean | null; onProgress?: (phase: string) => void };
+export type PipelineDeps = { model: ModelCall; research: Research; signal: AbortSignal; neighbours?: Neighbours; personas?: Personas; bodyEvidence?: BodyEvidence; registerBodies?: RegisterBodies; concurrency?: Concurrency | null; passKind?: PassKind | null; material?: MaterialBrief | null; extraction?: Extraction | null; sharedContextFirst?: boolean | null; onProgress?: (phase: string) => void };
 
 /**
  * What the reader said the attached material IS, as the pass stages are told it.
@@ -485,6 +498,42 @@ export async function executeStage(input: StageInput, deps: PipelineDeps): Promi
   }
 
   /**
+   * THE PUBLIC RECORD ABOUT THE BODIES THIS STAGE PROFILES — phase 19, X.
+   *
+   * A persona prior is other papers' reading of a body: context, never
+   * evidence. A committee report dated March 2024 is a public document with a
+   * publisher and a date, and it IS evidence — so it enters the run as a
+   * `research_source` with `external_evidence` as its origin, under stage 4's
+   * own ids, and the provenance rules treat it exactly as a Tavily result. A
+   * profile or a play that cites it rests on a source; one that cites only a
+   * prior does not.
+   *
+   * Pushed into the stage's output BEFORE the calls that may cite it, so the
+   * triage of each response can resolve the reference. Failing to read the
+   * store must not cost the stage: the profiles are written from the paper
+   * alone, and the stage says so.
+   */
+  const publicRecord = async (actors: Artefact[]): Promise<Map<string, Artefact[]>> => {
+    const out = new Map<string, Artefact[]>();
+    if (!deps.bodyEvidence || !actors.length) return out;
+    try {
+      const { bundles, warnings } = await deps.bodyEvidence(actors);
+      output.warnings.push(...warnings);
+      let minted = 0;
+      for (const bundle of bundles) {
+        const records = evidenceArtefacts(minted, bundle.actorId, bundle.bodyName, bundle.records);
+        minted += records.length;
+        out.set(bundle.actorId, records);
+        output.artefacts.push(...records);
+      }
+    } catch {
+      deps.signal.throwIfAborted();
+      output.warnings.push('The public record about these bodies could not be read, so their profiles were written from the paper alone.');
+    }
+    return out;
+  };
+
+  /**
    * WORK COMMISSIONED AFTER THE REPORT, in its own block of ordinals.
    *
    * These branches sit at the top of the chain rather than in a module of their
@@ -700,13 +749,16 @@ export async function executeStage(input: StageInput, deps: PipelineDeps): Promi
     const ranking = orderActors(input.artefacts, bodies.map((b) => b.primary)).actors;
     const fullIds = new Set(ranking.slice(0, FULL_PROFILES).map((a) => a.id));
     const tail = bodies.filter((b) => !fullIds.has(b.primary.id));
+    // The public record about each body profiled in full, as this stage's own
+    // retrieved sources — appended AFTER the body's own context, per call.
+    const record = await publicRecord(bodies.filter((b) => fullIds.has(b.primary.id)).map((b) => b.primary));
     const fullUnits = bodies.filter((b) => fullIds.has(b.primary.id)).map((b) => ({
       key: b.primary.id,
-      context: b.context,
+      context: [...b.context, ...(record.get(b.primary.id) ?? [])],
       describe: b.members.length === 1
         ? `The incentive profile for ${b.primary.label}`
         : `The incentive profile for ${b.primary.label} (${b.members.length} source rows)`,
-      extra: { protect: [b.primary.id], priorPersona: priors.get(b.primary.id) ?? null },
+      extra: { protect: [b.primary.id, ...(record.get(b.primary.id) ?? []).map((a) => a.id)], priorPersona: priors.get(b.primary.id) ?? null },
       prepare: (raw: unknown) => stampProfileForm(raw, 'full'),
     }));
     const batches: (typeof bodies)[] = [];
@@ -824,22 +876,26 @@ export async function executeStage(input: StageInput, deps: PipelineDeps): Promi
       : 'The policy graph recorded too few relationships to rank on, so these were ordered by how often the document names them rather than by how much of the policy runs through them.';
     if (basis === 'prominence') output.warnings.push('The policy graph held no relationships for the profiled actors, so the red team selected its actors by how prominently the document names them rather than by connectivity. Treat the choice of who was red-teamed as a reflection of the document, not of the policy structure.');
     if (ranked.length > limits.actors) output.warnings.push(`${ranked.length - limits.actors} of ${ranked.length} profiled actors were not red-teamed in this pass: ${ranked.slice(limits.actors).map((a) => a.label).join(', ')}. ${order} A deep run covers more of them.`);
-    const base = input.artefacts.filter((a) => !['passage', 'alias', 'node', 'profile'].includes(a.kind) && !supersededSource(a) && (a.kind !== 'actor' || a.id.startsWith('s2_')));
+    // A body's public record is ITS call's own, never the shared block: every
+    // call would otherwise carry every body's annual reports.
+    const base = input.artefacts.filter((a) => !['passage', 'alias', 'node', 'profile'].includes(a.kind) && !supersededSource(a) && !isBodyEvidence(a) && (a.kind !== 'actor' || a.id.startsWith('s2_')));
     // STAGE 14'S SHAPE: the actor and its profiles go in as this call's own, so a
     // per-call `protect` can no longer move the shedding boundary. The actor
     // STAYS in the shared block too: that block is fitted once and reused by
     // every call, so taking the first call's actor out of it took that body out
     // of every other call's context as well.
     const chosen = ranked.slice(0, limits.actors);
+    const recordOf = (actor: Artefact) => input.artefacts.filter((a) => isBodyEvidence(a) && a.data.questionId === actor.id);
     const playOwns = chosen.map((actor) => [
       ...base.filter((a) => a.id === actor.id),
       ...profiles.filter((p) => p.data.actorId === actor.id),
+      ...recordOf(actor),
     ]);
     await fanOut(chosen.map((actor, i) => ({
       key: actor.id,
       context: orderedContext(base, playOwns[i], 'plays', playOwns, new Set(hypotheses)),
       describe: `Exploitation plays for ${actor.label}`,
-      extra: { protect: [actor.id, ...profiles.filter((p) => p.data.actorId === actor.id).map((p) => p.id), ...hypotheses], priorPersona: priors.get(actor.id) ?? null },
+      extra: { protect: [actor.id, ...profiles.filter((p) => p.data.actorId === actor.id).map((p) => p.id), ...recordOf(actor).map((a) => a.id), ...hypotheses], priorPersona: priors.get(actor.id) ?? null },
     })));
     scoreExploits(output.artefacts);
   } else if (stage === PERSONA_STAGE) {
@@ -956,7 +1012,13 @@ export async function executeStage(input: StageInput, deps: PipelineDeps): Promi
       output.warnings.push('No other completed policy assessment was available to compare, so cross-policy exposure could not be examined. Weaknesses that only appear when policies coexist are outside this assessment.');
     } else {
       const context = input.artefacts.filter((a) => !['passage', 'alias', 'node'].includes(a.kind) && !supersededSource(a) && (a.kind !== 'actor' || a.id.startsWith('s2_')));
-      const identity = crossIdentityHints(input.artefacts, neighbours);
+      // Which register body each of this paper's actors is, so identity across
+      // the two papers is decided by the register where it can be — the same
+      // body id is the same body, two ids are never linked.
+      let bodies = new Map<string, string>();
+      try { bodies = (await deps.registerBodies?.(input.artefacts.filter((a) => a.kind === 'actor' && a.id.startsWith('s2_')))) ?? bodies; }
+      catch { deps.signal.throwIfAborted(); }
+      const identity = crossIdentityHints(input.artefacts, neighbours, bodies);
       await attempt('main', fitOnce(context), `Cross-policy exposure against ${neighbours.length} other assessment${neighbours.length === 1 ? '' : 's'}`, { neighbours, identity });
       const known = new Set(neighbours.map((n) => n.id));
       const invented = output.artefacts.filter((a) => a.kind === 'cross_policy' && !known.has(String(a.data.otherAnalysisId)));

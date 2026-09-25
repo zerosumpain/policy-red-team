@@ -10,6 +10,9 @@ import { ingest } from './ingest';
 import { loadArtefacts, neighbourSummaries, persistArtefacts, queueStage, sealOf } from './store';
 import { sealRow, unsealRow } from './seal';
 import { applyPersonaLinks, priorsFor } from './personas';
+import { actorBodies, evidenceForActors } from './body-evidence';
+import { documentShingles } from '../query-guard';
+import { chosenEngine } from '$lib/server/search';
 import { modelCaller } from './provider';
 import { research } from './research';
 
@@ -265,10 +268,31 @@ export async function executePolicyRun(claimed: { id: string; input: Record<stri
      * question of its own.
      */
     const inPass = isPassStage(started.stage.ordinal);
+    /**
+     * THE PUBLIC RECORD ABOUT THE PAPER'S BODIES — phase 19, workstream X.
+     *
+     * READING the store is always allowed: it is public data about register
+     * bodies, drawn from no paper, and a sealed run reading it leaves nothing
+     * behind that its key does not cover. FETCHING is a different thing, and
+     * three kinds of run may not do it:
+     *
+     *   - a sealed one, because WHICH bodies it asked about says something
+     *     about an unpublished paper, even though the query itself does not;
+     *   - one not allowed to search (`searches`), for the same reason;
+     *   - any run on an install whose search is set to `none`, which is a
+     *     reader saying their estate does not reach the open web.
+     *
+     * Those are given what is already stored. The queries are the register's
+     * own slugs and names; the document's shingles go along only so the guard
+     * can refuse a name that happens to quote it.
+     */
+    const mayFetchRecords = !sealedRun && searches && !inPass && chosenEngine() !== 'none';
+    const bodyEvidence = inPass ? undefined : (actors: typeof all) => evidenceForActors(actors, { fetch: mayFetchRecords, corpus: documentShingles(all), signal });
+    const registerBodies = inPass ? undefined : async (actors: typeof all) => new Map([...(await actorBodies(actors))].map(([actorId, body]) => [actorId, body.id]));
     const material = pass && passKind === 'addendum'
       ? { pass: passNumber, role: String(pass.role ?? 'other'), label: MATERIAL_ROLE_LABELS[String(pass.role ?? '')] ?? 'Something else', guidance: MATERIAL_ROLE_NOTES[String(pass.role ?? '')] ?? MATERIAL_ROLE_NOTES.other, filename: pass.filename ? String(pass.filename) : null, note: pass.note ? String(pass.note) : null }
       : null;
-    const output = extracted ?? await executeStage({ stage: started.stage.ordinal, title: analysis.title, jurisdiction: analysis.jurisdiction, policyArea: analysis.policyArea, context: analysis.context, depth: analysis.depth as 'standard' | 'deep', sealed: sealedRun, searches: searches && !inPass, graphLoss, priorWarnings: boundWarnings(previousStages.flatMap((s) => s.warnings)), artefacts: all }, { model: modelCaller(started.execution.id, claimed.id, signal, all, { model: analysis.model, thinkingLevel: isThinkingLevel(analysis.thinkingLevel) ? analysis.thinkingLevel : null, sealed: sealedRun, passKind, extraction: analysis.extraction as Extraction | null }), research: searches && !inPass ? research : noResearch, signal, concurrency: analysis.concurrency as Concurrency | null, passKind, material, extraction: analysis.extraction as Extraction | null, sharedContextFirst: analysis.sharedContextFirst, onProgress: (phase) => beat?.(`${stagePhase} · ${phase}`), neighbours: sealedRun || inPass ? async () => [] : () => neighbourSummaries(analysis.owner, analysisId), personas: sealedRun || inPass ? async () => [] : (actors) => priorsFor(analysis.owner, actors, analysisId) });
+    const output = extracted ?? await executeStage({ stage: started.stage.ordinal, title: analysis.title, jurisdiction: analysis.jurisdiction, policyArea: analysis.policyArea, context: analysis.context, depth: analysis.depth as 'standard' | 'deep', sealed: sealedRun, searches: searches && !inPass, graphLoss, priorWarnings: boundWarnings(previousStages.flatMap((s) => s.warnings)), artefacts: all }, { model: modelCaller(started.execution.id, claimed.id, signal, all, { model: analysis.model, thinkingLevel: isThinkingLevel(analysis.thinkingLevel) ? analysis.thinkingLevel : null, sealed: sealedRun, passKind, extraction: analysis.extraction as Extraction | null }), research: searches && !inPass ? research : noResearch, signal, concurrency: analysis.concurrency as Concurrency | null, passKind, material, extraction: analysis.extraction as Extraction | null, sharedContextFirst: analysis.sharedContextFirst, onProgress: (phase) => beat?.(`${stagePhase} · ${phase}`), neighbours: sealedRun || inPass ? async () => [] : () => neighbourSummaries(analysis.owner, analysisId), personas: sealedRun || inPass ? async () => [] : (actors) => priorsFor(analysis.owner, actors, analysisId), bodyEvidence, registerBodies });
     signal.throwIfAborted();
     await db.transaction(async (tx) => {
       const locked = await lockLease(tx, analysisId, stageId, claimed.id, workerId);

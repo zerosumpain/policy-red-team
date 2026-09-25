@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from 'node:crypto';
-import { and, asc, desc, eq, inArray, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, inArray, isNotNull, sql } from 'drizzle-orm';
 import { db, type DbExecutor } from '$lib/db';
 import { policyAnalyses, policyArtefacts, policyDocuments, policyExecutions, policyModelCalls, policyPasses, policyPersonaObservations, policyPersonas, policyProvenance, policyStages, workflowRuns, workflows } from '$lib/db/schema';
 import { ADDENDUM_STAGES, passOf, passOrdinal, RESTATEMENT_STAGES, STAGES, TRIGGER, WORKFLOW_ID, type Artefact } from '../contracts';
@@ -7,6 +7,8 @@ import type { Neighbour } from '../pipeline';
 import { PolicyError } from '../validation';
 import type { Material, Submission } from './ingest';
 import { rebuildPersonas } from './personas';
+import { actorBodies } from './body-evidence';
+import { registerIndex } from './register';
 import { mintKey, openSeal, readKey, sealRow, sealWithKey, shredKey, unsealRow, type Seal } from './seal';
 
 /**
@@ -347,10 +349,21 @@ async function settledStatus(tx: DbExecutor, analysisId: string, exclude: number
  * on the same actor or rest on the same assumption, not the other assessments in
  * full — and the model context ceiling is 180,000 characters for the whole call.
  * Statements are clipped and only the kinds that can collide are carried.
+ *
+ * CHOSEN BY THE BODIES THEY SHARE, NOT BY DATE (phase 19, workstream X). This
+ * read "the last six completed assessments", so a paper about schools was
+ * compared with whatever happened to finish last week, and a paper from three
+ * months ago that gives the same department a conflicting duty never met it.
+ * Now the candidates are ranked by how many GOV.UK register bodies they have in
+ * common with this one — this paper's actors resolved against the register,
+ * theirs read from the persona library — and date only breaks ties and fills
+ * the slots nothing shares. The same document and sealed runs are still out.
  */
 const NEIGHBOUR_KINDS = ['actor', 'mechanism', 'assumption', 'exploit', 'finding'];
 const NEIGHBOUR_LIMIT = 6;
 const NEIGHBOUR_ARTEFACTS = 60;
+/** How far back the candidates go. The library, not the whole history of the account. */
+const NEIGHBOUR_POOL = 200;
 
 export async function neighbourSummaries(owner: string, exclude: string): Promise<Neighbour[]> {
   const others = await db.select({ id: policyAnalyses.id, title: policyAnalyses.title, policyArea: policyAnalyses.policyArea, jurisdiction: policyAnalyses.jurisdiction, completedAt: policyAnalyses.completedAt })
@@ -363,7 +376,7 @@ export async function neighbourSummaries(owner: string, exclude: string): Promis
     // half that protects the sealed paper from everyone else's runs, and it has
     // to live here because it is about rows this query can see.
     .where(and(eq(policyAnalyses.owner, owner), eq(policyAnalyses.sealed, false), inArray(policyAnalyses.status, ['completed', 'completed_with_gaps'])))
-    .orderBy(desc(policyAnalyses.completedAt)).limit(NEIGHBOUR_LIMIT + 1);
+    .orderBy(desc(policyAnalyses.completedAt)).limit(NEIGHBOUR_POOL + 1);
   // The first assessment on an account has no neighbours at all, and an empty
   // `inArray` is not a shape to hand Postgres. Leave before the document queries.
   if (!others.some((o) => o.id !== exclude)) return [];
@@ -373,8 +386,31 @@ export async function neighbourSummaries(owner: string, exclude: string): Promis
   const [mine] = await db.select({ sha256: policyDocuments.sha256 }).from(policyDocuments).where(eq(policyDocuments.analysisId, exclude));
   const shas = await db.select({ analysisId: policyDocuments.analysisId, sha256: policyDocuments.sha256 }).from(policyDocuments).where(inArray(policyDocuments.analysisId, others.map((o) => o.id)));
   const sameDocument = new Set(shas.filter((d) => mine && d.sha256 === mine.sha256).map((d) => d.analysisId));
-  const shortlist = others.filter((o) => o.id !== exclude && !sameDocument.has(o.id)).slice(0, NEIGHBOUR_LIMIT);
-  if (!shortlist.length) return [];
+  const candidates = others.filter((o) => o.id !== exclude && !sameDocument.has(o.id));
+  if (!candidates.length) return [];
+
+  // This paper's bodies, by the register's own rule. Read through its seal, so
+  // the rule is the same for every run; a sealed run never asks (see the worker).
+  const seal = await sealOf(exclude);
+  const myActors = (await db.select({ id: policyArtefacts.id, label: policyArtefacts.label, data: policyArtefacts.data, kind: policyArtefacts.kind, statement: policyArtefacts.statement })
+    .from(policyArtefacts).where(and(eq(policyArtefacts.analysisId, exclude), eq(policyArtefacts.kind, 'actor'))))
+    .map((r) => unsealRow(seal, 'artefact', r))
+    .filter((a) => a.id.startsWith('s2_'));
+  const myBodies = new Set([...(await actorBodies(myActors)).values()].map((b) => b.id));
+  // Theirs, from the library: which register body each paper's actors were
+  // filed under, including any a reader corrected by hand.
+  const filed = await db.select({ analysisId: policyPersonaObservations.analysisId, actorId: policyPersonaObservations.actorId, bodyId: policyPersonas.bodyId })
+    .from(policyPersonaObservations)
+    .innerJoin(policyPersonas, eq(policyPersonas.id, policyPersonaObservations.personaId))
+    .where(and(eq(policyPersonas.owner, owner), isNotNull(policyPersonas.bodyId), inArray(policyPersonaObservations.analysisId, candidates.map((o) => o.id))));
+  const bodyOfActor = new Map(filed.map((f) => [`${f.analysisId}|${f.actorId}`, f.bodyId!]));
+  const shared = new Map<string, Set<string>>();
+  for (const f of filed) {
+    if (!f.analysisId || !f.bodyId || !myBodies.has(f.bodyId)) continue;
+    shared.set(f.analysisId, (shared.get(f.analysisId) ?? new Set()).add(f.bodyId));
+  }
+  // `candidates` is newest first, and `sort` is stable: date breaks the ties.
+  const shortlist = [...candidates].sort((a, b) => (shared.get(b.id)?.size ?? 0) - (shared.get(a.id)?.size ?? 0)).slice(0, NEIGHBOUR_LIMIT);
   // Queried per analysis, not once across all of them: a single confident
   // assessment used to fill the whole budget and leave the others with nothing,
   // silently. Exploits carry `confidence = exposure`, so a paper with several
@@ -389,13 +425,21 @@ export async function neighbourSummaries(owner: string, exclude: string): Promis
     .orderBy(sql`${policyArtefacts.confidence} DESC NULLS LAST`, asc(policyArtefacts.kind), asc(policyArtefacts.id))
     .limit(NEIGHBOUR_ARTEFACTS)));
   const rows = perAnalysis.flat();
+  // An actor the library never filed (its run's stage 13 failed, say) is
+  // resolved by the same register rule this paper's were.
+  const unfiled = rows.filter((r) => r.kind === 'actor' && !bodyOfActor.has(`${r.analysisId}|${r.id}`));
+  const resolved = await actorBodies(unfiled.map((r) => ({ ...r, id: `${r.analysisId}|${r.id}` })));
+  for (const [key, body] of resolved) bodyOfActor.set(key, body.id);
+  const index = await registerIndex();
   return shortlist.map((o) => ({
     id: o.id, title: o.title, policyArea: o.policyArea, jurisdiction: o.jurisdiction,
     completedAt: o.completedAt ? o.completedAt.toISOString() : null,
+    sharedBodies: [...(shared.get(o.id) ?? [])].map((id) => ({ id, name: index.bodies.get(id)?.name ?? id })).sort((a, b) => a.name.localeCompare(b.name)),
     artefacts: rows.filter((r) => r.analysisId === o.id)
       // Actors carry their type and aliases so identity can be judged on more
-      // than a matching label - see `crossIdentityHints`.
-      .map((r) => ({ id: r.id, kind: r.kind, label: r.label, statement: r.statement.slice(0, 600), entityType: r.kind === 'actor' ? String(r.data.entityType ?? '') : undefined, aliases: r.kind === 'actor' && Array.isArray(r.data.aliases) ? (r.data.aliases as string[]).slice(0, 12) : undefined })),
+      // than a matching label - see `crossIdentityHints` — and their register
+      // body where there is one, which decides it outright.
+      .map((r) => ({ id: r.id, kind: r.kind, label: r.label, statement: r.statement.slice(0, 600), entityType: r.kind === 'actor' ? String(r.data.entityType ?? '') : undefined, aliases: r.kind === 'actor' && Array.isArray(r.data.aliases) ? (r.data.aliases as string[]).slice(0, 12) : undefined, bodyId: r.kind === 'actor' ? bodyOfActor.get(`${o.id}|${r.id}`) : undefined })),
   }));
 }
 

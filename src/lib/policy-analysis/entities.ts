@@ -29,21 +29,37 @@ export function preserveAmbiguity(output: Artefact[], prior: Artefact[]): Artefa
  */
 export function crossIdentityHints(
   local: Artefact[],
-  neighbours: { id: string; artefacts: { id: string; kind: string; label: string; entityType?: string; aliases?: string[] }[] }[],
+  neighbours: { id: string; artefacts: { id: string; kind: string; label: string; entityType?: string; aliases?: string[]; bodyId?: string }[] }[],
+  /**
+   * This paper's actors on the GOV.UK register, actor id to body id (phase 19,
+   * workstream X). The register is STRONGER evidence than any name: where both
+   * sides carry a body id, the same id is `same_body` whatever either paper
+   * called it — "DfE" as an agency meets "Department for Education" as a
+   * department — and two different ids are never linked, however alike the
+   * names. Where either side has none, the name rules below decide as before.
+   */
+  localBodies: Map<string, string> = new Map(),
 ) {
   const entity = (id: string, name: string, type: string, aliases: string[]) => ({ id, name, typeId: type, typeName: type, degree: 0, noteCount: 1, aliases });
   const here = local.filter((a) => a.kind === 'actor' && a.id.startsWith('s2_'));
-  const hints: { actorId: string; actorLabel: string; otherAnalysisId: string; otherArtefactId: string; otherLabel: string; verdict: 'same_body' | 'possibly_same' }[] = [];
+  const hints: { actorId: string; actorLabel: string; otherAnalysisId: string; otherArtefactId: string; otherLabel: string; verdict: 'same_body' | 'possibly_same'; basis: 'register' | 'name' }[] = [];
   for (const actor of here) {
     const mine = entity(actor.id, actor.label, String(actor.data.entityType ?? ''), (actor.data.aliases as string[]) ?? []);
+    const myBody = localBodies.get(actor.id);
     for (const neighbour of neighbours) {
       for (const other of neighbour.artefacts) {
         if (other.kind !== 'actor') continue;
+        if (myBody && other.bodyId) {
+          if (myBody !== other.bodyId) continue;
+          hints.push({ actorId: actor.id, actorLabel: actor.label, otherAnalysisId: neighbour.id, otherArtefactId: other.id, otherLabel: other.label, verdict: 'same_body', basis: 'register' });
+          if (hints.length >= 120) return hints;
+          continue;
+        }
         const theirs = entity(other.id, other.label, other.entityType ?? '', other.aliases ?? []);
         const canLink = assessIdentity(mine, theirs).canLink;
         const sameName = mine.name.trim().toLowerCase() === theirs.name.trim().toLowerCase();
         if (!canLink && !sameName) continue;
-        hints.push({ actorId: actor.id, actorLabel: actor.label, otherAnalysisId: neighbour.id, otherArtefactId: other.id, otherLabel: other.label, verdict: canLink ? 'same_body' : 'possibly_same' });
+        hints.push({ actorId: actor.id, actorLabel: actor.label, otherAnalysisId: neighbour.id, otherArtefactId: other.id, otherLabel: other.label, verdict: canLink ? 'same_body' : 'possibly_same', basis: 'name' });
         if (hints.length >= 120) return hints;
       }
     }
