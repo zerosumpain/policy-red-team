@@ -1151,7 +1151,8 @@ describe('each stage is given the kinds it declares, and keeps them first', () =
     const all = [...Array.from({ length: 500 }, (_, i) => profileFor(i)), ...mechanisms, ...evidence, ...assumptions];
     for (const first of [true, false]) {
       const seen = await payloads(THEORY_STAGE, all, first);
-      expect(seen).toHaveLength(mechanisms.length);
+      // One call per mechanism, plus the programme logic model.
+      expect(seen).toHaveLength(mechanisms.length + 1);
       for (const call of seen) {
         const ids = new Set(call.map((a) => a.id));
         expect([...mechanisms, ...evidence, ...assumptions].filter((w) => !ids.has(w.id)).map((w) => w.id)).toEqual([]);
@@ -1207,7 +1208,8 @@ describe('shared context leaves room for the largest call', () => {
       { model, research: neverResearch, signal: AbortSignal.timeout(20_000), sharedContextFirst: true },
     ).catch(() => {});
 
-    expect(sizes.length).toBe(2);
+    // Both mechanisms, and the programme logic model.
+    expect(sizes.length).toBe(3);
     // The whole point: no call overruns, so none is re-fitted and the prefix
     // survives for every one of them.
     for (const size of sizes) expect(size).toBeLessThanOrEqual(FIT_LIMIT);

@@ -22,8 +22,9 @@
 import type { Artefact } from './contracts';
 import { KEY_SECTIONS, READING_CHAIN } from './glossary';
 import { beyond, destroyed, headline as handlingHeadline, journey, kept, PLACE_LABEL } from './handling';
-import { REPORT_ACTS, actorBoard, addenda, evidenceMix, fragileAssumptions, findingsBySection, headline, isShortProfile, of, plays, recommendations as reportRecommendations, BAND_LABEL, type Band, type PassRow } from './view';
+import { REPORT_ACTS, actorBoard, addenda, evidenceMix, fragileAssumptions, findingsBySection, headline, isShortProfile, of, plays, precedentOf, recommendations as reportRecommendations, BAND_LABEL, type Band, type PassRow } from './view';
 import { checks } from './view';
+import { keyJudgements } from './judgements';
 import { isBody, network } from './network';
 import { adjacency } from './matrix';
 
@@ -123,6 +124,50 @@ function verdict(artefacts: Artefact[]): string {
   return block(['## The verdict', lead.statement]);
 }
 
+/**
+ * Where it has happened before, and whether that was checked.
+ *
+ * A Word file lands on somebody's desk with nobody to ask, so a precedent from
+ * the model's own recall says so in the same line — "not checked" — or it
+ * would read as evidence in the one copy nobody can query.
+ */
+function precedentLine(play: Artefact): string | null {
+  const { text, label } = precedentOf(play);
+  if (!clean(text)) return null;
+  return `**Where it has happened before.** ${clean(text)}${label ? ` *(${label}.)*` : ''}`;
+}
+
+/**
+ * THE KEY JUDGEMENTS, straight after the verdict.
+ *
+ * What a reader who stops after one page must take away: each judgement in a
+ * sentence, the paper's own words it is about, the play that shows it, what it
+ * rests on, what would prove it wrong, and who should do what. Absent on an
+ * assessment written before key judgements existed, rather than an empty
+ * heading.
+ */
+function judgements(artefacts: Artefact[]): string {
+  const list = keyJudgements(artefacts);
+  if (!list.length) return '';
+  return block([
+    '## Key judgements',
+    'The few things that matter most in this assessment, most important first. Each names the part of the policy it is about, the play that shows it, and who should act.',
+    ...list.map((j) => block([
+      `### ${j.rank}. ${clean(j.artefact.label)}`,
+      `**${clean(j.judgement)}**`,
+      j.quote ? `> “${clean(j.quote.text)}”${j.quote.page ? ` (page ${j.quote.page})` : ''}` : null,
+      [
+        j.mechanism && `- **About.** ${clean(j.mechanism.label)}`,
+        j.plays.length > 0 && `- **Shown by.** ${j.plays.map((p) => clean(p.label)).join('; ')}${j.patterns.length ? ` — ${j.patterns.map((p) => p.label.toLowerCase()).join(', ')}` : ''}`,
+        j.assumption && `- **Rests on.** ${clean(j.assumption.label)}`,
+        clean(j.wouldChangeIf) && `- **Would change if.** ${clean(j.wouldChangeIf)}`,
+        clean(j.decision) && `- **Bears on.** ${clean(j.decision)}`,
+        (clean(j.owner) || clean(j.action)) && `- **Who should act.** ${[clean(j.owner), clean(j.action)].filter(Boolean).join(': ')}`,
+      ].filter(Boolean).join('\n'),
+    ])),
+  ]);
+}
+
 function playbook(artefacts: Artefact[]): string {
   const list = plays(artefacts);
   if (!list.length) return '';
@@ -143,6 +188,7 @@ function playbook(artefacts: Artefact[]): string {
       clean(d.costToPolicy) && `**What it costs the policy.** ${clean(d.costToPolicy)}`,
       clean(d.earlyWarning) && `**First sign of it.** ${clean(d.earlyWarning)}`,
       clean(d.counter) && `**What would close it.** ${clean(d.counter)}`,
+      precedentLine(play.artefact),
     ]);
   });
   return block([
@@ -307,7 +353,13 @@ function chapters(artefacts: Artefact[]): string {
       ])
     : '';
 
-  return block([...acts, recs]);
+  // With key judgements leading the document, the nineteen sections are the
+  // appendix that backs them — said in a heading, so a reader who reaches them
+  // knows they are the working and not a second verdict.
+  const appendix = keyJudgements(artefacts).length && (acts.length || recs)
+    ? block(['## Appendix: the assessment in full', 'Every section of the assessment, which the key judgements above are drawn from.'])
+    : '';
+  return block([appendix, ...acts, recs]);
 }
 
 /**
@@ -410,6 +462,7 @@ export function assessmentMarkdown(artefacts: Artefact[], meta: DocMeta): string
   return block([
     cover(meta, artefacts),
     verdict(artefacts),
+    judgements(artefacts),
     playbook(artefacts),
     cast(artefacts),
     relationships(artefacts),

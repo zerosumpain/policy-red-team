@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Link, useParams, useSearchParams } from 'react-router';
 import type { Artefact } from '$lib/policy-analysis/contracts';
 import { explain } from '$lib/policy-analysis/glossary';
-import { BAND_LABEL, confidenceJudgement, plays, stageOfId } from '$lib/policy-analysis/view';
+import { BAND_LABEL, confidenceJudgement, plays, precedentOf, stageOfId } from '$lib/policy-analysis/view';
 import { STAGES, isPassStage } from '$lib/policy-analysis/contracts';
 import { edgesOf, nodesOf } from '$lib/policy-analysis/network';
 import { citedBy, paperWording, provenance, type StageOf } from '$lib/provenance';
@@ -1081,6 +1081,11 @@ function PlaySection({ play, resolve, linkTo }: {
             <div key={key} className="prt-drill__field">
               <h3 className="govuk-heading-s">{label}</h3>
               <p className="govuk-body">{value}</p>
+              {/* A precedent from the model's own recall is worth reading and
+                  is not evidence; the label is what stops it passing for one. */}
+              {key === 'precedent' && precedentOf(play.artefact).label ? (
+                <p className="govuk-body-s">{precedentOf(play.artefact).label}.</p>
+              ) : null}
             </div>
           ) : null;
         })}

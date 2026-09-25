@@ -72,17 +72,11 @@ function semanticFault(a: Artefact, all: Map<string, Artefact>, stage: number, n
   if (a.refs.some((id) => id === a.id || !all.has(id))) return fault('provenance', 'An artefact cites an unavailable source.');
   if (stage === 1 && ['claim', 'mechanism', 'actor'].includes(a.kind) && a.origin !== 'extracted_fact') return fault('extraction', 'The document inventory must distinguish literal extraction from assumptions.');
   if (a.kind === 'edge' && (!a.fromId || !a.toId || !all.has(a.fromId) || !all.has(a.toId) || !a.relation || !a.temporal)) return fault('graph', 'A graph assertion has invalid endpoints or provenance.');
-  if (a.origin === 'extracted_fact' && a.kind !== 'passage') {
-    const source = a.sourceId ? all.get(a.sourceId) : null;
-    if (source?.kind !== 'passage' || !a.sourceQuote || !a.refs.includes(source.id)) return fault('span', 'An extracted assertion could not be located in the policy text.');
-    // Line wrapping, hyphenation and smart punctuation are extraction artefacts,
-    // not misquotation. A quote absent even after folding them is fabricated.
-    const found = locateQuote(source.statement, a.sourceQuote);
-    if (!found) return fault('span', 'An extracted assertion could not be located in the policy text.');
-    a.sourceQuote = found.quote;
-    a.page = source.page; a.section = source.section;
-    a.startOffset = (source.startOffset ?? 0) + found.start;
-    a.endOffset = (source.startOffset ?? 0) + found.end;
+  // A key judgement quotes the paper whatever its origin: it is a judgement,
+  // and the quote is what stops it being a judgement about any paper at all.
+  if ((a.origin === 'extracted_fact' || a.kind === 'key_judgement') && a.kind !== 'passage') {
+    const located = locate(a, all);
+    if (located) return located;
   }
   // URLs originate exclusively in trusted research adapter results, never model output.
   if (a.url && a.kind !== 'research_source') return fault('citation', 'Model-authored URLs are not accepted as evidence.');
@@ -107,7 +101,7 @@ function semanticFault(a: Artefact, all: Map<string, Artefact>, stage: number, n
    * wearing the same hat one stage earlier.
    */
   const citedAssumptions = a.kind === 'exploit' ? a.data.preconditions as string[]
-    : ['model', 'scenario', 'causal_chain', 'option_appraisal', 'evaluation_plan'].includes(a.kind) ? a.data.assumptions as string[]
+    : ['model', 'scenario', 'causal_chain', 'logic_model', 'option_appraisal', 'evaluation_plan'].includes(a.kind) ? a.data.assumptions as string[]
     : null;
   if (citedAssumptions) {
     /**
@@ -159,6 +153,35 @@ function semanticFault(a: Artefact, all: Map<string, Artefact>, stage: number, n
     // any that stop resolving.
     for (const id of citedAssumptions) if (all.has(id) && !a.refs.includes(id)) a.refs = [...a.refs, id];
   }
+  // A logic model runs through machinery. Narrowed like the assumptions above:
+  // a real mechanism among its ids keeps it, nothing real refuses it.
+  if (a.kind === 'logic_model') {
+    const named = (a.data.mechanismIds as string[]) ?? [];
+    const real = named.filter((id) => all.get(id)?.kind === 'mechanism');
+    if (!real.length) return fault('reference', 'A programme logic model must name the mechanisms it runs through.');
+    if (real.length !== named.length) a.data.mechanismIds = real;
+    for (const id of real) if (!a.refs.includes(id)) a.refs = [...a.refs, id];
+  }
+  /**
+   * A KEY JUDGEMENT NAMES ITS MECHANISM AND ITS PLAY, or it is not one.
+   *
+   * These two are what separate "stage the pilots" from a judgement about THIS
+   * policy, which is the whole reason the kind exists — so they are refused,
+   * not narrowed away. The play list is narrowed the way a play's
+   * preconditions are: a real play among the ids keeps it. Everything cited is
+   * folded into `refs`, because provenance is what a citation means.
+   */
+  if (a.kind === 'key_judgement') {
+    if (all.get(String(a.data.mechanismId))?.kind !== 'mechanism') return fault('traceability', 'A key judgement must name the mechanism it concerns in mechanismId.');
+    const named = (a.data.playIds as string[]) ?? [];
+    const plays = named.filter((id) => all.get(id)?.kind === 'exploit');
+    if (!plays.length) return fault('traceability', 'A key judgement must name at least one exploitation play in playIds.');
+    if (plays.length !== named.length) a.data.playIds = plays;
+    if (all.get(String(a.data.assumptionId))?.kind !== 'assumption') return fault('traceability', 'A key judgement must name the assumption it rests on in assumptionId.');
+    const findings = ((a.data.findingIds as string[]) ?? []).filter((id) => all.get(id)?.kind === 'finding');
+    a.data.findingIds = findings;
+    for (const id of [String(a.data.mechanismId), ...plays, String(a.data.assumptionId), ...findings]) if (!a.refs.includes(id)) a.refs = [...a.refs, id];
+  }
   if (a.origin === 'normative_judgement' && a.kind === 'research_source') return fault('source', 'A recommendation is not an external source.');
   if (a.kind === 'recommendation' && a.origin !== 'normative_judgement') return fault('recommendation', 'Redesign options must be labelled as normative recommendations.');
   if (a.kind === 'profile') {
@@ -173,7 +196,7 @@ function semanticFault(a: Artefact, all: Map<string, Artefact>, stage: number, n
     const value = a.data[field];
     if (typeof value === 'string' && !all.has(value)) return fault('reference', 'An artefact contains an invalid entity reference.');
   }
-  for (const field of ['players', 'assumptions', 'resultIds', 'hypothesisIds', 'findingIds', 'reviewedFindingIds', 'challengeIds', 'targetIds', 'candidates', 'mentions', 'dependencies', 'affectedOutcomes', 'targets', 'preconditions', 'reconciliationIds']) {
+  for (const field of ['players', 'assumptions', 'resultIds', 'hypothesisIds', 'findingIds', 'reviewedFindingIds', 'challengeIds', 'targetIds', 'candidates', 'mentions', 'dependencies', 'affectedOutcomes', 'targets', 'preconditions', 'reconciliationIds', 'mechanismIds', 'playIds']) {
     const values = a.data[field];
     if (Array.isArray(values) && values.some((v) => typeof v !== 'string' || !all.has(v))) return fault('reference', 'An artefact contains an invalid relationship.');
   }
@@ -502,6 +525,7 @@ export function triageArtefacts(output: StageOutput, stage: number, prior: Artef
   // rather than the passages that mention them, or a claim citing a sibling by a
   // name it had made up.
   for (const a of kept) prune(a, map, dropWarning(a));
+  const relabelled = kept.filter((a) => a.kind === 'exploit' && checkPrecedent(a, map)).map((a) => `“${a.label}”`);
 
   // Dropping an artefact can invalidate whatever pointed at it, so settle.
   for (let pass = 0; pass < 6; pass++) {
@@ -518,6 +542,10 @@ export function triageArtefacts(output: StageOutput, stage: number, prior: Artef
 
   const warnings = [...parsed.warnings];
   if (pruned.length) warnings.push(`${pruned.length} item${pruned.length === 1 ? '' : 's'} referred to something that is not in this assessment; the reference was dropped and the item kept. ${pruned.slice(0, 4).join(' ')}${pruned.length > 4 ? ` And ${pruned.length - 4} more.` : ''}`.slice(0, 1000));
+  // Worded for `stage-facts.ts`'s "the reference was dropped" rule, because that
+  // is what happened: the play is kept, and the one thing it could not back up
+  // — a link, or a claim to evidence it does not cite — is taken off it.
+  if (relabelled.length) warnings.push(`${relabelled.length} play${relabelled.length === 1 ? '' : 's'} gave a precedent the run holds no evidence for, or a link in it; the reference was dropped and the item kept, with the precedent marked as the model's own recall, not checked. ${relabelled.slice(0, 4).join(', ')}${relabelled.length > 4 ? `, and ${relabelled.length - 4} more` : ''}.`.slice(0, 1000));
   // DIVERGENCE: see the narrowing rule in `semanticFault`.
   if (narrowed.length) warnings.push(`${narrowed.length} item${narrowed.length === 1 ? '' : 's'} named something real among the hypotheses ${narrowed.length === 1 ? 'it rests' : 'they rest'} on that is not an assumption record; that citation was dropped and the item kept, with the identifier retained in its provenance. ${narrowed.slice(0, 4).join(' ')}${narrowed.length > 4 ? ` And ${narrowed.length - 4} more.` : ''}`.slice(0, 1000));
   if (rejected.length) {
@@ -546,7 +574,7 @@ export function clampWarnings(warnings: string[], limit = 60): string[] {
 // enumeration: exponential in a dense provenance graph, and now run once per
 // artefact per triage pass. Reachability does not care which path reached a node,
 // so a shared set is both correct and linear.
-const PRUNABLE = ['players', 'assumptions', 'resultIds', 'hypothesisIds', 'findingIds', 'reviewedFindingIds', 'challengeIds', 'targetIds', 'candidates', 'mentions', 'dependencies', 'affectedOutcomes', 'targets', 'preconditions'];
+const PRUNABLE = ['players', 'assumptions', 'resultIds', 'hypothesisIds', 'findingIds', 'reviewedFindingIds', 'challengeIds', 'targetIds', 'candidates', 'mentions', 'dependencies', 'affectedOutcomes', 'targets', 'preconditions', 'mechanismIds', 'playIds'];
 
 /**
  * Drop identifiers that name nothing, keeping the artefact.
@@ -570,6 +598,53 @@ function prune(a: Artefact, all: Map<string, Artefact>, note: (what: string) => 
     note(`${values.length - trimmed.length} unresolvable entr${values.length - trimmed.length === 1 ? 'y' : 'ies'} in ${field}`);
     a.data = candidate;
   }
+}
+
+/**
+ * Find an artefact's `sourceQuote` in the passage it names, and take the page,
+ * section and offsets from the passage rather than from the model.
+ */
+function locate(a: Artefact, all: Map<string, Artefact>): Fault | null {
+  const source = a.sourceId ? all.get(a.sourceId) : null;
+  if (source?.kind !== 'passage' || !a.sourceQuote || !a.refs.includes(source.id)) return fault('span', a.kind === 'key_judgement' ? 'A key judgement must quote the paper: sourceId must name a passage and sourceQuote must be copied from it exactly.' : 'An extracted assertion could not be located in the policy text.');
+  // Line wrapping, hyphenation and smart punctuation are extraction artefacts,
+  // not misquotation. A quote absent even after folding them is fabricated.
+  const found = locateQuote(source.statement, a.sourceQuote);
+  if (!found) return fault('span', a.kind === 'key_judgement' ? 'A key judgement must quote the paper, and its sourceQuote could not be found in the passage it names. Copy the quote exactly from a mechanism or claim, with its sourceId.' : 'An extracted assertion could not be located in the policy text.');
+  a.sourceQuote = found.quote;
+  a.page = source.page; a.section = source.section;
+  a.startOffset = (source.startOffset ?? 0) + found.start;
+  a.endOffset = (source.startOffset ?? 0) + found.end;
+  return null;
+}
+
+/** A link anywhere in model prose. URLs come from the retrieval adapter and nowhere else. */
+const LINK = /\b(?:https?:\/\/|www\.)[^\s)\]]+/i;
+
+/**
+ * Hold a play's precedent to what it can show. Returns true if it changed it.
+ *
+ * `external_evidence` is a claim that this run holds the evidence, so the play
+ * must cite a retrieved source or an evidence row; one that cites neither is
+ * the model remembering, and is relabelled as that rather than refused — the
+ * precedent is still worth reading, it is simply not checked. A link in the
+ * text is removed whatever the basis: a model-authored URL is the one citation
+ * `semanticFault` already refuses in the `url` field, and it must not come back
+ * in through the prose. See `PRECEDENT_BASES`.
+ */
+function checkPrecedent(a: Artefact, all: Map<string, Artefact>): boolean {
+  let changed = false;
+  const text = typeof a.data.precedent === 'string' ? a.data.precedent : '';
+  if (LINK.test(text)) {
+    a.data.precedent = text.replace(new RegExp(LINK.source, 'gi'), '').replace(/\(\s*\)/g, '').replace(/\s{2,}/g, ' ').replace(/\s+([.,;:)])/g, '$1').trim() || 'A precedent was given only as a link, which was removed.';
+    if (a.data.precedentBasis !== 'none') a.data.precedentBasis = 'unverified_recall';
+    changed = true;
+  }
+  if (a.data.precedentBasis === 'external_evidence' && !a.refs.some((id) => ['research_source', 'evidence'].includes(all.get(id)?.kind ?? ''))) {
+    a.data.precedentBasis = 'unverified_recall';
+    changed = true;
+  }
+  return changed;
 }
 
 export function hasSource(id: string, all: Map<string, Artefact>, seen = new Set<string>()): boolean {

@@ -1,5 +1,5 @@
 import {
-  ASSURANCE_CATEGORIES, DEFAULT_CONCURRENCY, DEPTH_LIMITS, PATTERNS, SCENARIOS, STAGES, type Depth,
+  ASSURANCE_CATEGORIES, DEEP_CHAINS, DEFAULT_CONCURRENCY, DEPTH_LIMITS, PATTERNS, SCENARIOS, STAGES, type Depth,
 } from '$lib/policy-analysis/contracts';
 
 /**
@@ -91,9 +91,9 @@ function fanOuts(passages: number, artefacts: number, depth: Depth): Map<number,
     [7, fixed(PATTERNS.length)],
     [9, fixed(SCENARIOS.length)],
     [10, { low: Math.min(4, limits.actors), high: limits.actors }],
-    // Mechanisms are discovered from the claims, so they scale with the
-    // inventory too — this was the other stage the passage-based guess missed.
-    [14, { low: Math.ceil(inventory / 60), high: Math.ceil(inventory / 20) }],
+    // One programme logic model and at most DEEP_CHAINS deep chains since
+    // phase 19; it used to scale with the inventory, one chain per mechanism.
+    [14, { low: Math.min(DEEP_CHAINS, Math.max(1, Math.ceil(inventory / 60))) + 1, high: DEEP_CHAINS + 1 }],
     [16, fixed(ASSURANCE_CATEGORIES.length)],
   ]);
 }

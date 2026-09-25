@@ -61,6 +61,7 @@ export function fixtureModel(stage: number, _key: string, raw: unknown): StageOu
       }, [challenge.id])));
       items.push({ ...make('redesign', 'recommendation', { findingIds: [items[0].id], change: 'Commit resources and review authority.', tradeoffs: 'Additional public expenditure.', beneficiaries: ['Service users'], burdenBearers: ['Department'], validationNeeded: 'Verify capacity.', revision: 'assured', challengeIds: challenges.map((c) => c.id), judgement: 'supported_with_limits' }, [items[0].id, ...challenges.map((c) => c.id)]), origin: 'normative_judgement' });
       items.push(make('summary', 'review_summary', { decisionUse: 'independently_challenged', judgement: 'supported_with_limits', openChallenges: 0, acceptedChallenges: 0, unresolvedMaterialChallenges: 0, scope: 'Restated after material was attached.', limitations: ['No human sign-off.'] }, challenges.map((c) => c.id)));
+      items.push(...keyJudgements(input, [items[0].id]));
     }
   } else if (stage === 1) {
     const p = one('passage');
@@ -101,7 +102,7 @@ export function fixtureModel(stage: number, _key: string, raw: unknown): StageOu
     items = SCENARIOS.filter((s) => !input.targetScenario || input.targetScenario === s).map((scenario) => make(scenario, 'scenario', { scenario, changedConditions: 'Capacity and cooperation vary.', firstActor: one('actor').id, strategy: 'Delay delivery when capacity is low.', downstreamEffects: ['Longer waits.'], affectedOutcomes: [one('claim').id], detectability: 'Monthly reports, subject to gaming.', correction: 'Review resourcing.', weaknesses: ['No assured capacity.'], assumptions: [one('assumption').id], sensitivity: ['If capacity is sufficient, cooperation is feasible; if not, minimum compliance becomes more plausible. Capacity most changes this result.'] }, [one('model').id, one('test').id, one('assumption').id]));
   } else if (stage === 10) {
     const a = input.artefacts.find((x) => x.id === input.targetActorId)!;
-    items = [make('exploit', 'exploit', { actorId: a.id, motivation: 'Avoids implementation cost while remaining compliant.', play: 'Report against the measure without changing the unobservable practice.', legality: 'compliant', targets: [one('mechanism').id], preconditions: [one('assumption').id], payoff: 'Retains discretion and avoids cost.', costToPolicy: 'The objective is not delivered while the measure reads well.', incentive: 0.6, ease: 0.6, impact: 0.6, concealment: 0.6, earlyWarning: 'Measure improves while complaints do not fall.', counter: 'Add an independent check of the unobservable practice.', precedent: 'None identified in this synthetic fixture.' }, [one('profile').id, one('mechanism').id, one('assumption').id])];
+    items = [make('exploit', 'exploit', { actorId: a.id, motivation: 'Avoids implementation cost while remaining compliant.', play: 'Report against the measure without changing the unobservable practice.', legality: 'compliant', targets: [one('mechanism').id], preconditions: [one('assumption').id], payoff: 'Retains discretion and avoids cost.', costToPolicy: 'The objective is not delivered while the measure reads well.', incentive: 0.6, ease: 0.6, impact: 0.6, concealment: 0.6, earlyWarning: 'Measure improves while complaints do not fall.', counter: 'Add an independent check of the unobservable practice.', precedent: 'None identified in this synthetic fixture.', precedentBasis: 'none' }, [one('profile').id, one('mechanism').id, one('assumption').id])];
   } else if (stage === 11) {
     items = [];
   } else if (stage === 13) {
@@ -118,13 +119,21 @@ export function fixtureModel(stage: number, _key: string, raw: unknown): StageOu
     const sections = REPORT_SECTIONS.filter((section) => !['theory_of_change', 'options_appraisal', 'evaluation_plan', 'assurance'].includes(section));
     items = sections.map((section) => make(section, 'finding', { section, resultIds: [one('test').id], hypothesisIds: [one('assumption').id], revision: 'initial', reviewedFindingIds: [], challengeIds: [], judgement: 'provisional' }, [one('test').id, one('assumption').id]));
     items.push({ ...make('redesign', 'recommendation', { findingIds: [items[0].id], change: 'Commit resources and review authority.', tradeoffs: 'Additional public expenditure.', beneficiaries: ['Service users'], burdenBearers: ['Department'], validationNeeded: 'Verify capacity and legal powers.', revision: 'initial', challengeIds: [], judgement: 'provisional' }, [items[0].id]), origin: 'normative_judgement' });
+  } else if (stage === 14 && (raw as { programmeModel?: boolean }).programmeModel) {
+    // The programme call: one logic model over the whole policy.
+    const mechanism = one('mechanism');
+    items = [make('logic', 'logic_model', {
+      inputs: ['Staff time'], activities: ['Deliver shared access'], outputs: ['Access offered'], outcomes: ['Use increases'], impacts: ['Access improves'],
+      mechanismIds: [mechanism.id], assumptions: [one('assumption').id], weakestLink: 'Capacity: councils may not have the staff to deliver.',
+      evidenceLimits: 'No impact evaluation is supplied.', judgement: 'contested',
+    }, [mechanism.id, one('assumption').id])];
   } else if (stage === 14) {
     const mechanism = input.artefacts.find((a) => a.id === input.targetMechanismId) ?? one('mechanism');
     items = [make('chain', 'causal_chain', {
       mechanismId: mechanism.id, inputs: ['Staff time'], activities: ['Deliver shared access'], outputs: ['Access offered'], outcomes: ['Use increases'], impacts: ['Access improves'],
       causalMechanisms: ['Removing the access barrier permits use.'], assumptions: [one('assumption').id], alternativeExplanations: ['Demand may change independently.'],
       negativePathways: ['Capacity pressure may lengthen waits.'], indicators: [{ name: 'Use', baseline: 'Not specified', target: 'Not specified', dataSource: 'Administrative data', timing: 'Monthly' }],
-      evidenceLimits: 'No impact evaluation is supplied.', judgement: 'provisional',
+      evidenceLimits: 'No impact evaluation is supplied.', judgement: 'provisional', weakestLink: 'Use depends on councils having the capacity to deliver.',
     }, [mechanism.id, one('assumption').id])];
   } else if (stage === 15) {
     const chain = one('causal_chain');
@@ -158,6 +167,25 @@ export function fixtureModel(stage: number, _key: string, raw: unknown): StageOu
     }, [challenge.id])));
     items.push({ ...make('redesign', 'recommendation', { findingIds: [items[0].id], change: 'Commit resources and review authority.', tradeoffs: 'Additional public expenditure.', beneficiaries: ['Service users'], burdenBearers: ['Department'], validationNeeded: 'Verify capacity and legal powers.', revision: 'assured', challengeIds: challenges.map((c) => c.id), judgement: 'supported_with_limits' }, [items[0].id, ...challenges.map((c) => c.id)]), origin: 'normative_judgement' });
     items.push(make('summary', 'review_summary', { decisionUse: 'independently_challenged', judgement: 'supported_with_limits', openChallenges: 0, acceptedChallenges: 0, unresolvedMaterialChallenges: 0, scope: 'Automated independent challenge.', limitations: ['No human sign-off.'] }, challenges.map((c) => c.id)));
+    items.push(...keyJudgements(input, [items[0].id]));
   }
   return { artefacts: items, warnings: [] };
+}
+
+/**
+ * The key judgements a revised report leads with: one, quoting the mechanism
+ * it is about exactly as stage 1 located it, naming the sharpest play.
+ */
+function keyJudgements(input: StageInput & { idPrefix: string }, findingIds: string[]): Artefact[] {
+  const mechanism = input.artefacts.find((a) => a.kind === 'mechanism' && a.sourceId && a.sourceQuote);
+  const play = input.artefacts.find((a) => a.kind === 'exploit');
+  const assumption = input.artefacts.find((a) => a.kind === 'assumption');
+  if (!mechanism || !play || !assumption) return [];
+  return [artefact(`${input.idPrefix}judgement_1`, 'key_judgement', 'Councils can comply on paper', 'Councils can report against the access measure without changing practice, so the shared access programme can look delivered when it is not.', {
+    rank: 1, mechanismId: mechanism.id, playIds: [play.id], assumptionId: assumption.id,
+    wouldChangeIf: 'An independent check found practice changing where the measure improves.',
+    decision: 'Whether to fund the programme beyond its first year.',
+    action: 'Add an independent check of practice before the second year of funding.', owner: 'The funding department',
+    findingIds,
+  }, { refs: [mechanism.id, play.id, assumption.id, ...findingIds], sourceId: mechanism.sourceId, sourceQuote: mechanism.sourceQuote, origin: 'structural_inference', confidence: null })];
 }

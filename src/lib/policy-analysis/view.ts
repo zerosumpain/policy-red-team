@@ -1,4 +1,5 @@
-import { MATERIAL_ROLE_LABELS, REPORT_SECTIONS, type Artefact, type Kind } from './contracts';
+import { MATERIAL_ROLE_LABELS, PRECEDENT_BASES, REPORT_SECTIONS, type Artefact, type Kind } from './contracts';
+type PrecedentBasis = (typeof PRECEDENT_BASES)[number];
 import { ANNEX, JOURNEY, REDIRECTS, STEP_VIEWS, type AnnexGroupName, type StepId } from './journey';
 import { BANDS, byExposure, type Band } from './exposure';
 export type { Band };
@@ -69,6 +70,30 @@ export function plays(artefacts: Artefact[]): Play[] {
     exposure: num(artefact.data.exposure),
     factors: FACTOR_KEYS.map((key) => ({ key, value: num(artefact.data[key]) })),
   }));
+}
+
+/**
+ * A play's precedent, and whether anybody checked it.
+ *
+ * The label is the point: since phase 19 a precedent may be the model's own
+ * recall (`PRECEDENT_BASES`), which is worth reading and must never be read as
+ * evidence. A play written before the basis existed has none, and says nothing
+ * about it rather than guessing.
+ */
+export const PRECEDENT_LABEL: Record<PrecedentBasis, string> = {
+  external_evidence: 'Checked against evidence this assessment retrieved',
+  prior_assessment: 'Seen in an earlier assessment of another policy',
+  unverified_recall: 'From the model’s own recall — not checked',
+  none: 'No comparable case found',
+};
+export function precedentOf(play: Artefact): { text: string; basis: PrecedentBasis | null; label: string | null; checked: boolean } {
+  const basis = (PRECEDENT_BASES as readonly string[]).includes(String(play.data.precedentBasis)) ? (play.data.precedentBasis as PrecedentBasis) : null;
+  return {
+    text: typeof play.data.precedent === 'string' ? play.data.precedent : '',
+    basis,
+    label: basis ? PRECEDENT_LABEL[basis] : null,
+    checked: basis === 'external_evidence',
+  };
 }
 
 export function bandCounts(list: Play[]): { band: Band; note: string; count: number }[] {

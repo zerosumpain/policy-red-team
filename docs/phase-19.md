@@ -110,3 +110,76 @@ Branch `phase19-actors`. Migration `0003-actor-identity.sql`.
 - **X:** the National Audit Office and other bodies of Parliament are not on
   the GOV.UK list. A second source can join `policy_bodies` under its own
   `source`.
+
+## Workstream A — analysis: what landed
+
+Branch `phase19-analysis`. No migration. Prompt generation `3.2`.
+
+- **Key judgements.** Stage 17 writes one to five `key_judgement` artefacts,
+  ranked. Each is one plain sentence (`statement`) with a mechanism, a quote
+  from the paper (`sourceId` + `sourceQuote`, located exactly as an extracted
+  fact is), at least one play, the assumption it rests on, `wouldChangeIf`,
+  `decision`, `action` and `owner`. Triage refuses one without a mechanism or a
+  play. None left after the top-up fails the stage; a surplus is reconciled.
+  The Word export leads with them after the verdict, and the nineteen sections
+  become the appendix. A shared copy keeps the quote, as it does for a finding.
+- **The challenge asks whether the report is useful.** Four more remits, one
+  call each, equal weight: `generic`, `actionability`, `sharpest_play`,
+  `unanswered_play`. The instruction says hedging is not a fix; specificity is.
+- **Plays grouped into patterns.** `patterns.ts` files each play under an
+  archetype from its own words and ranks the patterns within the run. Stages
+  12, 16 and 17 are handed the ranked patterns and the severe plays no
+  recommendation answers.
+- **Theory of change scoped.** One programme `logic_model` and deep
+  `causal_chain`s for the `DEEP_CHAINS` (8) mechanisms the most plays are aimed
+  at. Each deep call is given those plays. Every chain names its `weakestLink`,
+  and the prompt says what earns each judgement. Stage 14 goes from one call per
+  mechanism (~150 on the real run) to at most nine. Stage 16 goes from 7 to 11.
+- **Precedents from recall, labelled.** `precedentBasis` on a play:
+  `external_evidence` (must cite a source or evidence row, or triage relabels
+  it), `prior_assessment`, `unverified_recall` (shown as "not checked") or
+  `none`. A link in the text is removed.
+
+### For the brief builder (B) and the report builder (R)
+
+- `keyJudgements(artefacts)` in `src/lib/policy-analysis/judgements.ts`: the
+  current generation, in rank order, each joined to its mechanism, plays,
+  patterns, assumption, findings and quote. Returns `[]` on an assessment
+  written before key judgements.
+- `patternGrid(artefacts)` in `src/lib/policy-analysis/patterns.ts`: ranked
+  pattern rows, up to `GRID_MECHANISMS` (12) mechanism columns, a cell per
+  pattern × mechanism with the worst exposure, band, play ids and `relative`
+  (the cell's percentile among filled cells, for shading), and counts of hidden
+  mechanisms and plays aimed at no mechanism.
+- Also there: `playPatterns`, `playStanding` ("3rd of 47"), `unansweredPlays`,
+  and `precedentOf` in `view.ts`.
+- No UI renders key judgements yet. Master had no Verdict slot for them, so the
+  only client change is the precedent label on the drill page.
+
+### Decision log — A
+
+| Decision | Options | Chosen | Why | Reversible |
+|---|---|---|---|---|
+| How plays become patterns | a model call over labels; deterministic | **deterministic** | stage 10's own checklist plus selective take-up covers the archetypes the real run showed; the label weighs three times the prose; no call, nothing re-run, old runs get patterns at once, and every rule is tested | yes — a model call could replace `patternOf` |
+| Where patterns live | artefacts from a new stage; a computed view | **computed view** | nothing to persist that the plays do not already hold | yes |
+| How the model sees them | a new artefact kind in `STAGE_CONTEXT`; an `extra` on the call | **`extra` (`playPatterns`)** | rides after the artefacts, so the cached prefix is unchanged; no kind for every view to learn | yes |
+| Pattern ranking | absolute exposure; within-run percentiles | **mean of percentiles of worst exposure, bodies and mechanisms** | 38 of 47 plays sat between 0.54 and 0.77; a relative rank separates them, and the same plays rank the same however the scores bunch | yes |
+| New challenge checks | lines in the existing seven remits; remits of their own | **four remits of their own** | "equal weight" means a call each; a line in a long remit is the one skipped | yes |
+| Programme logic model | `causal_chain` with a scope flag; a new kind | **new kind `logic_model`** | the chain views key on `mechanismId` and would attach a programme model to every mechanism it names | yes |
+| Which mechanisms get a deep chain | connectivity; plays aimed at them | **plays, then connectivity, then id** | a chain is worth reading where somebody is trying to break it | yes — `DEEP_CHAINS` |
+| A top-up for stage 14 | re-dispatch missing units; none | **none** | the majority floor already tolerates a short stage; the old test counts are exact | yes |
+| Precedent basis | a new `ORIGINS` value; a field beside `precedent` | **a field (`precedentBasis`)** | an origin describes a whole artefact and every view reads it that way | yes |
+| A key judgement's quote | send stage 17 the passages; copy a mechanism's or claim's quote | **copy the quote** | every mechanism and claim in 17's context already carries a located `sourceQuote`; passages would crowd the context | yes |
+| No key judgement | warn; fail | **fail, after one top-up** | a report with no "so what" has not done the job; the top-up names the gap (`key_judgements`) so the payload differs from the cached call | yes |
+| More than five | fail; reconcile | **reconcile: last of each rank, then the top five, renumbered** | `provider.ts` accumulates corrective rounds, so the review-summary trap applies; a surplus is the correction arriving | n/a |
+| Restatement pass | floor as at 17; reconcile only | **reconcile only** | a restatement has never had coverage rules; the view falls back to the previous set | yes |
+| Verdict UI | render key judgements; skip | **skip** | master had no slot for them and R and B own `client/report/**` | n/a |
+
+### What this does not do
+
+- It does not check that chain judgements vary. The prompt says what earns
+  each one; the first real run will show whether that is enough.
+- `patternOf` reads English words. A paper that describes its plays in other
+  words gets more "other" plays. That is shown, not hidden.
+- It has not met a real paper. The fixture proves the plumbing, not the
+  quality of the judgements.

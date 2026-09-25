@@ -97,8 +97,11 @@ export function passOrdinal(pass: number, step: number): number { return PASS_BA
  * stops an old reply being replayed; this names the generation for a person
  * reading the log. 3.1 is phase 19: every relationship type offered to stage 3,
  * short profiles at stage 4, and a plain-English writing rule on every call.
+ * 3.2 is phase 19's analysis: key judgements at stage 17, four more challenge
+ * remits, the play patterns handed to 12, 16 and 17, a programme logic model
+ * with deep chains at 14, and a labelled precedent at 10.
  */
-export const PROMPT_VERSION = 'policy-analysis/3.1';
+export const PROMPT_VERSION = 'policy-analysis/3.2';
 export const MAX_BYTES = 10 * 1024 * 1024;
 export const MAX_CHARACTERS = 600_000;
 export const MAX_PAGES = 400;
@@ -352,8 +355,58 @@ export const SCENARIOS = ['genuine_cooperation', 'minimum_compliance', 'strategi
 export const RECONCILE_RELATIONS = ['confirms', 'extends', 'qualifies', 'contradicts', 'supersedes'] as const;
 /** Where a conclusion stands once the material has been read against it. */
 export const REVISION_STATUSES = ['upheld', 'strengthened', 'weakened', 'overturned', 'superseded'] as const;
+/**
+ * WHERE A PLAY'S PRECEDENT CAME FROM.
+ *
+ * 46 of 47 plays on the one completed real run said no precedent was found,
+ * because the prompt allowed only a case the run had evidence for and research
+ * is planned before any play exists. A model does know comparable cases — a
+ * college gaming a completion measure, a council re-basing a waiting list — and
+ * a reader is better served by "this has happened before, from memory, not
+ * checked" than by a blank, PROVIDED the page says which it is.
+ *
+ * So the precedent is labelled rather than trusted. `external_evidence` must
+ * cite a retrieved source or evidence row in refs, or triage downgrades it to
+ * `unverified_recall`; `prior_assessment` is a repeat of a play the persona
+ * library recorded for this body; `unverified_recall` is the model's own memory
+ * and is shown as "not checked"; `none` says nothing comparable was found. A
+ * link in the text is removed whatever the basis — URLs come from retrieval,
+ * never from a model.
+ *
+ * Not an ORIGIN, deliberately: `ORIGINS` describes a whole artefact and every
+ * view reads it that way. This is one field of one kind, so it sits beside that
+ * field.
+ */
+export const PRECEDENT_BASES = ['external_evidence', 'prior_assessment', 'unverified_recall', 'none'] as const;
+/**
+ * HOW MANY MECHANISMS GET A DEEP CAUSAL CHAIN.
+ *
+ * The rest are covered by the one programme logic model. Chosen by how many
+ * plays are aimed at a mechanism, tie-broken by how connected it is in the
+ * policy graph (`deepChainMechanisms` in `pipeline.ts`): a chain is worth
+ * reading closely where somebody is trying to break it. Eight is enough for
+ * every mechanism the red team concentrated on in the one completed run and
+ * cuts stage 14 from ~150 calls to nine — about fifteen minutes.
+ */
+export const DEEP_CHAINS = 8;
 export const JUDGEMENTS = ['well_supported', 'supported_with_limits', 'contested', 'provisional', 'unknown'] as const;
-export const ASSURANCE_CATEGORIES = ['omission', 'citation', 'causality', 'counterevidence', 'confidence', 'recommendation', 'completeness'] as const;
+/**
+ * The challenge remits, one call each, all with equal weight.
+ *
+ * The first seven test whether the report is WRONG. On the one completed real
+ * run they pushed it toward hedging: of five challenges raised as issues, three
+ * said "overconfident" or "under-evidenced", and the answer to each was a
+ * softer sentence — which is how the headline became "ambitious and potentially
+ * relevant … not decision-ready". Nothing asked whether the report was USEFUL.
+ *
+ * The last four do. `generic` — would this apply to any white paper?
+ * `actionability` — does it say who should decide or do what? `sharpest_play`
+ * — did it miss the play that matters most? `unanswered_play` — is a severe
+ * play left with no recommendation answering it? Appended, never inserted: a
+ * stored challenge carries its category as a string and nothing reads the
+ * position.
+ */
+export const ASSURANCE_CATEGORIES = ['omission', 'citation', 'causality', 'counterevidence', 'confidence', 'recommendation', 'completeness', 'generic', 'actionability', 'sharpest_play', 'unanswered_play'] as const;
 const text = z.string().min(1).max(12000);
 const strings = z.array(text).max(80);
 const ids = z.array(z.string().max(100)).max(10000);
@@ -432,6 +485,9 @@ export const dataSchemas = {
     incentive: unit, ease: unit, impact: unit, concealment: unit,
     exposure: unit.optional(), band: z.string().max(40).optional(),
     earlyWarning: text, counter: text, precedent: text,
+    // Where `precedent` came from. Optional so a play written before it existed
+    // still parses; see PRECEDENT_BASES.
+    precedentBasis: z.enum(PRECEDENT_BASES).optional(),
   }).strict(),
   cross_policy: z.object({
     pattern: z.enum(CROSS_PATTERNS), otherAnalysisId: z.string().max(100), otherAnalysisTitle: text,
@@ -445,6 +501,27 @@ export const dataSchemas = {
     outcomes: strings.min(1), impacts: strings, causalMechanisms: strings.min(1), assumptions: ids.min(1),
     alternativeExplanations: strings.min(1), negativePathways: strings.min(1),
     indicators: z.array(z.object({ name: text, baseline: text, target: text, dataSource: text, timing: text }).strict()).max(30),
+    evidenceLimits: text, judgement: z.enum(JUDGEMENTS),
+    // The one step most likely to break, and why. Required: a chain that cannot
+    // name its weakest link has not been read closely enough to judge.
+    weakestLink: text,
+  }).strict(),
+  /**
+   * THE PROGRAMME AS A WHOLE, in one logic model.
+   *
+   * Stage 14 used to write one causal chain per mechanism — 150 on the one
+   * completed real run, 154 of its 436 calls, every one of them "provisional",
+   * with "not specified" filling the baselines and targets — and stage 17 left
+   * 118 of the 150 out of the report. A reader needs one picture of how the
+   * policy is meant to work, and a close reading of the few places it is
+   * attacked. This is the first; the deep chains (`DEEP_CHAINS`) are the second.
+   *
+   * `mechanismIds` names the machinery the programme runs through, so the model
+   * is joined to the inventory the same way a chain is by `mechanismId`.
+   */
+  logic_model: z.object({
+    inputs: strings, activities: strings.min(1), outputs: strings.min(1), outcomes: strings.min(1), impacts: strings,
+    mechanismIds: ids.min(1), assumptions: ids.min(1), weakestLink: text,
     evidenceLimits: text, judgement: z.enum(JUDGEMENTS),
   }).strict(),
   option_appraisal: z.object({
@@ -473,6 +550,29 @@ export const dataSchemas = {
     judgement: z.enum(JUDGEMENTS), openChallenges: z.number().int().nonnegative(),
     acceptedChallenges: z.number().int().nonnegative(), unresolvedMaterialChallenges: z.number().int().nonnegative(),
     scope: text, limitations: strings,
+  }).strict(),
+  /**
+   * THE "SO WHAT", in at most `MAX_KEY_JUDGEMENTS` ranked sentences.
+   *
+   * On the one completed real run the headline read "the policy is ambitious and
+   * potentially relevant … not decision-ready for full-scale implementation",
+   * none of the 19 final findings named a play, and the four recommendations
+   * would fit any white paper. The nineteen template sections are an inventory;
+   * a busy official needs the few things that matter and what to do about them.
+   *
+   * So a key judgement cannot be generic by construction. The one sentence is
+   * the artefact's `statement`, and it must carry: the mechanism it is about,
+   * a verbatim quote from the paper (`sourceId` + `sourceQuote`, located exactly
+   * as an extracted fact is), at least one play, the assumption it rests on,
+   * what would prove it wrong, the decision it bears on, and who should do what.
+   * `validation.ts` refuses one without a mechanism or a play. `rank` is the
+   * model's order; the server renumbers it 1..n after dropping a surplus.
+   */
+  key_judgement: z.object({
+    rank: z.number().int().min(1).max(50),
+    mechanismId: text, playIds: ids.min(1), assumptionId: text,
+    wouldChangeIf: text, decision: text, action: text, owner: text,
+    findingIds: ids.default([]),
   }).strict(),
   finding: z.object({
     section: z.enum(['executive_assessment', 'scope_methodology', 'objectives', 'actors', 'mechanisms', 'theory_of_change', 'options_appraisal', 'evaluation_plan', 'assurance', 'high_risk_assumptions', 'test_results', 'strategic_responses', 'scenarios', 'exploitation', 'cross_policy', 'evidence_gaps', 'confidence_uncertainty', 'distribution', 'unresolved_questions']),
@@ -560,7 +660,13 @@ export const dataSchemas = {
  * citing anything else, and synthesis pins exactly these into its model call so
  * the context budget can never shed what the rule then demands.
  */
-export const RESULT_KINDS = ['test', 'model', 'scenario', 'exploit', 'cross_policy', 'causal_chain', 'option_appraisal', 'evaluation_plan'] as const;
+/**
+ * The most key judgements a report leads with. Five is what fits on the first
+ * screen and in one breath; a sixth is a surplus the server reconciles, not a
+ * failure (see `reconcileKeyJudgements`).
+ */
+export const MAX_KEY_JUDGEMENTS = 5;
+export const RESULT_KINDS = ['test', 'model', 'scenario', 'exploit', 'cross_policy', 'causal_chain', 'logic_model', 'option_appraisal', 'evaluation_plan'] as const;
 
 export const REPORT_SECTIONS = ['executive_assessment', 'scope_methodology', 'objectives', 'actors', 'mechanisms', 'theory_of_change', 'options_appraisal', 'evaluation_plan', 'assurance', 'high_risk_assumptions', 'test_results', 'strategic_responses', 'scenarios', 'exploitation', 'cross_policy', 'evidence_gaps', 'confidence_uncertainty', 'distribution', 'unresolved_questions'] as const;
 export type Kind = keyof typeof dataSchemas;
@@ -656,8 +762,8 @@ export const STAGE_KINDS: Kind[][] = [
   ['passage'], ['claim', 'mechanism', 'assumption', 'actor'], ['actor', 'alias', 'resolution_candidate'],
   ['edge'], ['profile'], ['research_question', 'research_source'], ['evidence'], ['model', 'assumption', 'research_question', 'research_source'], ['test'], ['scenario', 'assumption', 'research_question', 'research_source'],
   ['exploit', 'assumption', 'research_question', 'research_source'], ['cross_policy'], ['finding', 'recommendation', 'assumption'], ['persona_link'],
-  ['causal_chain', 'assumption', 'research_question', 'research_source'], ['option_appraisal', 'evaluation_plan', 'assumption', 'research_question', 'research_source'],
-  ['assurance_challenge', 'research_question', 'research_source'], ['finding', 'recommendation', 'assurance_response', 'review_summary', 'assumption'],
+  ['causal_chain', 'logic_model', 'assumption', 'research_question', 'research_source'], ['option_appraisal', 'evaluation_plan', 'assumption', 'research_question', 'research_source'],
+  ['assurance_challenge', 'research_question', 'research_source'], ['key_judgement', 'finding', 'recommendation', 'assurance_response', 'review_summary', 'assumption'],
 ];
 /**
  * What the MODEL is told it may write, per stage.
@@ -704,9 +810,9 @@ export const STAGE_CONTEXT: Partial<Record<number, readonly Kind[]>> = {
   11: ['mechanism', 'assumption', 'claim', 'actor', 'exploit', 'test', 'model', 'scenario', 'edge'],
   12: ['test', 'model', 'scenario', 'exploit', 'cross_policy', 'assumption', 'evidence', 'mechanism', 'claim', 'actor', 'profile', 'edge', 'research_question', 'research_source'],
   14: ['mechanism', 'evidence', 'assumption', 'claim', 'research_source'],
-  15: ['causal_chain', 'finding', 'recommendation', 'evidence', 'assumption', 'mechanism', 'claim', 'exploit', 'test', 'research_source'],
-  16: ['finding', 'recommendation', 'exploit', 'causal_chain', 'option_appraisal', 'evaluation_plan', 'test', 'model', 'scenario', 'cross_policy', 'assumption', 'evidence', 'mechanism', 'claim', 'actor', 'research_source'],
-  17: ['assurance_challenge', 'finding', 'recommendation', 'causal_chain', 'option_appraisal', 'evaluation_plan', 'exploit', 'test', 'model', 'scenario', 'cross_policy', 'assumption', 'evidence', 'mechanism', 'claim', 'actor', 'research_source'],
+  15: ['logic_model', 'causal_chain', 'finding', 'recommendation', 'evidence', 'assumption', 'mechanism', 'claim', 'exploit', 'test', 'research_source'],
+  16: ['finding', 'recommendation', 'exploit', 'logic_model', 'causal_chain', 'option_appraisal', 'evaluation_plan', 'test', 'model', 'scenario', 'cross_policy', 'assumption', 'evidence', 'mechanism', 'claim', 'actor', 'research_source'],
+  17: ['assurance_challenge', 'finding', 'recommendation', 'logic_model', 'causal_chain', 'option_appraisal', 'evaluation_plan', 'exploit', 'test', 'model', 'scenario', 'cross_policy', 'assumption', 'evidence', 'mechanism', 'claim', 'actor', 'research_source'],
 };
 /**
  * What an ADDENDUM pass's stages may emit, indexed by step within the pass.
@@ -725,7 +831,7 @@ export const ADDENDUM_KINDS: Kind[][] = [
   ['revision', 'addendum_summary'],
 ];
 /** A restatement runs the assured-synthesis contract verbatim. */
-export const RESTATEMENT_KINDS: Kind[][] = [['finding', 'recommendation', 'assurance_response', 'review_summary', 'assumption']];
+export const RESTATEMENT_KINDS: Kind[][] = [['key_judgement', 'finding', 'recommendation', 'assurance_response', 'review_summary', 'assumption']];
 export const PASS_KIND_TABLE: Record<PassKind, Kind[][]> = { addendum: ADDENDUM_KINDS, restatement: RESTATEMENT_KINDS };
 
 /**
