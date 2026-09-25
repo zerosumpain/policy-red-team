@@ -268,6 +268,29 @@ describe('a conclusion survives an unsupported mention', () => {
     expect(triaged.rejected[0].reason).toContain('No hypothesis this conclusion rests on');
   });
 
+  it('tells the model which paths DO exist when a conclusion has none', () => {
+    // THE RULE THAT KILLED EVERY REAL "BEST START" RUN AT STAGE 17 (44dd5420,
+    // 25 Sept; 03c83ea5 and b5774103 before it). The high-risk-assumptions and
+    // exploitation chapters named theory-of-change assumptions while citing
+    // scenarios and plays written BEFORE stage 14 — which can never reach them.
+    // The corrective round said only "no hypothesis is supported", so the model,
+    // unable to see the graph, made the same choice in every round of every
+    // attempt. The hint names what its results DO rest on, and what DOES reach
+    // what it named, so a corrective round has something to act on.
+    const chain = artefact('s14_000_causal_chain_001', 'causal_chain', 'Chain', 'A chain.', {}, { refs: ['s1_assumption', 'passage_0001'] });
+    const orphan = artefact('s17_main_finding_3', 'finding', 'Assumptions', 'A conclusion.', { section: 'high_risk_assumptions', resultIds: ['s9_scenario'], hypothesisIds: ['s1_assumption_2'] }, { refs: ['s9_scenario', 's1_assumption_2'] });
+    const other2 = artefact('s1_assumption_2', 'assumption', 'Comparability', 'Measures are assumed comparable.', { importance: 0.8, uncertainty: 0.8, consequence: 0.8, notes: '-' }, { refs: ['passage_0001'] });
+    const chain2 = artefact('s14_001_causal_chain_001', 'causal_chain', 'Chain 2', 'Another chain.', {}, { refs: ['s1_assumption_2', 'passage_0001'] });
+    const triaged = triageArtefacts({ artefacts: [orphan], warnings: [] }, 17, [...prior, other2, scenario, chain, chain2]);
+    expect(triaged.artefacts).toHaveLength(0);
+    const [rejection] = triaged.rejected;
+    // The reader-facing reason is unchanged — warnings.ts parses it.
+    expect(rejection.reason).toBe('No hypothesis this conclusion rests on is supported by the results it cites.');
+    expect(rejection.hint).toContain('s1_assumption');
+    expect(rejection.hint).toContain('s14_001_causal_chain_001');
+    expect(repairPrompt(triaged.rejected, 's17_main_')).toContain('s14_001_causal_chain_001');
+  });
+
   it('indexes a supporting result already cited in provenance', () => {
     // Assured synthesis has two ways to record the same citation. The live model
     // put its causal result in refs but left resultIds holding only a structural

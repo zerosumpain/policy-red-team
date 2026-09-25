@@ -101,7 +101,7 @@ export function passOrdinal(pass: number, step: number): number { return PASS_BA
  * remits, the play patterns handed to 12, 16 and 17, a programme logic model
  * with deep chains at 14, and a labelled precedent at 10.
  */
-export const PROMPT_VERSION = 'policy-analysis/3.2';
+export const PROMPT_VERSION = 'policy-analysis/3.3';
 export const MAX_BYTES = 10 * 1024 * 1024;
 export const MAX_CHARACTERS = 600_000;
 export const MAX_PAGES = 400;

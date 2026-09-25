@@ -6,8 +6,13 @@ export class PolicyError extends Error {
   constructor(public code: string, message: string) { super(message); }
 }
 
-type Fault = { code: string; message: string };
-const fault = (code: string, message: string): Fault => ({ code, message });
+/**
+ * `hint` travels to the corrective round ONLY, never to a warning: `message` is
+ * what a reader sees and what `client/report/warnings.ts` parses, so it stays one
+ * fixed sentence per rule. A hint says what the model could do about it.
+ */
+type Fault = { code: string; message: string; hint?: string };
+const fault = (code: string, message: string, hint?: string): Fault => (hint ? { code, message, hint } : { code, message });
 
 /** Identity and shape: is this artefact even addressable at this stage? */
 function structuralFault(a: Artefact, all: Map<string, Artefact>, stage: number, passKind?: PassKind | null): Fault | null {
@@ -271,7 +276,7 @@ function relationalFault(a: Artefact, all: Map<string, Artefact>): Fault | null 
       a.data.resultIds = results;
     }
     const supported = hypotheses.filter((h) => results.some((r) => reaches(r, h, all)));
-    if (!supported.length) return fault('traceability', 'No hypothesis this conclusion rests on is supported by the results it cites.');
+    if (!supported.length) return fault('traceability', 'No hypothesis this conclusion rests on is supported by the results it cites.', traceHint(results, hypotheses, all));
     if (supported.length !== hypotheses.length) {
       a.data.hypothesisIds = supported;
       hypotheses = supported;
@@ -358,7 +363,7 @@ export function validateOutput(raw: unknown, stage: number, prior: Artefact[], p
   return output;
 }
 
-export type Rejection = { id: string; kind: string; code: string; reason: string };
+export type Rejection = { id: string; kind: string; code: string; reason: string; hint?: string };
 export type TriagedOutput = StageOutput & { rejected: Rejection[] };
 
 /**
@@ -584,7 +589,7 @@ export function triageArtefacts(output: StageOutput, stage: number, prior: Artef
   const parsed = output;
   const priorIds = new Set(prior.map((a) => a.id));
   const rejected: Rejection[] = [];
-  const drop = (a: Artefact, f: Fault) => { rejected.push({ id: a.id, kind: a.kind, code: f.code, reason: f.message }); };
+  const drop = (a: Artefact, f: Fault) => { rejected.push({ id: a.id, kind: a.kind, code: f.code, reason: f.message, ...(f.hint ? { hint: f.hint } : {}) }); };
   const pruned: string[] = [];
   const dropWarning = (a: Artefact) => (what: string) => pruned.push(`“${a.label}” lost ${what}.`);
   // DIVERGENCE: the same channel for a citation that resolved but was filed under
@@ -749,6 +754,36 @@ export function hasSource(id: string, all: Map<string, Artefact>, seen = new Set
   if (!a) return false;
   if (a.kind === 'passage' || a.kind === 'research_source') return true;
   return a.refs.some((r) => hasSource(r, all, seen));
+}
+
+/**
+ * What a corrective round needs to repair an unsupported conclusion: the paths
+ * that DO exist.
+ *
+ * Without it the rule was undebuggable from the model's side. It names ids, but
+ * reachability is a walk of several hops through provenance the model is shown
+ * one edge at a time, and on every real "Best Start" run the assured synthesis
+ * made the same unreachable choice in all six corrective rounds of three
+ * attempts — theory-of-change assumptions (minted at stage 14) cited against
+ * scenarios and plays written before stage 14. Two lists, both capped, both
+ * real ids: assumptions the cited results rest on, and results that rest on the
+ * assumptions it named.
+ */
+function traceHint(results: string[], hypotheses: string[], all: Map<string, Artefact>): string | undefined {
+  const label = (id: string) => `${id} (“${(all.get(id)?.label ?? '').slice(0, 60)}”)`;
+  const restsOn = [...all.values()]
+    .filter((a) => a.kind === 'assumption' && results.some((r) => reaches(r, a.id, all)))
+    .slice(0, 6)
+    .map((a) => label(a.id));
+  const reachedBy = [...all.values()]
+    .filter((a) => (RESULT_KINDS as readonly string[]).includes(a.kind) && hypotheses.some((h) => reaches(a.id, h, all)))
+    .slice(0, 6)
+    .map((a) => label(a.id));
+  const parts = [
+    restsOn.length ? `The results it cites rest on: ${restsOn.join(', ')} — name one of these in hypothesisIds.` : '',
+    reachedBy.length ? `The assumptions it names are reached from: ${reachedBy.join(', ')} — or cite one of these in resultIds (and refs).` : '',
+  ].filter(Boolean);
+  return parts.length ? parts.join(' ') : undefined;
 }
 
 export function reaches(from: string, to: string, all: Map<string, Artefact>, seen = new Set<string>()): boolean {
