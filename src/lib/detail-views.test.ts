@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { Artefact } from './policy-analysis/contracts';
 import { leverage } from './policy-analysis/stress';
-import { costSegments, forProgress, forTheReport, keptByStage, modelsUsed, reportCost, RUN_INDEX_CAP } from './detail-views';
+import { costSegments, forProgress, forTheReport, keptByStage, modelsUsed, reportCost, RUN_INDEX_CAP, STEP_CLIP } from './detail-views';
 
 const a = (id: string, kind: string, extra: Partial<Artefact> = {}): Artefact => ({
   id,
@@ -46,8 +46,17 @@ describe('the report view', () => {
   it('strips the prose of a kind the report never renders', () => {
     expect(byId.get('chain_1')!.statement).toBe('');
     expect(byId.get('chain_1')!.sourceQuote).toBeNull();
-    expect(byId.get('chain_1')!.data.outcomes).toBeUndefined();
     expect(byId.get('chain_1')!.data.negativePathways).toBeUndefined();
+  });
+
+  it('keeps a chain\'s five steps for the theory-of-change strips, clipped', () => {
+    // Phase 19 draws them; everything else a chain carries is still stubbed.
+    expect(byId.get('chain_1')!.data.outcomes).toEqual(['a long nested structure the report never draws']);
+    const long = forTheReport({ ...full, artefacts: [a('chain_2', 'causal_chain', { data: { inputs: ['x'.repeat(STEP_CLIP + 50)], mechanismId: 'm' } })] });
+    const inputs = long.artefacts[0].data.inputs as string[];
+    expect(inputs[0].length).toBe(STEP_CLIP);
+    expect(inputs[0].endsWith('…')).toBe(true);
+    expect(long.artefacts[0].data.mechanismId).toBe('m');
   });
 
   it('leaves a kind the report DOES render completely alone', () => {

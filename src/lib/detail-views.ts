@@ -42,11 +42,37 @@ export const CITATION_KEYS = ['assumptions', 'preconditions', 'hypothesisIds'];
 /** What the run index shows per kind, and therefore what a progress read sends. */
 export const RUN_INDEX_CAP = 25;
 
+/**
+ * WHAT A CAUSAL CHAIN KEEPS, beyond its citations: the five steps of its theory
+ * of change and the mechanism it is written for.
+ *
+ * Phase 19 draws a strip per busy mechanism — what goes in, what is done, what
+ * it produces, what changes, the end result — and marks the weakest step. The
+ * five lists are the whole of that figure and were stubbed out with the rest.
+ * Measured on the Post-16 run they are 331 KiB of the chains' 1,128 KiB, so
+ * each entry is clipped to `STEP_CLIP` characters: the strip shows an entry's
+ * opening and says how weak it is, and the full wording is one click away in
+ * the drill, which still reads the unstubbed record.
+ */
+const CHAIN_STEPS = ['inputs', 'activities', 'outputs', 'outcomes', 'impacts'];
+export const STEP_CLIP = 240;
+
 export function stubForReport(artefact: Artefact): Artefact {
   if (!STUBBED_IN_REPORT.has(artefact.kind)) return artefact;
   const data: Record<string, unknown> = {};
   for (const key of CITATION_KEYS) {
     if (artefact.data?.[key] !== undefined) data[key] = artefact.data[key];
+  }
+  if (artefact.kind === 'causal_chain') {
+    if (typeof artefact.data?.mechanismId === 'string') data.mechanismId = artefact.data.mechanismId;
+    for (const key of CHAIN_STEPS) {
+      const steps = artefact.data?.[key];
+      if (!Array.isArray(steps)) continue;
+      data[key] = steps.map((step) => {
+        const text = String(step);
+        return text.length > STEP_CLIP ? `${text.slice(0, STEP_CLIP - 1).trimEnd()}…` : text;
+      });
+    }
   }
   return { ...artefact, statement: '', sourceQuote: null, section: null, url: null, data };
 }
