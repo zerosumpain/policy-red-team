@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 import { describe, expect, it, vi } from 'vitest';
 import JSZip from 'jszip';
 import PDFDocument from 'pdfkit';
-import { artefact, ASSURED_SYNTHESIS_STAGE, DEPTH_LIMITS, FOLLOW_UP_STAGES, FULL_PROFILES, MAX_BYTES, MODEL_KINDS, PATTERNS, PERSONA_STAGE, SCENARIOS, FIT_LIMIT, SHORT_PROFILE_FIELDS, STAGE_KINDS, SYNTHESIS_STAGE, THEORY_STAGE, type Artefact, type StageInput } from './contracts';
+import { artefact, ASSURED_SYNTHESIS_STAGE, DEPTH_LIMITS, FOLLOW_UP_STAGES, FULL_PROFILES, MAX_BYTES, MODEL_KINDS, PATTERNS, PERSONA_STAGE, RELATIONS, SCENARIOS, FIT_LIMIT, SHORT_PROFILE_FIELDS, STAGE_KINDS, SYNTHESIS_STAGE, THEORY_STAGE, type Artefact, type StageInput } from './contracts';
 import { validateOutput, hasSource, PolicyError, stampProfileForm, triageOutput } from './validation';
 import { expandIndexed, sentences } from './sentences';
 import { ingest, readSubmission, validateBytes } from './server/ingest';
@@ -10,6 +10,7 @@ import { executeStage, priority, rankActors } from './pipeline';
 import { preserveAmbiguity } from './entities';
 import { runPolicyTests, conflictingReportingLines } from './tests';
 import { stageFacts } from './stage-facts';
+import { systemPrompt } from './prompts';
 import { fixtureModel } from '../../../tests/fixtures/policy-analysis/model';
 const fixture = readFileSync('tests/fixtures/policy-analysis/policy.txt');
 const neverResearch = async () => ({ artefacts: [], warnings: ['Synthetic test: external research unavailable.'] });
@@ -182,6 +183,20 @@ describe('stage 3 — the graph fans out instead of asking for the whole policy 
     const second = await run(rows);
     expect(second.seen).toEqual(first.seen);
     expect(second.result.artefacts.map((a) => a.id)).toEqual(first.result.artefacts.map((a) => a.id));
+  });
+});
+
+/**
+ * Instruction 3 named 8 of the 26 relationship types, and the graph on the run
+ * the review of 25 September 2026 read had no `delivers` and no `is_measured_by`
+ * edge at all.
+ */
+describe('stage 3 is offered every relationship type', () => {
+  it('names all of them, each once, with a meaning', () => {
+    const prompt = systemPrompt(3);
+    for (const relation of RELATIONS) {
+      expect(prompt.match(new RegExp(`^  ${relation}: the first `, 'gm')) ?? [], relation).toHaveLength(1);
+    }
   });
 });
 

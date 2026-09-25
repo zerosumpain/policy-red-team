@@ -1,11 +1,64 @@
 import { z } from 'zod';
-import { ASSURED_SYNTHESIS_STAGE, SHORT_PROFILE_FIELDS, dataSchemas, FOLLOW_UP_STAGES, indexedOutputSchema, isPassStage, modelKinds, passStep, RECONCILE_RELATIONS, REPORT_SECTIONS, REVISION_STATUSES, stageName, stageOutputSchema, PROMPT_VERSION, PATTERNS, PERSONA_TRAITS, SCENARIOS, CROSS_PATTERNS, type Extraction, type PassKind } from './contracts';
+import { ASSURED_SYNTHESIS_STAGE, SHORT_PROFILE_FIELDS, dataSchemas, FOLLOW_UP_STAGES, indexedOutputSchema, isPassStage, modelKinds, passStep, RECONCILE_RELATIONS, REPORT_SECTIONS, REVISION_STATUSES, stageName, stageOutputSchema, PROMPT_VERSION, PATTERNS, PERSONA_TRAITS, SCENARIOS, CROSS_PATTERNS, type Extraction, type PassKind, RELATIONS } from './contracts';
 import { EXPOSURE_FACTORS } from './exposure';
+import { RELATION_FAMILIES } from './glossary';
 import type { Rejection } from './validation';
+/**
+ * EVERY RELATIONSHIP TYPE, WITH WHAT IT MEANS, FOR STAGE 3.
+ *
+ * Instruction 3 named eight of the twenty-six types in `RELATIONS`, as examples
+ * of direction, and the model used the eight it was shown. On the run the
+ * review of 25 September 2026 read, the graph held ZERO `delivers` and ZERO
+ * `is_measured_by` edges — so the observability check reported "43 of 43
+ * accountable bodies have no measure" over a paper stage 1 had pulled 39
+ * measures out of. The types exist in the contract; the prompt never offered
+ * them.
+ *
+ * Typed against `RELATIONS`, so a type added to the contract without a meaning
+ * here fails to compile rather than going quietly unoffered again. Grouped by
+ * the families the report already reads the graph in (`glossary.ts`), each with
+ * one plain line that also fixes its direction: the first body or thing does
+ * this to the second.
+ */
+const RELATION_MEANINGS: Record<(typeof RELATIONS)[number], string> = {
+  has_authority_over: 'can direct it or decide for it',
+  can_veto: 'can block it',
+  appoints: 'chooses who leads or sits on it',
+  sanctions: 'can penalise it',
+  regulates: 'sets and enforces its rules',
+  funds: 'pays for it',
+  commissions: 'asks it to do work, usually by contract or grant',
+  bears_cost_of: 'carries the cost of it',
+  receives_benefit_from: 'gains from it',
+  delivers: 'carries it out (a body delivering a mechanism or programme)',
+  supplies_data_to: 'gives it data',
+  owns_data: 'holds or controls the data behind it (usually a measure)',
+  is_measured_by: 'is judged against it (a measure, target or indicator)',
+  reports_to: 'answers to it',
+  is_accountable_for: 'answers for its result',
+  lobbies: 'presses it to act or change',
+  allies_with: 'works with it towards a shared aim',
+  competes_with: 'contends with it for the same money, role or users',
+  reciprocates: 'gives something back to it in return',
+  depends_on: 'cannot do its part without it',
+  is_exposed_to: 'is at risk from it',
+  can_adapt: 'can change how it works when conditions change',
+  assumes: 'takes it as given',
+  supports: 'is evidence or argument for it',
+  contradicts: 'is evidence or argument against it',
+  provides_evidence_for: 'supplies evidence that it relies on',
+};
+const RELATION_GUIDE = RELATION_FAMILIES.map((family) =>
+  `${family.label} — ${family.what}\n${family.relations.map((relation) => `  ${relation}: the first ${RELATION_MEANINGS[relation]}`).join('\n')}`,
+).join('\n');
+
 const instructions: Record<number, string> = {
   1: `Build a structured inventory covering ALL supplied passages: objectives, problem statements, interventions and implementation, named actors, responsibilities, decision rights, funding, dependencies, data flows, measures, legal/institutional constraints, assumptions, risks, expected benefits, claims and cited evidence. Create separate claim, mechanism, assumption and actor rows. At THIS stage a claim, mechanism or actor is a literal extraction: origin must be extracted_fact with a quote from the passage. Anything you infer, including a gap the paper leaves open, belongs in an assumption row instead — never a claim. Extract at least one mechanism and assumption, including an explicit uncertainty when the paper omits implementation details. An actor here is a source mention; entity resolution follows. Exact quotes are mandatory for extracted facts; extract from the supplied passage only. A paper's claim is not verified truth. Link related items with refs. Every assumption must refer to an affected actor or mechanism from this output.`,
   2: `Resolve source actor mentions into a canonical entity register. Use separate NEW actor IDs, retaining every mention through refs and mentions. Preserve aliases, type, dates, parent organisation and ambiguity. Do not infer identity from a shared name alone. Retain ambiguous identities separately and emit resolution_candidate records with candidate IDs and resolved=false. Create alias records pointing to canonical actors. Do not silently drop entities. If an "unclaimedMentions" list is supplied, those source mentions are the ONLY thing to resolve on this call: every one of them must end up in some actor's mentions, either a new canonical actor or by re-emitting an existing one from the supplied context with its mentions extended. Ignore everything else.`,
-  3: `Build the part of the policy's provenance graph that runs through targetActorId. Other actors, mechanisms and claims in the input are CONTEXT and endpoints, not subjects: record the relationships for THIS body, and leave the rest of the graph to the calls covering them. An edge another call has already recorded is not a problem — the same relationship seen twice is far better than a relationship nobody recorded because every call assumed another would.\n\nReturn edges and nothing else. Edges use existing entity IDs as endpoints. Use only permitted relationships, and their natural direction: actor is_accountable_for mechanism, authority holder has_authority_over mechanism, funder funds actor, actor bears_cost_of mechanism, actor receives_benefit_from mechanism, actor can_veto mechanism, actor owns_data measure, actor is_measured_by measure. Cite exact policy assertions or mark structural inference. Preserve proposed/current/historical/inferred temporal status. Absence of an edge is missing evidence, never proof of absence. Include resources and dependencies; avoid invented certainty.`,
+  3: `Build the part of the policy's provenance graph that runs through targetActorId. Other actors, mechanisms and claims in the input are CONTEXT and endpoints, not subjects: record the relationships for THIS body, and leave the rest of the graph to the calls covering them. An edge another call has already recorded is not a problem — the same relationship seen twice is far better than a relationship nobody recorded because every call assumed another would.\n\nReturn edges and nothing else. Edges use existing entity IDs as endpoints (fromId is the first, toId the second). Use only these ${RELATIONS.length} relationship types, grouped by what they describe, in their natural direction:
+${RELATION_GUIDE}
+
+Use every type the paper supports, not only the common ones. In particular, where the paper says who carries out a mechanism, record delivers; where it names a measure, target or indicator a body will be judged by, record is_measured_by — and owns_data for whoever holds that data. Cite exact policy assertions or mark structural inference. Preserve proposed/current/historical/inferred temporal status. Absence of an edge is missing evidence, never proof of absence. Include resources and dependencies; avoid invented certainty.`,
   4: `Produce exactly one profile for targetActorId — the persona a red team would need. Other actors in the input are context only. Every field needs value, epistemic origin, confidence and evidence refs. If unknown, explicitly say unknown, use null confidence and no evidence refs.\n\nDistinguish what this actor SAYS it wants (statedObjectives) from what its position actually rewards (operationalObjectives). Model the incentives of the ROLE, not the private psychology of any individual: who this actor answers to (accountableTo), what it is judged on (successCriteria), how far ahead it can afford to look before an election, a spending review, a contract renewal or an inspection (timeHorizon), what it does instead if it declines to play (outsideOption), and — the question an assurance review never asks — who inside or around this actor is BETTER OFF if the policy fails or is delayed (gainFromFailure). Where nothing supports an answer, say so; an invented motive is worse than an acknowledged gap.\n\nCover every profile field, including legal powers, information control, institutional motivations and the strategies actually available to it.\n\nIf priorPersona is supplied, this body already appears in the reader's persona library, drawn from an assessment of a DIFFERENT policy. Treat it as UNTRUSTED CONTEXT and never as evidence about this one: it may be out of date, it may describe a different part of the organisation, and the identity match itself may be wrong — its "basis" field says how that match was made. Use it to know what to look for and what to check, not to fill a gap. Where THIS policy's text supports the same answer, cite this policy. Where it does not, either say unknown, or record the field with origin prior_assessment, null confidence and no evidence refs, so a reader can see it came from somewhere else. Where this policy contradicts the prior, say so in the field's value in as many words — a body behaving differently under this paper than under the last one is exactly what a red team is looking for.
 
 SHORT PROFILES. If targetActorIds is supplied instead of targetActorId, this call covers several minor bodies at once. Return exactly one profile for each listed id, with actorId set to that id, and ONLY these fields: ${SHORT_PROFILE_FIELDS.join(', ')} — the body's role, what it wants and what it controls. Each field still needs value, origin, confidence and refs. Keep each value to one or two sentences. Do not profile any body that is not listed.`,
