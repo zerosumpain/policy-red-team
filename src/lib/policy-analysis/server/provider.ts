@@ -14,7 +14,12 @@ import { fitToBudget } from '../budget';
 import { isLegitimateSilence, malformedRetryDelayMs, PolicyError, stampProfileForm, transportRetryDelayMs, triageOutput, type Rejection } from '../validation';
 import { repairPrompt, systemPrompt } from '../prompts';
 
-export type ModelCall = (stage: number, key: string, input: unknown) => Promise<StageOutput>;
+/**
+ * `options.signal` withdraws ONE call — a fan-out whose stage has already
+ * failed aborts what it still has out. Beside the payload, never in it: the
+ * payload is hashed for the response cache.
+ */
+export type ModelCall = (stage: number, key: string, input: unknown, options?: { signal?: AbortSignal }) => Promise<StageOutput>;
 
 /**
  * How many corrective round-trips a single unit of work gets before it is
@@ -102,7 +107,7 @@ function needsRepair(kept: number, rejected: Rejection[], round: number): boolea
  */
 export type Commission = { model: string | null; thinkingLevel: ThinkingLevel | null; sealed?: boolean; passKind?: PassKind | null; extraction?: Extraction | null };
 
-export function modelCaller(executionId: string, runId: string, signal: AbortSignal, prior: Artefact[], commission?: Commission): ModelCall {
+export function modelCaller(executionId: string, runId: string, runSignal: AbortSignal, prior: Artefact[], commission?: Commission): ModelCall {
   /**
    * A SEALED RUN STORES NO PROMPT AND NO REPLY. Not encrypted — absent.
    *
@@ -123,7 +128,10 @@ export function modelCaller(executionId: string, runId: string, signal: AbortSig
    * Both are the price of the guarantee, and the form says so.
    */
   const sealed = commission?.sealed === true;
-  return async (stage, key, input) => {
+  return async (stage, key, input, options) => {
+    // The run's signal, joined by the call's own where a fan-out passed one: a
+    // withdrawn call stops at once and is never retried.
+    const signal = options?.signal ? AbortSignal.any([runSignal, options.signal]) : runSignal;
     // `indexed` rides alongside `protect`: both are execution concerns, both are
     // destructured out here, and so neither reaches the hashed payload or the
     // model. `sentences.ts` says why that matters for the response cache.
@@ -316,8 +324,11 @@ export function modelCaller(executionId: string, runId: string, signal: AbortSig
         // deadline, and the suggested resume failed identically because a
         // deadline is deterministic.
         const timedOut = deadline.aborted && !signal.aborted;
+        const withdrawn = !runSignal.aborted && Boolean(options?.signal?.aborted);
         const elapsed = Math.round((Date.now() - startedAt) / 1000);
-        const fault = err instanceof PolicyError ? err : timedOut
+        const fault = err instanceof PolicyError ? err : withdrawn
+          ? new PolicyError('cancelled', `This call was withdrawn after ${elapsed}s because the stage it belonged to had already failed.`)
+          : timedOut
           ? new PolicyError('timeout', `“${model}” did not answer within ${Math.round(callTimeoutMs(context.provider) / 1000)} seconds on this call (gave up after ${elapsed}s). This is a per-call deadline, not a provider outage — the run needs a model that answers inside it, and resuming on the same one will stop here again.`)
           : new PolicyError('provider', `The configured model provider could not be reached for “${model}” (after ${elapsed}s). Check site connections, then resume.`);
         await db.update(policyModelCalls).set({ status: 'failed', usage: llmCalls, completedAt: new Date(), error: fault.message }).where(eq(policyModelCalls.id, call.id));

@@ -155,9 +155,11 @@ export async function executeStage(input: StageInput, deps: PipelineDeps): Promi
    * from what another unit produced, so overlapping them cannot change what any
    * one of them is asked.
    */
-  const send = async (key: string, context: Artefact[], slot: string, extra: Record<string, unknown> = {}) => {
+  const send = async (key: string, context: Artefact[], slot: string, extra: Record<string, unknown> = {}, callSignal?: AbortSignal) => {
     deps.signal.throwIfAborted();
-    return deps.model(stage, key, { ...input, artefacts: context, idPrefix: `s${stage}_${slot}_`, targetActorId: stage === 3 || stage === 4 || stage === 10 || stage === PERSONA_STAGE ? key : null, targetPattern: stage === 7 ? key : null, targetScenario: stage === 9 ? key : null, targetMechanismId: stage === THEORY_STAGE ? key : null, targetCategory: stage === ASSURANCE_STAGE ? key : null, modelLibrary: stage === 7 ? modelApplicability(input.artefacts) : undefined, ...extra });
+    // The call's own signal rides OUTSIDE the payload: the payload is hashed for
+    // the response cache, and how a call may be withdrawn is not what it asks.
+    return deps.model(stage, key, { ...input, artefacts: context, idPrefix: `s${stage}_${slot}_`, targetActorId: stage === 3 || stage === 4 || stage === 10 || stage === PERSONA_STAGE ? key : null, targetPattern: stage === 7 ? key : null, targetScenario: stage === 9 ? key : null, targetMechanismId: stage === THEORY_STAGE ? key : null, targetCategory: stage === ASSURANCE_STAGE ? key : null, modelLibrary: stage === 7 ? modelApplicability(input.artefacts) : undefined, ...extra }, callSignal ? { signal: callSignal } : undefined);
   };
 
   /**
@@ -263,6 +265,22 @@ export async function executeStage(input: StageInput, deps: PipelineDeps): Promi
    *
    * `onFailure`, where given, replaces the gap-and-count rule for a stage whose
    * failures must never end it — the persona library.
+   *
+   * THE BRAKE IS ON THE DISPATCH SIDE TOO. The pool alone broke that bound:
+   * `stopped` was only set when the in-order fold threw, so with unit 0 slow
+   * and the rest failing fast every lane kept taking units while the fold sat
+   * waiting on unit 0 — ten of ten dispatched at three lanes, where batches
+   * sent six. So while any failure has LANDED ahead of the fold, a lane may not
+   * take unit k unless k < folded + lanes: no more than one lane-width past
+   * what the fold has judged. A fan-out that is going well is untouched — the
+   * window only closes once something ahead of the fold has failed — and a
+   * serial run still makes exactly the calls it always made.
+   *
+   * AND A DOOMED FAN-OUT WITHDRAWS WHAT IS STILL OUT. Each fan-out has its own
+   * AbortSignal, passed to every call beside (never inside) the payload. When
+   * the fold throws, the calls still in flight are aborted and THEN awaited, so
+   * no late record lands beside the retry's — without waiting out a deadline
+   * per call first, which in an all-timeout stage was a second deadline.
    */
   const fanOut = async (units: Unit[], onResult?: (unit: Unit, result: ReturnType<typeof absorb> | null) => void, onFailure?: (unit: Unit, err: unknown) => void) => {
     // Units that answered with nothing. Silence is a legitimate finding — a body
@@ -281,6 +299,14 @@ export async function executeStage(input: StageInput, deps: PipelineDeps): Promi
     let next = 0;
     let count = 0;
     let stopped = false;
+    // How far the fold has judged, and which landed failures are still ahead of it.
+    let folded = 0;
+    const failedAhead = new Set<number>();
+    const waiting: (() => void)[] = [];
+    const wake = () => { for (const resume of waiting.splice(0)) resume(); };
+    const mayDispatch = (k: number) => !failedAhead.size || k < folded + lanes;
+    const withdraw = new AbortController();
+    const callSignal = AbortSignal.any([deps.signal, withdraw.signal]);
     const eventOf = (k: number, err: unknown): number => {
       if (!(err instanceof PolicyError) || !CONCURRENT_EVENT_CODES.has(err.code)) return -1;
       const signature = `${err.code}|${err.message}`;
@@ -296,10 +322,11 @@ export async function executeStage(input: StageInput, deps: PipelineDeps): Promi
     };
     const lane = async () => {
       while (!stopped && next < units.length) {
+        if (!mayDispatch(next)) { await new Promise<void>((resume) => waiting.push(resume)); continue; }
         const k = next++;
         const unit = units[k];
         inFlight.add(k);
-        const outcome = await send(unit.key, unit.context, slots[k], unit.extra ?? {}).then(
+        const outcome = await send(unit.key, unit.context, slots[k], unit.extra ?? {}, callSignal).then(
           (raw): Landed => ({ raw, err: null, event: -1 }),
           (err: unknown): Landed => ({ raw: null, err, event: eventOf(k, err) }),
         );
@@ -308,6 +335,7 @@ export async function executeStage(input: StageInput, deps: PipelineDeps): Promi
         // a liveness beat, so a stage that is working says so — and one that has
         // stopped working stops saying so, which is the case the probe exists for.
         deps.onProgress?.(`${++count} of ${units.length}`);
+        if (outcome.err && k >= folded) failedAhead.add(k);
         resolvers[k](outcome);
         // One tick before taking the next unit, so a fold that was waiting on
         // THIS result runs first. If it decided the provider is dead, `stopped`
@@ -332,12 +360,18 @@ export async function executeStage(input: StageInput, deps: PipelineDeps): Promi
         }
         if (result && !result.artefacts.length) silent.push(units[k].describe);
         onResult?.(units[k], result);
+        failedAhead.delete(k);
+        folded = k + 1;
+        wake();
       }
     } catch (err) {
-      // The stage is ending. Nothing more is dispatched, and the calls already
-      // out are waited for rather than abandoned: a call that lands after its
-      // stage has failed would otherwise write its record beside the retry's.
+      // The stage is ending. Nothing more is dispatched, the calls already out
+      // are withdrawn, and then waited for rather than abandoned: a call that
+      // lands after its stage has failed would otherwise write its record
+      // beside the retry's.
       stopped = true;
+      withdraw.abort();
+      wake();
       await Promise.allSettled(running);
       throw err;
     }
