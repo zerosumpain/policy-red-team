@@ -1,4 +1,4 @@
-import { APPRAISAL_STAGE, ASSURANCE_CATEGORIES, ASSURANCE_STAGE, ASSURED_SYNTHESIS_STAGE, CONCURRENCY_OPTIONS, DEFAULT_CONCURRENCY, DEFAULT_EXTRACTION, DEPTH_LIMITS, FIT_LIMIT, FOLLOW_UP_STAGES, FULL_PROFILES, isPassStage, passOf, passOrdinal, passStep, PATTERNS, PERSONA_STAGE, REPORT_SECTIONS, RESULT_KINDS, REVISION_STATUSES, SCENARIOS, SHORT_PROFILE_BATCH, STAGE_CONTEXT, SYNTHESIS_STAGE, THEORY_STAGE, type Artefact, type Concurrency, type Extraction, type PassKind, type StageInput, type StageOutput } from './contracts';
+import { APPRAISAL_STAGE, ASSURANCE_CATEGORIES, ASSURANCE_STAGE, ASSURED_SYNTHESIS_STAGE, CONCURRENCY_OPTIONS, DEEP_CHAINS, DEFAULT_CONCURRENCY, DEFAULT_EXTRACTION, DEPTH_LIMITS, FIT_LIMIT, FOLLOW_UP_STAGES, FULL_PROFILES, isPassStage, passOf, passOrdinal, passStep, PATTERNS, PERSONA_STAGE, REPORT_SECTIONS, RESULT_KINDS, REVISION_STATUSES, SCENARIOS, SHORT_PROFILE_BATCH, STAGE_CONTEXT, SYNTHESIS_STAGE, THEORY_STAGE, type Artefact, type Concurrency, type Extraction, type PassKind, type StageInput, type StageOutput } from './contracts';
 import { consumedSources, encodedSize, fitToBudget } from './budget';
 import { scoreExploits } from './exposure';
 import { clampWarnings, PolicyError, stampProfileForm, triageArtefacts, triageOutput } from './validation';
@@ -907,25 +907,44 @@ export async function executeStage(input: StageInput, deps: PipelineDeps): Promi
     });
     if (!output.artefacts.length && ranked.length) output.warnings.push('No actor could be written to the persona library on this run. Nothing in the assessment above depends on it.');
   } else if (stage === THEORY_STAGE) {
-    // A causal theory is inspectable per intervention. One enormous narrative
-    // would conceal which link belongs to which mechanism and hit the same
-    // output ceiling the graph once hit.
-    const mechanisms = input.artefacts.filter((a) => a.kind === 'mechanism');
+    /**
+     * ONE PROGRAMME LOGIC MODEL, AND DEEP CHAINS WHERE THE POLICY IS ATTACKED.
+     *
+     * This was one chain per mechanism: 150 on the one completed real run, 154
+     * of its 436 calls, all 150 judged "provisional", with "not specified" in
+     * the baselines and targets — and stage 17 left 118 of them out of the
+     * report. The model writes about 50 tokens a second whatever it writes, so
+     * 150 thin chains cost about fifteen minutes more than nine thick ones.
+     *
+     * So a reader gets one picture of how the whole programme is meant to work,
+     * and a close reading of the `DEEP_CHAINS` mechanisms the red team aimed
+     * the most plays at — the places a chain is worth reading because somebody
+     * is trying to break it. Each deep call is handed those plays as its own.
+     */
+    const { selected } = deepChainMechanisms(input.artefacts);
     const context = input.artefacts.filter((a) => !['passage', 'alias', 'node', 'persona_link'].includes(a.kind) && (a.kind !== 'actor' || a.id.startsWith('s2_')));
-    // One mechanism per call, so these are small and even — but measured the
-    // same way rather than assumed.
-    const theoryOwns = mechanisms.map((mechanism) => context.filter((a) => a.id === mechanism.id));
-    await fanOut(mechanisms.map((mechanism) => ({
-      key: mechanism.id,
-      // The mechanism being written about is appended as this call's own, so the
-      // one artefact the call exists for is never shed. It stays in the shared
-      // block as well: that block is fitted ONCE and reused, and pulling the
-      // first call's mechanism out of it pulled that mechanism out of every
-      // other call — found by the phase 19 test that counts them.
-      context: orderedContext(context, context.filter((a) => a.id === mechanism.id), 'theory', theoryOwns),
-      describe: `Theory of change for ${mechanism.label}`,
-      extra: { protect: [mechanism.id, ...hypotheses] },
-    })));
+    const aimedAt = (mechanism: Artefact) => input.artefacts.filter((a) => a.kind === 'exploit' && Array.isArray(a.data.targets) && (a.data.targets as unknown[]).includes(mechanism.id));
+    // The mechanism being written about is appended as this call's own, so the
+    // one artefact the call exists for is never shed. It stays in the shared
+    // block as well: that block is fitted ONCE and reused, and pulling the first
+    // call's mechanism out of it pulled that mechanism out of every other call —
+    // found by the phase 19 test that counts them. The programme call's own
+    // block is empty: its subject is the shared block.
+    const theoryOwns = [[], ...selected.map((mechanism) => [...context.filter((a) => a.id === mechanism.id), ...aimedAt(mechanism)])];
+    await fanOut([
+      {
+        key: 'programme',
+        context: orderedContext(context, [], 'theory', theoryOwns),
+        describe: 'The programme logic model',
+        extra: { targetMechanismId: null, programmeModel: true, protect: hypotheses },
+      },
+      ...selected.map((mechanism, i) => ({
+        key: mechanism.id,
+        context: orderedContext(context, theoryOwns[i + 1], 'theory', theoryOwns),
+        describe: `Theory of change for ${mechanism.label}`,
+        extra: { protect: [mechanism.id, ...hypotheses] },
+      })),
+    ]);
   } else if (stage === ASSURANCE_STAGE) {
     // Separate calls stop one reassuring overall impression from washing over
     // seven distinct checks. Each reviewer sees the same saved assessment but
@@ -934,7 +953,7 @@ export async function executeStage(input: StageInput, deps: PipelineDeps): Promi
     // The report itself, which every challenge must see whatever its remit, and
     // which is the same list for all seven — so it is protected once in the
     // shared fit rather than seven times at the boundary. See sync-core.mjs.
-    const assured = [...context.filter((a) => ['finding', 'recommendation', 'causal_chain', 'option_appraisal', 'evaluation_plan', 'evidence'].includes(a.kind)).map((a) => a.id), ...hypotheses];
+    const assured = [...context.filter((a) => ['finding', 'recommendation', 'logic_model', 'causal_chain', 'option_appraisal', 'evaluation_plan', 'evidence'].includes(a.kind)).map((a) => a.id), ...hypotheses];
     const remit = (category: string) => ({
       key: category,
       context: orderedContext(context, [], 'assurance', [[]], new Set(assured)),
@@ -995,7 +1014,7 @@ export async function executeStage(input: StageInput, deps: PipelineDeps): Promi
     const protect = stage === SYNTHESIS_STAGE
       ? [...everything.filter((a) => (RESULT_KINDS as readonly string[]).includes(a.kind)).map((a) => a.id), ...hypotheses]
       : stage === APPRAISAL_STAGE
-        ? [...everything.filter((a) => ['causal_chain', 'finding', 'evidence'].includes(a.kind)).map((a) => a.id), ...hypotheses]
+        ? [...everything.filter((a) => ['logic_model', 'causal_chain', 'finding', 'evidence'].includes(a.kind)).map((a) => a.id), ...hypotheses]
         : stage === ASSURED_SYNTHESIS_STAGE
           ? [...everything.filter((a) => ['finding', 'recommendation', 'causal_chain', 'option_appraisal', 'evaluation_plan', 'assurance_challenge'].includes(a.kind) || (RESULT_KINDS as readonly string[]).includes(a.kind)).map((a) => a.id), ...hypotheses]
           : [];
@@ -1235,10 +1254,26 @@ export async function executeStage(input: StageInput, deps: PipelineDeps): Promi
   if (stage === 9) requireMajority(output, SCENARIOS, (a) => String(a.data.scenario), 'scenario', fault.last);
   if (stage === 10 && !output.artefacts.some((a) => a.kind === 'exploit')) throw new PolicyError(fault.last?.code ?? 'coverage', `No actor could be red-teamed, so the assessment has no exploitation playbook.${fault.last ? ` Last reason: ${fault.last.message}` : ''}`);
   if (stage === THEORY_STAGE) {
+    /**
+     * COUNTED AGAINST THE MECHANISMS CHOSEN FOR A DEEP CHAIN, not against all.
+     *
+     * The floor used to be "a chain for most mechanisms", which with deep chains
+     * for eight of 150 would fail every run. The majority rule is unchanged; its
+     * library is the set the stage was asked about. A chain the model wrote for
+     * some other mechanism is kept, and counts for nothing here.
+     */
     const mechanisms = input.artefacts.filter((a) => a.kind === 'mechanism');
-    const covered = new Set(output.artefacts.filter((a) => a.kind === 'causal_chain').map((a) => String(a.data.mechanismId)));
-    if (!mechanisms.length || covered.size * 2 <= mechanisms.length) throw new PolicyError(fault.last?.code ?? 'coverage', `Only ${covered.size} of ${mechanisms.length} mechanisms received a theory of change.${fault.last ? ` Last reason: ${fault.last.message}` : ''}`);
-    if (covered.size < mechanisms.length) output.warnings.push(`${mechanisms.length - covered.size} of ${mechanisms.length} mechanisms have no theory of change. The causal review is incomplete on those grounds.`);
+    const { selected } = deepChainMechanisms(input.artefacts);
+    const chained = new Set(output.artefacts.filter((a) => a.kind === 'causal_chain').map((a) => String(a.data.mechanismId)));
+    const missing = selected.filter((m) => !chained.has(m.id));
+    const covered = selected.length - missing.length;
+    if (!selected.length || covered * 2 <= selected.length) throw new PolicyError(fault.last?.code ?? 'coverage', `Only ${covered} of ${selected.length} mechanisms chosen for a deep chain received a theory of change.${fault.last ? ` Last reason: ${fault.last.message}` : ''}`);
+    // Each phrased "N of M … were not assessed", the sentence `stage-facts.ts`
+    // counts as a limit of the run rather than filing as an open question.
+    if (missing.length) output.warnings.push(`${missing.length} of ${selected.length} mechanisms chosen for a deep chain were not assessed: ${missing.map((m) => m.label).join(', ')}. The causal review is incomplete on those grounds.`);
+    if (!output.artefacts.some((a) => a.kind === 'logic_model')) output.warnings.push('1 of 1 programme logic models were not assessed: the call answered without one, so the theory of change has deep chains but no picture of the programme as a whole.');
+    // Said once, as stage 4 says its short profiles: a scope, stated as one.
+    if (mechanisms.length > selected.length) output.warnings.push(`${mechanisms.length - selected.length} of ${mechanisms.length} mechanisms were not assessed in depth: the programme logic model covers the policy as a whole, and deep chains go to the ${selected.length} that the most exploitation plays are aimed at.`);
   }
   if (stage === APPRAISAL_STAGE) {
     const types = new Set(output.artefacts.filter((a) => a.kind === 'option_appraisal').map((a) => String(a.data.optionType)));
@@ -1549,6 +1584,36 @@ export function orderActors(all: Artefact[], actors: Artefact[]): { actors: Arte
     a.id.localeCompare(b.id));
 
   return { actors: ordered, basis: ordered.some((a) => (degree.get(a.id) ?? 0) > 0) ? 'connectivity' : 'prominence' };
+}
+
+/**
+ * WHICH MECHANISMS GET A DEEP CAUSAL CHAIN.
+ *
+ * Ranked by how many exploitation plays are aimed at each — a chain is worth
+ * reading closely where somebody is trying to break it — then by how connected
+ * it is in the policy graph, then by id so the choice is reproducible. A paper
+ * whose plays aim at nothing falls back to connectivity alone, which is what
+ * `orderActors` does for bodies.
+ *
+ * Exported because the coverage rule counts against the same set the fan-out
+ * asked about, and one copy of the arithmetic cannot drift from itself.
+ */
+export function deepChainMechanisms(all: Artefact[], limit = DEEP_CHAINS): { selected: Artefact[]; ranked: Artefact[] } {
+  const plays = new Map<string, number>();
+  for (const play of all) {
+    if (play.kind !== 'exploit' || !Array.isArray(play.data.targets)) continue;
+    for (const id of new Set(play.data.targets as unknown[])) if (typeof id === 'string') plays.set(id, (plays.get(id) ?? 0) + 1);
+  }
+  const degree = new Map<string, number>();
+  for (const edge of all) {
+    if (edge.kind !== 'edge') continue;
+    for (const end of [edge.fromId, edge.toId]) if (end) degree.set(end, (degree.get(end) ?? 0) + 1);
+  }
+  const ranked = all.filter((a) => a.kind === 'mechanism').sort((a, b) =>
+    (plays.get(b.id) ?? 0) - (plays.get(a.id) ?? 0) ||
+    (degree.get(b.id) ?? 0) - (degree.get(a.id) ?? 0) ||
+    a.id.localeCompare(b.id));
+  return { selected: ranked.slice(0, limit), ranked };
 }
 
 /** Full profiles where there are any; every profile otherwise, as before short ones existed. */

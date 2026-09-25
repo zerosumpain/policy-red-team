@@ -107,7 +107,7 @@ function semanticFault(a: Artefact, all: Map<string, Artefact>, stage: number, n
    * wearing the same hat one stage earlier.
    */
   const citedAssumptions = a.kind === 'exploit' ? a.data.preconditions as string[]
-    : ['model', 'scenario', 'causal_chain', 'option_appraisal', 'evaluation_plan'].includes(a.kind) ? a.data.assumptions as string[]
+    : ['model', 'scenario', 'causal_chain', 'logic_model', 'option_appraisal', 'evaluation_plan'].includes(a.kind) ? a.data.assumptions as string[]
     : null;
   if (citedAssumptions) {
     /**
@@ -159,6 +159,15 @@ function semanticFault(a: Artefact, all: Map<string, Artefact>, stage: number, n
     // any that stop resolving.
     for (const id of citedAssumptions) if (all.has(id) && !a.refs.includes(id)) a.refs = [...a.refs, id];
   }
+  // A logic model runs through machinery. Narrowed like the assumptions above:
+  // a real mechanism among its ids keeps it, nothing real refuses it.
+  if (a.kind === 'logic_model') {
+    const named = (a.data.mechanismIds as string[]) ?? [];
+    const real = named.filter((id) => all.get(id)?.kind === 'mechanism');
+    if (!real.length) return fault('reference', 'A programme logic model must name the mechanisms it runs through.');
+    if (real.length !== named.length) a.data.mechanismIds = real;
+    for (const id of real) if (!a.refs.includes(id)) a.refs = [...a.refs, id];
+  }
   if (a.origin === 'normative_judgement' && a.kind === 'research_source') return fault('source', 'A recommendation is not an external source.');
   if (a.kind === 'recommendation' && a.origin !== 'normative_judgement') return fault('recommendation', 'Redesign options must be labelled as normative recommendations.');
   if (a.kind === 'profile') {
@@ -173,7 +182,7 @@ function semanticFault(a: Artefact, all: Map<string, Artefact>, stage: number, n
     const value = a.data[field];
     if (typeof value === 'string' && !all.has(value)) return fault('reference', 'An artefact contains an invalid entity reference.');
   }
-  for (const field of ['players', 'assumptions', 'resultIds', 'hypothesisIds', 'findingIds', 'reviewedFindingIds', 'challengeIds', 'targetIds', 'candidates', 'mentions', 'dependencies', 'affectedOutcomes', 'targets', 'preconditions', 'reconciliationIds']) {
+  for (const field of ['players', 'assumptions', 'resultIds', 'hypothesisIds', 'findingIds', 'reviewedFindingIds', 'challengeIds', 'targetIds', 'candidates', 'mentions', 'dependencies', 'affectedOutcomes', 'targets', 'preconditions', 'reconciliationIds', 'mechanismIds']) {
     const values = a.data[field];
     if (Array.isArray(values) && values.some((v) => typeof v !== 'string' || !all.has(v))) return fault('reference', 'An artefact contains an invalid relationship.');
   }
@@ -551,7 +560,7 @@ export function clampWarnings(warnings: string[], limit = 60): string[] {
 // enumeration: exponential in a dense provenance graph, and now run once per
 // artefact per triage pass. Reachability does not care which path reached a node,
 // so a shared set is both correct and linear.
-const PRUNABLE = ['players', 'assumptions', 'resultIds', 'hypothesisIds', 'findingIds', 'reviewedFindingIds', 'challengeIds', 'targetIds', 'candidates', 'mentions', 'dependencies', 'affectedOutcomes', 'targets', 'preconditions'];
+const PRUNABLE = ['players', 'assumptions', 'resultIds', 'hypothesisIds', 'findingIds', 'reviewedFindingIds', 'challengeIds', 'targetIds', 'candidates', 'mentions', 'dependencies', 'affectedOutcomes', 'targets', 'preconditions', 'mechanismIds'];
 
 /**
  * Drop identifiers that name nothing, keeping the artefact.

@@ -43,7 +43,7 @@ export const WITHHELD_KINDS = ['passage', 'cross_policy', 'persona_link'] as con
 const WITHHELD_STAGES = new Set([STAGES.indexOf('Cross-policy exposure'), STAGES.indexOf('Actor persona library')]);
 
 /** Every `data` field that holds artefact identifiers, so a withheld id can be pruned from it. */
-const ID_FIELDS = ['players', 'assumptions', 'resultIds', 'hypothesisIds', 'findingIds', 'candidates', 'mentions', 'dependencies', 'affectedOutcomes', 'targets', 'preconditions', 'inputs', 'actors', 'otherArtefactIds'];
+const ID_FIELDS = ['players', 'assumptions', 'resultIds', 'hypothesisIds', 'findingIds', 'candidates', 'mentions', 'dependencies', 'affectedOutcomes', 'targets', 'preconditions', 'inputs', 'actors', 'otherArtefactIds', 'mechanismIds'];
 const ID_SCALARS = ['actorId', 'entityId', 'questionId', 'claimId', 'mechanismId', 'assumptionId', 'firstActor', 'sourceId'];
 
 export type SharedReport = {

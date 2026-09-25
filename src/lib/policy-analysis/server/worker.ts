@@ -3,7 +3,7 @@ import { db, type DbExecutor } from '$lib/db';
 import { policyAnalyses, policyDocuments, policyExecutions, policyModelCalls, policyPasses, policyStages, workflowRuns } from '$lib/db/schema';
 import { isThinkingLevel } from '$lib/models/thinking';
 import { boundWarnings } from '../budget';
-import { ASSURANCE_CATEGORIES, ASSURANCE_STAGE, isPassStage, MATERIAL_ROLE_LABELS, MATERIAL_ROLE_NOTES, PASS_BASE, passOf, passStep, PERSONA_STAGE, THEORY_STAGE, type Concurrency, type Extraction, type PassKind } from '../contracts';
+import { ASSURANCE_CATEGORIES, ASSURANCE_STAGE, DEEP_CHAINS, isPassStage, MATERIAL_ROLE_LABELS, MATERIAL_ROLE_NOTES, PASS_BASE, passOf, passStep, PERSONA_STAGE, THEORY_STAGE, type Concurrency, type Extraction, type PassKind } from '../contracts';
 import { executeStage, graphUncovered } from '../pipeline';
 import { PolicyError } from '../validation';
 import { ingest } from './ingest';
@@ -72,7 +72,8 @@ export function stageBudgetMs(ordinal: number, all: { kind: string; id: string }
     // The persona library makes one merge call per profiled actor, exactly as the
     // red team does. A flat budget here would kill the stage on a wide policy.
     : ordinal === 13 ? Math.max(1, count('profile'))
-    : ordinal === THEORY_STAGE ? Math.max(1, count('mechanism'))
+    // The programme logic model, and a deep chain for at most DEEP_CHAINS.
+    : ordinal === THEORY_STAGE ? Math.min(DEEP_CHAINS, Math.max(1, count('mechanism'))) + 1
     : ordinal === ASSURANCE_STAGE ? ASSURANCE_CATEGORIES.length
     : 1;
   return Math.min(6 * 60 * 60_000, 20 * 60_000 + units * 3 * 60_000);

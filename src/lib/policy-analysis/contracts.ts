@@ -375,6 +375,17 @@ export const REVISION_STATUSES = ['upheld', 'strengthened', 'weakened', 'overtur
  * field.
  */
 export const PRECEDENT_BASES = ['external_evidence', 'prior_assessment', 'unverified_recall', 'none'] as const;
+/**
+ * HOW MANY MECHANISMS GET A DEEP CAUSAL CHAIN.
+ *
+ * The rest are covered by the one programme logic model. Chosen by how many
+ * plays are aimed at a mechanism, tie-broken by how connected it is in the
+ * policy graph (`deepChainMechanisms` in `pipeline.ts`): a chain is worth
+ * reading closely where somebody is trying to break it. Eight is enough for
+ * every mechanism the red team concentrated on in the one completed run and
+ * cuts stage 14 from ~150 calls to nine — about fifteen minutes.
+ */
+export const DEEP_CHAINS = 8;
 export const JUDGEMENTS = ['well_supported', 'supported_with_limits', 'contested', 'provisional', 'unknown'] as const;
 /**
  * The challenge remits, one call each, all with equal weight.
@@ -487,6 +498,27 @@ export const dataSchemas = {
     outcomes: strings.min(1), impacts: strings, causalMechanisms: strings.min(1), assumptions: ids.min(1),
     alternativeExplanations: strings.min(1), negativePathways: strings.min(1),
     indicators: z.array(z.object({ name: text, baseline: text, target: text, dataSource: text, timing: text }).strict()).max(30),
+    evidenceLimits: text, judgement: z.enum(JUDGEMENTS),
+    // The one step most likely to break, and why. Required: a chain that cannot
+    // name its weakest link has not been read closely enough to judge.
+    weakestLink: text,
+  }).strict(),
+  /**
+   * THE PROGRAMME AS A WHOLE, in one logic model.
+   *
+   * Stage 14 used to write one causal chain per mechanism — 150 on the one
+   * completed real run, 154 of its 436 calls, every one of them "provisional",
+   * with "not specified" filling the baselines and targets — and stage 17 left
+   * 118 of the 150 out of the report. A reader needs one picture of how the
+   * policy is meant to work, and a close reading of the few places it is
+   * attacked. This is the first; the deep chains (`DEEP_CHAINS`) are the second.
+   *
+   * `mechanismIds` names the machinery the programme runs through, so the model
+   * is joined to the inventory the same way a chain is by `mechanismId`.
+   */
+  logic_model: z.object({
+    inputs: strings, activities: strings.min(1), outputs: strings.min(1), outcomes: strings.min(1), impacts: strings,
+    mechanismIds: ids.min(1), assumptions: ids.min(1), weakestLink: text,
     evidenceLimits: text, judgement: z.enum(JUDGEMENTS),
   }).strict(),
   option_appraisal: z.object({
@@ -602,7 +634,7 @@ export const dataSchemas = {
  * citing anything else, and synthesis pins exactly these into its model call so
  * the context budget can never shed what the rule then demands.
  */
-export const RESULT_KINDS = ['test', 'model', 'scenario', 'exploit', 'cross_policy', 'causal_chain', 'option_appraisal', 'evaluation_plan'] as const;
+export const RESULT_KINDS = ['test', 'model', 'scenario', 'exploit', 'cross_policy', 'causal_chain', 'logic_model', 'option_appraisal', 'evaluation_plan'] as const;
 
 export const REPORT_SECTIONS = ['executive_assessment', 'scope_methodology', 'objectives', 'actors', 'mechanisms', 'theory_of_change', 'options_appraisal', 'evaluation_plan', 'assurance', 'high_risk_assumptions', 'test_results', 'strategic_responses', 'scenarios', 'exploitation', 'cross_policy', 'evidence_gaps', 'confidence_uncertainty', 'distribution', 'unresolved_questions'] as const;
 export type Kind = keyof typeof dataSchemas;
@@ -698,7 +730,7 @@ export const STAGE_KINDS: Kind[][] = [
   ['passage'], ['claim', 'mechanism', 'assumption', 'actor'], ['actor', 'alias', 'resolution_candidate'],
   ['edge'], ['profile'], ['research_question', 'research_source'], ['evidence'], ['model', 'assumption', 'research_question', 'research_source'], ['test'], ['scenario', 'assumption', 'research_question', 'research_source'],
   ['exploit', 'assumption', 'research_question', 'research_source'], ['cross_policy'], ['finding', 'recommendation', 'assumption'], ['persona_link'],
-  ['causal_chain', 'assumption', 'research_question', 'research_source'], ['option_appraisal', 'evaluation_plan', 'assumption', 'research_question', 'research_source'],
+  ['causal_chain', 'logic_model', 'assumption', 'research_question', 'research_source'], ['option_appraisal', 'evaluation_plan', 'assumption', 'research_question', 'research_source'],
   ['assurance_challenge', 'research_question', 'research_source'], ['finding', 'recommendation', 'assurance_response', 'review_summary', 'assumption'],
 ];
 /**
@@ -746,9 +778,9 @@ export const STAGE_CONTEXT: Partial<Record<number, readonly Kind[]>> = {
   11: ['mechanism', 'assumption', 'claim', 'actor', 'exploit', 'test', 'model', 'scenario', 'edge'],
   12: ['test', 'model', 'scenario', 'exploit', 'cross_policy', 'assumption', 'evidence', 'mechanism', 'claim', 'actor', 'profile', 'edge', 'research_question', 'research_source'],
   14: ['mechanism', 'evidence', 'assumption', 'claim', 'research_source'],
-  15: ['causal_chain', 'finding', 'recommendation', 'evidence', 'assumption', 'mechanism', 'claim', 'exploit', 'test', 'research_source'],
-  16: ['finding', 'recommendation', 'exploit', 'causal_chain', 'option_appraisal', 'evaluation_plan', 'test', 'model', 'scenario', 'cross_policy', 'assumption', 'evidence', 'mechanism', 'claim', 'actor', 'research_source'],
-  17: ['assurance_challenge', 'finding', 'recommendation', 'causal_chain', 'option_appraisal', 'evaluation_plan', 'exploit', 'test', 'model', 'scenario', 'cross_policy', 'assumption', 'evidence', 'mechanism', 'claim', 'actor', 'research_source'],
+  15: ['logic_model', 'causal_chain', 'finding', 'recommendation', 'evidence', 'assumption', 'mechanism', 'claim', 'exploit', 'test', 'research_source'],
+  16: ['finding', 'recommendation', 'exploit', 'logic_model', 'causal_chain', 'option_appraisal', 'evaluation_plan', 'test', 'model', 'scenario', 'cross_policy', 'assumption', 'evidence', 'mechanism', 'claim', 'actor', 'research_source'],
+  17: ['assurance_challenge', 'finding', 'recommendation', 'logic_model', 'causal_chain', 'option_appraisal', 'evaluation_plan', 'exploit', 'test', 'model', 'scenario', 'cross_policy', 'assumption', 'evidence', 'mechanism', 'claim', 'actor', 'research_source'],
 };
 /**
  * What an ADDENDUM pass's stages may emit, indexed by step within the pass.

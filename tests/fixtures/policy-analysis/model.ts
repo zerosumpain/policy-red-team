@@ -118,13 +118,21 @@ export function fixtureModel(stage: number, _key: string, raw: unknown): StageOu
     const sections = REPORT_SECTIONS.filter((section) => !['theory_of_change', 'options_appraisal', 'evaluation_plan', 'assurance'].includes(section));
     items = sections.map((section) => make(section, 'finding', { section, resultIds: [one('test').id], hypothesisIds: [one('assumption').id], revision: 'initial', reviewedFindingIds: [], challengeIds: [], judgement: 'provisional' }, [one('test').id, one('assumption').id]));
     items.push({ ...make('redesign', 'recommendation', { findingIds: [items[0].id], change: 'Commit resources and review authority.', tradeoffs: 'Additional public expenditure.', beneficiaries: ['Service users'], burdenBearers: ['Department'], validationNeeded: 'Verify capacity and legal powers.', revision: 'initial', challengeIds: [], judgement: 'provisional' }, [items[0].id]), origin: 'normative_judgement' });
+  } else if (stage === 14 && (raw as { programmeModel?: boolean }).programmeModel) {
+    // The programme call: one logic model over the whole policy.
+    const mechanism = one('mechanism');
+    items = [make('logic', 'logic_model', {
+      inputs: ['Staff time'], activities: ['Deliver shared access'], outputs: ['Access offered'], outcomes: ['Use increases'], impacts: ['Access improves'],
+      mechanismIds: [mechanism.id], assumptions: [one('assumption').id], weakestLink: 'Capacity: councils may not have the staff to deliver.',
+      evidenceLimits: 'No impact evaluation is supplied.', judgement: 'contested',
+    }, [mechanism.id, one('assumption').id])];
   } else if (stage === 14) {
     const mechanism = input.artefacts.find((a) => a.id === input.targetMechanismId) ?? one('mechanism');
     items = [make('chain', 'causal_chain', {
       mechanismId: mechanism.id, inputs: ['Staff time'], activities: ['Deliver shared access'], outputs: ['Access offered'], outcomes: ['Use increases'], impacts: ['Access improves'],
       causalMechanisms: ['Removing the access barrier permits use.'], assumptions: [one('assumption').id], alternativeExplanations: ['Demand may change independently.'],
       negativePathways: ['Capacity pressure may lengthen waits.'], indicators: [{ name: 'Use', baseline: 'Not specified', target: 'Not specified', dataSource: 'Administrative data', timing: 'Monthly' }],
-      evidenceLimits: 'No impact evaluation is supplied.', judgement: 'provisional',
+      evidenceLimits: 'No impact evaluation is supplied.', judgement: 'provisional', weakestLink: 'Use depends on councils having the capacity to deliver.',
     }, [mechanism.id, one('assumption').id])];
   } else if (stage === 15) {
     const chain = one('causal_chain');
