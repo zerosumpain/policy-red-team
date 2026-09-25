@@ -274,6 +274,20 @@ describe('the dossier is computed from what is left', () => {
     expect(summary).toBe('Kept.');
   });
 
+  it('keeps a paper-specific sentence out of the summary as well as the traits', () => {
+    // The summary rides into other papers' stage 4, 10 and 13 prompts as
+    // PersonaPrior.summary: the same leak the traits were closed against.
+    const { summary } = rebuildDossier([observation({ summary: 'Sets national schools policy. Committed £523 million to the Families First Partnership by 2028.' })]);
+    expect(summary).toBe('Sets national schools policy.');
+    const { summary: none } = rebuildDossier([observation({ summary: 'Committed £40m in 2025-26.' })]);
+    expect(none).toBeNull();
+  });
+
+  it('never hands another paper a stored summary that does not travel', () => {
+    const prior = personaPrior('s2_0', { persona: persona({ summary: 'Funds councils. Spends £2bn a year.' }), basis: 'x' }, []);
+    expect(prior?.summary).toBe('Funds councils.');
+  });
+
   it('prefers the travelling form computed at write time', () => {
     const { dossier } = rebuildDossier([observation({ traits: [{ ...trait('mandate', 'Runs the Foo Hubs. Sets policy.'), travels: 'Sets policy.' }] })]);
     expect(dossier[0].value).toBe('Sets policy.');

@@ -276,6 +276,21 @@ const time = (r: BodyEvidenceRecord) => (r.publishedAt ? Date.parse(r.publishedA
  * what is left. Deterministic, so a resumed stage asks the same question and
  * its cached answer still applies.
  */
+/**
+ * The one sentence for bodies whose record could not be fully checked.
+ *
+ * SORTED, because the checks run several at a time and finish in whatever
+ * order the network allows — and this sentence becomes one of stage 4's
+ * warnings, which ride into later calls' payloads. Arrival order made the text
+ * differ between attempts, and a resumed stage asked a different question and
+ * missed its cache.
+ */
+export function uncheckedWarning(failed: string[]): string | null {
+  if (!failed.length) return null;
+  const names = [...failed].sort((a, b) => a.localeCompare(b, 'en'));
+  return `The public record for ${names.length} ${names.length === 1 ? 'body' : 'bodies'} could not be fully checked (${names.slice(0, 5).join(', ')}${names.length > 5 ? ', and others' : ''}). What was already stored was used.`;
+}
+
 export function pickEvidence(records: BodyEvidenceRecord[], n = RUN_RECORDS_PER_BODY): BodyEvidenceRecord[] {
   const sorted = [...records].sort((a, b) => time(b) - time(a) || a.url.localeCompare(b.url));
   const chosen: BodyEvidenceRecord[] = [];

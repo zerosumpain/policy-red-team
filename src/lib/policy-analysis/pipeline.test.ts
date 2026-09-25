@@ -969,6 +969,48 @@ describe('failures that happen at the same moment are one event, not several', (
     await expect(at(3, dead)()).rejects.toThrow(/consecutive parts of this stage failed/);
   });
 
+  /**
+   * THE BRAKE IS ON THE DISPATCH SIDE. The rolling pool let every lane keep
+   * taking units while the in-order fold sat waiting on a slow first unit, so
+   * a stage whose other units were failing fast dispatched all ten patterns —
+   * the fold only learned it was doomed once the slow one landed. Batches of
+   * three sent six. `CONSECUTIVE_LIMIT * lanes` is the documented bound.
+   */
+  it('stops dispatching behind a slow first unit once failures pile up ahead of the fold', async () => {
+    let calls = 0;
+    let n = 0;
+    const model: Parameters<typeof executeStage>[1]['model'] = async (stage, key, input) => {
+      if (stage !== 7) return fixtureModel(stage, key, input);
+      calls++;
+      if (key === PATTERNS[0]) { await new Promise((resolve) => setTimeout(resolve, 40)); return fixtureModel(stage, key, input); }
+      throw new PolicyError('contract', `Unit ${++n} returned something the stage could not use.`);
+    };
+    await expect(at(3, model)()).rejects.toThrow(/consecutive parts of this stage failed/);
+    expect(calls).toBeLessThanOrEqual(6);
+  });
+
+  it('withdraws the calls still out once the stage has failed, rather than waiting out their deadlines', async () => {
+    const ended: string[] = [];
+    let n = 0;
+    const model = async (stage: number, key: string, input: unknown, options?: { signal?: AbortSignal }) => {
+      if (stage !== 7) return fixtureModel(stage, key, input);
+      const k = n++;
+      // The first three fail at once; anything dispatched after them hangs
+      // until it is withdrawn — or, if nothing withdraws it, until a timer.
+      if (k < 3) throw new PolicyError('contract', `Unit ${k} returned something the stage could not use.`);
+      await new Promise<void>((resolve) => {
+        const timer = setTimeout(() => { ended.push('timer'); resolve(); }, 3_000);
+        options?.signal?.addEventListener('abort', () => { clearTimeout(timer); ended.push('withdrawn'); resolve(); }, { once: true });
+      });
+      throw new PolicyError('provider', 'Withdrawn.');
+    };
+    const started = Date.now();
+    await expect(at(3, model)()).rejects.toThrow(/consecutive parts of this stage failed/);
+    expect(Date.now() - started).toBeLessThan(2_500);
+    expect(ended.length).toBeGreaterThan(0);
+    expect(ended.every((e) => e === 'withdrawn')).toBe(true);
+  });
+
   it('does not collapse failures that are about the units themselves', async () => {
     // Three DIFFERENT contract failures in one batch are three real facts about
     // three units, and must still trip the limit exactly as before.

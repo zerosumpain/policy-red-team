@@ -93,6 +93,29 @@ describe.skipIf(!local)('the public-record store', () => {
     expect((await bodyRecord('govuk:ofsted')).records).toHaveLength(before);
   });
 
+  it('asks nothing when the install is set not to look anything up — "check again" and the library refresh included', async () => {
+    const before = process.env.POLICY_SEARCH;
+    process.env.POLICY_SEARCH = 'none';
+    try {
+      const home = (await registerIndex()).bodies.get('govuk:home-office')!;
+      const result = await refreshBody(home, { force: true });
+      expect(result).toMatchObject({ asked: [], added: 0, off: true });
+      expect((await bodyRecord('govuk:home-office')).checks).toEqual([]);
+    } finally {
+      if (before === undefined) delete process.env.POLICY_SEARCH; else process.env.POLICY_SEARCH = before;
+    }
+  });
+
+  it('never stores a skip the paper guard caused: the next run, or another owner, asks again', async () => {
+    const now = new Date('2026-09-25T12:00:00Z');
+    await saveAnswers('govuk:department-for-science-innovation-and-technology', [
+      { source: 'committees', records: [], error: null, skipped: 'Its official name reads like a phrase from the paper being assessed, so it was not sent.', guarded: true },
+      { source: 'govuk', records: [], error: null, skipped: 'It has no GOV.UK organisation page to search by.' },
+    ], now);
+    const { checks } = await bodyRecord('govuk:department-for-science-innovation-and-technology');
+    expect(checks.map((c) => c.source)).toEqual(['govuk']);
+  });
+
   it('gives a run a few records per body, and fetches only when the run may', async () => {
     const actors = [actor('s2_000_of', 'Ofsted', 'agency'), actor('s2_001_x', 'Children', 'user_group'), actor('s2_002_y', 'The Council', 'local_authority')];
     const { bundles } = await evidenceForActors(actors, { fetch: false });
@@ -132,6 +155,16 @@ describe.skipIf(!local)('stage 11 compares papers that share bodies, not the lat
     expect(neighbours[0].artefacts.find((a) => a.kind === 'actor')?.bodyId).toBe('govuk:ofsted');
     // Date fills the rest, newest first.
     expect(neighbours.slice(1).map((n) => n.id)).toEqual(recent.slice(-5).reverse());
+  });
+
+  it('gives two runs of one other document one slot, not two — the newer', async () => {
+    const older = await paperNaming('Repeat inspection paper', [{ id: 's2_000_of', label: 'Ofsted' }], [], new Date('2026-02-01T00:00:00Z'));
+    const newer = await paperNaming('Repeat inspection paper', [{ id: 's2_000_of', label: 'Ofsted' }], [], new Date('2026-03-01T00:00:00Z'));
+    const mine = await paper('Yet another paper', 'Yet another paper', new Date('2026-09-24T00:00:00Z'));
+    await db.transaction((tx) => persistArtefacts(tx, mine, 2, [actor('s2_000_of', 'Ofsted', 'agency')]));
+    const ids = (await neighbourSummaries(owner, mine)).map((n) => n.id);
+    expect(ids).toContain(newer);
+    expect(ids).not.toContain(older);
   });
 });
 

@@ -238,13 +238,49 @@ describe('the assured report leads with key judgements', () => {
     expect(result.warnings.join(' ')).toContain('already holds');
   });
 
-  it('fails a report that has none after the second ask: an absence is not a surplus', async () => {
+  it('keeps a report that has none after the second ask, and files the gap as a limit of the run', async () => {
+    // It used to THROW here, and a throw at stage 17 is the 36ebca37 trap: the
+    // worker retries, every call — the top-up's included, whose prefix is
+    // always `s17_000_` — replays from the cache, and the finished report is
+    // discarded three times over for the same absence.
     const all = await inventory();
     const { model, keys } = withhold((a) => a.kind === 'key_judgement');
-    await expect(executeStage(base(ASSURED_SYNTHESIS_STAGE, all), { model, research, signal, neighbours: none, personas: none }))
-      .rejects.toMatchObject({ code: 'coverage', message: expect.stringContaining('key judgement') });
+    const result = await executeStage(base(ASSURED_SYNTHESIS_STAGE, all), { model, research, signal, neighbours: none, personas: none });
     // One ask, one top-up — not a loop.
     expect(keys).toHaveLength(2);
+    expect(result.artefacts.filter((a) => a.kind === 'key_judgement')).toHaveLength(0);
+    expect(result.artefacts.filter((a) => a.kind === 'review_summary')).toHaveLength(1);
+    const facts = stageFacts(result.warnings);
+    const gap = facts.find((f) => f.kind === 'not_covered' && f.detail.join(' ').includes('key judgement'));
+    expect(gap).toMatchObject({ count: 1, of: 1 });
+    // A machine limit, never an open question about the paper.
+    expect(facts.filter((f) => f.kind === 'open').flatMap((f) => f.detail).join(' ')).not.toContain('key judgement');
+  });
+
+  it('keeps what a key judgement must quote from in the context of a big paper', async () => {
+    // A key judgement copies its quote from a mechanism or a claim. Both sit
+    // near the END of stage 17's declared context, so on a paper big enough to
+    // be fitted they were the first thing shed — for the main call and the
+    // top-up alike, which is handed the same fitted context.
+    const all = await inventory();
+    const padding = Array.from({ length: 260 }, (_, i) => artefact(`s6_${String(900 + i).padStart(4, '0')}_pad`, 'evidence', `Padding ${i}`, 'Padding evidence.', {
+      claimId: null, mechanismId: null, actorId: null, assumptionId: null, sourceId: 'passage_0001', evidenceType: 't', result: 'insufficient',
+      sourceQuality: 'q', relevance: 'r', freshness: 'f', dispute: 'x'.repeat(5_000),
+    }));
+    const sent: { key: string; artefacts: Artefact[] }[] = [];
+    const model = async (...args: Parameters<typeof fixtureModel>) => {
+      sent.push({ key: args[1], artefacts: (args[2] as { artefacts: Artefact[] }).artefacts });
+      return fixtureModel(...args);
+    };
+    const result = await executeStage(base(ASSURED_SYNTHESIS_STAGE, [...all, ...padding]), { model, research, signal, neighbours: none, personas: none });
+    const main = new Set(sent.find((s) => s.key === 'main')!.artefacts.map((a) => a.id));
+    // The context really was cut: most of the padding did not fit.
+    expect(padding.filter((a) => main.has(a.id)).length).toBeLessThan(padding.length);
+    const chosen = deepChainMechanisms(all).selected;
+    expect(chosen.length).toBeGreaterThan(0);
+    for (const mechanism of chosen) expect(main.has(mechanism.id)).toBe(true);
+    // And so the report leads with one.
+    expect(result.artefacts.filter((a) => a.kind === 'key_judgement')).toHaveLength(1);
   });
 
   it('reconciles a surplus — every corrective round restating them, and more than five — rather than failing', async () => {

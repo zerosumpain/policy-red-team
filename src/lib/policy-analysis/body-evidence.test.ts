@@ -5,7 +5,7 @@ import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import {
   classifyCommittee, classifyGovuk, committeeRecords, evidenceArtefacts, EVIDENCE_TTL_MS, govukRecords, hansardRecords,
-  isBodyEvidence, pickEvidence, publicLink, searchTerm, type BodyEvidenceRecord,
+  isBodyEvidence, pickEvidence, publicLink, searchTerm, uncheckedWarning, type BodyEvidenceRecord,
 } from './body-evidence';
 import { artefact, STAGE_KINDS, MODEL_KINDS } from './contracts';
 import { triageArtefacts } from './validation';
@@ -97,6 +97,26 @@ describe('the query comes from the register and is still guarded', () => {
     // The slug is not words from anybody's paper, so GOV.UK is still asked.
     expect(typeof urls.govuk).toBe('string');
   });
+
+  it('does not guard the register\'s own name against the paper: it came from the register, not the paper', () => {
+    // 96 live register bodies have a name of six words or more. A paper that
+    // names one in full — as papers about DSIT, DESNZ or MHCLG do — used to
+    // block that body's record for every owner, for thirty days.
+    const name = 'Department for Science, Innovation and Technology';
+    const passage = artefact('passage_0001', 'passage', 'p', `The ${name} will publish guidance.`, {});
+    const corpus = documentShingles([passage]);
+    const urls = sourceUrls({ id: 'govuk:dsit', slug: 'department-for-science-innovation-and-technology', name, registered: true }, corpus);
+    expect(new URL(String(urls.committees)).searchParams.get('SearchTerm')).toBe(`"${name}"`);
+    expect(typeof urls.hansard).toBe('string');
+  });
+
+  it('marks a skip the guard caused, so it is never stored as an answer', () => {
+    const name = 'Office for Standards in Education, Children’s Services and Skills';
+    const corpus = documentShingles([artefact('passage_0001', 'passage', 'p', `The ${name} will inspect.`, {})]);
+    expect(sourceUrls({ id: 'govuk:x', slug: 'x', name }, corpus).committees).toMatchObject({ guarded: true });
+    // A name too short to search is not the guard's doing.
+    expect(sourceUrls({ id: 'govuk:x', slug: 'x', name: 'X' }, corpus).committees).toMatchObject({ guarded: false });
+  });
 });
 
 describe('fetching', () => {
@@ -133,6 +153,18 @@ describe('fetching', () => {
       now, guard: allow, sources: ['govuk'], fetch: async () => { throw new Error('ECONNRESET at 10.0.0.1 with secret'); },
     });
     expect(answers[0].error).toBe('could not be reached');
+  });
+});
+
+describe('what could not be checked is said the same way every time', () => {
+  it('names the bodies in a fixed order, not the order the network answered in', () => {
+    // The warning rides into the stage's cached calls: two orders are two
+    // different questions, and a resumed stage would miss its cache.
+    const one = uncheckedWarning(['Ofsted', 'Department for Education', 'Skills England']);
+    const two = uncheckedWarning(['Skills England', 'Ofsted', 'Department for Education']);
+    expect(one).toBe(two);
+    expect(one).toContain('(Department for Education, Ofsted, Skills England)');
+    expect(uncheckedWarning([])).toBeNull();
   });
 });
 

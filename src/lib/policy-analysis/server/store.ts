@@ -410,7 +410,21 @@ export async function neighbourSummaries(owner: string, exclude: string): Promis
     shared.set(f.analysisId, (shared.get(f.analysisId) ?? new Set()).add(f.bodyId));
   }
   // `candidates` is newest first, and `sort` is stable: date breaks the ties.
-  const shortlist = [...candidates].sort((a, b) => (shared.get(b.id)?.size ?? 0) - (shared.get(a.id)?.size ?? 0)).slice(0, NEIGHBOUR_LIMIT);
+  // ONE SLOT PER OTHER DOCUMENT: two runs of the same paper are one neighbour,
+  // as they are one paper everywhere else ("seen in N papers" counts
+  // documents). Deduplicated after ranking, so the run that shares the most —
+  // and among equals the newest — is the one kept.
+  const shaOf = new Map(shas.map((d) => [d.analysisId, d.sha256]));
+  const taken = new Set<string>();
+  const shortlist = [...candidates].sort((a, b) => (shared.get(b.id)?.size ?? 0) - (shared.get(a.id)?.size ?? 0))
+    .filter((o) => {
+      const sha = shaOf.get(o.id);
+      if (!sha) return true;
+      if (taken.has(sha)) return false;
+      taken.add(sha);
+      return true;
+    })
+    .slice(0, NEIGHBOUR_LIMIT);
   // Queried per analysis, not once across all of them: a single confident
   // assessment used to fill the whole budget and leave the others with nothing,
   // silently. Exploits carry `confidence = exposure`, so a paper with several
@@ -501,7 +515,7 @@ export async function remove(owner: string, id: string): Promise<boolean> {
     // longer exists. `policy_stages.run_id` has no cascade, which is why they
     // survived every delete this feature has ever done.
     if (runIds.length) await tx.delete(workflowRuns).where(inArray(workflowRuns.id, runIds));
-    await rebuildPersonas(tx, contributed);
+    await rebuildPersonas(tx, contributed, { names: true });
     return true;
   });
 }

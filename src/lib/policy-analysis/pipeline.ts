@@ -155,9 +155,11 @@ export async function executeStage(input: StageInput, deps: PipelineDeps): Promi
    * from what another unit produced, so overlapping them cannot change what any
    * one of them is asked.
    */
-  const send = async (key: string, context: Artefact[], slot: string, extra: Record<string, unknown> = {}) => {
+  const send = async (key: string, context: Artefact[], slot: string, extra: Record<string, unknown> = {}, callSignal?: AbortSignal) => {
     deps.signal.throwIfAborted();
-    return deps.model(stage, key, { ...input, artefacts: context, idPrefix: `s${stage}_${slot}_`, targetActorId: stage === 3 || stage === 4 || stage === 10 || stage === PERSONA_STAGE ? key : null, targetPattern: stage === 7 ? key : null, targetScenario: stage === 9 ? key : null, targetMechanismId: stage === THEORY_STAGE ? key : null, targetCategory: stage === ASSURANCE_STAGE ? key : null, modelLibrary: stage === 7 ? modelApplicability(input.artefacts) : undefined, ...extra });
+    // The call's own signal rides OUTSIDE the payload: the payload is hashed for
+    // the response cache, and how a call may be withdrawn is not what it asks.
+    return deps.model(stage, key, { ...input, artefacts: context, idPrefix: `s${stage}_${slot}_`, targetActorId: stage === 3 || stage === 4 || stage === 10 || stage === PERSONA_STAGE ? key : null, targetPattern: stage === 7 ? key : null, targetScenario: stage === 9 ? key : null, targetMechanismId: stage === THEORY_STAGE ? key : null, targetCategory: stage === ASSURANCE_STAGE ? key : null, modelLibrary: stage === 7 ? modelApplicability(input.artefacts) : undefined, ...extra }, callSignal ? { signal: callSignal } : undefined);
   };
 
   /**
@@ -263,6 +265,22 @@ export async function executeStage(input: StageInput, deps: PipelineDeps): Promi
    *
    * `onFailure`, where given, replaces the gap-and-count rule for a stage whose
    * failures must never end it — the persona library.
+   *
+   * THE BRAKE IS ON THE DISPATCH SIDE TOO. The pool alone broke that bound:
+   * `stopped` was only set when the in-order fold threw, so with unit 0 slow
+   * and the rest failing fast every lane kept taking units while the fold sat
+   * waiting on unit 0 — ten of ten dispatched at three lanes, where batches
+   * sent six. So while any failure has LANDED ahead of the fold, a lane may not
+   * take unit k unless k < folded + lanes: no more than one lane-width past
+   * what the fold has judged. A fan-out that is going well is untouched — the
+   * window only closes once something ahead of the fold has failed — and a
+   * serial run still makes exactly the calls it always made.
+   *
+   * AND A DOOMED FAN-OUT WITHDRAWS WHAT IS STILL OUT. Each fan-out has its own
+   * AbortSignal, passed to every call beside (never inside) the payload. When
+   * the fold throws, the calls still in flight are aborted and THEN awaited, so
+   * no late record lands beside the retry's — without waiting out a deadline
+   * per call first, which in an all-timeout stage was a second deadline.
    */
   const fanOut = async (units: Unit[], onResult?: (unit: Unit, result: ReturnType<typeof absorb> | null) => void, onFailure?: (unit: Unit, err: unknown) => void) => {
     // Units that answered with nothing. Silence is a legitimate finding — a body
@@ -281,6 +299,14 @@ export async function executeStage(input: StageInput, deps: PipelineDeps): Promi
     let next = 0;
     let count = 0;
     let stopped = false;
+    // How far the fold has judged, and which landed failures are still ahead of it.
+    let folded = 0;
+    const failedAhead = new Set<number>();
+    const waiting: (() => void)[] = [];
+    const wake = () => { for (const resume of waiting.splice(0)) resume(); };
+    const mayDispatch = (k: number) => !failedAhead.size || k < folded + lanes;
+    const withdraw = new AbortController();
+    const callSignal = AbortSignal.any([deps.signal, withdraw.signal]);
     const eventOf = (k: number, err: unknown): number => {
       if (!(err instanceof PolicyError) || !CONCURRENT_EVENT_CODES.has(err.code)) return -1;
       const signature = `${err.code}|${err.message}`;
@@ -296,10 +322,11 @@ export async function executeStage(input: StageInput, deps: PipelineDeps): Promi
     };
     const lane = async () => {
       while (!stopped && next < units.length) {
+        if (!mayDispatch(next)) { await new Promise<void>((resume) => waiting.push(resume)); continue; }
         const k = next++;
         const unit = units[k];
         inFlight.add(k);
-        const outcome = await send(unit.key, unit.context, slots[k], unit.extra ?? {}).then(
+        const outcome = await send(unit.key, unit.context, slots[k], unit.extra ?? {}, callSignal).then(
           (raw): Landed => ({ raw, err: null, event: -1 }),
           (err: unknown): Landed => ({ raw: null, err, event: eventOf(k, err) }),
         );
@@ -308,6 +335,7 @@ export async function executeStage(input: StageInput, deps: PipelineDeps): Promi
         // a liveness beat, so a stage that is working says so — and one that has
         // stopped working stops saying so, which is the case the probe exists for.
         deps.onProgress?.(`${++count} of ${units.length}`);
+        if (outcome.err && k >= folded) failedAhead.add(k);
         resolvers[k](outcome);
         // One tick before taking the next unit, so a fold that was waiting on
         // THIS result runs first. If it decided the provider is dead, `stopped`
@@ -332,12 +360,18 @@ export async function executeStage(input: StageInput, deps: PipelineDeps): Promi
         }
         if (result && !result.artefacts.length) silent.push(units[k].describe);
         onResult?.(units[k], result);
+        failedAhead.delete(k);
+        folded = k + 1;
+        wake();
       }
     } catch (err) {
-      // The stage is ending. Nothing more is dispatched, and the calls already
-      // out are waited for rather than abandoned: a call that lands after its
-      // stage has failed would otherwise write its record beside the retry's.
+      // The stage is ending. Nothing more is dispatched, the calls already out
+      // are withdrawn, and then waited for rather than abandoned: a call that
+      // lands after its stage has failed would otherwise write its record
+      // beside the retry's.
       stopped = true;
+      withdraw.abort();
+      wake();
       await Promise.allSettled(running);
       throw err;
     }
@@ -458,7 +492,20 @@ export async function executeStage(input: StageInput, deps: PipelineDeps): Promi
    * context, and every pass — is left exactly as it was.
    */
   const declared = STAGE_CONTEXT[stage];
-  const scoped = (artefacts: Artefact[]) => (declared ? artefacts.filter((a) => (declared as readonly string[]).includes(a.kind)) : artefacts);
+  /**
+   * A BODY'S PUBLIC RECORD IS NOT EVERY STAGE'S. The `s4_body_*` records are
+   * `research_source`s, a kind most later stages declare, so they rode into
+   * every shared context from stage 5 on — up to three per fully profiled body,
+   * read by nothing, costing the room the stage's own kinds needed. They belong
+   * to stage 4, which mints them, and stage 10, which hands a body its own in
+   * that body's call. The synthesis and the assured report may read one only
+   * where something in their context CITES it: a profile's field or a play
+   * resting on it, which the report may need to follow to its source.
+   */
+  const bodyRecordCited = [SYNTHESIS_STAGE, ASSURED_SYNTHESIS_STAGE].includes(stage) ? citedIds(input.artefacts.filter((a) => !isBodyEvidence(a))) : new Set<string>();
+  const scoped = (artefacts: Artefact[]) => (declared
+    ? artefacts.filter((a) => (declared as readonly string[]).includes(a.kind) && (!isBodyEvidence(a) || stage === 10 || bodyRecordCited.has(a.id)))
+    : artefacts);
   /**
    * A single call's context, scoped and fitted ONCE, here, in declared order.
    *
@@ -582,6 +629,8 @@ export async function executeStage(input: StageInput, deps: PipelineDeps): Promi
       const protect = [
         ...context.filter((a) => ['finding', 'recommendation', 'causal_chain', 'option_appraisal', 'evaluation_plan', 'assurance_challenge', 'revision', 'reconciliation', 'addendum_summary'].includes(a.kind) || (RESULT_KINDS as readonly string[]).includes(a.kind)).map((a) => a.id),
         ...hypotheses,
+        // A restatement writes key judgements too, and quotes from the same place.
+        ...quotableForJudgements(input.artefacts),
       ];
       await request('main', context, { protect, ...patterns });
     } else if (step === 1) {
@@ -1079,7 +1128,7 @@ export async function executeStage(input: StageInput, deps: PipelineDeps): Promi
       : stage === APPRAISAL_STAGE
         ? [...everything.filter((a) => ['logic_model', 'causal_chain', 'finding', 'evidence'].includes(a.kind)).map((a) => a.id), ...hypotheses]
         : stage === ASSURED_SYNTHESIS_STAGE
-          ? [...everything.filter((a) => ['finding', 'recommendation', 'causal_chain', 'option_appraisal', 'evaluation_plan', 'assurance_challenge'].includes(a.kind) || (RESULT_KINDS as readonly string[]).includes(a.kind)).map((a) => a.id), ...hypotheses]
+          ? [...everything.filter((a) => ['finding', 'recommendation', 'causal_chain', 'option_appraisal', 'evaluation_plan', 'assurance_challenge'].includes(a.kind) || (RESULT_KINDS as readonly string[]).includes(a.kind)).map((a) => a.id), ...hypotheses, ...quotableForJudgements(input.artefacts)]
           : [];
     // Scoped and fitted once, so the top-up below asks from the same context.
     const context = fitOnce(everything, protect);
@@ -1446,20 +1495,26 @@ export async function executeStage(input: StageInput, deps: PipelineDeps): Promi
       output.warnings.push(`The revised assessment came back with ${summaries.length} review summaries, one per corrective round. The last is kept; the earlier ${superseded.size} ${superseded.size === 1 ? 'is' : 'are'} discarded as superseded.`);
     }
     /**
-     * THE "SO WHAT": AT LEAST ONE KEY JUDGEMENT, AT MOST FIVE.
+     * THE "SO WHAT": AT MOST FIVE KEY JUDGEMENTS, AND NONE IS A COUNTED LIMIT.
      *
-     * Two different events, the phase 16/17 lesson applied from the start. NONE
-     * is an absence — the report has nothing to lead with — and it fails, after
-     * the top-up above has asked for exactly that once. A SURPLUS is the
-     * correction arriving with the rest of the revised report, because
-     * `provider.ts` accumulates corrective rounds; `reconcileKeyJudgements`
+     * A SURPLUS is the correction arriving with the rest of the revised report,
+     * because `provider.ts` accumulates corrective rounds; `reconcileKeyJudgements`
      * keeps the last of each rank and the top five, and says what it dropped.
      * Throwing on a surplus would be the review-summary trap again: asking a
      * second time could only add more.
+     *
+     * NONE USED TO THROW, and that was the 36ebca37 trap in a new place. The
+     * worker retries a failed stage; the cache is keyed on (stage row, input
+     * hash, prompt) and the top-up's `idPrefix` comes from `seq`, which restarts
+     * at 0 on every execution — so the retry replays `main`, its repair rounds
+     * and `topup` from the cache, reaches the same absence, and throws a finished
+     * report away three times. The top-up above is the one genuinely different
+     * question. A report without key judgements is still a report; the views
+     * already read `[]` from `keyJudgements()`. So the absence is said once, as
+     * a limit of the run, AFTER the final triage (below) — which can still drop
+     * the last one.
      */
-    const judged = reconcileKeyJudgements(output.artefacts);
-    if (!judged.kept.length) throw new PolicyError('coverage', `The revised assessment must lead with at least one key judgement — naming a mechanism, a play, a quote from the paper, and who should do what — and this one has none, after the model was asked a second time for them.${fault.last ? ` Last reason: ${fault.last.message}` : ''}`);
-    dropSurplusJudgements(output, judged.dropped);
+    dropSurplusJudgements(output, reconcileKeyJudgements(output.artefacts).dropped);
     const issueIds = new Set(challenges.filter((a) => a.data.finding === 'issue').map((a) => a.id));
     const accepted = responses.filter((a) => issueIds.has(String(a.data.challengeId)) && ['accepted', 'partly_accepted'].includes(String(a.data.disposition))).length;
     const unresolved = responses.filter((a) => issueIds.has(String(a.data.challengeId)) && a.data.disposition === 'unresolved');
@@ -1599,6 +1654,19 @@ export async function executeStage(input: StageInput, deps: PipelineDeps): Promi
     warnings.push(`“${a.label}” cited ${a.refs.length} sources; only the first ${MAX_REFS} are recorded.`);
     a.refs = a.refs.slice(0, MAX_REFS);
   }
+  if (stage === ASSURED_SYNTHESIS_STAGE || (isPassStage(stage) && deps.passKind === 'restatement')) {
+    // Renumbered on what SURVIVED, so a judgement the final triage took leaves
+    // no hole in the ranks ("1, 3").
+    reconcileKeyJudgements(kept);
+    // The floor, on what the stage keeps. Worded "N of M … were not assessed",
+    // the sentence `stage-facts.ts` files as a limit of this run; anything else
+    // it does not recognise becomes an open QUESTION about the paper, which
+    // this is not. A restatement has no floor: its report falls back to the
+    // previous generation's judgements.
+    if (stage === ASSURED_SYNTHESIS_STAGE && !kept.some((a) => a.kind === 'key_judgement')) {
+      warnings.push('1 of 1 key judgement sections were not assessed: the revised assessment came back with no usable key judgement, after the model was asked a second time for one, so the report leads with its findings instead. This is a limit of this run, not a gap in the paper.');
+    }
+  }
   return { artefacts: kept, warnings: clampWarnings(warnings), rejected };
 }
 
@@ -1719,6 +1787,61 @@ export function deepChainMechanisms(all: Artefact[], limit = DEEP_CHAINS): { sel
     (degree.get(b.id) ?? 0) - (degree.get(a.id) ?? 0) ||
     a.id.localeCompare(b.id));
   return { selected: ranked.slice(0, limit), ranked };
+}
+
+/**
+ * WHAT A KEY JUDGEMENT QUOTES FROM, pinned into stage 17's context.
+ *
+ * A key judgement copies its quote from a mechanism or a claim, and triage
+ * checks that quote against the paper (`locate` in `validation.ts`). Both kinds
+ * sit near the END of `STAGE_CONTEXT[17]`, behind the report they are the
+ * groundwork of, so on a paper big enough to be fitted they were the first
+ * thing shed — and the top-up is handed the same fitted context, so it could
+ * not recover them either. A judgement asked for and given nothing to quote
+ * is a judgement triage refuses.
+ *
+ * So the mechanisms the red team concentrated on (`deepChainMechanisms`, the
+ * same set stage 14 read closely) are pinned, with the claims they rest on:
+ * those extracted from the same passage, those either side of a graph edge
+ * with one, and those the plays aimed at them also target. ONE SET FOR THE
+ * STAGE, computed from its input: the shared block is still fitted once,
+ * first, and the main call and the top-up still send identical bytes.
+ */
+export function quotableForJudgements(all: Artefact[]): string[] {
+  const mechanisms = deepChainMechanisms(all).selected;
+  const chosen = new Set(mechanisms.map((m) => m.id));
+  const passages = new Set(mechanisms.map((m) => m.sourceId).filter((id): id is string => Boolean(id)));
+  const linked = new Set<string>();
+  for (const a of all) {
+    if (a.kind === 'edge' && a.fromId && a.toId) {
+      if (chosen.has(a.fromId)) linked.add(a.toId);
+      if (chosen.has(a.toId)) linked.add(a.fromId);
+    }
+    if (a.kind === 'exploit' && Array.isArray(a.data.targets) && (a.data.targets as unknown[]).some((t) => chosen.has(String(t)))) {
+      for (const t of a.data.targets as unknown[]) linked.add(String(t));
+    }
+  }
+  for (const m of mechanisms) for (const r of m.refs) linked.add(r);
+  const claims = all.filter((a) => a.kind === 'claim' && (linked.has(a.id) || (a.sourceId && passages.has(a.sourceId)) || a.refs.some((r) => chosen.has(r))));
+  return [...chosen, ...claims.map((a) => a.id)];
+}
+
+/**
+ * Every id these artefacts cite: their `refs`, their `sourceId`, and the
+ * `refs` of a structured field — which is where a profile cites what each of
+ * its twenty-one answers rests on.
+ */
+function citedIds(artefacts: Artefact[]): Set<string> {
+  const out = new Set<string>();
+  for (const a of artefacts) {
+    for (const r of a.refs) out.add(r);
+    if (a.sourceId) out.add(a.sourceId);
+    for (const value of Object.values(a.data)) {
+      const refs = value && typeof value === 'object' && !Array.isArray(value) ? (value as { refs?: unknown }).refs : null;
+      if (Array.isArray(refs)) for (const r of refs) if (typeof r === 'string') out.add(r);
+    }
+  }
+  return out;
 }
 
 /** Full profiles where there are any; every profile otherwise, as before short ones existed. */

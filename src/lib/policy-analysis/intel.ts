@@ -47,6 +47,15 @@ export const ASK_RELATIONS: Record<Exclude<AskKind, 'oversight'>, readonly strin
 };
 /** Relations INTO the body that put something over it. */
 const OVER = ['regulates', 'has_authority_over', 'can_veto', 'sanctions', 'appoints', 'commissions', 'funds'];
+/**
+ * The relations the CLASH rule reads as a hierarchy — narrower than `OVER` on
+ * purpose. Paying for a body is not authority over it, and depending on one is
+ * not answering to it: "DfE funds Ofsted" in one paper beside "DfE depends on
+ * Ofsted" in the next is a department paying for the inspectorate it relies
+ * on, and the rule called it a clash. Only powers one body holds over another
+ * (`AUTHORITY`) and answering to one (`reports_to`) order two bodies.
+ */
+const AUTHORITY = ['regulates', 'has_authority_over', 'can_veto', 'sanctions', 'appoints', 'commissions'];
 
 export const RELATION_WORDS: Record<string, string> = {
   delivers: 'delivers', funds: 'pays for', commissions: 'commissions', is_accountable_for: 'is accountable for',
@@ -195,9 +204,10 @@ export type Clash = { bodyId: string; bodyName: string; otherId: string; otherNa
  * TWO PAPERS THAT PUT THE SAME TWO BODIES IN OPPOSITE ORDER.
  *
  * The one rule here, and it is deliberately narrow: in one paper body A has
- * power over body B (regulates it, has authority over it, commissions it, pays
- * for it, can block it, appoints to it); in another, A reports to B or depends
- * on it, or B has that power over A. Both A and B must be the SAME GOV.UK
+ * power over body B (regulates it, has authority over it, commissions it, can
+ * block it, sanctions it, appoints to it); in another, A reports to B, or B has
+ * that power over A. Paying for a body and depending on one are not in it —
+ * see `AUTHORITY`. Both A and B must be the SAME GOV.UK
  * register bodies in both papers — the register decides, never the name — and
  * both sides are the papers' own graph edges, so each can be opened and read.
  *
@@ -224,8 +234,8 @@ export function findClashes(input: {
     if (!from || !to || from === to) continue;
     const quote = (e.sourceQuote || e.statement || e.label).replace(/\s+/g, ' ').trim().slice(0, 400);
     const words = `${input.names.get(from) ?? from} ${RELATION_WORDS[e.relation] ?? e.relation.replaceAll('_', ' ')} ${input.names.get(to) ?? to}`;
-    if (OVER.includes(e.relation)) directions.push({ paper, top: from, bottom: to, words, quote, artefactId: e.id });
-    else if (e.relation === 'reports_to' || e.relation === 'depends_on') directions.push({ paper, top: to, bottom: from, words, quote, artefactId: e.id });
+    if (AUTHORITY.includes(e.relation)) directions.push({ paper, top: from, bottom: to, words, quote, artefactId: e.id });
+    else if (e.relation === 'reports_to') directions.push({ paper, top: to, bottom: from, words, quote, artefactId: e.id });
   }
   const clashes: Clash[] = [];
   const seen = new Set<string>();

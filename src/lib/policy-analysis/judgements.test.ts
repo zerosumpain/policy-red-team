@@ -8,7 +8,7 @@ import { scoreExploits } from './exposure';
 import { keyJudgements, reconcileKeyJudgements } from './judgements';
 import { assessmentMarkdown } from './report-doc';
 import { shareableReport } from './share';
-import { triageArtefacts } from './validation';
+import { triageArtefacts, triageOutput } from './validation';
 
 const passage = artefact('passage_0001', 'passage', 'Page 4', 'Colleges will be funded on completion rates from 2027.', { documentHash: 'a'.repeat(64) }, { origin: 'extracted_fact', confidence: 1, startOffset: 100, endOffset: 160, page: 4 });
 const mechanism = { ...artefact('s1_000_mechanism', 'mechanism', 'Completion funding', 'Funding follows completion.', { intervention: 'i', implementation: 'x', notes: 'n' }), origin: 'extracted_fact' as const, sourceId: passage.id, sourceQuote: 'funded on completion rates', refs: [passage.id] };
@@ -58,6 +58,56 @@ describe('what a key judgement must carry', () => {
   it('does not belong to any stage but assured synthesis and a restatement', () => {
     expect(triageArtefacts({ artefacts: [judgement()], warnings: [] }, 12, prior).rejected[0]?.code).toBe('contract');
     expect(triageArtefacts({ artefacts: [judgement({}, 's100_000_judgement')], warnings: [] }, 100, prior, 'restatement').rejected).toHaveLength(0);
+  });
+});
+
+describe('plausible model spellings are read, not refused', () => {
+  // Each refusal here cost a corrective round, and at stage 17 a round rewrites
+  // the whole report against the 25k output cap. The runtime path — a raw reply
+  // through `triageOutput` — is the one under test.
+  const reply = (...artefacts: unknown[]) => JSON.parse(JSON.stringify({ artefacts, warnings: [] }));
+
+  it('takes findingIds: null as none, and rank "1" as 1', () => {
+    const raw = reply({ ...judgement(), data: { ...judgement().data, findingIds: null, rank: '1' } });
+    const triaged = triageOutput(raw, 17, prior);
+    expect(triaged.rejected).toEqual([]);
+    expect(triaged.artefacts[0].data).toMatchObject({ findingIds: [], rank: 1 });
+  });
+
+  it('takes a play with precedentBasis null, or spelt "unverified recall"', () => {
+    const base = { ...play, id: 's10_001_exploit', data: { ...play.data } };
+    delete (base.data as Record<string, unknown>).exposure;
+    delete (base.data as Record<string, unknown>).band;
+    const nulled = triageOutput(reply({ ...base, data: { ...base.data, precedentBasis: null } }), 10, [passage, mechanism, assumption, actor]);
+    expect(nulled.rejected).toEqual([]);
+    expect(nulled.artefacts[0].data).not.toHaveProperty('precedentBasis');
+    const spelt = triageOutput(reply({ ...base, data: { ...base.data, precedent: 'A college did this.', precedentBasis: 'Unverified recall' } }), 10, [passage, mechanism, assumption, actor]);
+    expect(spelt.rejected).toEqual([]);
+    expect(spelt.artefacts[0].data.precedentBasis).toBe('unverified_recall');
+  });
+
+  it('adds nothing to the reply and never rewrites the stored copy', () => {
+    const raw = reply({ ...judgement(), data: { ...judgement().data, findingIds: null } });
+    const before = JSON.stringify(raw);
+    triageOutput(raw, 17, prior);
+    expect(JSON.stringify(raw)).toBe(before);
+  });
+
+  it('still refuses what is genuinely wrong: a word that is no basis at all', () => {
+    const base = { ...play, id: 's10_002_exploit', data: { ...play.data } };
+    delete (base.data as Record<string, unknown>).exposure;
+    delete (base.data as Record<string, unknown>).band;
+    const wrong = triageOutput(reply({ ...base, data: { ...base.data, precedentBasis: 'hearsay' } }), 10, [passage, mechanism, assumption, actor]);
+    expect(wrong.rejected[0]?.code).toBe('contract');
+  });
+
+  it('narrows an assumptionId that names a claim or a mechanism to the assumption its play rests on', () => {
+    const triaged = triageArtefacts({ artefacts: [judgement({ assumptionId: mechanism.id })], warnings: [] }, 17, prior);
+    expect(triaged.rejected).toEqual([]);
+    expect(triaged.artefacts[0].data.assumptionId).toBe(assumption.id);
+    // What it named is still cited: it resolved, it was only mis-filed.
+    expect(triaged.artefacts[0].refs).toContain(mechanism.id);
+    expect(triaged.warnings.join(' ')).toContain('not an assumption record');
   });
 });
 

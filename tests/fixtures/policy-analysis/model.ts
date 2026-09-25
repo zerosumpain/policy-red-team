@@ -1,6 +1,6 @@
 // Synthetic provider responses used only by automated tests. Not a runtime fallback.
 import { artefact, ASSURANCE_CATEGORIES, isPassStage, passOf, passStep, PATTERNS, SCENARIOS, PROFILE_FIELDS, REPORT_SECTIONS, SHORT_PROFILE_FIELDS, type Artefact, type StageInput, type StageOutput } from '../../../src/lib/policy-analysis/contracts';
-export function fixtureModel(stage: number, _key: string, raw: unknown): StageOutput {
+export function fixtureModel(stage: number, _key: string, raw: unknown, _options?: { signal?: AbortSignal }): StageOutput {
   const input = raw as StageInput & { idPrefix: string; targetActorId?: string | null; targetActorIds?: string[]; targetPattern?: string; targetScenario?: string; targetMechanismId?: string; targetCategory?: string };
   const prefix = input.idPrefix;
   const one = (kind: Artefact['kind']) => input.artefacts.find((a) => a.kind === kind && (kind !== 'actor' || stage < 3 || a.id.startsWith('s2_')))!;

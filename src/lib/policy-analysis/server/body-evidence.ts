@@ -1,12 +1,13 @@
 import { desc, inArray, isNotNull, sql } from 'drizzle-orm';
 import { db, type DbExecutor } from '$lib/db';
 import { policyBodyEvidence, policyBodyEvidenceChecks, policyPersonas } from '$lib/db/schema';
-import { EVIDENCE_SOURCES, EVIDENCE_TTL_MS, pickEvidence, type BodyEvidenceRecord, type EvidenceQuestion, type EvidenceSource } from '../body-evidence';
+import { EVIDENCE_SOURCES, EVIDENCE_TTL_MS, pickEvidence, uncheckedWarning, type BodyEvidenceRecord, type EvidenceQuestion, type EvidenceSource } from '../body-evidence';
 import type { Artefact } from '../contracts';
 import { isAffectedGroup } from '../personas';
 import { resolveBody, type RegisterBody } from '../register';
 import { fetchBodySources, type SourceAnswer, type SourceFetch } from './body-sources';
 import { registerIndex, syncRegister } from './register';
+import { chosenEngine } from '$lib/server/search';
 
 /**
  * THE STORE OF PUBLIC RECORDS ABOUT REGISTER BODIES.
@@ -79,8 +80,13 @@ export function staleSources(checks: SourceCheck[], now = new Date()): EvidenceS
 export async function saveAnswers(bodyId: string, answers: SourceAnswer[], now = new Date(), tx: DbExecutor = db): Promise<number> {
   let added = 0;
   for (const answer of answers) {
+    // A skip the PAPER GUARD caused is a fact about one run's paper, not about
+    // the body, and this table is shared by every owner. Stored, it would tell
+    // the next run — anyone's — that the source had been asked, for thirty
+    // days. So it is not stored at all: the source stays unasked.
+    if (answer.guarded && !answer.records.length) continue;
     if (answer.skipped && !answer.records.length) {
-      // Not asked on purpose (no slug, or the name quoted the paper). Recorded
+      // Not asked on purpose (no slug, or a name too short to search). Recorded
       // so it is not "never asked" for ever, and with a full TTL.
       await upsertCheck(tx, bodyId, answer.source, now, new Date(now.getTime() + EVIDENCE_TTL_MS), 0, answer.skipped);
       continue;
@@ -134,12 +140,20 @@ const slugOf = (body: RegisterBody) => (body.id.startsWith('govuk:') ? body.id.s
  * out, unless forced. Returns how many new records arrived and which sources
  * were asked.
  */
-export async function refreshBody(body: RegisterBody, options: RefreshOptions = {}): Promise<{ added: number; asked: EvidenceSource[]; failed: EvidenceSource[] }> {
+export async function refreshBody(body: RegisterBody, options: RefreshOptions = {}): Promise<{ added: number; asked: EvidenceSource[]; failed: EvidenceSource[]; off?: boolean }> {
+  // AN INSTALL SET NOT TO LOOK ANYTHING UP ASKS NOTHING, whoever calls. The
+  // worker already declined for a run; "Check again now" and `npm run
+  // research:bodies` did not, and `none` is a reader saying this estate has
+  // no route out — not a preference about paid search alone.
+  if (chosenEngine() === 'none') return { added: 0, asked: [], failed: [], off: true };
   const now = options.now ?? new Date();
   const checks = (await checksFor([body.id])).get(body.id) ?? [];
   const asked = options.force ? [...EVIDENCE_SOURCES] : staleSources(checks, now);
   if (!asked.length) return { added: 0, asked, failed: [] };
-  const answers = await fetchBodySources({ id: body.id, slug: slugOf(body), name: body.name }, {
+  // Whether the name is the register's own, read from the register rather than
+  // trusted from the caller: only then is it exempt from the paper guard.
+  const registered = (await registerIndex()).bodies.get(body.id)?.name === body.name;
+  const answers = await fetchBodySources({ id: body.id, slug: slugOf(body), name: body.name, registered }, {
     sources: asked, signal: options.signal, corpus: options.corpus, now, fetch: options.fetch, guard: options.guard,
   });
   options.signal?.throwIfAborted();
@@ -208,7 +222,8 @@ export async function evidenceForActors(actors: Artefact[], options: { fetch: bo
         failed.push(body.name);
       }
     });
-    if (failed.length) warnings.push(`The public record for ${failed.length} ${failed.length === 1 ? 'body' : 'bodies'} could not be fully checked (${failed.slice(0, 5).join(', ')}${failed.length > 5 ? ', and others' : ''}). What was already stored was used.`);
+    const unchecked = uncheckedWarning(failed);
+    if (unchecked) warnings.push(unchecked);
   }
   const stored = await storedEvidence(unique.map((b) => b.id));
   const bundles: ActorEvidence[] = [];

@@ -109,6 +109,17 @@ describe.skipIf(!local)('actor identity across papers', () => {
     expect(observation.traits[0].value).toContain('£523 million');
   });
 
+  it('keeps the paper’s own programme out of the summary too, with the names only this paper knows', async () => {
+    const id = await paper('Hubs paper');
+    await write(id, 'Hubs paper', [link('s13_0_h', 's2_9', 'Department of Health and Social Care', 'department', [{ key: 'mandate', value: 'Sets health policy.' }], {
+      summary: 'Sets health and care policy. Runs Best Start Family Hubs directly.',
+    })], [actor('s2_9', 'Department of Health and Social Care', 'department'), actor('s2_10', 'Best Start Family Hubs', 'programme')]);
+    const [dhsc] = (await mine()).filter((p) => p.bodyId === 'govuk:department-of-health-and-social-care');
+    expect(dhsc.summary).toBe('Sets health and care policy.');
+    const [observation] = await db.select().from(policyPersonaObservations).where(eq(policyPersonaObservations.personaId, dhsc.id));
+    expect(observation.summary).toBe('Sets health and care policy.');
+  });
+
   it('rebuilds the dossier and summary from what is left when a paper is deleted, and deletes a persona left with none', async () => {
     const keep = await paper('Kept paper');
     const drop = await paper('Dropped paper');
@@ -126,6 +137,22 @@ describe.skipIf(!local)('actor identity across papers', () => {
 
     expect(await remove(owner, keep)).toBe(true);
     expect(await db.select().from(policyPersonas).where(eq(policyPersonas.id, nao.id))).toHaveLength(0);
+  });
+
+  it('takes a deleted paper’s names off the persona too: its aliases, and a name only it used', async () => {
+    const first = await paper('Alpha paper');
+    const second = await paper('Beta paper');
+    await write(first, 'Alpha paper', [link('s13_0_w', 's2_20', 'Alpha Watch', 'agency', [{ key: 'mandate', value: 'Inspects.' }])], [actor('s2_20', 'Alpha Watch', 'agency', ['The Alpha Watchers'])]);
+    const [alpha] = (await mine()).filter((p) => p.name === 'Alpha Watch');
+    // The second paper's link echoes the persona, under its own words for it.
+    await write(second, 'Beta paper', [link('s13_0_w', 's2_21', 'Beta Board', 'agency', [{ key: 'judgedOn', value: 'Judged on reports.' }], { personaId: alpha.id })], [actor('s2_21', 'Beta Board', 'agency', ['BB'])]);
+    const [both] = await db.select().from(policyPersonas).where(eq(policyPersonas.id, alpha.id));
+    expect(both.aliases).toEqual(expect.arrayContaining(['The Alpha Watchers', 'Beta Board', 'BB']));
+
+    expect(await remove(owner, first)).toBe(true);
+    const [after] = await db.select().from(policyPersonas).where(eq(policyPersonas.id, alpha.id));
+    expect(after.name).toBe('Beta Board');
+    expect(after.aliases).toEqual(['BB']);
   });
 
   it('counts two runs of one document as one paper and shows the re-run no prior', async () => {
@@ -199,6 +226,23 @@ describe.skipIf(!local)('actor identity across papers', () => {
     expect(moved?.observations.map((o) => o.id)).toEqual([target.id]);
     const rulings = await db.select().from(policyPersonaDecisions).where(and(eq(policyPersonaDecisions.personaId, regulator.id), eq(policyPersonaDecisions.verdict, 'different')));
     expect(rulings.map((r) => r.subject)).toContain(`persona:${id}`);
+  });
+
+  it('types a persona by its actor before its link, as the group filter does — so no boot upgrade can take it for a group', async () => {
+    const id = await paper('Mistyped paper');
+    // The model called a body a user group; the paper's own actor says department.
+    await write(id, 'Mistyped paper', [link('s13_0_m', 's2_30', 'Ministry of Defence', 'user_group', [{ key: 'mandate', value: 'Runs defence.' }])], [actor('s2_30', 'Ministry of Defence', 'department')]);
+    const [mod] = (await mine()).filter((p) => p.bodyId === 'govuk:ministry-of-defence');
+    expect(mod.entityType).toBe('department');
+    await db.transaction((tx) => upgradePersonaLibrary(tx));
+    expect(await db.select().from(policyPersonas).where(eq(policyPersonas.id, mod.id))).toHaveLength(1);
+  });
+
+  it('leaves a library it has already upgraded alone: a group-typed row written since is not the upgrade\'s to move', async () => {
+    const [since] = await db.insert(policyPersonas).values({ owner, name: 'Carers', entityType: 'user_group', dossier: [], dossierVersion: 1 }).returning();
+    expect(await db.transaction((tx) => upgradePersonaLibrary(tx))).toMatchObject({ groups: 0, rebuilt: 0 });
+    expect(await db.select().from(policyPersonas).where(eq(policyPersonas.id, since.id))).toHaveLength(1);
+    await db.delete(policyPersonas).where(eq(policyPersonas.id, since.id));
   });
 
   it('upgrades a pre-phase-19 library: groups out, dossiers recomputed, bodies matched', async () => {

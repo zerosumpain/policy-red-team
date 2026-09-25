@@ -44,11 +44,19 @@ export const HANSARD_API = 'https://hansard-api.parliament.uk/search/debates.jso
 /** The only hosts this module will ask, whatever a caller passes. */
 const API_HOSTS = new Set(['www.gov.uk', 'committees-api.parliament.uk', 'hansard-api.parliament.uk']);
 
-/** A body as the sources need it: its register id, its GOV.UK slug and its official name. */
-export type SourceBody = { id: string; slug: string | null; name: string };
+/**
+ * A body as the sources need it: its register id, its GOV.UK slug and its
+ * official name. `registered` says the name IS the register's own, checked
+ * against the register by the caller — see `sourceUrls`.
+ */
+export type SourceBody = { id: string; slug: string | null; name: string; registered?: boolean };
 
-/** What one source said about one body. `records` is empty on an error or a skip. */
-export type SourceAnswer = { source: EvidenceSource; records: BodyEvidenceRecord[]; error: string | null; skipped: string | null };
+/**
+ * What one source said about one body. `records` is empty on an error or a
+ * skip. `guarded` marks a skip the paper guard caused: a fact about the paper a
+ * run was reading, never about the body, so it must not be stored as an answer.
+ */
+export type SourceAnswer = { source: EvidenceSource; records: BodyEvidenceRecord[]; error: string | null; skipped: string | null; guarded?: boolean };
 
 export type SourceFetch = (url: string, init?: RequestInit) => Promise<Response>;
 
@@ -63,9 +71,22 @@ export type SourceOptions = {
   sources?: readonly EvidenceSource[];
 };
 
-/** Each source's address for one body, or why it is not asked. */
-export function sourceUrls(body: SourceBody, corpus: Set<string> = new Set()): Record<EvidenceSource, string | { skipped: string }> {
-  const term = searchTerm(body.name, corpus);
+/**
+ * Each source's address for one body, or why it is not asked.
+ *
+ * THE REGISTER'S OWN NAME IS NOT PAPER TEXT. The document guard exists so a
+ * paper's distinctive wording never reaches somebody else's query log — but a
+ * register body's official name came from GOV.UK, and a paper that names the
+ * Department for Science, Innovation and Technology in full is quoting the
+ * register, not the other way round. 96 live register bodies have names of six
+ * words or more, and each was blocked for every owner for thirty days whenever
+ * a paper spelt it out. So a `registered` name is sent as it is; anything else
+ * is still guarded.
+ */
+export function sourceUrls(body: SourceBody, corpus: Set<string> = new Set()): Record<EvidenceSource, string | { skipped: string; guarded: boolean }> {
+  const term = searchTerm(body.name, body.registered ? new Set() : corpus);
+  // Whether it was the GUARD that refused the name, rather than the name being unusable.
+  const guarded = !term && searchTerm(body.name) !== null;
   const govuk = new URLSearchParams();
   if (body.slug) {
     govuk.set('filter_organisations', body.slug);
@@ -87,9 +108,11 @@ export function sourceUrls(body: SourceBody, corpus: Set<string> = new Set()): R
     hansard.set('queryParameters.orderBy', 'SittingDateDesc');
     hansard.set('queryParameters.take', String(PER_SOURCE));
   }
-  const noTerm = { skipped: 'Its official name reads like a phrase from the paper being assessed, so it was not sent.' };
+  const noTerm = guarded
+    ? { skipped: 'Its name reads like a phrase from the paper being assessed, so it was not sent.', guarded: true }
+    : { skipped: 'Its name is too short to search for.', guarded: false };
   return {
-    govuk: body.slug ? `${GOVUK_SEARCH_API}${govuk}` : { skipped: 'It has no GOV.UK organisation page to search by.' },
+    govuk: body.slug ? `${GOVUK_SEARCH_API}${govuk}` : { skipped: 'It has no GOV.UK organisation page to search by.', guarded: false },
     committees: term ? `${COMMITTEES_API}${committees}` : noTerm,
     hansard: term ? `${HANSARD_API}${hansard}` : noTerm,
   };
@@ -110,7 +133,7 @@ export async function fetchBodySources(body: SourceBody, options: SourceOptions 
   const wanted = options.sources ?? (Object.keys(urls) as EvidenceSource[]);
   return Promise.all(wanted.map(async (source): Promise<SourceAnswer> => {
     const url = urls[source];
-    if (typeof url !== 'string') return { source, records: [], error: null, skipped: url.skipped };
+    if (typeof url !== 'string') return { source, records: [], error: null, skipped: url.skipped, guarded: url.guarded };
     try {
       const parsed = new URL(url);
       if (parsed.protocol !== 'https:' || !API_HOSTS.has(parsed.hostname)) throw new Error('not an allowed host');

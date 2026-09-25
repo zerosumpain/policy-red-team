@@ -297,6 +297,7 @@ export async function handleApi(
       const controller = new AbortController();
       res.on('close', () => { if (!res.writableFinished) controller.abort(); });
       const result = await refreshBody(body, { force: true, signal: controller.signal });
+      if (result.off) throw new HttpError(409, 'This install is set not to look anything up, so the public record is not checked. What is already stored is shown.');
       sendJson(res, 200, result);
       return true;
     }
