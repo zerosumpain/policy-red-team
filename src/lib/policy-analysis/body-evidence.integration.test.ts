@@ -93,6 +93,19 @@ describe.skipIf(!local)('the public-record store', () => {
     expect((await bodyRecord('govuk:ofsted')).records).toHaveLength(before);
   });
 
+  it('asks nothing when the install is set not to look anything up — "check again" and the library refresh included', async () => {
+    const before = process.env.POLICY_SEARCH;
+    process.env.POLICY_SEARCH = 'none';
+    try {
+      const home = (await registerIndex()).bodies.get('govuk:home-office')!;
+      const result = await refreshBody(home, { force: true });
+      expect(result).toMatchObject({ asked: [], added: 0, off: true });
+      expect((await bodyRecord('govuk:home-office')).checks).toEqual([]);
+    } finally {
+      if (before === undefined) delete process.env.POLICY_SEARCH; else process.env.POLICY_SEARCH = before;
+    }
+  });
+
   it('never stores a skip the paper guard caused: the next run, or another owner, asks again', async () => {
     const now = new Date('2026-09-25T12:00:00Z');
     await saveAnswers('govuk:department-for-science-innovation-and-technology', [

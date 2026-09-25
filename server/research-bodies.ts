@@ -21,11 +21,20 @@ import '../src/lib/polyfills';
 import { client } from '$lib/db';
 import { migrate } from '../scripts/migrate.mjs';
 import { refreshLibrary } from '$lib/policy-analysis/server/body-evidence';
+import { chosenEngine, refreshSearchConfig } from '$lib/server/search';
 
 const force = process.argv.includes('--force');
 
 try {
   await migrate(client, { log: () => {} });
+  // The panel's setting, not just the environment's: a reader who set search
+  // to `none` in /admin meant this command too.
+  await refreshSearchConfig();
+  if (chosenEngine() === 'none') {
+    console.log('This install is set not to look anything up, so the public record is not checked.');
+    await client.close();
+    process.exit(0);
+  }
   console.log(`Checking the public record for every body in the library${force ? ', asking every source again' : ''}…`);
   const result = await refreshLibrary({ force, log: (line) => console.log(line) });
   if (!result.bodies) {

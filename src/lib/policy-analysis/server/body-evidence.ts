@@ -7,6 +7,7 @@ import { isAffectedGroup } from '../personas';
 import { resolveBody, type RegisterBody } from '../register';
 import { fetchBodySources, type SourceAnswer, type SourceFetch } from './body-sources';
 import { registerIndex, syncRegister } from './register';
+import { chosenEngine } from '$lib/server/search';
 
 /**
  * THE STORE OF PUBLIC RECORDS ABOUT REGISTER BODIES.
@@ -139,7 +140,12 @@ const slugOf = (body: RegisterBody) => (body.id.startsWith('govuk:') ? body.id.s
  * out, unless forced. Returns how many new records arrived and which sources
  * were asked.
  */
-export async function refreshBody(body: RegisterBody, options: RefreshOptions = {}): Promise<{ added: number; asked: EvidenceSource[]; failed: EvidenceSource[] }> {
+export async function refreshBody(body: RegisterBody, options: RefreshOptions = {}): Promise<{ added: number; asked: EvidenceSource[]; failed: EvidenceSource[]; off?: boolean }> {
+  // AN INSTALL SET NOT TO LOOK ANYTHING UP ASKS NOTHING, whoever calls. The
+  // worker already declined for a run; "Check again now" and `npm run
+  // research:bodies` did not, and `none` is a reader saying this estate has
+  // no route out — not a preference about paid search alone.
+  if (chosenEngine() === 'none') return { added: 0, asked: [], failed: [], off: true };
   const now = options.now ?? new Date();
   const checks = (await checksFor([body.id])).get(body.id) ?? [];
   const asked = options.force ? [...EVIDENCE_SOURCES] : staleSources(checks, now);
