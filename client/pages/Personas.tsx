@@ -53,6 +53,10 @@ export function Personas() {
             about other policies, and what it says about a body is a record of how that body has
             been described — not a finding about the assessment in front of you.
           </p>
+          <p className="govuk-body">
+            <Link className="govuk-link" to="/bodies">See every public body against every paper</Link>, and
+            where two papers pull the same bodies in opposite directions.
+          </p>
           {error ? <p className="govuk-body govuk-error-message" role="alert">{error}</p> : null}
           {rows === null && !error ? <p className="govuk-body">Loading…</p> : null}
           {rows?.length === 0 ? (

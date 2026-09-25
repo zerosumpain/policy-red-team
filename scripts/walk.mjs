@@ -772,6 +772,39 @@ try {
       if (!/seen in 2 papers/.test(await page.locator('#main-content').innerText())) failures.push('personas: combining the two records again did not bring both papers back');
       note('a paper separated into its own record and combined back, through the pages a reader would use');
     }
+
+    /*
+     * 9b″ — A BODY ACROSS PAPERS, AND ITS PUBLIC RECORD (phase 19, workstream X).
+     *
+     * The fixture paper's "Department" is on no register, so the walk says which
+     * GOV.UK body it is — through the API the register page posts to — and then
+     * presses "Check again now". The fixture server's public-record sources are
+     * the stand-in `build.mjs` swaps in, so this reaches no government API and
+     * still drives the store, the route and both new sections for real.
+     */
+    const linked = await page.evaluate(async (id) => (await fetch(`/api/policy-analysis/personas/${id}/body`, {
+      method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ bodyId: 'govuk:department-for-education', verdict: 'same' }),
+    })).status, personaId);
+    if (linked !== 200) failures.push(`personas: linking a body to the GOV.UK list answered ${linked}`);
+    await page.goto(personaUrl, { waitUntil: 'networkidle' });
+    await page.getByRole('heading', { name: /^Track record/, level: 2 }).waitFor({ timeout: 20000 });
+    await page.getByRole('button', { name: 'Check again now' }).click();
+    await page.getByText(/Found \d+ new documents?\.|Nothing new was found\./).waitFor({ timeout: 20000 });
+    const intelText = await page.locator('#main-content').innerText();
+    for (const expected of ['Where it sits', 'What each paper asks of it', 'What it is asked to do, and what it has', '(fixture record)']) {
+      if (!intelText.includes(expected)) failures.push(`personas: the body's page is missing "${expected}"`);
+    }
+    if (!/these are evidence/i.test(intelText)) failures.push('personas: the public record does not say it is evidence, unlike the rest of the page');
+    await audit('/personas/:id (across papers and public record)');
+
+    await page.goto(`http://127.0.0.1:${PORT}/bodies`, { waitUntil: 'networkidle' });
+    await page.getByRole('heading', { name: 'Bodies across papers', level: 1 }).waitFor({ timeout: 20000 });
+    await page.locator('#main-content table').first().waitFor({ timeout: 20000 });
+    const gridText = await page.locator('#main-content').innerText();
+    if (!gridText.includes('Department for Education')) failures.push('bodies: the grid does not list the body the walk matched');
+    if (!/Same body, different asks/.test(gridText)) failures.push('bodies: a body named in two papers is not offered for comparison');
+    await audit('/bodies');
+    note('a body matched to GOV.UK shows what each paper asks of it, a dated public record, and a row in the bodies × papers grid');
   }
 
   // 9c — THE ADMIN PANEL, and the lock on it.

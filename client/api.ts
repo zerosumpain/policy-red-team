@@ -7,6 +7,8 @@
  * empty panel.
  */
 import type { Artefact } from '$lib/policy-analysis/contracts';
+import type { Clash, Grid, PaperAsks } from '$lib/policy-analysis/intel';
+import type { BodyEvidenceRecord, EvidenceSource } from '$lib/policy-analysis/body-evidence';
 import type { PassRow, RunCost } from '$lib/policy-analysis/view';
 
 export interface OfferedModel {
@@ -156,6 +158,22 @@ export interface BodyFacts {
   closedOn: string | null;
   replacedBy: { id: string; name: string }[];
   url: string | null;
+}
+
+/**
+ * Every register body the library has met, against every paper that named it —
+ * phase 19, workstream X. Mirrors `bodiesGrid` in `server/intel.ts`.
+ */
+export type BodiesGrid = Grid & { clashes: Clash[]; personaOf: Record<string, string>; readOnly: boolean };
+
+/** One body across papers: what each asked of it, its public record, where it sits. Mirrors `BodyIntel`. */
+export interface BodyIntel {
+  body: BodyFacts | null;
+  children: { id: string; name: string; personaId: string | null }[];
+  parentPersonas: Record<string, string>;
+  papers: PaperAsks[];
+  record: { records: BodyEvidenceRecord[]; checks: { source: EvidenceSource; checkedAt: string; expiresAt: string; found: number; error: string | null }[] };
+  clashes: Clash[];
 }
 
 /** Two rows that may be one body recorded twice. Offered, never acted on. */
@@ -423,6 +441,13 @@ export const api = {
   /** Spends: two model calls plus retrieval. Refused outright in a read-only copy. */
   researchPersona: (id: string) =>
     request<{ sources: number; traits: number }>(`/api/policy-analysis/personas/${id}/research`, { method: 'POST' }),
+  /** Every register body against every paper, and the clashes between papers. Phase 19. */
+  bodies: () => request<BodiesGrid>('/api/policy-analysis/bodies'),
+  /** One body across papers, its public record and where it sits. */
+  personaIntel: (id: string) => request<BodyIntel>(`/api/policy-analysis/personas/${id}/intel`),
+  /** Ask GOV.UK and Parliament about this body again now. Free; a brake stops a loop. */
+  checkPublicRecord: (id: string) =>
+    request<{ added: number; asked: string[]; failed: string[] }>(`/api/policy-analysis/personas/${id}/evidence`, { method: 'POST' }),
   /** The GOV.UK list of organisations, searched. Public data; spends nothing. */
   searchRegister: (q: string) =>
     request<{ results: BodyFacts[] }>(`/api/policy-analysis/personas/register?q=${encodeURIComponent(q)}`),

@@ -6,6 +6,7 @@ import { Button, ButtonGroup, Details, InsetText, SummaryList, Table, WarningTex
 import { selectionParam } from '../report/selection';
 import { BandMark } from '../BandMark';
 import { usePageTitle } from '../layout/Template';
+import { PersonaIntel } from './PersonaIntel';
 
 /**
  * ONE BODY, ACROSS EVERY PAPER THAT NAMED IT.
@@ -209,6 +210,12 @@ export function Persona() {
           </div>
         </div>
       </section>
+
+      {/* THE BODY ACROSS PAPERS AND ITS PUBLIC RECORD — phase 19, workstream X.
+          Where it sits, what each paper asked of it, what it has to work with,
+          and dated public documents: the one part of this page that is
+          evidence, and it says so. */}
+      <PersonaIntel personaId={id} name={persona.name} readOnly={readOnly} />
 
       {/* WHAT ONLY A LIBRARY CAN SAY, and therefore what leads. */}
       {view.contested.length ? (
