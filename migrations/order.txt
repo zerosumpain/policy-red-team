@@ -18,3 +18,4 @@
 0001-schema-catchup.sql
 0002-settings.sql
 0003-actor-identity.sql
+0004-body-evidence.sql

@@ -416,7 +416,11 @@ export const dataSchemas = {
   // every profile written before short ones existed.
   profile: z.object({ actorId: text, coversActorIds: ids.optional(), form: z.enum(['full', 'short']).optional(), ...profileFields }),
   research_question: z.object({ importance: unit, uncertainty: unit, consequence: unit, priority: unit.optional(), rationale: text, searchStrategy: text, gap: text }),
-  research_source: z.object({ questionId: text, retrievedAt: text, quality: text, qualityBasis: text, freshness: text, jurisdictionalRelevance: text, retrieval: z.enum(['full_text', 'search_excerpt']), gap: text }),
+  // The four optional fields are a PUBLIC RECORD's (phase 19, workstream X):
+  // the register body it is about, what it answers, when it was published and
+  // by whom — written by `body-evidence.ts`, never by a model, which may not
+  // write this kind at all. Without them in the shape, triage strips them.
+  research_source: z.object({ questionId: text, retrievedAt: text, quality: text, qualityBasis: text, freshness: text, jurisdictionalRelevance: text, retrieval: z.enum(['full_text', 'search_excerpt']), gap: text, bodyId: z.string().max(200).optional(), question: z.string().max(40).optional(), publishedAt: z.string().max(40).nullable().optional(), publisher: z.string().max(300).nullable().optional() }),
   evidence: z.object({ claimId: z.string().nullable(), mechanismId: z.string().nullable(), actorId: z.string().nullable(), assumptionId: z.string().nullable(), sourceId: text, evidenceType: text, result: z.enum(['supports', 'contradicts', 'mixed', 'insufficient']), sourceQuality: text, relevance: text, freshness: text, dispute: text }),
   model: z.object({ pattern: z.enum(PATTERNS), players: ids, strategies: strings, decisionOrder: text, information: text, costs: text, benefits: text, rewards: text, sanctions: text, dependencies: ids, assumptions: ids.min(1), responses: strings, equilibria: strings, explanation: text, applicability: text }),
   // `basis` and `extracted` are written by `tests.ts`, never by a model: a check
@@ -652,9 +656,14 @@ export const indexedOutputSchema = z.object({ artefacts: z.array(indexedArtefact
 //
 // `research_question` on 7, 9, 10, 14, 15 and 16 is what lets a later stage ask
 // — see FOLLOW_UP_STAGES.
+//
+// `research_source` on stage 4 is the public record about each fully profiled
+// body (phase 19, workstream X): minted by the pipeline from the store before
+// the profiles are asked for, so a profile can cite it. `MODEL_KINDS` drops it
+// there as everywhere.
 export const STAGE_KINDS: Kind[][] = [
   ['passage'], ['claim', 'mechanism', 'assumption', 'actor'], ['actor', 'alias', 'resolution_candidate'],
-  ['edge'], ['profile'], ['research_question', 'research_source'], ['evidence'], ['model', 'assumption', 'research_question', 'research_source'], ['test'], ['scenario', 'assumption', 'research_question', 'research_source'],
+  ['edge'], ['profile', 'research_source'], ['research_question', 'research_source'], ['evidence'], ['model', 'assumption', 'research_question', 'research_source'], ['test'], ['scenario', 'assumption', 'research_question', 'research_source'],
   ['exploit', 'assumption', 'research_question', 'research_source'], ['cross_policy'], ['finding', 'recommendation', 'assumption'], ['persona_link'],
   ['causal_chain', 'assumption', 'research_question', 'research_source'], ['option_appraisal', 'evaluation_plan', 'assumption', 'research_question', 'research_source'],
   ['assurance_challenge', 'research_question', 'research_source'], ['finding', 'recommendation', 'assurance_response', 'review_summary', 'assumption'],

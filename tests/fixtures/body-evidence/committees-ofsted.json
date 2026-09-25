@@ -1,0 +1,96 @@
+{
+ "items": [
+  {
+   "id": 44437,
+   "description": "Third Special Report - Ofsted\u2019s work with schools: Government Response to the Committee\u2019s First Report",
+   "publicationStartDate": "2024-04-25T00:00:00",
+   "type": {
+    "id": 12,
+    "name": "Special Report"
+   },
+   "committee": {
+    "id": 203,
+    "name": "Education Committee",
+    "house": "Commons"
+   },
+   "additionalContentUrl": "https://publications.parliament.uk/pa/cm5804/cmselect/cmeduc/689/report.html"
+  },
+  {
+   "id": 43748,
+   "description": "Second Special Report - Ofsted\u2019s work with schools: Ofsted response to the Committee\u2019s First Report",
+   "publicationStartDate": "2024-03-11T00:00:00",
+   "type": {
+    "id": 12,
+    "name": "Special Report"
+   },
+   "committee": {
+    "id": 203,
+    "name": "Education Committee",
+    "house": "Commons"
+   },
+   "additionalContentUrl": "https://publications.parliament.uk/pa/cm5804/cmselect/cmeduc/624/report.html"
+  },
+  {
+   "id": 43079,
+   "description": "First Report - Ofsted\u2019s work with schools",
+   "publicationStartDate": "2024-01-29T00:01:00",
+   "type": {
+    "id": 1,
+    "name": "Report"
+   },
+   "committee": {
+    "id": 203,
+    "name": "Education Committee",
+    "house": "Commons"
+   },
+   "additionalContentUrl": "https://publications.parliament.uk/pa/cm5804/cmselect/cmeduc/117/summary.html"
+  },
+  {
+   "id": 42163,
+   "description": "Attitudes towards women and girls in educational settings: Government, Ofsted and Office for Students responses to the Committee\u2019s Fifth Report of Session 2022\u201323",
+   "publicationStartDate": "2023-11-17T00:01:00",
+   "type": {
+    "id": 12,
+    "name": "Special Report"
+   },
+   "committee": {
+    "id": 328,
+    "name": "Women and Equalities Committee",
+    "house": "Commons"
+   },
+   "additionalContentUrl": "https://publications.parliament.uk/pa/cm5804/cmselect/cmwomeq/258/report.html"
+  },
+  {
+   "id": 20440,
+   "description": "9th Special Report - Tackling inequalities faced by Gypsy, Roma and Traveller communities: Government and Ofsted response to the Committee\u2019s Seventh Report of Session 2017\u201319",
+   "publicationStartDate": "2019-07-02T00:01:00",
+   "type": {
+    "id": 12,
+    "name": "Special Report"
+   },
+   "committee": {
+    "id": 328,
+    "name": "Women and Equalities Committee",
+    "house": "Commons"
+   },
+   "additionalContentUrl": "https://publications.parliament.uk/pa/cm201719/cmselect/cmwomeq/2411/2411.pdf"
+  },
+  {
+   "id": 27866,
+   "description": "Ofsted response to Fifth Report of Session 2017-19",
+   "publicationStartDate": "2018-10-12T00:00:00",
+   "type": {
+    "id": 2,
+    "name": "Government Response"
+   },
+   "committee": {
+    "id": 203,
+    "name": "Education Committee",
+    "house": "Commons"
+   },
+   "additionalContentUrl": "https://www.parliament.uk/globalassets/documents/commons-committees/Education/Ofsted_response.pdf"
+  }
+ ],
+ "totalResults": 20,
+ "itemsPerPage": 6
+}

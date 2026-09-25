@@ -22,6 +22,7 @@
     "offline": "npm run build:offline && node build.mjs && node scripts/offline-check.mjs",
     "pack:live": "npm run build:offline && node scripts/pack-live.mjs",
     "register:refresh": "node build.mjs && node dist/register-refresh.js",
+    "research:bodies": "node build.mjs && node dist/research-bodies.js",
     "serve": "node dist/server.js",
     "spike": "node spike/pglite.mjs && node spike/drizzle.mjs && node spike/govuk/build.mjs",
     "start": "npm run build && node dist/server.js",
