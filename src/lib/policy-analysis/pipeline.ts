@@ -81,9 +81,11 @@ const CONSECUTIVE_TIMEOUT_LIMIT = 6;
  * collapsing them would hide exactly what `CONSECUTIVE_TIMEOUT_LIMIT` exists to
  * report. Same for a contract failure: it describes the response, not the wire.
  *
- * A provider that is genuinely down still stops the stage promptly, because the
- * collapse is per batch: it fails every batch, so the count still climbs one per
- * batch and trips after `CONSECUTIVE_LIMIT` of them.
+ * A provider that is genuinely down still stops the stage promptly, because an
+ * event only ever absorbs the units that were IN FLIGHT when it happened — at
+ * most `lanes` of them. A unit dispatched afterwards that fails the same way is
+ * a new event, so the count still climbs at least once per `lanes` failures and
+ * trips after `CONSECUTIVE_LIMIT` of them. See `fanOut`.
  */
 const CONCURRENT_EVENT_CODES = new Set(['provider']);
 
@@ -115,7 +117,7 @@ export async function executeStage(input: StageInput, deps: PipelineDeps): Promi
   // The failure immediately before this one, so a fan-out can tell "three lanes
   // died together" from "three units failed one after another". Cleared by any
   // success, exactly as `consecutive` is.
-  let priorFailure: { signature: string; batch: number } | null = null;
+  let priorFailure: { signature: string; event: number } | null = null;
   let rejected = 0;
   // A holder, not a bare `let`: control-flow narrowing pins a `let` initialised
   // to null at `null` for the outer scope, so every read after the closure that
@@ -169,18 +171,23 @@ export async function executeStage(input: StageInput, deps: PipelineDeps): Promi
   const request = async (key: string, context: Artefact[], extra: Record<string, unknown> = {}) =>
     absorb(await send(key, context, reserve(key), extra));
 
-  /** A failed unit becomes a recorded gap — until too many in a row fail. */
-  const gap = (describe: string, err: unknown, batch = -1) => {
+  /**
+   * A failed unit becomes a recorded gap — until too many in a row fail.
+   *
+   * `event` is the transport event a fan-out unit's failure belongs to, or -1
+   * where there is no fan-out and so nothing to share an event with.
+   */
+  const gap = (describe: string, err: unknown, event = -1) => {
     deps.signal.throwIfAborted();
     if (!(err instanceof PolicyError)) throw err;
     fault.last = err;
-    // One transport event that took down every lane of a batch counts ONCE. The
+    // One transport event that took down every lane in flight counts ONCE. The
     // unit is still recorded as missing below — what changes is only whether the
     // assessment concludes the provider has stopped answering.
     const signature = `${err.code}|${err.message}`;
-    const sameEvent = batch >= 0 && CONCURRENT_EVENT_CODES.has(err.code) &&
-      priorFailure?.batch === batch && priorFailure.signature === signature;
-    priorFailure = { signature, batch };
+    const sameEvent = event >= 0 && CONCURRENT_EVENT_CODES.has(err.code) &&
+      priorFailure?.event === event && priorFailure.signature === signature;
+    priorFailure = { signature, event };
     if (!sameEvent) consecutive++;
     output.warnings.push(`${describe} could not be assessed: ${err.message} It is missing from this stage.`);
     const limit = err.code === 'timeout' ? CONSECUTIVE_TIMEOUT_LIMIT : CONSECUTIVE_LIMIT;
@@ -205,6 +212,7 @@ export async function executeStage(input: StageInput, deps: PipelineDeps): Promi
 
   /** One unit of a fan-out: the arguments `attempt` would have been given. */
   type Unit = { key: string; context: Artefact[]; describe: string; extra?: Record<string, unknown> };
+  type Landed = { raw: unknown; err: unknown; event: number };
 
   /**
    * Run a fan-out with `lanes` units in flight, and fold the results in order.
@@ -216,46 +224,101 @@ export async function executeStage(input: StageInput, deps: PipelineDeps): Promi
    * agents therefore yields the same artefacts, the same ids and the same
    * warnings as a serial one — `pipeline.test.ts` asserts that directly.
    *
-   * Batched rather than a rolling pool so a dead provider is still caught
-   * promptly: `CONSECUTIVE_LIMIT` is checked as each batch is folded. A provider
-   * that is down fails every batch and trips after `CONSECUTIVE_LIMIT` of them,
-   * so the cost is bounded by `CONSECUTIVE_LIMIT * lanes` calls — and those are
-   * the cheap kind, since a refused connection comes back in milliseconds. That
-   * is the price of not reading one bridge restart as three dead lanes; see
-   * `CONCURRENT_EVENT_CODES`.
+   * A ROLLING POOL, NOT BATCHES. This was `Promise.all` over slices of `lanes`,
+   * so every batch waited for its slowest call before the next one started, and
+   * a model's per-call time is anything but even — a dense page takes four times
+   * a thin one. Measured on the review of 25 September 2026: 3.2 to 3.9 of six
+   * lanes busy, on average, across the fan-out stages. Now a lane that frees
+   * takes the next unit at once, and only the FOLD waits on order: unit 7 may
+   * land before unit 2, and sits until unit 2 has been absorbed.
+   *
+   * The dead-provider rule is kept by giving each failure an EVENT rather than a
+   * batch. A `provider` failure opens an event whose members are the units in
+   * flight at that moment; a later failure with the same signature belongs to it
+   * only if it was one of those members. So one bridge restart that kills every
+   * lane still counts once, but a unit dispatched AFTER it that fails the same
+   * way is a new event — without that, a dead provider would chain one event
+   * into the next forever and never be reported. An event holds at most `lanes`
+   * units, so a dead provider still trips `CONSECUTIVE_LIMIT` within
+   * `CONSECUTIVE_LIMIT * lanes` refused calls, the bound batches gave. The
+   * counting itself still happens in the fold, in unit order.
+   *
+   * `onFailure`, where given, replaces the gap-and-count rule for a stage whose
+   * failures must never end it — the persona library.
    */
-  const fanOut = async (units: Unit[], onResult?: (unit: Unit, result: ReturnType<typeof absorb> | null) => void) => {
+  const fanOut = async (units: Unit[], onResult?: (unit: Unit, result: ReturnType<typeof absorb> | null) => void, onFailure?: (unit: Unit, err: unknown) => void) => {
     // Units that answered with nothing. Silence is a legitimate finding — a body
     // the paper names once has no relationships to assert — but it is still
     // something the reader should be able to see, so it is counted and named once
     // rather than either failing the stage or vanishing.
     const silent: string[] = [];
-    for (let i = 0; i < units.length; i += lanes) {
-      const batch = units.slice(i, i + lanes);
-      const slots = batch.map((u) => reserve(u.key));
-      const settled = await Promise.all(batch.map((u, k) =>
-        send(u.key, u.context, slots[k], u.extra ?? {}).then(
-          (raw) => ({ raw, err: null as unknown }),
-          (err: unknown) => ({ raw: null as unknown, err }),
-        )));
-      // Real progress, reported as each batch lands. The worker turns this into a
-      // liveness beat, so a stage that is working says so — and one that has
-      // stopped working stops saying so, which is the case the probe exists for.
-      deps.onProgress?.(`${Math.min(i + batch.length, units.length)} of ${units.length}`);
-      for (let k = 0; k < batch.length; k++) {
-        const { raw, err } = settled[k];
+    // Every slot, in unit order, before anything is sent: the identifiers a
+    // response mints must not depend on which call happened to come back first.
+    const slots = units.map((u) => reserve(u.key));
+    const resolvers: ((landed: Landed) => void)[] = [];
+    const landed = units.map((_, k) => new Promise<Landed>((resolve) => { resolvers[k] = resolve; }));
+    const inFlight = new Set<number>();
+    const events = new Map<string, { id: number; members: Set<number> }>();
+    let nextEvent = 0;
+    let next = 0;
+    let count = 0;
+    let stopped = false;
+    const eventOf = (k: number, err: unknown): number => {
+      if (!(err instanceof PolicyError) || !CONCURRENT_EVENT_CODES.has(err.code)) return -1;
+      const signature = `${err.code}|${err.message}`;
+      const open = events.get(signature);
+      if (open?.members.has(k)) return open.id;
+      const opened = { id: nextEvent++, members: new Set(inFlight) };
+      events.set(signature, opened);
+      return opened.id;
+    };
+    const lane = async () => {
+      while (!stopped && next < units.length) {
+        const k = next++;
+        const unit = units[k];
+        inFlight.add(k);
+        const outcome = await send(unit.key, unit.context, slots[k], unit.extra ?? {}).then(
+          (raw): Landed => ({ raw, err: null, event: -1 }),
+          (err: unknown): Landed => ({ raw: null, err, event: eventOf(k, err) }),
+        );
+        inFlight.delete(k);
+        // Real progress, reported as each call lands. The worker turns this into
+        // a liveness beat, so a stage that is working says so — and one that has
+        // stopped working stops saying so, which is the case the probe exists for.
+        deps.onProgress?.(`${++count} of ${units.length}`);
+        resolvers[k](outcome);
+        // One tick before taking the next unit, so a fold that was waiting on
+        // THIS result runs first. If it decided the provider is dead, `stopped`
+        // is already set and nothing more goes out — which keeps a serial run to
+        // exactly the calls it always made, rather than one past the failure.
+        await Promise.resolve();
+      }
+    };
+    const running = Array.from({ length: Math.min(lanes, units.length) }, lane);
+    try {
+      for (let k = 0; k < units.length; k++) {
+        const { raw, err, event } = await landed[k];
         let result: ReturnType<typeof absorb> | null;
         try {
           if (err) throw err;
           result = absorb(raw);
           consecutive = 0; priorFailure = null;
         } catch (e) {
-          result = gap(batch[k].describe, e, i);
+          if (onFailure) { onFailure(units[k], e); result = null; }
+          else result = gap(units[k].describe, e, event);
         }
-        if (result && !result.artefacts.length) silent.push(batch[k].describe);
-        onResult?.(batch[k], result);
+        if (result && !result.artefacts.length) silent.push(units[k].describe);
+        onResult?.(units[k], result);
       }
+    } catch (err) {
+      // The stage is ending. Nothing more is dispatched, and the calls already
+      // out are waited for rather than abandoned: a call that lands after its
+      // stage has failed would otherwise write its record beside the retry's.
+      stopped = true;
+      await Promise.allSettled(running);
+      throw err;
     }
+    await Promise.all(running);
     if (silent.length) output.warnings.push(`${silent.length} of ${units.length} parts of this stage had nothing to report: ${silent.slice(0, 8).join(', ')}${silent.length > 8 ? `, and ${silent.length - 8} more` : ''}. The model answered for ${silent.length === 1 ? 'it' : 'each'} and recorded nothing, which is an answer rather than a failure.`);
   };
 

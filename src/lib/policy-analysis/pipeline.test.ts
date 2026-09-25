@@ -381,6 +381,57 @@ describe('concurrent agents', () => {
     expect((await run(6)).peak).toBeGreaterThan(1);
   });
 
+  /**
+   * THE ROLLING POOL. `fanOut` used to run `Promise.all` over batches of
+   * `lanes`, so one slow call held its whole batch — and the next — hostage:
+   * measured 3.2 to 3.9 of six lanes busy on the review of 25 September 2026.
+   *
+   * The first unit here does not answer until every other unit has STARTED. A
+   * batched fan-out can never get there (units 4 onward wait for unit 1), so the
+   * safety timer releases it instead and the test says which happened.
+   */
+  it('starts the next unit as soon as a lane frees, so one slow call holds up nothing', async () => {
+    const upTo7 = async (model: Parameters<typeof executeStage>[1]['model'], lanes: 1 | 3) => {
+      const all = (await ingest(fixture, 'policy.txt', 'text/plain')).artefacts;
+      for (let stage = 1; stage <= 7; stage++) {
+        const result = await executeStage(
+          { stage, title: 'Synthetic policy', jurisdiction: null, policyArea: null, context: null, artefacts: all },
+          { model: stage === 7 ? model : async (...a) => fixtureModel(...a), research: neverResearch, signal: new AbortController().signal, concurrency: stage === 7 ? lanes : 1 },
+        );
+        if (stage === 7) return result;
+        all.push(...result.artefacts);
+      }
+      throw new Error('unreachable');
+    };
+
+    let release!: (by: string) => void;
+    const slow = new Promise<string>((resolve) => { release = resolve; });
+    const safety = setTimeout(() => release('timer'), 2_000);
+    const started: string[] = [];
+    let inFlight = 0, peak = 0;
+    const model: Parameters<typeof executeStage>[1]['model'] = async (stage, key, input) => {
+      started.push(key);
+      inFlight++; peak = Math.max(peak, inFlight);
+      if (key === PATTERNS[0]) await slow;
+      else if (started.length === PATTERNS.length) release('pool');
+      await new Promise((resolve) => setTimeout(resolve, 1));
+      inFlight--;
+      return fixtureModel(stage, key, input);
+    };
+    const wide = await upTo7(model, 3);
+    clearTimeout(safety);
+
+    // Every other pattern started while the first was still out, and never more
+    // than three at once.
+    expect(await slow).toBe('pool');
+    expect(peak).toBeLessThanOrEqual(3);
+    // And the slow unit's results are still folded FIRST: same assessment as a
+    // serial run, ids and all.
+    const serial = await upTo7(async (...a) => fixtureModel(...a), 1);
+    expect(wide.artefacts).toEqual(serial.artefacts);
+    expect(wide.warnings).toEqual(serial.warnings);
+  });
+
   it('takes a commissioned number of agents, and degrades rather than refusing', async () => {
     const base = () => { const f = new FormData(); f.set('title', 'A policy'); f.set('text', fixture.toString()); return f; };
     const read = (f: FormData) => readSubmission(new Request('http://localhost', { method: 'POST', body: f }));
