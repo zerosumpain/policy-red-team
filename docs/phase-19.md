@@ -183,3 +183,103 @@ Branch `phase19-analysis`. No migration. Prompt generation `3.2`.
   words gets more "other" plays. That is shown, not hidden.
 - It has not met a real paper. The fixture proves the plumbing, not the
   quality of the judgements.
+
+## Workstream B — the brief: what landed
+
+Branch `phase19-brief`. No migration.
+
+- **The one-page brief is the first thing on the report.** It fills the
+  `brief` slot R left in `VerdictLead`, so it is the top of the Verdict move in
+  the service and the top of the pack's cascade. In order: the headline and
+  one sentence after it; at most five key judgements (each with the paper's
+  own words as a quote, the sharpest way to beat it with its early warning and
+  its fix, what would change our mind, and who should act), each linked to its
+  drill page through `linkTo`; and "What we could not check", three lines at
+  most. `briefOf` in `src/lib/brief.ts` decides all of it, once, for the page,
+  the pack and Word.
+- **An older assessment gets the same layout.** With no key judgements, the
+  brief carries the five findings `rankFindings` chooses, each with the worst
+  way to beat the policy its citation chain reaches, the quote of the part of
+  the policy that play is aimed at, and the recommendation that answers it.
+  What a finding does not carry is left out, not invented.
+- **What we could not check** reads the run's own classifiers — `stageFacts`,
+  and `truncations`, which moved into `stage-facts.ts` so the server and the
+  client share one parser. On the real Post-16 run: 17 questions not searched,
+  10 of 18 steps cut short (3 say "read as partial"), 176 of 398 mentions
+  unresolved.
+- **Print to A4 and Word.** "Print the brief" marks `<html>` for one print and
+  `parts/_brief.scss` drops everything else in both renderers; Ctrl-P still
+  prints the whole report. `?part=brief` on the export is a document scope
+  (`docx` or `md`) that combines with `scope=shared`, rendered from the same
+  `shareableReport` output as every shared file.
+- **Every renderer leads with the same list.** `briefItems` is what the page,
+  the pack, the brief's Word file and the full Word document lead with. The
+  full document used to lead with key judgements only, so an older
+  assessment's Word file led with nothing while its page led with five
+  findings. Its headings now use R's words ("Ways to beat the policy", "Checks
+  on how the policy is set up", "What it recommends").
+- **The pattern grid leads Threats.** `patternGrid` as a heatmap: kinds of way
+  to beat it (rows, ranked) against the twelve parts of the policy most aimed
+  at, each square shaded in the band ramp by its worst and printing its count,
+  with a Diagram/Table toggle. A square, a row name or a column number is a
+  carried selection — a new `pattern` kind (optionally with a mechanism) and
+  the existing `mechanism` kind — and the grid is one tab stop. It replaces
+  the capped mechanism bars in Causes; their table is every row now.
+- **From the review of master** (folded in here): `stubForReport` keeps a
+  chain's `weakestLink` and stores how each step entry reads from the
+  unclipped text, so the service's clipped chains and the pack's full ones
+  classify the same; the strips draw the model's weakest link as "Weakest
+  link" and the page's own reading as "Least specified"; the programme's
+  `logic_model` is the first strip of "How each part is meant to work"; the
+  pack no longer clamps strip text, and `offline-check` measures what exists
+  (it counted `.prt-writeup__body`, which is gone); the play cards carry the
+  precedent and its "not checked" label, so the pack shows it; and three
+  disclosures open in the pack.
+
+### Measured on the real Post-16 run (`36ebca37`, a copy of porkserv's DB)
+
+| | Before B | After B |
+|---|---|---|
+| Verdict panel at 1280 | 15,295px | 14,193px |
+| The brief at 1280 | — | 2,612px |
+| "Print the brief", A4 | — | 2 pages |
+| Whole report printed, A4 | — | 127 pages |
+| Pattern grid at 1280 / 420 / 320 | — | 1,094 / 1,728 / 2,013px |
+| Sideways scroll at 320 | none | none |
+
+The fixture writes key judgements, so the walk proves that path: the brief
+leads the Verdict from them (739px at 1280, one printed page), its Word copy
+answers, and a square narrows and says "aimed at". The real run proves the
+fallback and the grid.
+
+Gates: typecheck; `npm test` 1,145 passing across 77 files; `npm run a11y` 14 routes clean; `npm run walk`
+passing; `npm run offline` passing (29 blocks measured, nothing clipped);
+`pack:live` against the real run on a local copy passing (35 sections,
+78 of 199 controls pressed, no request left the page).
+
+### Decision log — B
+
+| Decision | Options | Chosen | Why | Reversible |
+|---|---|---|---|---|
+| Where the brief lives | its own first tab; the top of the Verdict | **top of the Verdict**, in R's slot | the Verdict is where every reader lands; a sixth tab touches `moves.ts`, the landing page, the tab counts and the pack order for no reading gain | yes |
+| The lead's ranked list under the brief | keep it; drop it | **drop it, and send what the brief does not carry to "All findings"** | five findings under five judgements is the long Verdict again; nothing is lost | yes |
+| Headline length | the whole executive statement; headline + one sentence | **headline + one sentence** | the brief's own spec; the rest of the paragraph is in "All findings" now, which it was not | yes |
+| A finding's quote (fallback) | nearest quote on the chain; the quote of the part the play is aimed at | **the part's quote, or none** | the nearest quote on the real run was about Skills Bootcamp starts under a finding about test results — the paper's words, not what was judged | yes |
+| Early warning and fix length | whole; first sentence; first sentence clipped at 200 | **first sentence, clipped at 200 with an ellipsis** | the model writes them as one 240–330 character list; the whole is on the play's page. Took the printed brief from 3 pages to 2 | yes — `PROSE_MAX` |
+| The brief's Word scope | a new format; `part=brief` | **`part=brief`** | `scope` already means sharing; a document scope combines with it, and `shareableReport` stays the only redactor | yes |
+| Grid shading | `relative` percentile; band | **band** | the ramp means a band everywhere else in the report; shading the 40th cell "limited"-pink whatever its band would make one colour mean two things. The standing is in the table view ("3rd of 40") | yes |
+| Grid selection | cell only; row, column and cell | **all three, as carried selections** | a column is the existing `mechanism` kind; a row and a cell are one new `pattern` kind, joined on `data.targets` as the grid is | yes |
+| What narrows the grid | everything; a band or a body only | **a band or a body** | it is the picker for the other two kinds, the rule `narrowExcept` states | yes |
+| Grid on a phone | flip to the table; keep the grid | **keep the grid** | HTML, scrolls in its box with the names pinned; the table measured 17,294px at 420 | yes |
+| The capped mechanism bars | keep beside the grid; replace | **replace; the table is every row, one tab stop** | R's own comment said the grid replaces them; the grid's columns are the same selection | yes |
+| Weakest link | the page's regex; the model's `weakestLink` | **both, named differently** | "Weakest link" is the assessment's judgement; "Least specified" is the page's reading of the words | n/a |
+| Clipped chain steps | send them unclipped; classify before clipping | **classify before clipping** (`stepFlags`) | keeps the payload small and makes both renderers read the same words the same way | yes |
+
+### What this does not do
+
+- The pack's zip still carries only the full `report.docx`; the brief prints
+  from the pack but has no Word file of its own there.
+- `patternOf` reads English words; on the real run one play is aimed at no
+  part of the policy and 43 parts are too rarely aimed at to be drawn. Both are
+  counted under the grid.
+- Key judgements have not met a real paper yet; the fixture proves the path.

@@ -213,8 +213,8 @@ export function ChangeStrips({ strips, programme, linkTo }: {
         {!lead && strips.length ? 'For the ' : ''}
         {strips.length ? (
           <>
-            {strips.length} parts of the policy that most ways to beat it rest on: how the paper
-            says each is meant to work, step by step. {withGap
+            {strips.length === 1 ? 'one part of the policy that most ways to beat it rest on' : `${strips.length} parts of the policy that most ways to beat it rest on`}:
+            how the paper says {strips.length === 1 ? 'it' : 'each'} is meant to work, step by step. {withGap
               ? `In ${withGap} of the ${strips.length}, at least one step names what is involved but leaves most of the detail — how much, who, by when — not specified.`
               : 'Every step is specified.'}
           </>
