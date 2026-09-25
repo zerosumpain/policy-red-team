@@ -582,6 +582,8 @@ export async function executeStage(input: StageInput, deps: PipelineDeps): Promi
       const protect = [
         ...context.filter((a) => ['finding', 'recommendation', 'causal_chain', 'option_appraisal', 'evaluation_plan', 'assurance_challenge', 'revision', 'reconciliation', 'addendum_summary'].includes(a.kind) || (RESULT_KINDS as readonly string[]).includes(a.kind)).map((a) => a.id),
         ...hypotheses,
+        // A restatement writes key judgements too, and quotes from the same place.
+        ...quotableForJudgements(input.artefacts),
       ];
       await request('main', context, { protect, ...patterns });
     } else if (step === 1) {
@@ -1079,7 +1081,7 @@ export async function executeStage(input: StageInput, deps: PipelineDeps): Promi
       : stage === APPRAISAL_STAGE
         ? [...everything.filter((a) => ['logic_model', 'causal_chain', 'finding', 'evidence'].includes(a.kind)).map((a) => a.id), ...hypotheses]
         : stage === ASSURED_SYNTHESIS_STAGE
-          ? [...everything.filter((a) => ['finding', 'recommendation', 'causal_chain', 'option_appraisal', 'evaluation_plan', 'assurance_challenge'].includes(a.kind) || (RESULT_KINDS as readonly string[]).includes(a.kind)).map((a) => a.id), ...hypotheses]
+          ? [...everything.filter((a) => ['finding', 'recommendation', 'causal_chain', 'option_appraisal', 'evaluation_plan', 'assurance_challenge'].includes(a.kind) || (RESULT_KINDS as readonly string[]).includes(a.kind)).map((a) => a.id), ...hypotheses, ...quotableForJudgements(input.artefacts)]
           : [];
     // Scoped and fitted once, so the top-up below asks from the same context.
     const context = fitOnce(everything, protect);
@@ -1738,6 +1740,43 @@ export function deepChainMechanisms(all: Artefact[], limit = DEEP_CHAINS): { sel
     (degree.get(b.id) ?? 0) - (degree.get(a.id) ?? 0) ||
     a.id.localeCompare(b.id));
   return { selected: ranked.slice(0, limit), ranked };
+}
+
+/**
+ * WHAT A KEY JUDGEMENT QUOTES FROM, pinned into stage 17's context.
+ *
+ * A key judgement copies its quote from a mechanism or a claim, and triage
+ * checks that quote against the paper (`locate` in `validation.ts`). Both kinds
+ * sit near the END of `STAGE_CONTEXT[17]`, behind the report they are the
+ * groundwork of, so on a paper big enough to be fitted they were the first
+ * thing shed — and the top-up is handed the same fitted context, so it could
+ * not recover them either. A judgement asked for and given nothing to quote
+ * is a judgement triage refuses.
+ *
+ * So the mechanisms the red team concentrated on (`deepChainMechanisms`, the
+ * same set stage 14 read closely) are pinned, with the claims they rest on:
+ * those extracted from the same passage, those either side of a graph edge
+ * with one, and those the plays aimed at them also target. ONE SET FOR THE
+ * STAGE, computed from its input: the shared block is still fitted once,
+ * first, and the main call and the top-up still send identical bytes.
+ */
+export function quotableForJudgements(all: Artefact[]): string[] {
+  const mechanisms = deepChainMechanisms(all).selected;
+  const chosen = new Set(mechanisms.map((m) => m.id));
+  const passages = new Set(mechanisms.map((m) => m.sourceId).filter((id): id is string => Boolean(id)));
+  const linked = new Set<string>();
+  for (const a of all) {
+    if (a.kind === 'edge' && a.fromId && a.toId) {
+      if (chosen.has(a.fromId)) linked.add(a.toId);
+      if (chosen.has(a.toId)) linked.add(a.fromId);
+    }
+    if (a.kind === 'exploit' && Array.isArray(a.data.targets) && (a.data.targets as unknown[]).some((t) => chosen.has(String(t)))) {
+      for (const t of a.data.targets as unknown[]) linked.add(String(t));
+    }
+  }
+  for (const m of mechanisms) for (const r of m.refs) linked.add(r);
+  const claims = all.filter((a) => a.kind === 'claim' && (linked.has(a.id) || (a.sourceId && passages.has(a.sourceId)) || a.refs.some((r) => chosen.has(r))));
+  return [...chosen, ...claims.map((a) => a.id)];
 }
 
 /** Full profiles where there are any; every profile otherwise, as before short ones existed. */
