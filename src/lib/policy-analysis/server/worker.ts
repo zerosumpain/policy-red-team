@@ -287,7 +287,9 @@ export async function executePolicyRun(claimed: { id: string; input: Record<stri
       // outlive the analyses that fed them.
       if (started.stage.ordinal === PERSONA_STAGE && !sealedRun) {
         try {
-          await tx.transaction(async (inner) => { await applyPersonaLinks(inner, analysis.owner, analysisId, analysis.title, output.artefacts, all); });
+          // Its warnings are about the library, said once, in the stage's own list.
+          const written = await tx.transaction(async (inner) => applyPersonaLinks(inner, analysis.owner, analysisId, analysis.title, output.artefacts, all));
+          output.warnings.push(...written.warnings);
         } catch {
           output.warnings.push('This assessment could not be written into the persona library. Its own findings are unaffected; the library simply does not have this run.');
         }

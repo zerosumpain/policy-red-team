@@ -52,13 +52,15 @@ describe.skipIf(!local)('the schema and the migrations agree', () => {
     expect(drift).toEqual([]);
   });
 
-  it('created all fourteen tables', async () => {
+  it('created all seventeen tables', async () => {
     const tables = (
       await client.query<{ tablename: string }>(
         `select tablename from pg_tables where schemaname = 'public' and tablename not like '\\_%'`
       )
     ).rows.map((r) => r.tablename);
-    expect(tables).toHaveLength(14);
-    expect(tables.filter((t) => t.startsWith('policy_'))).toHaveLength(12);
+    // Phase 19 added three: the register of bodies, identity decisions and
+    // affected groups.
+    expect(tables).toHaveLength(17);
+    expect(tables.filter((t) => t.startsWith('policy_'))).toHaveLength(15);
   });
 });

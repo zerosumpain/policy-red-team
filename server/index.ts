@@ -31,7 +31,9 @@ import { handleReader, readerDenied } from './reader-gate';
 import { handleAdmin } from './admin';
 import { serveStatic } from './static';
 import { sendJson } from './http';
-import { client, DATA_DIR } from '$lib/db';
+import { client, DATA_DIR, db } from '$lib/db';
+import { syncRegister } from '$lib/policy-analysis/server/register';
+import { upgradePersonaLibrary } from '$lib/policy-analysis/server/personas';
 import { migrate } from '../scripts/migrate.mjs';
 import { drain, runWorker } from '$lib/worker';
 import { modelAccessProblem } from '$lib/llm/client';
@@ -263,6 +265,26 @@ function engineFloorMet(): boolean {
 }
 
 await migrate(client, { log: () => {} });
+
+/*
+ * THE REGISTER AND THE LIBRARY, before the worker can write to either.
+ *
+ * The GOV.UK register is loaded from the snapshot this build carries (a no-op
+ * unless the snapshot is newer than the table), and the persona library is
+ * brought up to phase 19 once: groups of people moved out, every dossier
+ * recomputed from its observations, personas with no paper left deleted. Both
+ * are idempotent, and neither may stop the service starting — an assessment
+ * does not need the library to run.
+ */
+try {
+  await syncRegister();
+  const upgraded = await db.transaction((tx) => upgradePersonaLibrary(tx));
+  if (upgraded.groups || upgraded.rebuilt || upgraded.removed || upgraded.linked) {
+    console.log(`persona library: ${upgraded.rebuilt} rebuilt, ${upgraded.linked} matched to GOV.UK, ${upgraded.groups} groups of people moved out, ${upgraded.removed} with no paper left removed`);
+  }
+} catch (err) {
+  console.warn(`persona library: the upgrade did not run (${(err as Error).message}). Assessments are unaffected.`);
+}
 
 // The long-running loop picks up anything left running by a previous process —
 // a stage whose lease lapsed when the server was stopped mid-run.

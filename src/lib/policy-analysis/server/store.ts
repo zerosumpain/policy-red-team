@@ -6,7 +6,7 @@ import { ADDENDUM_STAGES, passOf, passOrdinal, RESTATEMENT_STAGES, STAGES, TRIGG
 import type { Neighbour } from '../pipeline';
 import { PolicyError } from '../validation';
 import type { Material, Submission } from './ingest';
-import { recountSightings } from './personas';
+import { rebuildPersonas } from './personas';
 import { mintKey, openSeal, readKey, sealRow, sealWithKey, shredKey, unsealRow, type Seal } from './seal';
 
 /**
@@ -431,9 +431,11 @@ export async function remove(owner: string, id: string): Promise<boolean> {
     const runIds = stages.map((s) => s.runId).filter((r): r is string => !!r);
     if (runIds.length) await tx.update(workflowRuns).set({ status: 'cancelled', claimedBy: null, leaseExpiresAt: null, completedAt: new Date() }).where(inArray(workflowRuns.id, runIds));
     // Which personas this assessment contributed to, read BEFORE the delete
-    // cascades its observations away. `sightings` is a count of assessments and
-    // must fall when one is removed; the row itself survives, because a dossier
-    // built from four papers is not wrong because one of them was withdrawn.
+    // cascades its observations away. Each is REBUILT from what is left once the
+    // rows are gone: the dossier and summary this paper wrote used to survive
+    // its deletion (measured, phase 19), and a persona left with no paper at all
+    // used to persist with nothing behind it. It is deleted now. A dossier built
+    // from four papers still stands when one is withdrawn — minus that one.
     const contributed = [...new Set((await tx.select({ personaId: policyPersonaObservations.personaId }).from(policyPersonaObservations).where(eq(policyPersonaObservations.analysisId, id))).map((r) => r.personaId))];
     // A CROSS-POLICY FINDING ON SOMEBODY ELSE'S ASSESSMENT IS PROSE ABOUT THIS
     // ONE. `otherAnalysisTitle`, `interaction` and `consequence` describe the
@@ -455,7 +457,7 @@ export async function remove(owner: string, id: string): Promise<boolean> {
     // longer exists. `policy_stages.run_id` has no cascade, which is why they
     // survived every delete this feature has ever done.
     if (runIds.length) await tx.delete(workflowRuns).where(inArray(workflowRuns.id, runIds));
-    await recountSightings(tx, contributed);
+    await rebuildPersonas(tx, contributed);
     return true;
   });
 }
