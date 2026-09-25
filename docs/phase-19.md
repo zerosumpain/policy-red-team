@@ -59,7 +59,7 @@ plus *"a simpler, easier to access language in the output too where possible."*
 | Canonical register seed | Wikidata; GOV.UK orgs API; Companies House | **GOV.UK organisations API first** | free, no key, ~1,200 public bodies with parent/child and closure status: exactly the bodies policy papers name, plus the delivery hierarchy papers never state | yes — the register takes more sources |
 | Groups of people | personas like bodies; separate | **separate "affected groups"** | 18 of 35 personas are `user_group`; a group has no strategy, and "children" caused the tie that split the library | yes |
 | Dossier | merged model prose; computed from per-paper observations | **computed** | fixes the delete leak, the exact-wording "disagreement", and makes continuity measurable | yes |
-| Where to verify for real | OpenRouter on porkserv; Codex on homeserv | **Codex on homeserv, CLI, throwaway data dir** | no per-token spend; porkserv cannot reach the bridge | n/a |
+| Where to verify for real | OpenRouter on porkserv; Codex on homeserv; Codex on porkserv | **Codex on porkserv, through the live UI's API** | no per-token spend. porkserv DOES reach the bridge: `policy-codex-tunnel.service` (homeserv user unit, since 19 Sept) reverse-forwards 5207. The 21 Sept `policy_providers: openrouter,azure` rested on "never could". Re-allowed codex in `~/porkserv/policy.yml`; active provider set to codex/luna in /admin | yes: switch the active provider back in /admin |
 
 ## Workstream P — actor identity: what landed
 
