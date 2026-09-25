@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { Artefact } from './policy-analysis/contracts';
 import { leverage } from './policy-analysis/stress';
+import { stripOf } from './change-strip';
 import { costSegments, forProgress, forTheReport, keptByStage, modelsUsed, reportCost, RUN_INDEX_CAP, STEP_CLIP } from './detail-views';
 
 const a = (id: string, kind: string, extra: Partial<Artefact> = {}): Artefact => ({
@@ -57,6 +58,20 @@ describe('the report view', () => {
     expect(inputs[0].length).toBe(STEP_CLIP);
     expect(inputs[0].endsWith('…')).toBe(true);
     expect(long.artefacts[0].data.mechanismId).toBe('m');
+  });
+
+  it('classifies a clipped step as the pack classifies the whole one', () => {
+    // The admission is at the END of the entry, past the clip: on the service
+    // this read as "stated" while the pack, with the full text, read a gap.
+    const entry = `Provider performance data covering ${'completion and progression '.repeat(12)}; the measure and baseline are not specified`;
+    const chain = a('chain_3', 'causal_chain', { data: { inputs: [entry], activities: ['x'], outputs: ['y'], outcomes: ['z'], impacts: ['w'], mechanismId: 'm', weakestLink: 'The outcomes step: nothing measures it.' } });
+    const clipped = forTheReport({ ...full, artefacts: [chain] }).artefacts[0];
+    expect((clipped.data.inputs as string[])[0]).not.toMatch(/not specified/);
+    const reading = (x: Artefact) => stripOf(x).steps.map((s) => [s.state, s.unspecified, s.weak]);
+    expect(reading(clipped)).toEqual(reading(chain));
+    expect(stripOf(clipped).steps[0].state).toBe('gaps');
+    // And the chain's own weakest link now travels to be drawn.
+    expect(clipped.data.weakestLink).toBe('The outcomes step: nothing measures it.');
   });
 
   it('leaves a kind the report DOES render completely alone', () => {

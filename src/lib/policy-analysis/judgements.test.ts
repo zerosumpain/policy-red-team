@@ -147,7 +147,7 @@ describe('the view a report reads', () => {
     const doc = assessmentMarkdown([...all, finding], { title: 'T' });
     const at = (s: string) => doc.indexOf(s);
     expect(at('## Key judgements')).toBeGreaterThan(at('## The verdict'));
-    expect(at('## Key judgements')).toBeLessThan(at('## The exploitation playbook'));
+    expect(at('## Key judgements')).toBeLessThan(at('## Ways to beat the policy'));
     expect(doc).toContain('**Who should act.** Department for Education: Publish enrolment mix by college before the switch.');
     expect(doc).toContain('> “funded on completion rates”');
     expect(at('## Appendix: the assessment in full')).toBeGreaterThan(at('## Key judgements'));

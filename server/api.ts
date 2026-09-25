@@ -43,12 +43,13 @@ import { census } from '$lib/policy-analysis/server/census';
 import { buildReceipt } from '$lib/policy-analysis/receipt';
 import { keyDir } from '$lib/policy-analysis/server/seal';
 import { PolicyError } from '$lib/policy-analysis/validation';
-import { assessmentDocument, isDownloadFormat, isExportFormat } from '$lib/policy-analysis/server/export';
+import { assessmentDocument, briefDocument, isDownloadFormat, isExportFormat } from '$lib/policy-analysis/server/export';
+import { briefOf } from '$lib/brief';
 import { assessmentBundle } from '$lib/policy-analysis/server/bundle';
 import { ownerPayload, sharedPayload } from '$lib/policy-analysis/offline/payload';
 import { runFacts, type PackPayload } from '$lib/offline-run';
 import { forProgress, forTheReport } from '$lib/detail-views';
-import { shareableReport } from '$lib/policy-analysis/share';
+import { shareableReport, withheldPhrases } from '$lib/policy-analysis/share';
 import { DEFAULT_CONCURRENCY, STAGES } from '$lib/policy-analysis/contracts';
 import { analysisStatus } from '$lib/worker';
 
@@ -557,7 +558,7 @@ export async function handleApi(
     return false;
   }
 
-  // GET /api/policy-analysis/:id/export?format=docx|md|bundle
+  // GET /api/policy-analysis/:id/export?format=docx|md|bundle[&scope=shared][&part=brief]
   //
   // A GET rather than a POST because it is a download of something that already
   // exists: it changes nothing, so the browser's own save dialog does the rest
@@ -584,6 +585,16 @@ export async function handleApi(
      * would refuse a recipient outright. See docs/phase-10.md.
      */
     const shared = url.searchParams.get('scope') === 'shared';
+    /*
+     * `part=brief` IS THE ONE-PAGE BRIEF ALONE (phase 19). A document scope, not
+     * a sharing scope — so it combines with `scope=shared` rather than replacing
+     * it, and the shared brief is rendered from the same `shareableReport`
+     * output as every other shared file. The pack is the whole page and has no
+     * brief-only form.
+     */
+    const part = url.searchParams.get('part');
+    if (part !== null && part !== 'brief') throw new HttpError(400, 'Ask for part=brief, or leave it out for the whole assessment.');
+    if (part === 'brief' && !isExportFormat(format)) throw new HttpError(400, 'The brief on its own comes as docx or md.');
     const result = await detail(owner(), id);
     if (!result) throw new HttpError(404, 'No such assessment.');
 
@@ -618,7 +629,19 @@ export async function handleApi(
       run: runFacts(result),
     };
 
-    const response = isExportFormat(format)
+    /*
+     * THE BRIEF'S LIMITS COME FROM WHAT THIS COPY MAY CARRY: the owner's stage
+     * rows, or the shared copy's warnings — `shareableReport` has already left
+     * out the stages whose commentary does not travel — regrouped by stage.
+     */
+    const briefStages = redacted
+      ? [...redacted.warnings.reduce((by, w) => by.set(w.stage, [...(by.get(w.stage) ?? []), w.text]), new Map<string, string[]>())]
+          .map(([name, warnings]) => ({ name, warnings }))
+      : result.stages.map((s) => ({ name: s.name, ordinal: s.ordinal, warnings: s.warnings }));
+
+    const response = part === 'brief' && isExportFormat(format)
+      ? await briefDocument(artefacts, redacted ? { ...meta, withheld: withheldPhrases(redacted.withheld) } : meta, format, briefOf(artefacts, briefStages))
+      : isExportFormat(format)
       ? await assessmentDocument(artefacts, meta, format)
       : await assessmentBundle({ payload: pack, meta });
 

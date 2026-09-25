@@ -18,7 +18,8 @@
  * produces its Word brief. Building OOXML here would be a second one of those.
  */
 import { synthesizeDocx } from '$lib/jkai/extract/synth-docx';
-import { assessmentMarkdown, documentSlug, type DocMeta } from '../report-doc';
+import { assessmentMarkdown, briefMarkdown, documentSlug, type DocMeta } from '../report-doc';
+import type { Brief } from '../../brief';
 import type { Artefact } from '../contracts';
 
 export type ExportFormat = 'docx' | 'md';
@@ -81,9 +82,27 @@ export async function assessmentDocument(
   meta: DocMeta,
   format: ExportFormat,
 ): Promise<Response> {
-  const markdown = assessmentMarkdown(artefacts, meta);
-  const slug = documentSlug(meta.title);
+  return documentResponse(assessmentMarkdown(artefacts, meta), documentSlug(meta.title), format);
+}
 
+/**
+ * THE ONE-PAGE BRIEF ALONE, as Word or Markdown — `?part=brief` on the export.
+ *
+ * Same wrapper, same `synthesize()` path, a different markdown: `briefMarkdown`
+ * over the `Brief` the page draws. The caller hands in artefacts that have
+ * already been through `shareableReport` when the copy is shared; nothing here
+ * redacts.
+ */
+export async function briefDocument(
+  artefacts: Artefact[],
+  meta: DocMeta,
+  format: ExportFormat,
+  brief: Brief,
+): Promise<Response> {
+  return documentResponse(briefMarkdown(artefacts, meta, brief), `${documentSlug(meta.title)}-brief`, format);
+}
+
+async function documentResponse(markdown: string, slug: string, format: ExportFormat): Promise<Response> {
   if (format === 'md') {
     return new Response(markdown, {
       headers: {

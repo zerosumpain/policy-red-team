@@ -1,5 +1,6 @@
 import type { Artefact } from '$lib/policy-analysis/contracts';
 import { BAND_LABEL, type Band, type Play } from '$lib/policy-analysis/view';
+import { OTHER_PATTERN, PLAY_PATTERNS, patternOf, type PatternKey } from '$lib/policy-analysis/patterns';
 
 /**
  * ONE OBJECT, FOUR QUESTIONS.
@@ -25,13 +26,25 @@ export type Selection =
   | { kind: 'band'; id: Band }
   | { kind: 'mechanism'; id: string; label: string }
   | { kind: 'actor'; id: string; label: string }
+  /*
+   * A KIND OF WAY TO BEAT IT, optionally aimed at one part of the policy — a
+   * row or a cell of the pattern grid that leads Threats (phase 19). One kind
+   * rather than two because a cell IS a row narrowed by a column, and the
+   * banner has to say both halves in one sentence.
+   */
+  | { kind: 'pattern'; id: PatternKey; label: string; mechanism?: { id: string; label: string } }
   | null;
 
 /** What the banner above the views says, in words rather than a chip. */
 export function describeSelection(selection: Selection): string {
-  if (!selection) return 'Showing everything. Select a level of exposure, a part of the policy or a body to narrow every tab.';
+  if (!selection) return 'Showing everything. Select a level of exposure, a kind of way to beat it, a part of the policy or a body to narrow every tab.';
   if (selection.kind === 'band') return `Showing ${BAND_LABEL[selection.id].toLowerCase()} ways to beat it only.`;
   if (selection.kind === 'mechanism') return `Showing what follows from “${selection.label}”.`;
+  if (selection.kind === 'pattern') {
+    return selection.mechanism
+      ? `Showing “${selection.label.toLowerCase()}” aimed at “${selection.mechanism.label}”.`
+      : `Showing “${selection.label.toLowerCase()}” only.`;
+  }
   return `Showing what “${selection.label}” could do.`;
 }
 
@@ -53,6 +66,11 @@ export function nothingUnder(selection: Selection): string {
   if (!selection) return '';
   if (selection.kind === 'band') return `Nothing here is ${BAND_LABEL[selection.id].toLowerCase()}.`;
   if (selection.kind === 'mechanism') return `Nothing here follows from “${selection.label}”.`;
+  if (selection.kind === 'pattern') {
+    return selection.mechanism
+      ? `Nothing here is “${selection.label.toLowerCase()}” aimed at “${selection.mechanism.label}”.`
+      : `Nothing here is “${selection.label.toLowerCase()}”.`;
+  }
   return `Nothing here is something “${selection.label}” could do.`;
 }
 
@@ -103,6 +121,17 @@ export function filterPlays(list: Play[], selection: Selection, mechanismIds: Se
   if (selection.kind === 'band') return list.filter((p) => p.band === selection.id);
   if (selection.kind === 'actor') return list.filter((p) => p.actor?.id === selection.id);
   /*
+   * THE GRID'S OWN JOIN, NOT `mechanismsOf`. `patternGrid` places a play in a
+   * column by `data.targets` — what the play says it is aimed at — so a cell
+   * reading "2" has to narrow to exactly those two. `mechanismsOf` walks
+   * `refs`, which also carries what a play merely mentions.
+   */
+  if (selection.kind === 'pattern') {
+    const mechanism = selection.mechanism?.id;
+    return list.filter((p) => patternOf(p.artefact) === selection.id
+      && (!mechanism || targetsOf(p).includes(mechanism)));
+  }
+  /*
    * MEMBERSHIP, NOT THE FIRST REF, and the two disagree on most of this run.
    *
    * This asked `mechanismOf(p) === id` — the first mechanism a play names — so
@@ -118,6 +147,12 @@ export function filterPlays(list: Play[], selection: Selection, mechanismIds: Se
    * bar and everything the bar narrows now come from one definition.
    */
   return list.filter((p) => mechanismsOf(p, mechanismIds).includes(selection.id));
+}
+
+/** What a play says it is aimed at — `data.targets`, the join `patternGrid` uses. */
+export function targetsOf(play: Play): string[] {
+  const targets = play.artefact.data.targets;
+  return Array.isArray(targets) ? targets.filter((t): t is string => typeof t === 'string') : [];
 }
 
 /** Mechanism ids, as a set, for the two functions above. */
@@ -195,7 +230,14 @@ export function narrowExcept(
  * run resolves to nothing rather than to a label that lies.
  */
 export function selectionParam(selection: Selection): string | null {
+  if (selection?.kind === 'pattern' && selection.mechanism) return `pattern:${selection.id}@${selection.mechanism.id}`;
   return selection ? `${selection.kind}:${selection.id}` : null;
+}
+
+/** A pattern's plain name, or null for a key that is not one. */
+function patternLabel(key: string): string | null {
+  if (key === OTHER_PATTERN.key) return OTHER_PATTERN.label;
+  return PLAY_PATTERNS.find((p) => p.key === key)?.label ?? null;
 }
 
 export function parseSelection(param: string | null, artefacts: Artefact[]): Selection {
@@ -208,6 +250,20 @@ export function parseSelection(param: string | null, artefacts: Artefact[]): Sel
     return (['severe', 'significant', 'moderate', 'limited'] as Band[]).includes(id as Band)
       ? { kind: 'band', id: id as Band }
       : null;
+  }
+  /*
+   * `pattern:<key>` or `pattern:<key>@<mechanism id>`. The label is resolved
+   * from the pattern list, and the mechanism from the run, by the same rule as
+   * below: an id that is not a mechanism in this run resolves to nothing.
+   */
+  if (kind === 'pattern') {
+    const at = id.indexOf('@');
+    const key = at < 0 ? id : id.slice(0, at);
+    const label = patternLabel(key);
+    if (!label) return null;
+    if (at < 0) return { kind: 'pattern', id: key as PatternKey, label };
+    const mechanism = artefacts.find((a) => a.id === id.slice(at + 1) && a.kind === 'mechanism');
+    return mechanism ? { kind: 'pattern', id: key as PatternKey, label, mechanism: { id: mechanism.id, label: mechanism.label } } : null;
   }
   if (kind !== 'mechanism' && kind !== 'actor') return null;
   /*

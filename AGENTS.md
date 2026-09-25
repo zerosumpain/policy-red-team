@@ -237,6 +237,15 @@ scroll answers whichever is uppermost by making them pass the other three.
   `KeyJudgement[]` and has a `brief` slot, so the key-judgements artefact and the
   one-page brief wire in as a mapping, not a rewrite. Machine figures (items
   held, run time, tokens) live in "Where this comes from", never above the tabs.
+- **The brief is the Verdict's lead, and `briefOf` decides it** (`src/lib/brief.ts`).
+  Page, pack, the brief's Word file (`?part=brief`) and the full Word document all
+  lead with `briefItems` — key judgements, or the ranked findings on an older
+  assessment. Add a lead list anywhere else and it will disagree with these four.
+  "Print the brief" is a class on `<html>` for one print (`parts/_brief.scss`);
+  Ctrl-P prints the whole report and must keep doing so.
+- **The pattern grid leads Threats and is a picker.** A row or square sets the
+  `pattern` selection kind, joined on `data.targets` as `patternGrid` is; a column
+  sets `mechanism`. It narrows only by the kinds it cannot set (band, body).
 - **The visible words are chosen, and written down** in `src/lib/plain-words.ts`:
   "ways to beat it", not plays; "parts of the policy", not mechanisms; "how
   exposed", "final review", "steps". Ids, routes and CSS classes keep the old

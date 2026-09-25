@@ -1,0 +1,189 @@
+@use "../govuk" as govuk;
+@use "../tokens" as *;
+
+// ── The one-page brief (phase 19, workstream B) ────────────────────────────
+//
+// The first thing on the report: the headline, at most five key judgements and
+// what we could not check. GOV.UK type throughout, the band ramp only where it
+// means "how exposed", and every colour said again in words.
+
+.prt-brief {
+  margin-bottom: govuk.govuk-spacing(6);
+}
+
+.prt-brief__standfirst,
+.prt-brief__intro,
+.prt-brief__limits,
+.prt-brief__foot {
+  max-width: $prt-measure;
+}
+
+.prt-brief__tools {
+  align-items: center;
+  margin-bottom: govuk.govuk-spacing(4);
+
+  // The Word link sits beside the button, on its baseline — GOV.UK's own
+  // button-group pairing of a secondary action with a link.
+  .govuk-link { @include govuk.govuk-font($size: 19); }
+}
+
+.prt-brief__list {
+  list-style: none;
+  margin: 0 0 govuk.govuk-spacing(6);
+  padding: 0;
+}
+
+// A left rule in the band ramp says how exposed the way to beat it is. The
+// band's word is printed in the card too, so the rule never carries it alone.
+.prt-brief__item {
+  border-left: 6px solid govuk.govuk-colour("black", $variant: "tint-80");
+  padding: govuk.govuk-spacing(1) 0 govuk.govuk-spacing(1) govuk.govuk-spacing(4);
+  margin-bottom: govuk.govuk-spacing(6);
+
+  &--severe { border-left-color: var(--band-severe); }
+  &--significant { border-left-color: var(--band-significant); }
+  &--moderate { border-left-color: var(--band-moderate); }
+  &--limited { border-left-color: var(--band-limited); }
+}
+
+.prt-brief__title {
+  display: flex;
+  gap: govuk.govuk-spacing(2);
+  align-items: baseline;
+  margin-bottom: govuk.govuk-spacing(2);
+}
+
+.prt-brief__rank {
+  @include govuk.govuk-font($size: 24, $weight: bold);
+  flex: none;
+  min-width: 1.2em;
+  color: govuk.govuk-colour("black", $variant: "tint-25");
+}
+
+// The judgement is the sentence the card exists for, so it is the loudest text
+// in it after the title.
+.prt-brief__judgement {
+  @include govuk.govuk-font($size: 19, $weight: bold);
+  max-width: $prt-measure;
+  margin-bottom: govuk.govuk-spacing(3);
+}
+
+// THE PAPER'S OWN WORDS, MARKED AS A QUOTE three ways: a `<blockquote>`, the
+// curly quotation marks, and the caption naming it and its page. A reader must
+// never take the paper's sentence for the assessment's.
+.prt-brief__quote {
+  margin: 0 0 govuk.govuk-spacing(3);
+  max-width: $prt-measure;
+
+  blockquote {
+    margin: 0;
+    padding: govuk.govuk-spacing(2) govuk.govuk-spacing(3);
+    border-left: 4px solid govuk.govuk-colour("black");
+    background: govuk.govuk-colour("black", $variant: "tint-95");
+
+    p {
+      @include govuk.govuk-font($size: 19);
+      margin: 0;
+    }
+  }
+
+  figcaption {
+    @include govuk.govuk-font($size: 16);
+    margin-top: govuk.govuk-spacing(1);
+  }
+}
+
+// FIVE LABELLED FACTS, IN THE SAME PLACE ON EVERY CARD. A two-column grid on a
+// page, one column on a phone, where a 12rem label column would leave the
+// value about 150px at 320.
+.prt-brief__facts {
+  @include govuk.govuk-font($size: 16);
+  display: grid;
+  grid-template-columns: minmax(8rem, 13rem) minmax(0, 1fr);
+  gap: govuk.govuk-spacing(1) govuk.govuk-spacing(4);
+  margin: 0 0 govuk.govuk-spacing(2);
+  max-width: 60rem;
+
+  // A `div` grouping each pair keeps the list valid HTML; `contents` lets the
+  // pair's two children sit in the grid's two columns.
+  .prt-brief__fact { display: contents; }
+
+  dt { font-weight: 700; }
+  dd { margin: 0; }
+
+  @include govuk.govuk-media-query($until: tablet) {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0;
+
+    dd { margin-bottom: govuk.govuk-spacing(2); }
+  }
+}
+
+.prt-brief__why { margin-bottom: 0; }
+
+@media print {
+  // Ctrl-P on the whole report: the brief prints as it reads, without its
+  // controls, and a card is never split across a page.
+  .prt-brief__tools { display: none !important; }
+  .prt-brief__item { break-inside: avoid; }
+}
+
+// ── "Print the brief": the brief and nothing else ─────────────────────────
+//
+// `Brief` puts `prt-print-brief` on `<html>` for the length of one print. Under
+// it, everything that is not the page title, the headline and the brief is
+// taken out, in BOTH renderers: the service's tabs and the pack's cascade.
+//
+// The base print block un-hides every tab panel with `display: block
+// !important`, so the rules that hide them again name an id inside `:not()`
+// to win on specificity, not on source order.
+@media print {
+  .prt-print-brief {
+    .govuk-skip-link,
+    .govuk-template__header,
+    .govuk-footer,
+    .govuk-back-link,
+    .prt-lead details,
+    .govuk-tabs__title,
+    .prt-spine,
+    .prt-brief__foot { display: none !important; }
+
+    // The page: its title, the headline block, and the report (service tabs or
+    // pack). Banners, the gaps line, the actions and the back link go.
+    #main-content > :not(.prt-pagehead):not(.prt-lead):not(.govuk-tabs):not(.prt-pack) { display: none !important; }
+
+    // The service: the Verdict panel only, and in it the lead only.
+    .govuk-tabs__panel:not(#report-panel-verdict) { display: none !important; }
+    #report-panel-verdict > :not(.prt-verdict) { display: none !important; }
+
+    // The pack: its lead block and the Verdict lead, nothing after them.
+    .prt-pack > :not(.prt-lead):not(.prt-verdict) { display: none !important; }
+
+    // In the lead, the heading and the brief.
+    .prt-verdict > :not(h2):not(.prt-verdict__brief) { display: none !important; }
+
+    // DENSER THAN THE SCREEN, so five judgements fit on two sides of A4. The
+    // sizes are GOV.UK's print scale one step down, not a new vocabulary.
+    .govuk-tabs__panel { border: 0; padding: 0; }
+    .prt-verdict > h2 { font-size: 15pt; margin: 6pt 0 4pt; padding: 0; border: 0; }
+    .prt-brief__facts .prt-meta { font-size: inherit; }
+    .prt-pagehead .govuk-heading-xl { font-size: 20pt; margin-bottom: 4pt; }
+    .prt-lead__headline { font-size: 13pt; }
+    .prt-brief__standfirst { font-size: 11pt; margin-bottom: 8pt; }
+    .prt-brief .govuk-heading-m { font-size: 13pt; margin: 8pt 0 4pt; }
+    .prt-brief__intro { font-size: 10pt; margin-bottom: 6pt; }
+    .prt-brief__item { margin-bottom: 8pt; padding-left: 8pt; }
+    .prt-brief__title { font-size: 11.5pt; margin-bottom: 2pt; }
+    .prt-brief__rank { font-size: 12pt; }
+    .prt-brief__judgement { font-size: 10.5pt; margin-bottom: 4pt; }
+    .prt-brief__quote { margin-bottom: 4pt; }
+    .prt-brief__quote blockquote { padding: 2pt 6pt; }
+    .prt-brief__quote blockquote p,
+    .prt-brief__quote figcaption,
+    .prt-brief__facts,
+    .prt-brief__why,
+    .prt-brief__limits { font-size: 9.5pt; }
+    .prt-brief__facts { grid-template-columns: 9rem minmax(0, 1fr); gap: 1pt 8pt; }
+    .prt-band { font-size: 8.5pt; padding: 0 3pt; }
+  }
+}

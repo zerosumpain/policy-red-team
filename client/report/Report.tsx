@@ -19,6 +19,9 @@ import { Metrics } from './Metrics';
 import { WriteUp } from './WriteUp';
 import { SelectionBanner } from './moves/SelectionBanner';
 import { VerdictLead } from './moves/VerdictLead';
+import { Brief } from './Brief';
+import { PatternGrid } from './PatternGrid';
+import { briefOf } from '$lib/brief';
 import { WorstPlays } from './moves/WorstPlays';
 import { CausalityLead } from './moves/CausalityLead';
 import { ThreatsLead } from './moves/ThreatsLead';
@@ -29,8 +32,8 @@ import { WatchList } from './WatchList';
 import { ChangeStrips } from './ChangeStrips';
 import { RestsOnWhat } from './RestsOnWhat';
 import { Glossary } from './Glossary';
-import { rankFindings, withoutEcho } from '$lib/writeup-view';
-import { changeStrips } from '$lib/change-strip';
+import { rankFindings } from '$lib/writeup-view';
+import { changeStrips, programmeStrip } from '$lib/change-strip';
 import { NetworkSection } from './Network';
 import { StressLab } from './StressLab';
 import { Shares } from './Shares';
@@ -387,13 +390,11 @@ export function Report({ detail, offline, linkTo, onChanged }: {
   const recs = recommendations(artefacts);
   const bands = bandCounts(list);
   /*
-   * THE FINDINGS, RANKED. `rankFindings` is arithmetic over fields every
-   * finding carries — how serious the worst thing it cites is, how well
-   * supported the final review judged it, how much it cites — and it is cheap:
-   * nineteen findings on the real run.
+   * THE ONE-PAGE BRIEF (phase 19, workstream B). `briefOf` walks at most five
+   * findings' citation chains on an older assessment, so it is memoised like
+   * the other shaping this component re-runs on every stage event.
    */
-  const ranked = rankFindings(sectionFindings, artefacts);
-  const execStatement = sectionFindings.find((group) => group.section === 'executive_assessment')?.items[0]?.statement ?? '';
+  const brief = useMemo(() => briefOf(artefacts, stages), [artefacts, stages]);
   /** What the report prints as its conclusions — the current generation only, for "what rests on what". */
   const shownConclusions = useMemo(() => new Set([
     ...findingsBySection(artefacts).flatMap((group) => group.items.map((item) => item.id)),
@@ -450,6 +451,8 @@ export function Report({ detail, offline, linkTo, onChanged }: {
     mechanismIds,
     6,
   ), [artefacts, list, mechanismIds]);
+  /** The programme's one logic model (stage 14, prompt 3.2 on), which leads the strips. */
+  const programme = useMemo(() => programmeStrip(artefacts), [artefacts]);
   /** The watch list narrows by everything selected, like the ranked list it sits under. */
   const watchPlays = useMemo(() => filterPlays(list, selection, mechanismIds), [list, selection, mechanismIds]);
 
@@ -520,14 +523,25 @@ export function Report({ detail, offline, linkTo, onChanged }: {
    * headline above the tabs plus the standfirst here, so it is not repeated in
    * the appendix.
    */
-  const standfirst = execStatement ? withoutEcho(execStatement, headline) : '';
-  const appendix = standfirst
-    ? ranked.rest.filter((entry) => entry.chapter.section !== 'executive_assessment')
-    : ranked.rest;
+  /*
+   * THE BRIEF IS THE LEAD NOW, in the slot R left for it. It carries the ranked
+   * findings itself on an older assessment, and key judgements on a newer one,
+   * so the lead's own list is not drawn under it: five findings above five
+   * judgements is the seventy-screen report again, one screen down.
+   *
+   * WHAT THE LEAD NO LONGER SHOWS GOES TO THE APPENDIX, so nothing is lost:
+   * with key judgements every finding is in "All findings"; without them, the
+   * ones the brief carries are left out of it. The executive assessment is in
+   * it either way now, because the brief keeps one sentence after the headline
+   * and the rest of that paragraph has to be somewhere.
+   */
+  const inBrief = brief.source === 'findings' ? new Set(brief.items.map((item) => item.id)) : new Set<string>();
+  const appendix = rankFindings(sectionFindings, artefacts, 0).rest.filter((entry) => !inBrief.has(entry.item.id));
   lead('main-findings', 'Main findings', 'verdict',
     <VerdictLead
-      judgements={ranked.top}
-      standfirst={standfirst !== headline ? standfirst : undefined}
+      judgements={[]}
+      brief={<Brief brief={brief} linkTo={link}
+                    downloadHref={offline ? undefined : `/api/policy-analysis/${analysis.id}/export?format=docx&part=brief`} />}
       remaining={appendix.length}
       linkTo={link}
     />);
@@ -546,6 +560,21 @@ export function Report({ detail, offline, linkTo, onChanged }: {
    * move. It is the band picker too, and a band chosen here still narrows every
    * move: the selection banner above the tabs says so wherever the reader is.
    */
+  /*
+   * THE PATTERN GRID LEADS THREATS (phase 19, workstream B): which kind of way
+   * to beat it, aimed at which part of the policy. It is a picker for two
+   * kinds of selection — a kind (row or square) and a part of the policy
+   * (column) — so it keeps every row and column under either, and narrows only
+   * by a band or a body, which it cannot set. The plays those leave out are
+   * taken out of what it is handed; everything else is the assessment as is.
+   */
+  const gridArtefacts = useMemo(() => {
+    if (selection?.kind !== 'band' && selection?.kind !== 'actor') return artefacts;
+    const keep = new Set(filterPlays(list, selection, mechanismIds).map((play) => play.artefact.id));
+    return artefacts.filter((a) => a.kind !== 'exploit' || keep.has(a.id));
+  }, [artefacts, list, selection, mechanismIds]);
+  lead('patterns', 'The same few ideas, aimed at the same parts', 'threats',
+    list.length ? <PatternGrid artefacts={gridArtefacts} selection={selection} onSelect={setSelection} linkTo={link} /> : null);
   section('bands', 'How exposed the policy is', 'threats',
     list.length ? <ExposureRail bands={bands} total={list.length} selection={selection} onSelect={setSelection} /> : null);
   section('spread', 'How the scores are spread', 'threats', <ExposureSpread list={list} />);
@@ -594,16 +623,16 @@ export function Report({ detail, offline, linkTo, onChanged }: {
     <>
       <RestsOnWhat artefacts={artefacts} levers={levers} shown={shownConclusions} linkTo={link}
                    onStress={() => goTo('threats', 'stress')} />
-      <Details summary="Two ways to rank the assumptions, and why they disagree">
+      <Details summary="Two ways to rank the assumptions, and why they disagree" open={offline}>
         <Fragile artefacts={artefacts} levers={levers} />
       </Details>
     </>
   ) : null);
 
   lead('mechanisms', 'The parts of the policy most ways to beat it rest on', 'causality',
-    <CausalityLead artefacts={artefacts} list={list} selection={selection} onSelect={setSelection} mechanismIds={mechanismIds} linkTo={link} />);
+    <CausalityLead artefacts={artefacts} list={list} selection={selection} onSelect={setSelection} mechanismIds={mechanismIds} linkTo={link} offline={offline} />);
   section('change', 'How each part is meant to work', 'causality',
-    strips.length ? <ChangeStrips strips={strips} linkTo={link} /> : null,
+    strips.length || programme ? <ChangeStrips strips={strips} programme={programme} linkTo={link} /> : null,
     { count: { n: strips.length, noun: 'parts' } });
   lead('weights', 'Ways to beat it', 'threats',
     <ThreatsLead
@@ -666,7 +695,7 @@ export function Report({ detail, offline, linkTo, onChanged }: {
    * mechanism that sat under it are in the watch list now, one row per play.
    */
   section('scores', 'Every way to beat it, scored', 'threats', shownPlays.length ? (
-    <Details summary={`Show all ${shownPlays.length} with their four scores`}>
+    <Details summary={`Show all ${shownPlays.length} with their four scores`} open={offline}>
       <ScoresTable plays={shownPlays} linkTo={link} />
     </Details>
   ) : null);
@@ -865,7 +894,7 @@ export function Report({ detail, offline, linkTo, onChanged }: {
   ) : null, { count: { n: structural.length, noun: 'checks' } });
 
   section('writeup', 'All findings', 'verdict', appendix.length ? (
-    <WriteUp rest={appendix} linkTo={link} offline={offline} echoed={headline} ranked={ranked.top.length} />
+    <WriteUp rest={appendix} linkTo={link} offline={offline} echoed={headline} ranked={inBrief.size} />
   ) : null, { count: { n: appendix.length, noun: 'more' } });
 
   /*
@@ -1125,7 +1154,7 @@ export function Report({ detail, offline, linkTo, onChanged }: {
       'writeup', 'checks',
     ],
     threats: [
-      'bands', 'weights', 'watch', 'spread', 'factors', 'scores', 'scenarios', 'stress',
+      'patterns', 'bands', 'weights', 'watch', 'spread', 'factors', 'scores', 'scenarios', 'stress',
     ],
     causality: ['mechanisms', 'change', 'network'],
     provenance: [

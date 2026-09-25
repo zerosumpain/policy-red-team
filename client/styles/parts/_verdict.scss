@@ -274,6 +274,23 @@
 // ── The mechanism chart's tail ────────────────────────────────────────────
 .prt-mechtail td, .prt-mechtail th { @include govuk.govuk-font($size: 16); }
 
+// The assessment's own weakest link, quoted under its strip. Its words, in the
+// body's ink — it is the chain's judgement, not a caption.
+.prt-toc__stated {
+  max-width: $prt-measure;
+  margin: govuk.govuk-spacing(2) 0 govuk.govuk-spacing(1);
+}
+
+// THE PACK DOES NOT CLAMP. A clamp is `overflow: hidden`, so the rest of the
+// step is out of Ctrl-F as well as out of sight, and Ctrl-F is the only
+// interface a `file://` page has. `offline-check.mjs` measures it.
+.prt-pack .prt-toc__text {
+  display: block;
+  -webkit-line-clamp: none;
+  line-clamp: none;
+  overflow: visible;
+}
+
 @media print {
   // A clamp is a fold; paper has no way to open it.
   .prt-toc__text {

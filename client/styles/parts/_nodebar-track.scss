@@ -29,19 +29,6 @@
   background: govuk.govuk-colour("black", $variant: "tint-80");
 }
 
-// The value, inside the track. `display: flex` because the mechanism chart
-// divides one fill into up to four band segments with `flex-grow`; a chart with
-// a single-colour fill puts one child in here and reads the same.
-.prt-nodebar__fill {
-  display: flex;
-  height: 100%;
-  // A mechanism with a play still has to be visible beside one with seven, and
-  // at 1/7th of a 250px track the smallest fill is 35px — but a narrowed
-  // selection can put a single play against a much longer widest, and a fill
-  // that rounds to nothing says the row is not there.
-  min-width: 3px;
-}
-
 @media print {
   // A BAND IS A FILL, AND A BROWSER PRINTS NO FILLS UNLESS ASKED.
   //
@@ -51,7 +38,6 @@
   // the attribute selector in that list never matched it and the mechanism
   // chart printed as a row of empty outlines with the right lengths and no
   // bands in them.
-  .prt-nodebar__fill,
   .prt-nodebar__seg {
     print-color-adjust: exact;
     -webkit-print-color-adjust: exact;

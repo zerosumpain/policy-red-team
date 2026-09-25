@@ -123,6 +123,20 @@ export function shareablePasses(passes: { pass: number; kind: string; role: stri
   }));
 }
 
+/**
+ * What a shared copy leaves out, as the short phrases a document's cover lists
+ * ("It withholds the policy document itself, …"). The brief's shared Word file
+ * has one line for this rather than `withheldNote`'s paragraph.
+ */
+export function withheldPhrases(withheld: { kind: string; count: number }[]): string[] {
+  const PHRASE: Record<string, string> = {
+    passage: 'the policy document itself, which is quoted in short spans',
+    cross_policy: 'comparisons with the author’s other assessments',
+    persona_link: 'records drawn from the author’s other assessments',
+  };
+  return withheld.filter((w) => w.count > 0).map((w) => PHRASE[w.kind] ?? w.kind.replaceAll('_', ' '));
+}
+
 /** Plain English for what a shared copy leaves out, for the page to print. */
 export function withheldNote(withheld: { kind: string; count: number }[]): string | null {
   const parts: string[] = [];

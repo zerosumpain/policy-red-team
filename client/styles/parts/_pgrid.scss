@@ -1,0 +1,152 @@
+@use "../govuk" as govuk;
+@use "../tokens" as *;
+
+// ── The pattern × part-of-the-policy grid that leads Threats ──────────────
+//
+// A heatmap in the band ramp: one hue, light to dark, the same four steps as
+// "how exposed" everywhere else. The count is printed on every square and the
+// band is in its accessible name and in the table view, because the two light
+// steps sit below 3:1 against the page and never carry meaning alone.
+
+.prt-pgrid__table {
+  // A grid may be wider than the page — that is what the scroll box is for —
+  // and must not be squeezed to it: the base's `width: 100%` would take the
+  // difference out of the one column that can wrap, the row names. And no
+  // `min-width: 100%`: at 1280 that handed the spare 500px to the row names
+  // and left the squares floating at the far edge, away from their labels.
+  width: auto;
+  border-collapse: separate;
+  border-spacing: 2px; // the 2px surface gap between fills
+
+  th, td { padding: 0; border-bottom: 0; vertical-align: middle; }
+}
+
+.prt-pgrid__corner {
+  @include govuk.govuk-font($size: 16, $weight: bold);
+  padding: 0 govuk.govuk-spacing(2) govuk.govuk-spacing(1) 0 !important;
+  vertical-align: bottom !important;
+}
+
+// The row name survives the horizontal scroll, as `Matrix`'s does.
+.prt-pgrid__rowhead {
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  background: govuk.govuk-colour("white");
+  min-width: 11rem;
+  max-width: 16rem;
+  padding: govuk.govuk-spacing(1) govuk.govuk-spacing(3) govuk.govuk-spacing(1) 0 !important;
+  overflow-wrap: break-word;
+
+  // On a phone the names take less, so three or four squares show beside them.
+  @include govuk.govuk-media-query($until: tablet) { min-width: 8rem; }
+}
+
+.prt-pgrid__rowmeta {
+  display: block;
+  @include govuk.govuk-font($size: 16);
+  color: govuk.govuk-colour("black", $variant: "tint-25");
+}
+
+// Row and column controls read as links: they are selections, not actions.
+.prt-pgrid__row,
+.prt-pgrid__col {
+  @include govuk.govuk-font($size: 16, $weight: bold);
+  appearance: none;
+  background: none;
+  border: 0;
+  padding: 2px 4px;
+  margin: 0;
+  // The link token, as `.prt-tab` uses: a control's colour is a role.
+  color: govuk.govuk-functional-colour("link");
+  text-align: left;
+  text-decoration: underline;
+  text-underline-offset: 0.15em;
+  cursor: pointer;
+
+  &:hover { color: govuk.govuk-functional-colour("link-hover"); text-decoration-thickness: 3px; }
+
+  &[aria-pressed="true"] {
+    background: govuk.govuk-colour("black");
+    color: govuk.govuk-colour("white");
+    text-decoration: none;
+  }
+
+  &:focus-visible {
+    outline: 3px solid transparent;
+    background: govuk.govuk-colour("yellow");
+    color: govuk.govuk-colour("black");
+    box-shadow: 0 -2px govuk.govuk-colour("yellow"), 0 4px govuk.govuk-colour("black");
+    text-decoration: none;
+  }
+}
+
+.prt-pgrid__colhead {
+  text-align: center !important;
+  vertical-align: bottom !important;
+  padding-bottom: govuk.govuk-spacing(1) !important;
+}
+
+.prt-pgrid__col {
+  min-width: 2.75rem;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+
+.prt-pgrid__cell {
+  width: 2.75rem;
+  height: 2.75rem;
+}
+
+// An empty square is the ground, not a mark: recessive, and nothing to press.
+.prt-pgrid__cell--empty {
+  background: govuk.govuk-colour("black", $variant: "tint-95");
+}
+
+// A filled square is the whole cell and the control. 44px, the target floor.
+.prt-pgrid__square {
+  @include govuk.govuk-font($size: 16, $weight: bold);
+  display: block;
+  width: 100%;
+  min-width: 2.75rem;
+  height: 2.75rem;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 2px;
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+
+  // The light steps get a hairline so they stay a square against the ground.
+  &.prt-band--moderate,
+  &.prt-band--limited { box-shadow: inset 0 0 0 1px govuk.govuk-colour("black", $variant: "tint-50"); }
+
+  &:hover { outline: 2px solid govuk.govuk-colour("black"); outline-offset: -2px; }
+
+  // Pressed: a black ring with a white one inside it, legible on every step.
+  &[aria-pressed="true"] {
+    outline: 3px solid govuk.govuk-colour("black");
+    outline-offset: -3px;
+    box-shadow: inset 0 0 0 6px govuk.govuk-colour("white");
+  }
+
+  &:focus-visible {
+    outline: 3px solid govuk.govuk-colour("yellow");
+    outline-offset: 0;
+    box-shadow: inset 0 0 0 4px govuk.govuk-colour("black");
+  }
+}
+
+.prt-pgrid__key { margin: govuk.govuk-spacing(3) 0 govuk.govuk-spacing(3); max-width: 60rem; }
+.prt-pgrid__lede { max-width: $prt-measure; }
+
+@media print {
+  .prt-pgrid__rowhead { position: static; }
+  .prt-pgrid__square { box-shadow: inset 0 0 0 1px #000; }
+  .prt-pgrid__table { table-layout: auto !important; }
+  // The controls are labels on paper; the base hides buttons in print.
+  .prt-pgrid .prt-pgrid__row,
+  .prt-pgrid .prt-pgrid__col,
+  .prt-pgrid .prt-pgrid__square { display: inline-block !important; }
+  .prt-pgrid .prt-pgrid__square { display: block !important; }
+}

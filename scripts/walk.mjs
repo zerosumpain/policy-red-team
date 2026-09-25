@@ -145,6 +145,50 @@ try {
   if (!/18 of 18 completed/.test(provenance)) failures.push('report: does not say all eighteen stages completed');
 
   /*
+   * THE BRIEF IS THE FIRST THING ON THE REPORT (phase 19, workstream B). The
+   * fixture writes key judgements, so the brief is built from them: the
+   * heading says so, a judgement quotes the paper as a quote, and the Word
+   * download of the brief alone answers with a Word file.
+   */
+  await page.getByRole('tab', { name: /verdict/i }).click();
+  const brief = page.locator('#report-panel-verdict .prt-brief');
+  if (!(await brief.count())) {
+    failures.push('brief: the Verdict does not open with the brief');
+  } else {
+    const firstSection = await page.locator('#report-panel-verdict section').first().getAttribute('aria-labelledby');
+    if (firstSection !== 'main-findings') failures.push(`brief: the Verdict opens with "${firstSection}", not the brief`);
+    if (!(await brief.getByRole('heading', { name: 'Key judgements' }).count())) failures.push('brief: the fixture has key judgements and the brief does not lead with them');
+    if (!(await brief.locator('blockquote').count())) failures.push('brief: no judgement quotes the paper');
+    if (!(await brief.getByRole('heading', { name: 'What we could not check' }).count())) note('brief: the fixture run noted nothing it could not check');
+    const href = await brief.getByRole('link', { name: 'Download the brief (Word)' }).getAttribute('href');
+    if (!href?.includes('part=brief')) failures.push('brief: no Word download of the brief alone');
+    const docx = await fetch(`http://127.0.0.1:${PORT}${href}`);
+    if (!docx.ok || !/wordprocessingml/.test(docx.headers.get('content-type') ?? '')) failures.push(`brief: the Word download answered ${docx.status} ${docx.headers.get('content-type')}`);
+    const sharedBrief = await (await fetch(`http://127.0.0.1:${PORT}${href.replace('format=docx', 'format=md')}&scope=shared`)).text();
+    if (!/This is a shared copy/.test(sharedBrief) || !/## Key judgements/.test(sharedBrief)) failures.push('brief: the shared brief is not the brief, or does not say it is shared');
+    note('the brief leads the Verdict, from key judgements, with a Word copy of it alone');
+  }
+
+  /*
+   * THE PATTERN GRID LEADS THREATS, and a square is a carried selection: it
+   * narrows the ranked list and the banner says both halves of it.
+   */
+  await page.getByRole('tab', { name: /threats/i }).click();
+  const firstThreat = await page.locator('#report-panel-threats section').first().getAttribute('aria-labelledby');
+  if (firstThreat !== 'patterns') failures.push(`grid: Threats opens with "${firstThreat}", not the pattern grid`);
+  const square = page.locator('#report-panel-threats .prt-pgrid__square').first();
+  if (await square.count()) {
+    await square.click();
+    const said = await page.locator('.prt-selection').innerText();
+    if (!/aimed at/.test(said)) failures.push(`grid: pressing a square said "${said}"`);
+    if ((await square.getAttribute('aria-pressed')) !== 'true') failures.push('grid: the pressed square is not marked pressed');
+    await page.getByRole('button', { name: /Clear the selection/i }).first().click();
+    note('a square of the pattern grid narrows every tab and says so');
+  } else {
+    failures.push('grid: no square to press');
+  }
+
+  /*
    * THE SELECTION HAS TO SURVIVE A TAB CHANGE, which is the one thing here that
    * breaks without throwing: the view simply shows a narrower set, and a reader
    * comparing two moves draws a conclusion from a list they did not know was

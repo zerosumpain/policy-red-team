@@ -47,6 +47,13 @@ export const VOCABULARY: readonly Word[] = [
   { was: 'limits recorded / warnings', now: 'gaps it noted' },
   { was: 'recommendations / suggestions', now: 'recommendations' },
   { was: 'stress test / levers', now: 'what if we are wrong / assumptions you can switch off' },
+  // Phase 19, workstream B: the brief and the pattern grid.
+  { was: 'patterns / play archetypes', now: 'kinds of way to beat it' },
+  { was: 'early warning signal', now: 'early warning' },
+  { was: 'counter-play / counter', now: 'the fix' },
+  { was: 'wouldChangeIf / falsifier', now: 'what would change our mind' },
+  { was: 'owner + action', now: 'who should act' },
+  { was: 'limits / gaps (in the brief)', now: 'what we could not check' },
 ];
 
 export type GlossaryEntry = { term: string; meaning: string };

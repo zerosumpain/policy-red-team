@@ -20,6 +20,7 @@
 @use "./parts/assurance";
 @use "./parts/beats";
 @use "./parts/bodies";
+@use "./parts/brief";
 @use "./parts/cast";
 @use "./parts/chainrail";
 @use "./parts/checkledger";
@@ -44,6 +45,7 @@
 @use "./parts/nodebar-track";
 @use "./parts/nodebars";
 @use "./parts/picker";
+@use "./parts/pgrid";
 @use "./parts/pipeline";
 @use "./parts/playlist";
 @use "./parts/pressure";
