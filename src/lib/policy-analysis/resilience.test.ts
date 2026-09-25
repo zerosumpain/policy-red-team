@@ -268,6 +268,20 @@ describe('a conclusion survives an unsupported mention', () => {
     expect(triaged.rejected[0].reason).toContain('No hypothesis this conclusion rests on');
   });
 
+  it('refiles an id put under the wrong heading instead of refusing the conclusion', () => {
+    // The replay of 44dd5420 after the path hint: the model cited the causal
+    // chains it was pointed at, and also left an assumption among its results —
+    // "A conclusion must cite a test or model and its hypotheses" then threw
+    // the high-risk-assumptions and assurance chapters away in every round.
+    // An id that resolves, filed under the other heading, is bookkeeping.
+    const misfiled = artefact('s17_main_finding_4', 'finding', 'Assumptions', 'A conclusion.', { section: 'high_risk_assumptions', resultIds: ['s9_scenario', 's1_assumption'], hypothesisIds: ['s1_assumption', 's1_claim'] }, { refs: ['s9_scenario', 's1_assumption', 's1_claim'] });
+    const triaged = triageArtefacts({ artefacts: [misfiled], warnings: [] }, 17, [...prior, scenario]);
+    expect(triaged.rejected).toHaveLength(0);
+    expect(triaged.artefacts[0].data.resultIds).toEqual(['s9_scenario']);
+    expect(triaged.artefacts[0].data.hypothesisIds).toEqual(['s1_assumption']);
+    expect(triaged.artefacts[0].refs).toContain('s1_claim');
+  });
+
   it('tells the model which paths DO exist when a conclusion has none', () => {
     // THE RULE THAT KILLED EVERY REAL "BEST START" RUN AT STAGE 17 (44dd5420,
     // 25 Sept; 03c83ea5 and b5774103 before it). The high-risk-assumptions and

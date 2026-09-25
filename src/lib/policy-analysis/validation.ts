@@ -81,7 +81,26 @@ function semanticFault(a: Artefact, all: Map<string, Artefact>, stage: number, n
   // A key judgement quotes the paper whatever its origin: it is a judgement,
   // and the quote is what stops it being a judgement about any paper at all.
   if ((a.origin === 'extracted_fact' || a.kind === 'key_judgement') && a.kind !== 'passage') {
-    const located = locate(a, all);
+    let located = locate(a, all);
+    /**
+     * A KEY JUDGEMENT QUOTES THE PAPER THROUGH ITS MECHANISM when its own copy
+     * cannot be found. Stage 17 is not sent the passages, so the model cannot
+     * copy the paper exactly: on the replay of 44dd5420 (25 Sept) every
+     * judgement in every round of three attempts, and every top-up, was refused
+     * here. The mechanism it names is an extraction with a quote already
+     * located in the paper — the paper's own words about the thing judged — so
+     * that quote stands in. Still refused when the mechanism has none.
+     */
+    if (located && a.kind === 'key_judgement') {
+      const mechanism = all.get(String(a.data.mechanismId));
+      if (mechanism?.kind === 'mechanism' && mechanism.sourceId && mechanism.sourceQuote) {
+        a.sourceId = mechanism.sourceId;
+        a.sourceQuote = mechanism.sourceQuote;
+        if (!a.refs.includes(mechanism.sourceId)) a.refs = [mechanism.sourceId, ...a.refs];
+        note?.(`“${a.label}” quoted the paper in words that could not be found; the words of the part of the policy it concerns were used instead.`);
+        located = locate(a, all);
+      }
+    }
     if (located) return located;
   }
   // URLs originate exclusively in trusted research adapter results, never model output.
@@ -252,7 +271,27 @@ function relationalFault(a: Artefact, all: Map<string, Artefact>): Fault | null 
   if (a.kind === 'finding') {
     let results = a.data.resultIds as string[];
     let hypotheses = a.data.hypothesisIds as string[];
-    if (!results.every((id) => (RESULT_KINDS as readonly string[]).includes(all.get(id)?.kind ?? '')) || !hypotheses.every((id) => all.get(id)?.kind === 'assumption')) return fault('traceability', 'A conclusion must cite a test or model and its hypotheses.');
+    /**
+     * REFILED, NOT REFUSED. An id that resolves but sits under the wrong heading
+     * — an assumption among the results, a result among the hypotheses — is
+     * moved to the heading its kind belongs under; anything that is neither
+     * (a claim, a finding) leaves both lists and stays in `refs`, where
+     * provenance is recorded anyway. On the replay of 44dd5420 the model, told
+     * which chains reach its assumptions, cited them AND left one assumption in
+     * `resultIds`, and this rule threw the high-risk-assumptions and assurance
+     * chapters away in every round. Refused only when a list is left empty.
+     */
+    const isResult = (id: string) => (RESULT_KINDS as readonly string[]).includes(all.get(id)?.kind ?? '');
+    const isAssumption = (id: string) => all.get(id)?.kind === 'assumption';
+    const cited = [...new Set([...results, ...hypotheses])];
+    if (!results.every(isResult) || !hypotheses.every(isAssumption)) {
+      for (const id of cited) if (!a.refs.includes(id)) a.refs = [...a.refs, id];
+      results = cited.filter(isResult);
+      hypotheses = cited.filter(isAssumption);
+      a.data.resultIds = results;
+      a.data.hypothesisIds = hypotheses;
+    }
+    if (!results.length || !hypotheses.length) return fault('traceability', 'A conclusion must cite a test or model and its hypotheses.');
     // A hypothesis none of the cited results reaches is an unsupported mention,
     // not a false conclusion. A `test` records its inputs as claims and evidence
     // rather than as assumptions, so ANY conclusion citing a test alongside an

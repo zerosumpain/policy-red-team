@@ -48,11 +48,23 @@ describe('what a key judgement must carry', () => {
     expect(mixed.artefacts[0].data.playIds).toEqual([play.id]);
   });
 
-  it('refuses one whose quote is not in the paper, whatever origin it claims', () => {
+  it('takes the paper\'s words from its mechanism when its own quote cannot be found', () => {
+    // Stage 17 is not sent the passages, so the model cannot copy the paper
+    // exactly — on the 25 September replay of 44dd5420 every judgement in every
+    // round of three attempts was refused on its quote, and so was every top-up.
+    // The mechanism it names already carries a located quote; that IS the
+    // paper's own wording about the thing being judged.
     const invented = triageArtefacts({ artefacts: [judgement({}, 's17_000_judgement', { sourceQuote: 'words the paper never used' })], warnings: [] }, 17, prior);
-    expect(invented.rejected[0]).toMatchObject({ code: 'span', reason: expect.stringContaining('quote the paper') });
+    expect(invented.rejected).toHaveLength(0);
+    expect(invented.artefacts[0]).toMatchObject({ sourceId: passage.id, sourceQuote: 'funded on completion rates' });
     const unquoted = triageArtefacts({ artefacts: [judgement({}, 's17_000_judgement', { sourceId: null, sourceQuote: null })], warnings: [] }, 17, prior);
-    expect(unquoted.rejected[0]?.code).toBe('span');
+    expect(unquoted.artefacts[0]).toMatchObject({ sourceId: passage.id, sourceQuote: 'funded on completion rates' });
+  });
+
+  it('is still refused when neither it nor its mechanism can quote the paper', () => {
+    const bare = { ...mechanism, id: 's1_000_mechanism_bare', sourceId: null, sourceQuote: null, refs: [passage.id] };
+    const orphan = triageArtefacts({ artefacts: [judgement({ mechanismId: bare.id }, 's17_000_judgement', { sourceQuote: 'words the paper never used' })], warnings: [] }, 17, [...prior, bare]);
+    expect(orphan.rejected[0]).toMatchObject({ code: 'span', reason: expect.stringContaining('quote the paper') });
   });
 
   it('does not belong to any stage but assured synthesis and a restatement', () => {
