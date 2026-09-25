@@ -62,16 +62,16 @@ export function ActorFunnel({ board, onNetwork }: {
               : 'every one of them profiled',
           },
           {
-            label: 'positioned to run a play',
+            label: 'could use a way to beat it',
             value: counts.active,
-            note: `${counts.idle.length} are profiled and run none`,
+            note: `${counts.idle.length} are profiled and have none`,
           },
         ]}
       />
 
       <p className="govuk-body-s prt-meta">
-        Entity resolution keeps candidates apart rather than merging them, which is why there are
-        more records than bodies{onNetwork ? (
+        When the paper names a body in more than one way, the assessment keeps the mentions apart
+        rather than guess they are the same, which is why there are more records than bodies{onNetwork ? (
           <>
             {' — '}
             <button type="button" className="prt-linkbutton" onClick={onNetwork}>How they connect</button>
@@ -81,9 +81,9 @@ export function ActorFunnel({ board, onNetwork }: {
       </p>
 
       {counts.idle.length ? (
-        <Details summary={`The ${counts.idle.length} bodies the paper names and profiles that run no play`}>
+        <Details summary={`The ${counts.idle.length} bodies the paper names and profiles that have no way to beat it`}>
           <p className="govuk-body-s">
-            Each of these has a profile in this assessment and no play aimed through it. That is a
+            Each of these has a profile in this assessment and no way to beat the policy of its own. That is a
             reading in itself where the body is a regulator or a department: nothing the paper sets
             up gives it something to do.
           </p>

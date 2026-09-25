@@ -70,7 +70,7 @@ export function FactorProfile({ list, linkTo }: {
                 hears "0.71" with nothing around it otherwise, and three other
                 tables on this page draw bars against three other maxima.
               */}
-              <Bar value={factor.mean} max={1} scale={`mean across the ${list.length} plays, 0 to 1`} />
+              <Bar value={factor.mean} max={1} scale={`average across the ${list.length} ways to beat it, 0 to 1`} />
             </p>
             <p className="prt-factor__gloss prt-meta">{factor.gloss}</p>
             {/*
@@ -89,7 +89,7 @@ export function FactorProfile({ list, linkTo }: {
                 Worst on this, at {factor.peak.toFixed(2)}:{' '}
                 {linkTo ? linkTo(factor.top.artefact) : factor.top.artefact.label}
                 {factor.sharing
-                  ? ` — and ${factor.sharing === 1 ? 'one other play scores' : `${factor.sharing} other plays score`} exactly the same.`
+                  ? ` — and ${factor.sharing === 1 ? 'one other scores' : `${factor.sharing} others score`} exactly the same.`
                   : '.'}
               </p>
             ) : null}

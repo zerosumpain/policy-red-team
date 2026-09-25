@@ -91,7 +91,7 @@ describe('finding the mechanism a play hangs off', () => {
 
 describe('saying what is selected, in words', () => {
   it('states the unfiltered case as an invitation, not a blank', () => {
-    expect(describeSelection(null)).toMatch(/Select a band, a mechanism or a body/);
+    expect(describeSelection(null)).toMatch(/Select a level of exposure, a part of the policy or a body/);
   });
 
   it('names the object rather than showing a bare chip', () => {
@@ -169,10 +169,10 @@ describe('a selection in a URL resolves to the right KIND of thing', () => {
 
 describe('saying why a list is empty, in the banner’s own verbs', () => {
   it('names the band, the mechanism or the body', () => {
-    expect(nothingUnder({ kind: 'band', id: 'limited' })).toBe('No play here has limited exposure.');
+    expect(nothingUnder({ kind: 'band', id: 'limited' })).toBe('Nothing here is limited.');
     expect(nothingUnder({ kind: 'mechanism', id: 'm1', label: 'Parliamentary presentation' }))
-      .toBe('No play here follows from “Parliamentary presentation”.');
-    expect(nothingUnder({ kind: 'actor', id: 'a1', label: 'Ofsted' })).toContain('positioned to run');
+      .toBe('Nothing here follows from “Parliamentary presentation”.');
+    expect(nothingUnder({ kind: 'actor', id: 'a1', label: 'Ofsted' })).toContain('could do');
   });
 
   it('says nothing when nothing is selected', () => {

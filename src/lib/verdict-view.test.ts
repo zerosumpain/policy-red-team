@@ -59,17 +59,17 @@ describe('bandLegality', () => {
 
 describe('legalityReading', () => {
   it('says nothing breaks a rule only when nothing does', () => {
-    expect(legalityReading(bandLegality(post16()))[0]).toBe('Not one of the 47 plays breaks a rule.');
+    expect(legalityReading(bandLegality(post16()))[0]).toBe('Not one of the 47 ways to beat it breaks a rule.');
   });
 
   it('counts the breaches when there are some', () => {
     const tab = bandLegality([...rows('severe', 'breach', 3), ...rows('severe', 'compliant', 1)]);
-    expect(legalityReading(tab)[0]).toBe('3 of the 4 plays would break a rule; the other 1 would not.');
+    expect(legalityReading(tab)[0]).toBe('3 of the 4 ways to beat it would break a rule; the other 1 would not.');
   });
 
   it('puts the enforcement consequence on the worst band, not on the whole run', () => {
     expect(legalityReading(bandLegality(post16()))[1]).toBe(
-      '13 of the 20 severe plays are things nobody is forbidden to do, so enforcement is not the answer to them.',
+      '13 of the 20 severe ways to beat it are things nobody is forbidden to do, so enforcement is not the answer to them.',
     );
   });
 

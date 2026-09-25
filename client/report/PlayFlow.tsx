@@ -48,7 +48,7 @@ export function PlayFlow({ play, resolve, linkTo }: {
       <div className="prt-flow__row">
         <Stage
           title="What it needs to be true"
-          empty="The record names no preconditions."
+          empty="The record names nothing it needs."
           hint={needs.length ? `${needs.length} assumption${needs.length === 1 ? '' : 's'} the assessment recorded` : undefined}
         >
           {needs.map((item) => (
@@ -65,7 +65,7 @@ export function PlayFlow({ play, resolve, linkTo }: {
           answered — it was a field in a table twelve screens down.
         */}
         <div className="prt-flow__stage prt-flow__stage--subject">
-          <h3 className="prt-flow__head">The play</h3>
+          <h3 className="prt-flow__head">The way to beat it</h3>
           <div className={`prt-flow__card prt-flow__card--${play.band}`}>
             {play.actor ? (
               <p className="prt-flow__who">{linkTo(play.actor)}</p>
@@ -75,7 +75,7 @@ export function PlayFlow({ play, resolve, linkTo }: {
             <p className="prt-flow__title">{play.artefact.label}</p>
             <p className="prt-flow__figures">
               <span className={`prt-band prt-band--${play.band}`}>{BAND_LABEL[play.band]}</span>
-              <span className="prt-meta">exposure {play.exposure.toFixed(2)}</span>
+              <span className="prt-meta">score {play.exposure.toFixed(2)}</span>
             </p>
           </div>
         </div>
@@ -95,7 +95,7 @@ export function PlayFlow({ play, resolve, linkTo }: {
 
       {counter ? (
         <div className="prt-flow__counter">
-          <h3 className="prt-flow__head">What would close it</h3>
+          <h3 className="prt-flow__head">What would stop it</h3>
           <p className="govuk-body">{counter}</p>
         </div>
       ) : null}

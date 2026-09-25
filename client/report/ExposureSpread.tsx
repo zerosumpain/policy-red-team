@@ -46,27 +46,27 @@ export function ExposureSpread({ list }: { list: Play[] }) {
 
   return (
     <Figure
-      label="how the exposure is spread"
+      label="how the scores are spread"
       diagram={(
         <figure className="govuk-!-margin-0">
           <Strip
             values={spread.values}
             cuts={spread.cuts}
             regions={spread.regions}
-            label={`Every one of the ${list.length} plays at its exposure on a scale of 0 to 1, with the ${spread.cuts.length} band cuts marked. ${spread.caption} The same figures are available as a table.`}
+            label={`Every one of the ${list.length} ways to beat it at its score on a scale of 0 to 1, with the ${spread.cuts.length} cuts between levels marked. ${spread.caption} The same figures are available as a table.`}
           />
           <figcaption className="prt-caption">{spread.caption}</figcaption>
         </figure>
       )}
       table={(
         <Table
-          caption="Where each band starts and stops"
+          caption="Where each level starts and stops"
           captionSize="s"
           scroll
           firstCellIsHeader
           columns={[
-            { header: 'Band' },
-            { header: 'Plays', numeric: true },
+            { header: 'How exposed' },
+            { header: 'Ways to beat it', numeric: true },
             { header: 'Lowest', numeric: true },
             { header: 'Highest', numeric: true },
           ]}

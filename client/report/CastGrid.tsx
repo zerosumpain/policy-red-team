@@ -121,7 +121,7 @@ export function CastGrid({ board, personas, linkTo }: {
         questions of each: who can call it to account, what it is measured by, how far ahead it can
         afford to care, what it knows that others do not, what it does if it declines to play
         along, and who around it is better off if the policy fails. The grid is those answers for
-        the {active.length} bodies positioned to run a play. The figures first, because the answer
+        the {active.length} bodies that could use a way to beat it. The figures first, because the answer
         the paper most often gives is that it does not say.
       </p>
 
@@ -155,22 +155,22 @@ export function CastGrid({ board, personas, linkTo }: {
         Of the {coverage.answered} answered cells, {originLine(coverage.origins)}.
       </p>
 
-      {grid(active, `What moves each body — the ${active.length} positioned to run a play`)}
+      {grid(active, `What moves each body — the ${active.length} that could use a way to beat it`)}
 
       <p className="govuk-body-s prt-caption">
-        Every cell is clipped to about {CAST_CHARS} characters; the full sentence, its source and
-        its epistemic status are on the body&rsquo;s own record. A cell reading
+        Every cell is clipped to about {CAST_CHARS} characters; the full sentence, where it came
+        from and how sure the assessment is are on the body&rsquo;s own record. A cell reading
         &ldquo;{SILENT_TEXT}&rdquo; is one where the profile&rsquo;s answer opens by saying the
         paper does not.
       </p>
 
       {idle.length ? (
-        <Details summary={`${idle.length} more profiled bodies that run no play`}>
+        <Details summary={`${idle.length} more profiled bodies with no way to beat it`}>
           <p className="govuk-body-s">
-            The same six questions, asked of the bodies the paper names and profiles but that no
-            play in this assessment runs through.
+            The same six questions, asked of the bodies the paper names and profiles but that have
+            no way to beat the policy in this assessment.
           </p>
-          {grid(idle, `What moves each body — the ${idle.length} that run no play`)}
+          {grid(idle, `What moves each body — the ${idle.length} with no way to beat it`)}
         </Details>
       ) : null}
     </>

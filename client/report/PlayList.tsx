@@ -146,7 +146,7 @@ export function PlayList({ plays, linkTo, rank, trailing, exposureMax, rankValue
             </span>
             <span className={`prt-band prt-band--${play.band}`}>{BAND_LABEL[play.band]}</span>
             <span className="prt-play__exposure">
-              <span className="govuk-visually-hidden">Exposure </span>
+              <span className="govuk-visually-hidden">Score </span>
               {/*
                 THE BAR LIVES INSIDE THE FIGURE, AND ITS TRACK DISAPPEARS ON A
                 PHONE. `.prt-play__figures` is a wrapping flex row whose three

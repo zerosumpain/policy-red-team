@@ -92,8 +92,8 @@ export function factorReading(rows: FactorRow[], plays: number): string {
     ? `All four judgements average ${high.mean.toFixed(2)}.`
     : `Highest on ${high.label.toLowerCase()} at ${high.mean.toFixed(2)}, lowest on `
       + `${low.label.toLowerCase()} at ${low.mean.toFixed(2)} — read those two against the lines `
-      + 'above them for what this playbook is made of.';
+      + 'above them for what these ways to beat it are made of.';
 
-  return `${shape} Each figure is the plain mean across all ${plays} plays; a play's own exposure `
-    + 'is the geometric mean of its four, so it is a magnitude rather than a score.';
+  return `${shape} Each figure is the plain average across all ${plays} ways to beat it. Each one's own `
+    + 'score is the geometric mean of its four, so one low factor pulls it down hard.';
 }

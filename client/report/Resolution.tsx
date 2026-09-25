@@ -70,14 +70,14 @@ export function Resolution({ artefacts, linkTo }: {
   return (
     <>
       <p className="govuk-body">
-        Where the paper names a body in a way the pipeline cannot tie to one identity, the mentions
-        are kept as separate candidate records rather than merged. That is deliberate: merging two
-        bodies that turn out to be different would put a play on the wrong desk. These are the{' '}
+        Where the paper names a body in a way the assessment cannot tie to one organisation, the
+        mentions are kept as separate records rather than merged. That is deliberate: merging two
+        bodies that turn out to be different would pin a way to beat the policy on the wrong one. These are the{' '}
         {rows.length} names it could not pin down, and the {total} records standing behind them.
       </p>
 
       <Figure
-        label="the names entity resolution could not pin down"
+        label="the names the assessment could not pin down"
         /* The bars are HTML and read at 320px, so there is nothing for the
            breakpoint flip to rescue — `Figure`'s own note on the two charts in
            Move 2, which are the same construction. */
@@ -134,9 +134,9 @@ export function Resolution({ artefacts, linkTo }: {
       ) : null}
 
       <p className="govuk-body">
-        These count every record entity resolution kept apart. The count under &ldquo;How they
-        connect&rdquo; on Move 2 is smaller for some of the same names because it counts only the
-        bodies the paper places in a stated relationship.
+        These count every record the assessment kept apart. The count under &ldquo;How they
+        connect&rdquo; on the Causes tab is smaller for some of the same names because it counts
+        only the bodies the paper places in a stated link.
       </p>
     </>
   );

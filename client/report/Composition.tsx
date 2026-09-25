@@ -102,7 +102,7 @@ export function Composition({ artefacts, list, mechanismIds }: {
               {fieldLabel(largest.key)} is the largest kind at {largest.count};{' '}
               {fieldLabel(smallest.key).toLowerCase()} the smallest at {smallest.count}. A paper
               that states what it wants far more often than who decides is the same reading the
-              structural checks reach from the other direction, in &ldquo;What it found&rdquo;.
+              checks on how the policy is set up reach from the other direction, on the Verdict tab.
             </p>
           ) : null}
         </>
@@ -111,12 +111,12 @@ export function Composition({ artefacts, list, mechanismIds }: {
       {census.named ? (
         <>
           <h3 className="govuk-heading-m govuk-!-margin-top-6" id="composition-machinery">
-            How much of the machinery has an operator
+            How much of the policy has someone named to run it
           </h3>
           <p className="govuk-body">
-            A mechanism is a thing the paper creates. The report&rsquo;s own glossary tells a reader
-            to ask whether the paper names who operates it, because a mechanism with no operator is
-            the commonest gap in a policy paper. Here is the answer for this one.
+            A part of the policy is something the paper sets up — a fund, a duty, a regulator. The
+            first question to ask of each is whether the paper says who runs it, because a part with
+            nobody named to run it is the commonest gap in a policy paper. Here is the answer for this one.
           </p>
           {/*
             NOT SELECTABLE, deliberately. `Metrics` is a `<dl>` of `<dt>`/`<dd>`
@@ -127,11 +127,11 @@ export function Composition({ artefacts, list, mechanismIds }: {
           <Metrics
             columns={4}
             metrics={[
-              { label: 'pieces of machinery the paper names', value: census.named },
+              { label: 'parts of the policy the paper sets up', value: census.named },
               {
-                label: 'generate at least one play',
+                label: 'open up at least one way to beat it',
                 value: census.generating,
-                note: 'the mechanism chart on this move',
+                note: 'the chart on the Causes tab',
               },
               {
                 label: 'have a named operator',
@@ -145,10 +145,10 @@ export function Composition({ artefacts, list, mechanismIds }: {
             ]}
           />
           <p className="govuk-body">
-            {census.playsOnUnoperated} of the {census.playsOnMechanism} plays that name a piece of
-            machinery rest only on machinery the paper never says who runs
+            {census.playsOnUnoperated} of the {census.playsOnMechanism} ways to beat it that name a
+            part of the policy rest only on parts the paper never says who runs
             {census.named - census.withOperator
-              ? `, and ${census.named - census.withOperator} of the ${census.named} mechanisms have no stated operator at all`
+              ? `, and ${census.named - census.withOperator} of the ${census.named} parts have nobody named to run them at all`
               : ''}
             .
           </p>
@@ -158,7 +158,7 @@ export function Composition({ artefacts, list, mechanismIds }: {
       {funnel.chains ? (
         <>
           <h3 className="govuk-heading-m govuk-!-margin-top-6" id="composition-chains">
-            Where the causal reading lands
+            Where the chains of cause and effect lead
           </h3>
           {/*
             THREE STAGES, EQUAL WIDTH, WITH THE FIGURE PRINTED IN EACH. A funnel
@@ -170,12 +170,12 @@ export function Composition({ artefacts, list, mechanismIds }: {
           <ol className="prt-chainflow">
             <li className="prt-chainflow__stage">
               <span className="prt-chainflow__n">{funnel.mechanisms}</span>
-              <span className="prt-chainflow__label">pieces of machinery a chain runs through</span>
+              <span className="prt-chainflow__label">parts of the policy a chain runs through</span>
             </li>
             <li className="prt-chainflow__stage">
               <span className="prt-chainflow__n">{funnel.assumptionCitations}</span>
               <span className="prt-chainflow__label">
-                assumption citations across {funnel.chains} causal chains
+                times an assumption is cited, across {funnel.chains} chains of cause and effect
               </span>
             </li>
             <li className="prt-chainflow__stage">
@@ -188,8 +188,8 @@ export function Composition({ artefacts, list, mechanismIds }: {
           <p className="govuk-body-s prt-meta">
             A citation, not a distinct assumption: two chains resting on the same thing are counted
             twice, because the figure is how much work the chains do. Every chain&rsquo;s own
-            assumptions are under the mechanism it runs through, once one is selected on the
-            mechanism chart.
+            assumptions are shown when you select the part of the policy it runs through, on the
+            Causes tab.
           </p>
         </>
       ) : null}

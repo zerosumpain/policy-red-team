@@ -29,10 +29,10 @@ export type Selection =
 
 /** What the banner above the views says, in words rather than a chip. */
 export function describeSelection(selection: Selection): string {
-  if (!selection) return 'Showing everything. Select a band, a mechanism or a body to narrow every view.';
-  if (selection.kind === 'band') return `Showing ${BAND_LABEL[selection.id].toLowerCase()} exposure only.`;
+  if (!selection) return 'Showing everything. Select a level of exposure, a part of the policy or a body to narrow every tab.';
+  if (selection.kind === 'band') return `Showing ${BAND_LABEL[selection.id].toLowerCase()} ways to beat it only.`;
   if (selection.kind === 'mechanism') return `Showing what follows from “${selection.label}”.`;
-  return `Showing what “${selection.label}” is positioned to run.`;
+  return `Showing what “${selection.label}” could do.`;
 }
 
 /**
@@ -51,9 +51,9 @@ export function describeSelection(selection: Selection): string {
  */
 export function nothingUnder(selection: Selection): string {
   if (!selection) return '';
-  if (selection.kind === 'band') return `No play here has ${BAND_LABEL[selection.id].toLowerCase()} exposure.`;
-  if (selection.kind === 'mechanism') return `No play here follows from “${selection.label}”.`;
-  return `No play here is one “${selection.label}” is positioned to run.`;
+  if (selection.kind === 'band') return `Nothing here is ${BAND_LABEL[selection.id].toLowerCase()}.`;
+  if (selection.kind === 'mechanism') return `Nothing here follows from “${selection.label}”.`;
+  return `Nothing here is something “${selection.label}” could do.`;
 }
 
 /**

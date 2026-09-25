@@ -100,12 +100,12 @@ export function Withheld({ stages }: {
 
   const table = (
     <Table
-      caption="Every stage that reasoned with less than the whole inventory"
+      caption="Every step that worked from less than the whole assessment"
       captionSize="s"
       scroll
       firstCellIsHeader
       columns={[
-        { header: 'Stage' },
+        { header: 'Step' },
         { header: 'Calls reduced', numeric: true },
         { header: 'Withheld from the deepest call', numeric: true },
         { header: 'Kinds that call held none of' },
@@ -124,19 +124,19 @@ export function Withheld({ stages }: {
   return (
     <>
       <p className="govuk-body">
-        {rows.length} of the {stages.length} stages made at least one call the model could not be
-        given the whole assessment for. The figures are the DEEPEST single call in each stage, not a
+        {rows.length} of the {stages.length} steps made at least one request to the model that could
+        not include the whole assessment. The figures are the DEEPEST single request in each step, not a
         sum across its calls — twelve calls that each withheld 191 items did not withhold 2,292.
       </p>
       {partial.length ? (
         <p className="govuk-body">
-          {partial.length === 1 ? 'One stage' : `${partial.length} stages`} carried the run&rsquo;s own
+          {partial.length === 1 ? 'One step' : `${partial.length} steps`} carried the run&rsquo;s own
           instruction to read them as partial: {partial.map((row) => row.name).join(', ')}. Conclusions
-          drawn there rest on less than the full inventory, and the report says so nowhere else.
+          drawn there rest on less than the whole assessment, and the report says so nowhere else.
         </p>
       ) : null}
       <Figure
-        label="how much each stage could not be shown"
+        label="how much each step could not be shown"
         /* HTML and CSS, so there is no 7px-SVG-text problem to flip away from. */
         flipAtNarrow={false}
         diagram={diagram}

@@ -321,7 +321,7 @@ const METER = [
   ['findings', 'Conclusions'],
   ['scenarios', 'Scenarios'],
   ['models', 'Interaction models'],
-  ['plays', 'Plays'],
+  ['plays', 'Ways to beat it'],
 ] as const;
 
 export function standingMeter(result: StressResult): MeterRow[] {

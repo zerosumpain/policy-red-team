@@ -94,7 +94,7 @@ function captionOf(found: Cluster | null, cuts: StripCut[]): string {
   if (found) {
     const share = Math.round((found.width / (MAX - MIN)) * 100);
     parts.push(
-      `${found.count} of the ${found.of} plays sit between ${two(found.low)} and ${two(found.high)} — ${share}% of the scale.`,
+      `${found.count} of the ${found.of} ways to beat it sit between ${two(found.low)} and ${two(found.high)} — ${share}% of the scale.`,
     );
   }
   // A cut with nothing on one side of it has no gap to report, and printing
@@ -103,7 +103,7 @@ function captionOf(found: Cluster | null, cuts: StripCut[]): string {
   const measured = cuts.filter((cut) => cut.gap !== null);
   if (measured.length) {
     parts.push(
-      `The cuts are not alike: the plays either side of ${measured
+      `The cuts are not alike: the scores either side of ${measured
         .map((cut) => `${two(cut.value)} are ${four(cut.gap as number)} apart`)
         .join(', either side of ')}.`,
     );

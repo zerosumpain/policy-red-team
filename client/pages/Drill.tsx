@@ -146,7 +146,7 @@ export function Drill() {
     return (
       <div className="govuk-grid-row">
         <div className="govuk-grid-column-two-thirds">
-          <h1 className="govuk-heading-l">Loading this artefact</h1>
+          <h1 className="govuk-heading-l">Loading this record</h1>
           <p className="govuk-body">Fetching the assessment it belongs to.</p>
         </div>
       </div>
@@ -454,7 +454,7 @@ export function Drill() {
             plays were four severe ones or one severe and three limited.
           */}
           <Table
-            caption="Ranked against the whole playbook, not against each other"
+            caption="Ranked against every way to beat the policy, not against each other"
             captionSize="s"
             scroll
             columns={[
@@ -586,7 +586,7 @@ export function Drill() {
           back link at the top is `<nav aria-label="Back">`, and two landmarks
           a screen reader cannot tell apart is axe's `landmark-unique`. */}
       <Pagination
-        label="Plays, by rank"
+        label="Ways to beat it, by rank"
         previous={previousPlay ? {
           href: to(previousPlay.artefact),
           title: 'Previous',
@@ -1048,7 +1048,7 @@ function PlaySection({ play, resolve, linkTo }: {
           a play met it three times. What is left is the phrase, which is what
           the table underneath needs to be read. */}
       <p className="govuk-body">
-        Exposure is the geometric mean of the four below.
+        The score is the geometric mean of the four below, so one low factor pulls it down hard.
       </p>
       {/*
         THE SCORE IS DRAWN AS WELL AS PRINTED. Four numbers between 66 and 82
@@ -1121,7 +1121,7 @@ function RecommendationSection({ artefact, all, plays: list, link, rankOf }: {
 
       {links.checks.length ? (
         <>
-          <h3 className="govuk-heading-s">The structural checks it answers</h3>
+          <h3 className="govuk-heading-s">The checks it answers</h3>
           <Table
             caption="Each check, and how the assessment scored it before this was recommended"
             captionSize="s"
@@ -1224,7 +1224,7 @@ function RecommendationSection({ artefact, all, plays: list, link, rankOf }: {
             />
             {inTier.length > 12 ? (
               <p className="govuk-body-s prt-meta">
-                The worst 12 of {inTier.length}. Every one is in the playbook on the report.
+                The worst 12 of {inTier.length}. Every one is in the list on the Threats tab.
               </p>
             ) : null}
           </>
@@ -1246,9 +1246,9 @@ function RecommendationSection({ artefact, all, plays: list, link, rankOf }: {
           : <Details key={tier} summary={`${TIER_LABEL[tier]} — ${inTier.length}`}>{body}</Details>;
       }) : (
         <p className="govuk-body">
-          Nothing in the playbook is linked to this by any of the three rules. That is a fact
-          about the record rather than about the recommendation: the findings it answers cite
-          no play, no shared assumption and no shared mechanism.
+          No way to beat the policy is linked to this by any of the three rules. That is a fact
+          about the record rather than about the recommendation: the findings it answers name no
+          way to beat it, no shared assumption and no shared part of the policy.
         </p>
       )}
 

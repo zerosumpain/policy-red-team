@@ -113,7 +113,7 @@ try {
 
   // 4 — the report, once the run finishes. The page follows its own progress
   // over the event stream, so this is waiting for the UI to update itself.
-  await page.getByRole('heading', { name: 'What it found' }).waitFor({ timeout: 120000 });
+  await page.getByRole('heading', { name: 'Main findings' }).waitFor({ timeout: 120000 });
   const id = page.url().split('/').pop();
 
   /*
@@ -123,11 +123,13 @@ try {
    * the reader looking for it will be.
    */
   const MOVES = [
-    ['verdict', 'What it found'],
-    ['causality', 'How they connect'],
+    // THE TAB NAMES ARE PLAIN ENGLISH SINCE PHASE 19 — "Causes", "Who is
+    // involved", "Where this comes from" — so the regex is the visible label.
+    ['verdict', 'Main findings'],
+    ['causes', 'How they connect'],
     ['threats', 'Ways to beat it'],
-    ['actors', 'Who is involved'],
-    ['provenance', 'How this was produced'],
+    ['who is involved', 'Who is involved'],
+    ['where this comes from', 'How this was produced'],
   ];
   for (const [tab, heading] of MOVES) {
     await page.getByRole('tab', { name: new RegExp(tab, 'i') }).click();
@@ -135,7 +137,7 @@ try {
     if (!visible.includes(heading)) failures.push(`report: "${heading}" is not in the ${tab} move`);
   }
 
-  await page.getByRole('tab', { name: /provenance|discarded/i }).click();
+  await page.getByRole('tab', { name: /where this comes from/i }).click();
   const provenance = await page.locator('#main-content').innerText();
   if (!/18 of 18 completed/.test(provenance)) failures.push('report: does not say all eighteen stages completed');
 
@@ -145,7 +147,9 @@ try {
    * comparing two moves draws a conclusion from a list they did not know was
    * filtered.
    */
-  await page.getByRole('tab', { name: /verdict/i }).click();
+  // THE BAND PICKER LEADS THREATS SINCE PHASE 19 (it sat above the tab strip),
+  // so the walk selects there and checks the selection survives into Verdict.
+  await page.getByRole('tab', { name: /threats/i }).click();
   // The four exposure boxes are one segmented bar now: `.prt-profile` is gone
   // from the markup and, since the dead-rule sweep, from the stylesheet too.
   // and the segments are the control. The walk went green on a selector that
@@ -158,14 +162,14 @@ try {
     const stated = await banner.innerText();
     if (!/Showing/.test(stated)) failures.push('report: selecting a band says nothing above the views');
 
-    await page.getByRole('tab', { name: /threats/i }).click();
+    await page.getByRole('tab', { name: /verdict/i }).click();
     const afterTab = await page.locator('.prt-selection').innerText();
     if (afterTab !== stated) failures.push('report: the selection did not survive a tab change');
 
     // And it is clearable from a view other than the one that set it.
     await page.getByRole('button', { name: /Clear the selection/i }).click();
     const cleared = await page.locator('.prt-selection').innerText();
-    if (!/Select a band/.test(cleared)) failures.push('report: the selection could not be cleared from another move');
+    if (!/Select a level of exposure/.test(cleared)) failures.push('report: the selection could not be cleared from another move');
   } else {
     failures.push('report: no exposure band to select');
   }
@@ -190,20 +194,29 @@ try {
   // Each toggle names its own figure — three of them on this page now, and
   // three buttons all announcing "Table" would tell a screen-reader user
   // nothing about which table.
-  const tableToggle = page.getByRole('button', { name: 'Table of ease against impact' });
+  // The ease-against-impact scatter was cut in phase 19; the toggle checked
+  // here is the theory-of-change strips', in Causes, where the fixture has one.
+  await page.getByRole('tab', { name: /causes/i }).click();
+  const tableToggle = page.getByRole('button', { name: 'Table of how each part is meant to work' });
   if (await tableToggle.count()) {
     await tableToggle.click();
-    await page.getByRole('table', { name: /ease and impact/i }).waitFor({ timeout: 5000 }).catch(() => {
-      failures.push('report: the exposure plot has no table view');
+    await page.getByRole('table', { name: /meant to work/i }).waitFor({ timeout: 5000 }).catch(() => {
+      failures.push('report: the theory-of-change strips have no table view');
     });
     // The pressed view must be visible and not merely announced: two identical
     // grey buttons over a chart leave a sighted reader no way to know which one
     // they are looking at.
-    const pressed = await tableToggle.evaluate((el) => ({
-      pressed: el.getAttribute('aria-pressed'),
-      secondary: el.className.includes('govuk-button--secondary'),
-    }));
-    if (pressed.pressed !== 'true' || pressed.secondary) {
+    // BOTH BUTTONS ARE `--secondary` BY DESIGN (see `parts/_figtoggle.scss`):
+    // the pressed one is drawn by `[aria-pressed="true"]`. This used to assert
+    // the pressed one was NOT secondary, which stopped being true when the
+    // toggle was restyled and went unnoticed because the scatter it ran against
+    // never showed its toggle in the fixture. So it compares what is painted.
+    const pressed = await tableToggle.evaluate((el) => {
+      const other = [...el.parentElement.querySelectorAll('button')].find((b) => b !== el);
+      const look = (b) => { const s = getComputedStyle(b); return `${s.backgroundColor}|${s.color}|${s.boxShadow}|${s.borderColor}`; };
+      return { pressed: el.getAttribute('aria-pressed'), same: other ? look(other) === look(el) : true };
+    });
+    if (pressed.pressed !== 'true' || pressed.same) {
       failures.push('report: the selected view is not marked pressed, or does not look it');
     }
     await audit('/assessments/:id (table view)');
@@ -214,7 +227,7 @@ try {
   // relationships; the fixture states one, which is enough to prove the section
   // renders, counts and links.
   // The graph lives in Causality now; open that move before looking for it.
-  await page.getByRole('tab', { name: /causality/i }).click();
+  await page.getByRole('tab', { name: /causes/i }).click();
   const connect = page.getByRole('heading', { name: 'How they connect' });
   if (await connect.count()) {
     await connect.scrollIntoViewIfNeeded();
@@ -270,7 +283,7 @@ try {
       await page.waitForTimeout(200);
       const pulled = await panel.innerText();
       if (pulled === atRest) failures.push('stress: pulling a lever changed nothing on the page');
-      if (!/\d+ of \d+ conclusions and results lose their footing|No conclusion loses its footing/.test(pulled)) {
+      if (!/\d+ of \d+ conclusions and results lose their support|No conclusion loses its support/.test(pulled)) {
         failures.push('stress: does not say how much lost its footing');
       }
       // THE TWO DIRECTIONS MUST NEVER BE COLLAPSED, and this asserts it against
@@ -296,7 +309,7 @@ try {
       if (/conclusions and results move/.test(pulled)) {
         failures.push('stress: the headline counts both directions as one figure');
       }
-      if (!/structural check(s)? (is|are) untouched/.test(pulled)) {
+      if (!/checks? on how the policy is set up (is|are) untouched/.test(pulled)) {
         failures.push('stress: does not say what cannot move');
       }
       await audit('/assessments/:id (stress test, pulled)');
@@ -489,7 +502,7 @@ try {
       { timeout: 180000, polling: 1000 },
     );
     await page.reload({ waitUntil: 'networkidle' });
-    await page.getByRole('heading', { name: 'What it found' }).waitFor({ timeout: 60000 });
+    await page.getByRole('heading', { name: 'Main findings' }).waitFor({ timeout: 60000 });
     const detail = await page.evaluate(async (a) => (await fetch(`/api/policy-analysis/${a}`)).json(), id);
     if (!detail.passes.some((p) => p.kind === 'restatement' && /completed/.test(p.status))) {
       failures.push('restate: no completed restatement was recorded');
@@ -627,7 +640,7 @@ try {
     // detail request returns, so waiting on a level-1 heading measured a page
     // that had not drawn a single table yet — this check has been passing on an
     // empty page. The second wait names something only the loaded report has.
-    ['report', `http://127.0.0.1:${PORT}/assessments/${id}`, 'What it found'],
+    ['report', `http://127.0.0.1:${PORT}/assessments/${id}`, 'Main findings'],
     ['drill', drillUrl, null],
   ]) {
     await page.goto(url, { waitUntil: 'networkidle' });
@@ -656,7 +669,7 @@ try {
    * what it did for one build of the moves. Asserted rather than assumed.
    */
   await page.goto(`http://127.0.0.1:${PORT}/assessments/${id}`, { waitUntil: 'networkidle' });
-  await page.getByRole('heading', { name: 'What it found' }).waitFor({ timeout: 30000 });
+  await page.getByRole('heading', { name: 'Main findings' }).waitFor({ timeout: 30000 });
   const narrow = await page.locator('#main-content').innerText();
   for (const heading of ['Ways to beat it', 'Who is involved', 'How they connect']) {
     if (!narrow.includes(heading)) {
@@ -682,7 +695,7 @@ try {
   await page.getByLabel('The paper', { exact: true }).setInputFiles(path.join(ROOT, 'tests', 'fixtures', 'policy-analysis', 'policy.txt'));
   await page.getByRole('button', { name: 'Start the assessment' }).click();
   await page.waitForURL('**/assessments/**', { timeout: 20000 });
-  await page.getByRole('heading', { name: 'What it found' }).waitFor({ timeout: 120000 });
+  await page.getByRole('heading', { name: 'Main findings' }).waitFor({ timeout: 120000 });
 
   await page.goto(`http://127.0.0.1:${PORT}/personas`, { waitUntil: 'networkidle' });
   await page.getByRole('heading', { name: 'Persona library', level: 1 }).waitFor({ timeout: 20000 });

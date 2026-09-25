@@ -173,14 +173,14 @@ export function ThreatsLead({ list, selection, mechanismIds, linkTo, onClear, wr
     <section aria-labelledby="weights">
       <h2 className="govuk-heading-l" id="weights">Ways to beat it</h2>
       <p className="govuk-body">
-        {list.length} of them, worst first. The assessment&rsquo;s own exposure is printed on every
-        one, and the order can be changed without changing it.
+        {list.length} of them, worst first. Each shows the assessment&rsquo;s own score, and you can
+        change the order without changing the scores.
       </p>
 
       <Details summary="Rank by what you care about">
         <p className="govuk-body">
           This changes the order you read in. It does not change the assessment, and the
-          assessment&rsquo;s own exposure stays on every play.
+          assessment&rsquo;s own score stays on every one.
         </p>
 
         <div className="prt-weights">
@@ -266,7 +266,7 @@ export function ThreatsLead({ list, selection, mechanismIds, linkTo, onClear, wr
         subsequent drag re-sorted ten cards in silence.
       */}
       <p className="govuk-body-s prt-meta">
-        {ranked.length} plays
+        {ranked.length} ways to beat it
         {typeof written === 'number' && written > list.length ? (
           <>
             {', out of '}
@@ -277,7 +277,7 @@ export function ThreatsLead({ list, selection, mechanismIds, linkTo, onClear, wr
             ) : `${written} the run wrote`}
           </>
         ) : null}
-        {isDefault ? ', ranked by the assessment’s exposure.' : ', re-ranked by your weighting.'}
+        {isDefault ? ', ranked by the assessment’s score.' : ', re-ranked by your weighting.'}
       </p>
       {/*
         AN EMPTY LIVE REGION THAT IS ALWAYS IN THE DOCUMENT, and a link that is
@@ -288,7 +288,7 @@ export function ThreatsLead({ list, selection, mechanismIds, linkTo, onClear, wr
       <p className="govuk-body-s prt-meta" role="status">
         {isEqual(settled)
           ? ''
-          : `${settledMove.moved} of ${announced.length} plays moved. “${announced[0]?.artefact.label ?? ''}” is now first${
+          : `${settledMove.moved} of ${announced.length} moved. “${announced[0]?.artefact.label ?? ''}” is now first${
             settledMove.leaderWas ? ` (was ${ordinal(settledMove.leaderWas)})` : ''
           }. The biggest move is ${settledMove.furthest} places.`}
       </p>
@@ -303,7 +303,7 @@ export function ThreatsLead({ list, selection, mechanismIds, linkTo, onClear, wr
       {isDefault ? null : (
         <p className="prt-weights__printed">
           Re-ranked: {EXPOSURE_FACTORS.map(([factor]) => `${factor} ×${weights[factor] ?? 1}`).join(', ')}.
-          The assessment&rsquo;s own exposure is printed on every play.
+          The assessment&rsquo;s own score is printed on every one.
         </p>
       )}
 
@@ -317,8 +317,8 @@ export function ThreatsLead({ list, selection, mechanismIds, linkTo, onClear, wr
       {ties.length ? (
         <p className="govuk-body-s prt-meta">
           {ties.length === 1
-            ? 'Two plays score the same to four decimal places; they share a rank, and the order between them is arbitrary.'
-            : `${ties.length} pairs of plays score the same to four decimal places; each pair shares a rank, and the order inside it is arbitrary.`}
+            ? 'Two of them score the same to four decimal places; they share a rank, and the order between them is arbitrary.'
+            : `${ties.length} pairs score the same to four decimal places; each pair shares a rank, and the order inside it is arbitrary.`}
         </p>
       ) : null}
 
@@ -339,12 +339,12 @@ export function ThreatsLead({ list, selection, mechanismIds, linkTo, onClear, wr
           id="show-counters"
           // The fieldset needs a legend and the page does not need a heading for
           // one checkbox: the control's own label already says what it does.
-          legend={<span className="govuk-visually-hidden">What each play would take to close</span>}
+          legend={<span className="govuk-visually-hidden">What would stop each one</span>}
           legendSize="s"
           small
           values={counters ? ['on'] : []}
           onChange={(values) => setCounters(values.includes('on'))}
-          items={[{ value: 'on', text: 'Open what would close each play' }]}
+          items={[{ value: 'on', text: 'Open what would stop each one' }]}
         />
         </div>
       ) : null}
@@ -400,7 +400,7 @@ export function ThreatsLead({ list, selection, mechanismIds, linkTo, onClear, wr
         whole scale a reader is given, and they are the top four per cent of it.
       */}
       <p className="govuk-body-s prt-meta">
-        The worst play scores {worst.toFixed(2)}; the mildest of the {list.length} scores {mildest.toFixed(2)}.
+        The worst scores {worst.toFixed(2)}; the mildest of the {list.length} scores {mildest.toFixed(2)}.
       </p>
     </section>
   );

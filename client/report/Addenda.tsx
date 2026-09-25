@@ -252,7 +252,7 @@ export function Addenda({ analysisId, status, artefacts, passes, readOnly, linkT
                 rows={2}
               />
               <p className="govuk-body-s prt-meta">
-                This runs four stages against what you attach, so it costs something. The original
+                This runs four steps against what you attach, so it costs something. The original
                 report is not touched: nothing is re-run, and what this finds is appended.
               </p>
               <ButtonGroup>
@@ -265,7 +265,7 @@ export function Addenda({ analysisId, status, artefacts, passes, readOnly, linkT
 
             <Details summary="Write the report again">
             <p className="govuk-body">
-              A restatement rewrites the assured synthesis over everything, including what has been
+              Writing it again redoes the final review over everything, including what has been
               added since. The superseded report is kept — it is still stored, still cited by its
               own recommendations, and still reachable. It is simply no longer the current one.
             </p>

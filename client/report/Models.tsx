@@ -88,8 +88,8 @@ export function Models({ artefacts, linkTo }: {
             {top.label} is a player in{' '}
             {top.count === models.length ? `every one of the ${models.length}` : `${top.count} of the ${models.length}`}{' '}
             patterns; {tail} of the {incidence.bodies.length} bodies appear in three or fewer. Every cell is a body the model names as a player, not a body the
-            assessment found a play for — {incidence.bodies.length} bodies appear here and the
-            playbook is aimed through twelve.
+            assessment found a way to beat the policy for — {incidence.bodies.length} bodies appear
+            here, and the ways to beat it run through twelve.
           </>
         }
       />
