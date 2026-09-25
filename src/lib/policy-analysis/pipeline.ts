@@ -10,7 +10,7 @@ import { partitionFrontMatter, skippedNote } from './front-matter';
 import { numbered, sentences } from './sentences';
 import type { ModelCall } from './server/provider';
 import type { Research } from './server/research';
-import type { PersonaPrior } from './personas';
+import { isAffectedGroup, type PersonaPrior } from './personas';
 
 /** Compact summaries of this reader's OTHER completed assessments, for stage 11. */
 export type Neighbour = { id: string; title: string; policyArea: string | null; jurisdiction: string | null; completedAt: string | null; artefacts: { id: string; kind: string; label: string; statement: string; entityType?: string; aliases?: string[] }[] };
@@ -853,7 +853,13 @@ export async function executeStage(input: StageInput, deps: PipelineDeps): Promi
     // it — so running the fan-out anyway spends one model call per profiled body
     // to produce artefacts whose only consumer will throw them away.
     const profiles = input.sealed ? [] : input.artefacts.filter((a) => a.kind === 'profile');
-    const ranked = input.sealed ? [] : rankActors(input.artefacts, fullOnly(profiles)).actors.slice(0, limits.actors);
+    // GROUPS OF PEOPLE ARE LEFT OUT BEFORE THE CAP, not after. The library no
+    // longer keeps a group ("children", "families") as a body with a strategy,
+    // so a call about one is spent and its link thrown away — and on the Best
+    // Start run such groups took slots in the top twelve that DfE never reached.
+    const ranked = input.sealed ? [] : rankActors(input.artefacts, fullOnly(profiles)).actors
+      .filter((actor) => !isAffectedGroup(actor.data.entityType))
+      .slice(0, limits.actors);
     if (input.sealed) {
       output.warnings.push('This is a sealed assessment, so nothing was written to the persona library and no model call was made for it. A dossier drawn from this paper would outlive the run and survive its purge, which is the residue sealing exists to remove.');
     }
