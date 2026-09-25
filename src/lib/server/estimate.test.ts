@@ -92,16 +92,17 @@ describe('saying it in words', () => {
 
 describe('what the run is actually shaped like', () => {
   it('divides the clock by concurrency but not the call count', () => {
-    const serial = estimateRun({ ...base, callDurationsMs: [10_000] });
+    const serial = estimateRun({ ...base, callDurationsMs: [10_000], concurrency: 1 });
     const parallel = estimateRun({ ...base, callDurationsMs: [10_000], concurrency: 4 });
     expect(parallel.calls).toEqual(serial.calls);
     expect(parallel.seconds!.high).toBe(Math.round(serial.seconds!.high / 4));
   });
 
-  it('defaults to one at a time, which is what a submission gets', () => {
-    // DEFAULT_CONCURRENCY is 1, and the run of 2026-09-19 confirmed it: every
-    // call started at the exact second the previous one ended.
-    expect(estimateRun({ ...base, callDurationsMs: [10_000] }).basis).toContain('one at a time');
+  it('defaults to six at a time, which is what a submission gets', () => {
+    // DEFAULT_CONCURRENCY was 1, and the run of 2026-09-19 showed it: every call
+    // started at the exact second the previous one ended. Phase 19 made it six.
+    expect(estimateRun({ ...base, callDurationsMs: [10_000] }).basis).toContain('6 at a time');
+    expect(estimateRun({ ...base, callDurationsMs: [10_000], concurrency: 1 }).basis).toContain('one at a time');
   });
 
   it('adds the repair round-trips, which are real calls on the clock', () => {

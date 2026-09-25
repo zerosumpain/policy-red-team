@@ -388,8 +388,9 @@ describe('concurrent agents', () => {
     const asked = base(); asked.set('concurrency', '4');
     expect(await read(asked)).toMatchObject({ concurrency: 4 });
 
-    // Nothing chosen means the stored default, which is one at a time — so an
-    // assessment submitted before this option existed resumes exactly as it ran.
+    // Nothing chosen is stored as nothing; the pipeline resolves it to
+    // DEFAULT_CONCURRENCY. The HTTP route writes the default down before this
+    // reads the form, so a browser run records the number it ran at.
     expect(await read(base())).toMatchObject({ concurrency: null });
 
     // A number nobody offers is a request the run cannot honour. Same rule as

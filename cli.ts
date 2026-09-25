@@ -109,11 +109,10 @@ async function assess(file: string, flags: Flags): Promise<number> {
    * applied to the route. This entry point passed `false` written into the
    * source, where nobody would ever be asked whether it was deliberate at all.
    *
-   * `concurrency: null` resolves to DEFAULT_CONCURRENCY, which is 1 — so every
-   * fan-out ran serially. The comment on that default excuses it with "the
-   * submission form suggests a higher number"; in this fork the form has no such
-   * field, so nothing was suggesting anything and a headless run took six times
-   * longer than the same run through the browser.
+   * `concurrency: null` resolved to DEFAULT_CONCURRENCY, which was 1 — so every
+   * fan-out ran serially, and a headless run took six times longer than it had
+   * to. Phase 19 made the default six and gave the form the field it lacked;
+   * the explicit six here is kept so the CLI says what it does.
    */
   const agents = Number(str(flags, 'agents') ?? 6);
   if (!CONCURRENCY_OPTIONS.includes(agents as Concurrency)) {

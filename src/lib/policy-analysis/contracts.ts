@@ -189,14 +189,28 @@ export type Depth = (typeof DEPTHS)[number];
 export const CONCURRENCY_OPTIONS = [1, 2, 3, 4, 5, 6] as const;
 export type Concurrency = (typeof CONCURRENCY_OPTIONS)[number];
 /**
- * What an assessment with no stored preference does: one at a time.
+ * What an assessment with no stored preference does: six at a time.
  *
- * Every assessment before this option existed ran serially, and a run that is
- * mid-flight when this ships must carry on exactly as it started rather than
- * silently widening under it. The submission form suggests a higher number; a
- * NULL column does not.
+ * It was ONE, so that a run in flight when the option shipped would not widen
+ * under itself. That reason is spent, and the default it left behind was the
+ * single largest cost in the review of 25 September 2026: the submit form had no
+ * field, so every run started from the browser ran serially — 387 minutes where
+ * the same run at six lanes is about 126. Six is what every real run through the
+ * CLI has used, and no 429 has been seen at it.
+ *
+ * Widening a paused run is now safe to do, not merely tolerable: the fan-out
+ * folds in unit order, so the artefacts, the ids and the payloads a stage sends
+ * are the same at any number of lanes (`pipeline.test.ts` asserts all three), and
+ * a resumed run still hits its response cache.
  */
-export const DEFAULT_CONCURRENCY: Concurrency = 1;
+export const DEFAULT_CONCURRENCY: Concurrency = 6;
+/**
+ * What the submit form offers. The contract takes any of `CONCURRENCY_OPTIONS`;
+ * the form asks a plainer question with three answers — one at a time for a
+ * provider that throttles, three for a bridge at its own default cap, six for
+ * everything else.
+ */
+export const OFFERED_CONCURRENCY = [1, 3, 6] as const satisfies readonly Concurrency[];
 /**
  * HOW DECOMPOSITION ASKS FOR THE DOCUMENT INVENTORY.
  *

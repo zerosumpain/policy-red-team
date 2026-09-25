@@ -113,10 +113,10 @@ export function estimateRun({ passages, artefacts = 0, depth, completedStages, c
    */
   callDurationsMs: number[];
   /**
-   * How many units of a fan-out run at once. DEFAULTS TO ONE, which is
-   * `DEFAULT_CONCURRENCY` and what a submission gets unless the reader changed
-   * it — measured on the run of 2026-09-19, where every call started at the
-   * exact second the previous one ended. Wall-clock divides by this.
+   * How many units of a fan-out run at once. Defaults to `DEFAULT_CONCURRENCY`,
+   * which is six since phase 19 — it was one, and the run of 2026-09-19 showed
+   * what that meant: every call started at the exact second the previous one
+   * ended. Wall-clock divides by this.
    */
   concurrency?: number;
   /**

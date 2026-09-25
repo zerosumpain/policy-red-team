@@ -107,6 +107,9 @@ try {
   // 'Anything the paper does not say'.
   await page.getByLabel('The paper', { exact: true }).setInputFiles(path.join(ROOT, 'tests', 'fixtures', 'policy-analysis', 'policy.txt'));
   await page.getByLabel('Jurisdiction', { exact: true }).fill('England');
+  // The lanes question arrives answered. Every browser run before phase 19 went
+  // one call at a time because the form had no field and the default was one.
+  if (!(await page.getByLabel('Six at once', { exact: true }).isChecked())) failures.push('/new: the lanes question is not answered "Six at once" by default');
   await page.getByRole('button', { name: 'Start the assessment' }).click();
   await page.waitForURL('**/assessments/**', { timeout: 20000 });
   note('submitted');
