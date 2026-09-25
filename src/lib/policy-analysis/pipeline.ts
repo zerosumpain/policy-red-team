@@ -731,18 +731,30 @@ export async function executeStage(input: StageInput, deps: PipelineDeps): Promi
     if (input.sealed) {
       output.warnings.push('This is a sealed assessment, so nothing was written to the persona library and no model call was made for it. A dossier drawn from this paper would outlive the run and survive its purge, which is the residue sealing exists to remove.');
     }
-    for (const actor of ranked) {
+    /**
+     * THROUGH `fanOut`, NOT A LOOP OF ITS OWN.
+     *
+     * This was a serial `for` over the ranked actors — twelve calls one after
+     * another, 7.7 to 10 minutes on every real run, for work whose units share
+     * nothing. The pool runs them `lanes` at a time and folds them in rank order,
+     * so the write-back the worker applies afterwards meets the same links in
+     * the same order at any number of lanes.
+     *
+     * The failure rule is the one thing that differs from every other fan-out.
+     * The library is a bonus, so a failed unit is a warning about the library
+     * and nothing more: no gap, no consecutive count, and so no way for a dead
+     * provider here to fail a run whose report is already written.
+     */
+    await fanOut(ranked.map((actor) => {
       const own = profiles.filter((p) => p.data.actorId === actor.id);
       const plays = input.artefacts.filter((a) => a.kind === 'exploit' && a.data.actorId === actor.id);
       const context = [actor, ...own, ...plays];
-      try {
-        await request(actor.id, context, { protect: context.map((a) => a.id), priorPersona: priors.get(actor.id) ?? null });
-      } catch (err) {
-        deps.signal.throwIfAborted();
-        if (!(err instanceof PolicyError)) throw err;
-        output.warnings.push(`${actor.label} was not written to the persona library: ${err.message} The assessment itself is unaffected.`);
-      }
-    }
+      return { key: actor.id, context, describe: actor.label, extra: { protect: context.map((a) => a.id), priorPersona: priors.get(actor.id) ?? null } };
+    }), undefined, (unit, err) => {
+      deps.signal.throwIfAborted();
+      if (!(err instanceof PolicyError)) throw err;
+      output.warnings.push(`${unit.describe} was not written to the persona library: ${err.message} The assessment itself is unaffected.`);
+    });
     if (!output.artefacts.length && ranked.length) output.warnings.push('No actor could be written to the persona library on this run. Nothing in the assessment above depends on it.');
   } else if (stage === THEORY_STAGE) {
     // A causal theory is inspectable per intervention. One enormous narrative

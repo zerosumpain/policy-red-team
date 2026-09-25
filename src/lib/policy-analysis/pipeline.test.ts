@@ -453,6 +453,48 @@ describe('concurrent agents', () => {
   });
 });
 
+/**
+ * STAGE 13 RUNS THROUGH THE POOL. It was a serial loop — about twelve calls,
+ * 7.7 to 10 minutes on every real run — and the worker applies its links in
+ * the order the stage returns them, so the order is the thing to hold.
+ */
+describe('the persona library fans out like every other stage', () => {
+  // A passage behind every body, or the links have no path to the paper and
+  // triage discards them all.
+  const passage = artefact('passage_0001', 'passage', 'Page 1', 'The bodies named here.', {}, { origin: 'extracted_fact', confidence: 1 });
+  const actors = Array.from({ length: 5 }, (_, i) =>
+    artefact(`s2_00${i}`, 'actor', `Body ${i}`, 'A synthetic body.', { entityType: 'agency', aliases: [], mentions: Array.from({ length: 5 - i }, () => 'p'), ambiguity: '', dates: [], parent: null }, { refs: [passage.id] }));
+  const profiles = actors.map((a, i) => artefact(`s4_00${i}_profile`, 'profile', a.label, 'A synthetic profile.', { actorId: a.id }, { refs: [a.id] }));
+  const input: StageInput = { stage: PERSONA_STAGE, title: 'T', jurisdiction: null, policyArea: null, context: null, artefacts: [passage, ...actors, ...profiles] };
+
+  const run = async (lanes: 1 | 6, model: Parameters<typeof executeStage>[1]['model']) =>
+    executeStage(input, { model, research: neverResearch, signal: new AbortController().signal, concurrency: lanes });
+
+  it('overlaps its calls and still returns the links in rank order', async () => {
+    let inFlight = 0, peak = 0;
+    // The FIRST body answers last, so a fold in landing order would put it last.
+    const model: Parameters<typeof executeStage>[1]['model'] = async (stage, key, raw) => {
+      inFlight++; peak = Math.max(peak, inFlight);
+      await new Promise((resolve) => setTimeout(resolve, key === 's2_000' ? 30 : 1));
+      inFlight--;
+      return fixtureModel(stage, key, raw);
+    };
+    const wide = await run(6, model);
+    const serial = await run(1, async (...a) => fixtureModel(...a));
+    expect(peak).toBeGreaterThan(1);
+    expect(wide.artefacts.map((a) => a.data.actorId)).toEqual(actors.map((a) => a.id));
+    expect(wide.artefacts).toEqual(serial.artefacts);
+  });
+
+  it('never fails the run over a dead provider, however many lanes it had', async () => {
+    const dead: Parameters<typeof executeStage>[1]['model'] = async () => { throw new PolicyError('provider', 'The configured model provider is unavailable.'); };
+    const output = await run(6, dead);
+    expect(output.artefacts).toHaveLength(0);
+    expect(output.warnings.filter((w) => w.includes('was not written to the persona library'))).toHaveLength(actors.length);
+    expect(output.warnings.join(' ')).toContain('Nothing in the assessment above depends on it');
+  });
+});
+
 describe('identity, graph and deterministic checks', () => {
   it('retains ambiguous same-name people as separate resolution candidates', () => {
     const a = artefact('mention_a', 'actor', 'Alex Smith', 'A synthetic source mention.', { entityType: 'person', aliases: [], mentions: [], ambiguity: 'Unknown', dates: [], parent: null });
