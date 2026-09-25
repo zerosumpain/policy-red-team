@@ -91,6 +91,10 @@ export type BriefItem = {
   answer: Artefact | null;
   /** How serious, for a finding: the reason `rankFindings` ranked it where it is. */
   severity: Severity | null;
+  /** The assumption a key judgement rests on. The full document prints it; the brief does not. */
+  restsOn: Artefact | null;
+  /** The decision a key judgement bears on. The full document prints it; the brief does not. */
+  decision: string;
 };
 
 export type Brief = {
@@ -169,6 +173,8 @@ function fromJudgements(artefacts: Artefact[]): BriefItem[] {
       action: clean(j.action),
       answer: null,
       severity: null,
+      restsOn: j.assumption,
+      decision: clean(j.decision),
     };
   });
 }
@@ -238,8 +244,25 @@ function fromFindings(artefacts: Artefact[]): BriefItem[] {
       action: answer ? clean(answer.label) : '',
       answer,
       severity: view.severity,
+      restsOn: null,
+      decision: '',
     };
   });
+}
+
+/**
+ * WHAT EVERY RENDERER LEADS WITH: the key judgements, or on an older
+ * assessment the ranked findings. The page, the pack, the brief's Word file and
+ * the full Word document all take their "what matters most" from here, so no
+ * two of them can lead with different lists — the review of master found the
+ * Word export leading with key judgements while the page led with ranked
+ * findings.
+ */
+export function briefItems(artefacts: Artefact[]): { source: Brief['source']; items: BriefItem[] } {
+  const judgements = fromJudgements(artefacts);
+  return judgements.length
+    ? { source: 'judgements', items: judgements }
+    : { source: 'findings', items: fromFindings(artefacts) };
 }
 
 type StageWarnings = { name: string; ordinal?: number; warnings: string[] };
@@ -310,12 +333,12 @@ export function briefOf(artefacts: Artefact[], stages: StageWarnings[]): Brief {
   const headline = headlineSentence(artefacts);
   const exec = findingsBySection(artefacts).find((g) => g.section === 'executive_assessment')?.items[0]?.statement ?? '';
   const rest = exec ? withoutEcho(clean(exec), headline) : '';
-  const judgements = fromJudgements(artefacts);
+  const { source, items } = briefItems(artefacts);
   return {
     headline,
     standfirst: rest && rest !== headline ? sentences(rest, 1) : '',
-    source: judgements.length ? 'judgements' : 'findings',
-    items: judgements.length ? judgements : fromFindings(artefacts),
+    source,
+    items,
     limits: briefLimits(stages),
   };
 }

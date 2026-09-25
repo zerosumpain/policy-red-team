@@ -63,7 +63,7 @@ export function Brief({ brief, linkTo, downloadHref }: {
           </h3>
           <p className="govuk-body prt-brief__intro">
             {judgements
-              ? `The ${brief.items.length === 1 ? 'one thing' : `${brief.items.length} things`} that matter most, most important first. Each says what in the paper it is about, how it could be beaten, and who should act.`
+              ? `${brief.items.length === 1 ? 'The one thing that matters most' : `The ${brief.items.length} things that matter most, most important first`}. Each says what in the paper it is about, how it could be beaten, and who should act.`
               : `This assessment was written before key judgements, so these are its ${brief.items.length === 1 ? 'highest-ranked finding' : `${brief.items.length} highest-ranked findings`}, with the worst way to beat the policy each one touches.`}
           </p>
           <ol className="prt-brief__list" aria-labelledby="brief-judgements">

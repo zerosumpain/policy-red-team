@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest';
 import { artefact, type Artefact } from '$lib/policy-analysis/contracts';
 import { scoreExploits } from '$lib/policy-analysis/exposure';
 import { shareableReport } from '$lib/policy-analysis/share';
-import { briefMarkdown } from '$lib/policy-analysis/report-doc';
+import { assessmentMarkdown, briefMarkdown } from '$lib/policy-analysis/report-doc';
 import { BRIEF_LIMITS, briefLimits, briefOf, clip, sentences } from './brief';
 
 const passage = artefact('passage_0001', 'passage', 'Page 4', 'Colleges will be funded on completion rates from 2027.', { documentHash: 'a'.repeat(64) }, { origin: 'extracted_fact', confidence: 1, page: 4 });
@@ -164,8 +164,24 @@ describe('the brief as a document', () => {
     expect(md).toContain('**Who should act.** Department for Education: Publish enrolment mix');
     expect(md).toContain('## What we could not check');
     // Not the whole report: no playbook, no appendix, no key to the words.
-    expect(md).not.toContain('## The exploitation playbook');
+    expect(md).not.toContain('## Ways to beat the policy');
     expect(md).not.toContain('Appendix');
+  });
+
+  it('leads the FULL document with the same list the page leads with, on an older assessment too', () => {
+    // The review of master found the Word file leading with key judgements
+    // while the page led with ranked findings — and an older assessment's Word
+    // file leading with nothing at all.
+    const older = [...prior, ...findings, rec];
+    const doc = assessmentMarkdown(older, meta);
+    const titles = briefOf(older, []).items.map((i) => i.title);
+    expect(doc).toContain('## The findings that matter most');
+    for (const title of titles) expect(doc).toContain(`. ${title}`);
+    expect(doc.indexOf('## The findings that matter most')).toBeLessThan(doc.indexOf('## Ways to beat the policy'));
+    expect(doc).toContain('## Appendix: the assessment in full');
+    const newer = assessmentMarkdown(artefacts, meta);
+    expect(newer).toContain('## Key judgements');
+    expect(newer).toContain('**What it rests on.** Completion means learning');
   });
 
   it('keeps the quote in a shared copy, exactly as a finding keeps one, and drops nothing else twice', () => {

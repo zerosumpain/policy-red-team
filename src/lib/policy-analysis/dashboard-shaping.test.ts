@@ -728,9 +728,9 @@ describe('the exported document is the assessment, linearly', () => {
   it('carries the playbook, the cast, the checks and the written chapters', async () => {
     const all = await assessment();
     const md = assessmentMarkdown(all, { title: 'Synthetic policy' });
-    expect(md).toContain('## The exploitation playbook');
-    expect(md).toContain('## Who is in the room');
-    expect(md).toContain('## Structural checks');
+    expect(md).toContain('## Ways to beat the policy');
+    expect(md).toContain('## Who is involved');
+    expect(md).toContain('## Checks on how the policy is set up');
     expect(md).toContain('A check with nothing to look at is not a pass');
   });
 
@@ -740,7 +740,7 @@ describe('the exported document is the assessment, linearly', () => {
       title: 'Synthetic policy',
       warnings: [{ stage: 'Targeted research', text: 'External research unavailable.' }],
     });
-    expect(md).toContain('## What this assessment could not establish');
+    expect(md).toContain('## What it could not establish');
     expect(md).toContain('External research unavailable.');
   });
 
@@ -755,13 +755,13 @@ describe('the exported document is the assessment, linearly', () => {
     expect(shared).toContain('This is a shared copy');
     expect(shared).toContain('the policy document itself');
     // Same document, same headings — the two readers cannot get different reports.
-    expect(shared).toContain('## The exploitation playbook');
+    expect(shared).toContain('## Ways to beat the policy');
   });
 
   it('leaves a section OUT rather than printing an empty heading', () => {
     const md = assessmentMarkdown([], { title: 'Nothing yet' });
-    expect(md).not.toContain('## The exploitation playbook');
-    expect(md).not.toContain('## Who is in the room');
+    expect(md).not.toContain('## Ways to beat the policy');
+    expect(md).not.toContain('## Who is involved');
     expect(md).toContain('# Nothing yet');
   });
 

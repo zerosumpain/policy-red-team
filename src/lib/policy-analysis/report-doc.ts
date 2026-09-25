@@ -24,10 +24,9 @@ import { KEY_SECTIONS, READING_CHAIN } from './glossary';
 import { beyond, destroyed, headline as handlingHeadline, journey, kept, PLACE_LABEL } from './handling';
 import { REPORT_ACTS, actorBoard, addenda, evidenceMix, fragileAssumptions, findingsBySection, headline, isShortProfile, of, plays, precedentOf, recommendations as reportRecommendations, BAND_LABEL, type Band, type PassRow } from './view';
 import { checks } from './view';
-import { keyJudgements } from './judgements';
 import { isBody, network } from './network';
 import { adjacency } from './matrix';
-import type { Brief } from '../brief';
+import { briefItems, type Brief, type BriefItem } from '../brief';
 
 export type DocMeta = {
   title: string;
@@ -80,7 +79,7 @@ function block(lines: (string | null | undefined | false)[]): string {
  */
 const FRAME = [
   'This is a **red-team assessment**. It reads the paper the way a body governed by it would:',
-  'looking for what can be done, within the rules as written, by an actor serving itself.',
+  'looking for what can be done, within the rules as written, by a body serving itself.',
   'It is not an assurance review, it does not assume anyone intends any of this, and it will',
   'not tell you the policy is fine. Where it says a body *would* do something, that is a',
   'hypothesis about incentives — arguable, and marked as such throughout.',
@@ -104,9 +103,9 @@ function cover(meta: DocMeta, artefacts: Artefact[]): string {
     FRAME,
     '## At a glance',
     [
-      `- **${list.length}** way${list.length === 1 ? '' : 's'} the policy can be beaten${severe ? `, of which **${severe}** rank above moderate` : ''}`,
-      `- **${of(artefacts, 'profile').length}** actors profiled for what actually moves them`,
-      `- **${failing.length}** of ${of(artefacts, 'test').length} structural checks fell short`,
+      `- **${list.length}** way${list.length === 1 ? '' : 's'} to beat the policy${severe ? `, of which **${severe}** are severe or significant` : ''}`,
+      `- **${of(artefacts, 'profile').length}** bodies and groups profiled for what actually moves them`,
+      `- **${failing.length}** of ${of(artefacts, 'test').length} checks on how the policy is set up fell short`,
       `- **${of(artefacts, 'evidence').filter((e) => ['insufficient', 'contradicts'].includes(String(e.data.result))).length}** of ${of(artefacts, 'evidence').length} evidence links are unsupported or disputed`,
       done ? `- Assessment completed ${done}` : null,
     ]
@@ -139,33 +138,51 @@ function precedentLine(play: Artefact): string | null {
 }
 
 /**
- * THE KEY JUDGEMENTS, straight after the verdict.
+ * ONE JUDGEMENT, AS MARKDOWN — the same rows the page's brief draws, so the
+ * brief's Word file and the full document cannot describe a judgement two
+ * ways. `full` adds the two rows the brief leaves out for length: the
+ * assumption it rests on and the decision it bears on.
+ */
+function itemMarkdown(item: BriefItem, full: boolean): string {
+  const play = item.play;
+  const act = [clean(item.owner), clean(item.action)].filter(Boolean).join(': ');
+  return block([
+    `### ${item.rank}. ${clean(item.title)}`,
+    `**${clean(item.statement)}**`,
+    item.quote ? `> “${clean(item.quote.text)}”${item.quote.page ? ` (page ${item.quote.page})` : ''}` : null,
+    [
+      item.about && `- **Part of the policy.** ${clean(item.about.label)}`,
+      play && `- **The way to beat it.** ${clean(play.artefact.label)} — ${BAND_LABEL[play.band].toLowerCase()}, ${play.pattern.toLowerCase()}.${item.morePlays ? ` It names ${item.morePlays} more.` : ''}`,
+      play?.earlyWarning && `- **Early warning.** ${play.earlyWarning}`,
+      play?.fix && `- **The fix.** ${play.fix}`,
+      full && item.restsOn && `- **What it rests on.** ${clean(item.restsOn.label)}`,
+      item.wouldChangeIf && `- **What would change our mind.** ${clean(item.wouldChangeIf)}`,
+      full && item.decision && `- **The decision it bears on.** ${clean(item.decision)}`,
+      act && (item.owner ? `- **Who should act.** ${act}` : `- **What to do.** ${act}`),
+    ].filter(Boolean).join('\n'),
+  ]);
+}
+
+/** "Key judgements", or on an older assessment the findings that stand in for them. */
+const itemsHeading = (source: Brief['source']) => (source === 'judgements' ? 'Key judgements' : 'The findings that matter most');
+
+/**
+ * WHAT MATTERS MOST, straight after the verdict.
  *
- * What a reader who stops after one page must take away: each judgement in a
- * sentence, the paper's own words it is about, the play that shows it, what it
- * rests on, what would prove it wrong, and who should do what. Absent on an
- * assessment written before key judgements existed, rather than an empty
- * heading.
+ * `briefItems` — the list the page and the pack lead with too: the key
+ * judgements, or on an assessment written before them, the ranked findings.
+ * The Word file used to lead with key judgements only, so an older assessment's
+ * document led with nothing while its page led with five findings.
  */
 function judgements(artefacts: Artefact[]): string {
-  const list = keyJudgements(artefacts);
-  if (!list.length) return '';
+  const { source, items } = briefItems(artefacts);
+  if (!items.length) return '';
   return block([
-    '## Key judgements',
-    'The few things that matter most in this assessment, most important first. Each names the part of the policy it is about, the play that shows it, and who should act.',
-    ...list.map((j) => block([
-      `### ${j.rank}. ${clean(j.artefact.label)}`,
-      `**${clean(j.judgement)}**`,
-      j.quote ? `> “${clean(j.quote.text)}”${j.quote.page ? ` (page ${j.quote.page})` : ''}` : null,
-      [
-        j.mechanism && `- **About.** ${clean(j.mechanism.label)}`,
-        j.plays.length > 0 && `- **Shown by.** ${j.plays.map((p) => clean(p.label)).join('; ')}${j.patterns.length ? ` — ${j.patterns.map((p) => p.label.toLowerCase()).join(', ')}` : ''}`,
-        j.assumption && `- **Rests on.** ${clean(j.assumption.label)}`,
-        clean(j.wouldChangeIf) && `- **Would change if.** ${clean(j.wouldChangeIf)}`,
-        clean(j.decision) && `- **Bears on.** ${clean(j.decision)}`,
-        (clean(j.owner) || clean(j.action)) && `- **Who should act.** ${[clean(j.owner), clean(j.action)].filter(Boolean).join(': ')}`,
-      ].filter(Boolean).join('\n'),
-    ])),
+    `## ${itemsHeading(source)}`,
+    source === 'judgements'
+      ? 'The few things that matter most in this assessment, most important first. Each names the part of the policy it is about, the way to beat it that shows it, and who should act.'
+      : 'This assessment was written before key judgements, so these are its highest-ranked findings, each with the worst way to beat the policy it touches.',
+    ...items.map((item) => itemMarkdown(item, true)),
   ]);
 }
 
@@ -182,19 +199,19 @@ function playbook(artefacts: Artefact[]): string {
           : 'Would be a breach';
     return block([
       `### ${index + 1}. ${play.artefact.label}`,
-      `**${BAND_LABEL[play.band as Band] ?? play.band} · exposure ${Math.round(play.exposure * 100)}** — ${play.actor?.label ?? 'actor unresolved'}. ${legality}.`,
+      `**${BAND_LABEL[play.band as Band] ?? play.band} · score ${Math.round(play.exposure * 100)}** — ${play.actor?.label ?? 'body not identified'}. ${legality}.`,
       play.artefact.statement,
-      `Incentive ${Math.round(Number(d.incentive) * 100)} · ease ${Math.round(Number(d.ease) * 100)} · impact ${Math.round(Number(d.impact) * 100)} · concealment ${Math.round(Number(d.concealment) * 100)}. Exposure is the even blend of the four, and is a severity rather than a certainty.`,
+      `Incentive ${Math.round(Number(d.incentive) * 100)} · ease ${Math.round(Number(d.ease) * 100)} · impact ${Math.round(Number(d.impact) * 100)} · concealment ${Math.round(Number(d.concealment) * 100)}. The score is the even blend of the four, and says how bad it would be, not how likely.`,
       clean(d.payoff) && `**What they get.** ${clean(d.payoff)}`,
       clean(d.costToPolicy) && `**What it costs the policy.** ${clean(d.costToPolicy)}`,
-      clean(d.earlyWarning) && `**First sign of it.** ${clean(d.earlyWarning)}`,
-      clean(d.counter) && `**What would close it.** ${clean(d.counter)}`,
+      clean(d.earlyWarning) && `**Early warning.** ${clean(d.earlyWarning)}`,
+      clean(d.counter) && `**The fix.** ${clean(d.counter)}`,
       precedentLine(play.artefact),
     ]);
   });
   return block([
-    '## The exploitation playbook',
-    'Each play is something a body named in the policy could do to serve itself at the policy’s expense, ranked by the even blend of how much the actor gains, how easily it can be done, how much of the objective it destroys, and how poorly the policy would notice.',
+    '## Ways to beat the policy',
+    'Each is something a body named in the policy could do to serve itself at the policy’s expense, ranked by the even blend of how much the body gains, how easily it can be done, how much of the aim it destroys, and how poorly the policy would notice.',
     ...rows,
   ]);
 }
@@ -227,11 +244,11 @@ function cast(artefacts: Artefact[]): string {
       clean(view.actor.data.entityType).replaceAll('_', ' ') || null,
       fields.length ? fields.join('\n') : 'No incentive profile was built for this body.',
       view.plays.length
-        ? `Plays available to it: ${view.plays.map((p) => `${p.artefact.label} (${BAND_LABEL[p.band as Band] ?? p.band})`).join('; ')}.`
-        : 'No exploitation play was found for this body. That is a finding, not a guarantee.',
+        ? `Ways to beat it open to this body: ${view.plays.map((p) => `${p.artefact.label} (${BAND_LABEL[p.band as Band] ?? p.band})`).join('; ')}.`
+        : 'No way to beat the policy was found for this body. That is a finding, not a guarantee.',
     ]);
   });
-  return block(['## Who is in the room', 'What each body says it wants, what its position rewards, who it answers to, and who is better off if this policy fails.', ...rows]);
+  return block(['## Who is involved', 'What each body says it wants, what its position rewards, who it answers to, and who is better off if this policy fails.', ...rows]);
 }
 
 function structure(artefacts: Artefact[]): string {
@@ -244,8 +261,8 @@ function structure(artefacts: Artefact[]): string {
     indeterminate: 'No evidence either way',
   };
   return block([
-    '## Structural checks',
-    'These are the only figures in this document no model produced. Each walks the relationships the policy states and asks whether the counterpart it depends on is there. **A check with nothing to look at is not a pass.**',
+    '## Checks on how the policy is set up',
+    'These are the only figures in this document no model produced. Each follows the relationships the policy states and asks whether what it depends on is there. **A check with nothing to look at is not a pass.**',
     ...rows.map((check) =>
       block([
         `### ${check.label} — ${words[String(check.data.result)] ?? 'unknown'}`,
@@ -266,8 +283,8 @@ function relationships(artefacts: Artefact[]): string {
   // without describing who answers to whom.
   const placeable = adjacency(net).placeable;
   return block([
-    '## The policy as a network',
-    `${bodies} bodies and ${net.nodes.length - bodies} pieces of machinery, ${net.edges.length} stated relationships between them — of which ${placeable} run between two bodies.`,
+    '## How they connect',
+    `${bodies} bodies and ${net.nodes.length - bodies} parts of the policy, ${net.edges.length} stated relationships between them — of which ${placeable} run between two bodies.`,
     ...net.insights.map((insight) =>
       block([
         `### ${insight.headline}`,
@@ -341,7 +358,7 @@ function chapters(artefacts: Artefact[]): string {
 
   const recs = recommendations.length
     ? block([
-        '## Redesign options',
+        '## What it recommends',
         ...recommendations.map((r) =>
           block([
             `### ${r.label}`,
@@ -354,11 +371,11 @@ function chapters(artefacts: Artefact[]): string {
       ])
     : '';
 
-  // With key judgements leading the document, the nineteen sections are the
-  // appendix that backs them — said in a heading, so a reader who reaches them
+  // With the key judgements (or the findings that stand in for them) leading
+  // the document, the nineteen sections are the appendix that backs them — said in a heading, so a reader who reaches them
   // knows they are the working and not a second verdict.
-  const appendix = keyJudgements(artefacts).length && (acts.length || recs)
-    ? block(['## Appendix: the assessment in full', 'Every section of the assessment, which the key judgements above are drawn from.'])
+  const appendix = briefItems(artefacts).items.length && (acts.length || recs)
+    ? block(['## Appendix: the assessment in full', 'Every section of the assessment, which what leads this document is drawn from.'])
     : '';
   return block([appendix, ...acts, recs]);
 }
@@ -403,7 +420,7 @@ function afterwards(artefacts: Artefact[], meta: DocMeta): string {
 function limits(meta: DocMeta): string {
   if (!meta.warnings?.length) return '';
   return block([
-    '## What this assessment could not establish',
+    '## What it could not establish',
     'Every limit the run recorded about itself, in the order the stages ran.',
     meta.warnings.map((w) => `- *${w.stage}* — ${w.text}`).join('\n'),
   ]);
@@ -533,24 +550,7 @@ function handling(meta: DocMeta): string {
 export function briefMarkdown(artefacts: Artefact[], meta: DocMeta, brief: Brief): string {
   const context = [meta.jurisdiction, meta.policyArea].filter(Boolean).join(' · ');
   const done = date(meta.completedAt);
-  const heading = brief.source === 'judgements' ? 'Key judgements' : 'The findings that matter most';
-  const items = brief.items.map((item) => {
-    const play = item.play;
-    const act = [clean(item.owner), clean(item.action)].filter(Boolean).join(': ');
-    return block([
-      `### ${item.rank}. ${clean(item.title)}`,
-      `**${clean(item.statement)}**`,
-      item.quote ? `> “${clean(item.quote.text)}”${item.quote.page ? ` (page ${item.quote.page})` : ''}` : null,
-      [
-        item.about && `- **Part of the policy.** ${clean(item.about.label)}`,
-        play && `- **The way to beat it.** ${clean(play.artefact.label)} — ${BAND_LABEL[play.band].toLowerCase()}, ${play.pattern.toLowerCase()}.${item.morePlays ? ` It names ${item.morePlays} more.` : ''}`,
-        play?.earlyWarning && `- **Early warning.** ${play.earlyWarning}`,
-        play?.fix && `- **The fix.** ${play.fix}`,
-        item.wouldChangeIf && `- **What would change our mind.** ${clean(item.wouldChangeIf)}`,
-        act && (item.owner ? `- **Who should act.** ${act}` : `- **What to do.** ${act}`),
-      ].filter(Boolean).join('\n'),
-    ]);
-  });
+  const items = brief.items.map((item) => itemMarkdown(item, false));
   return block([
     `# ${meta.title} — the brief`,
     [context, done ? `Assessment completed ${done}` : null].filter(Boolean).join(' · ') || null,
@@ -560,7 +560,7 @@ export function briefMarkdown(artefacts: Artefact[], meta: DocMeta, brief: Brief
       : null,
     '## In short',
     [brief.headline, brief.standfirst].filter(Boolean).join(' ') || 'The assessment did not reach a conclusion.',
-    brief.items.length ? block([`## ${heading}`, ...items]) : null,
+    brief.items.length ? block([`## ${itemsHeading(brief.source)}`, ...items]) : null,
     brief.limits.length
       ? block(['## What we could not check', brief.limits.map((line) => `- ${line}`).join('\n')])
       : null,
