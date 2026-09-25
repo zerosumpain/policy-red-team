@@ -181,3 +181,29 @@ describe('the repair round must always have room', () => {
     expect(room).toBeGreaterThan(0);
   });
 });
+
+/**
+ * A STAGE'S OWN ORDER BEATS THE GLOBAL ONE. `SHED_ORDER` keeps profiles over
+ * claims everywhere; a stage that declares claims first must keep claims.
+ */
+describe('fitToBudget — a declared order decides what goes first', () => {
+  it('sheds the kind a stage named last, whatever SHED_ORDER thinks of it', () => {
+    const arts = corpus(300);
+    const limit = 40_000;
+    const global = fitToBudget(arts, build, limit);
+    const declared = fitToBudget(arts, build, limit, new Set(), ['claim', 'profile']);
+    const kept = (f: { artefacts: Artefact[] }, kind: string) => f.artefacts.filter((a) => a.kind === kind).length;
+    // By default the profiles outlast the claims; declared, the claims do.
+    expect(kept(global, 'profile')).toBeGreaterThan(0);
+    expect(kept(declared, 'profile')).toBe(0);
+    expect(kept(declared, 'claim')).toBeGreaterThan(kept(global, 'claim'));
+  });
+
+  it('still keeps a pinned item over every unpinned one, however long the list', () => {
+    const arts = corpus(300);
+    const pinned = arts.find((a) => a.kind === 'profile')!.id;
+    const declared = ['claim', ...Array.from({ length: 30 }, (_, i) => `kind_${i}`), 'profile'];
+    const fitted = fitToBudget(arts, build, 20_000, new Set([pinned]), declared);
+    expect(fitted.artefacts.some((a) => a.id === pinned)).toBe(true);
+  });
+});

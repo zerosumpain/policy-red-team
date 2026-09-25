@@ -1,4 +1,4 @@
-import { APPRAISAL_STAGE, ASSURANCE_CATEGORIES, ASSURANCE_STAGE, ASSURED_SYNTHESIS_STAGE, CONCURRENCY_OPTIONS, DEFAULT_CONCURRENCY, DEFAULT_EXTRACTION, DEPTH_LIMITS, FIT_LIMIT, FOLLOW_UP_STAGES, isPassStage, passOf, passOrdinal, passStep, PATTERNS, PERSONA_STAGE, REPORT_SECTIONS, RESULT_KINDS, REVISION_STATUSES, SCENARIOS, SYNTHESIS_STAGE, THEORY_STAGE, type Artefact, type Concurrency, type Extraction, type PassKind, type StageInput, type StageOutput } from './contracts';
+import { APPRAISAL_STAGE, ASSURANCE_CATEGORIES, ASSURANCE_STAGE, ASSURED_SYNTHESIS_STAGE, CONCURRENCY_OPTIONS, DEFAULT_CONCURRENCY, DEFAULT_EXTRACTION, DEPTH_LIMITS, FIT_LIMIT, FOLLOW_UP_STAGES, isPassStage, passOf, passOrdinal, passStep, PATTERNS, PERSONA_STAGE, REPORT_SECTIONS, RESULT_KINDS, REVISION_STATUSES, SCENARIOS, STAGE_CONTEXT, SYNTHESIS_STAGE, THEORY_STAGE, type Artefact, type Concurrency, type Extraction, type PassKind, type StageInput, type StageOutput } from './contracts';
 import { consumedSources, encodedSize, fitToBudget } from './budget';
 import { scoreExploits } from './exposure';
 import { clampWarnings, PolicyError, triageArtefacts, triageOutput } from './validation';
@@ -375,13 +375,18 @@ export async function executeStage(input: StageInput, deps: PipelineDeps): Promi
    * cannot fix that; fitting the shared block ONCE can, which is what happens
    * below, before any call is built.
    *
-   * Both are behind the run's own toggle, so a reader can put a paper through
-   * each way and compare rather than trust this comment. On 2026-09-18 that
-   * comparison gave stage 3 66.1% against 2.3%, and 65% less uncached input.
+   * The ORDER is behind the run's own toggle, so a reader can put a paper
+   * through each way and compare rather than trust this comment. On 2026-09-18
+   * that comparison gave stage 3 66.1% against 2.3%, and 65% less uncached input.
+   *
+   * THE FIT IS NOT, since phase 19. Both orders fit the shared block once, in
+   * the stage's declared order (`STAGE_CONTEXT`), so the two arms send the same
+   * artefacts and the comparison measures ordering alone. The old arm fitted
+   * per call in `provider.ts`, by `SHED_ORDER`, which is the ranking that let
+   * the late verbose kinds starve the stages that needed the early ones.
    */
   const sharedFit = new Map<string, Artefact[]>();
   const orderedContext = (shared: Artefact[], own: Artefact[], key: string, owns: Artefact[][], protect: Set<string> = new Set()): Artefact[] => {
-    if (!deps.sharedContextFirst) return [...new Set([...own, ...shared])];
     let fitted = sharedFit.get(key);
     if (!fitted) {
       // The BIGGEST per-call block in this fan-out decides, because the shared
@@ -398,7 +403,7 @@ export async function executeStage(input: StageInput, deps: PipelineDeps): Promi
       // a set — one that is identical on every call, which is a single decision
       // and cannot move the shedding boundary between calls the way a per-call
       // set does. See the divergence note in scripts/sync-core.mjs.
-      const result = fitToBudget(shared, (artefacts) => ({ artefacts }), FIT_LIMIT - allowance, protect);
+      const result = fitToBudget(scoped(shared), (artefacts) => ({ artefacts }), FIT_LIMIT - allowance, protect, declared);
       fitted = result.artefacts;
       // Said once for the stage rather than once per call: it is one decision.
       for (const note of result.notes) output.warnings.push(`The shared context for this stage was reduced so every call could send the same one: ${note}`);
@@ -406,7 +411,44 @@ export async function executeStage(input: StageInput, deps: PipelineDeps): Promi
     }
     // Shared FIRST so the bytes before a call's own artefacts are identical on
     // every call of the stage, and `own` last so it is never what gets shed.
-    return [...new Set([...fitted, ...own])];
+    // The old order, where a run asked for it, puts `own` first. Merged BY ID:
+    // a call's own artefact may also sit in the shared block, clipped or not,
+    // and must not reach the model twice.
+    const first = deps.sharedContextFirst ? fitted : own;
+    const held = new Set(first.map((a) => a.id));
+    return [...first, ...(deps.sharedContextFirst ? own : fitted).filter((a) => !held.has(a.id))];
+  };
+
+  /**
+   * ONLY WHAT THE STAGE DECLARES, AND IN THE ORDER IT DECLARES IT.
+   *
+   * `STAGE_CONTEXT` names the kinds a stage is given, first-needed first. Every
+   * context below goes through `scoped` — the fan-outs inside `orderedContext`,
+   * the single calls through `fitOnce` — so an undeclared kind is never sent,
+   * and when the declared ones still do not fit, the first named is the last to
+   * go. On the review of 25 September 2026 stage 14 saw 1 mechanism, 1
+   * assumption and no evidence, because 500 profiles and the report's findings
+   * outranked them; profiles are not what a theory of change is built from, and
+   * are not sent to one now.
+   *
+   * A stage that declares nothing — 1 to 4 and 13 build their own per-unit
+   * context, and every pass — is left exactly as it was.
+   */
+  const declared = STAGE_CONTEXT[stage];
+  const scoped = (artefacts: Artefact[]) => (declared ? artefacts.filter((a) => (declared as readonly string[]).includes(a.kind)) : artefacts);
+  /**
+   * A single call's context, scoped and fitted ONCE, here, in declared order.
+   *
+   * Left to `provider.ts` it would be fitted by `SHED_ORDER` — the ranking this
+   * replaces. The margin is the same one a fan-out leaves for the envelope's
+   * scalars, so the provider's own fit is the backstop it was always meant to
+   * be rather than the thing that decides.
+   */
+  const fitOnce = (context: Artefact[], protect: string[] = []): Artefact[] => {
+    if (!declared) return context;
+    const result = fitToBudget(scoped(context), (artefacts) => ({ artefacts }), FIT_LIMIT - SHARED_CALL_MARGIN, new Set(protect), declared);
+    for (const note of result.notes) output.warnings.push(`The context for this stage was reduced to fit the model: ${note}`);
+    return result.artefacts;
   };
 
   const hypotheses = input.artefacts.filter((a) => a.kind === 'assumption').map((a) => a.id);
@@ -682,7 +724,7 @@ export async function executeStage(input: StageInput, deps: PipelineDeps): Promi
     await fanOut(answerable.map(({ question, sources }) => ({ key: question.id, context: orderedContext(inventory, [question, ...sources], 'evidence', evidenceOwns), describe: `Evidence for “${question.label}”`, extra: { protect: [question.id, ...sources.map((a) => a.id), ...claims] } })));
     // The document's own evidence pass runs last and alone: its key is `main`, so
     // it takes no sequence number and cannot be reordered by the fan-out above.
-    await attempt('main', inventory, 'Evidence drawn from the policy document itself', { protect: claims });
+    await attempt('main', fitOnce(inventory, claims), 'Evidence drawn from the policy document itself', { protect: claims });
   } else if (stage === 8) {
     output.artefacts = runPolicyTests(input.artefacts, { discarded: input.graphLoss ?? 0, uncovered: graphUncovered(input.artefacts) });
   } else if (stage === 10) {
@@ -701,9 +743,11 @@ export async function executeStage(input: StageInput, deps: PipelineDeps): Promi
     if (basis === 'prominence') output.warnings.push('The policy graph held no relationships for the profiled actors, so the red team selected its actors by how prominently the document names them rather than by connectivity. Treat the choice of who was red-teamed as a reflection of the document, not of the policy structure.');
     if (ranked.length > limits.actors) output.warnings.push(`${ranked.length - limits.actors} of ${ranked.length} profiled actors were not red-teamed in this pass: ${ranked.slice(limits.actors).map((a) => a.label).join(', ')}. ${order} A deep run covers more of them.`);
     const base = input.artefacts.filter((a) => !['passage', 'alias', 'node', 'profile'].includes(a.kind) && !supersededSource(a) && (a.kind !== 'actor' || a.id.startsWith('s2_')));
-    // STAGE 14'S SHAPE: the actor and its profiles come OUT of the shared block
-    // and go in as this call's own, so a per-call `protect` can no longer move
-    // the shedding boundary. See sync-core.mjs.
+    // STAGE 14'S SHAPE: the actor and its profiles go in as this call's own, so a
+    // per-call `protect` can no longer move the shedding boundary. The actor
+    // STAYS in the shared block too: that block is fitted once and reused by
+    // every call, so taking the first call's actor out of it took that body out
+    // of every other call's context as well.
     const chosen = ranked.slice(0, limits.actors);
     const playOwns = chosen.map((actor) => [
       ...base.filter((a) => a.id === actor.id),
@@ -711,7 +755,7 @@ export async function executeStage(input: StageInput, deps: PipelineDeps): Promi
     ]);
     await fanOut(chosen.map((actor, i) => ({
       key: actor.id,
-      context: orderedContext(base.filter((a) => a.id !== actor.id), playOwns[i], 'plays', playOwns, new Set(hypotheses)),
+      context: orderedContext(base, playOwns[i], 'plays', playOwns, new Set(hypotheses)),
       describe: `Exploitation plays for ${actor.label}`,
       extra: { protect: [actor.id, ...profiles.filter((p) => p.data.actorId === actor.id).map((p) => p.id), ...hypotheses], priorPersona: priors.get(actor.id) ?? null },
     })));
@@ -767,10 +811,12 @@ export async function executeStage(input: StageInput, deps: PipelineDeps): Promi
     const theoryOwns = mechanisms.map((mechanism) => context.filter((a) => a.id === mechanism.id));
     await fanOut(mechanisms.map((mechanism) => ({
       key: mechanism.id,
-      // The mechanism being written about is pulled OUT of the shared block and
-      // appended as this call's own, so the shared prefix is identical on all of
-      // them and the one artefact the call exists for is never shed.
-      context: orderedContext(context.filter((a) => a.id !== mechanism.id), context.filter((a) => a.id === mechanism.id), 'theory', theoryOwns),
+      // The mechanism being written about is appended as this call's own, so the
+      // one artefact the call exists for is never shed. It stays in the shared
+      // block as well: that block is fitted ONCE and reused, and pulling the
+      // first call's mechanism out of it pulled that mechanism out of every
+      // other call — found by the phase 19 test that counts them.
+      context: orderedContext(context, context.filter((a) => a.id === mechanism.id), 'theory', theoryOwns),
       describe: `Theory of change for ${mechanism.label}`,
       extra: { protect: [mechanism.id, ...hypotheses] },
     })));
@@ -823,7 +869,7 @@ export async function executeStage(input: StageInput, deps: PipelineDeps): Promi
     } else {
       const context = input.artefacts.filter((a) => !['passage', 'alias', 'node'].includes(a.kind) && !supersededSource(a) && (a.kind !== 'actor' || a.id.startsWith('s2_')));
       const identity = crossIdentityHints(input.artefacts, neighbours);
-      await attempt('main', context, `Cross-policy exposure against ${neighbours.length} other assessment${neighbours.length === 1 ? '' : 's'}`, { neighbours, identity });
+      await attempt('main', fitOnce(context), `Cross-policy exposure against ${neighbours.length} other assessment${neighbours.length === 1 ? '' : 's'}`, { neighbours, identity });
       const known = new Set(neighbours.map((n) => n.id));
       const invented = output.artefacts.filter((a) => a.kind === 'cross_policy' && !known.has(String(a.data.otherAnalysisId)));
       if (invented.length) {
@@ -834,19 +880,21 @@ export async function executeStage(input: StageInput, deps: PipelineDeps): Promi
   } else {
     // Full source text was inspected passage by passage. Later stages receive the
     // structured inventory plus source quotes, not a silently truncated paper.
-    const context = input.artefacts.filter((a) => a.kind !== 'passage' && (stage !== 2 || a.kind === 'actor') && (stage < 3 || a.kind !== 'actor' || a.id.startsWith('s2_')));
+    const everything = input.artefacts.filter((a) => a.kind !== 'passage' && (stage !== 2 || a.kind === 'actor') && (stage < 3 || a.kind !== 'actor' || a.id.startsWith('s2_')));
     // A finding must cite a test, model, scenario, exploitation play or
     // cross-policy exposure, so synthesis pins every one of them into the call.
     // Without that the context budget shed the lot — they are the last things
     // produced and carry the lowest confidence — and the model, still required
     // to cite a result, invented identifiers for results it had never seen.
     const protect = stage === SYNTHESIS_STAGE
-      ? [...context.filter((a) => (RESULT_KINDS as readonly string[]).includes(a.kind)).map((a) => a.id), ...hypotheses]
+      ? [...everything.filter((a) => (RESULT_KINDS as readonly string[]).includes(a.kind)).map((a) => a.id), ...hypotheses]
       : stage === APPRAISAL_STAGE
-        ? [...context.filter((a) => ['causal_chain', 'finding', 'evidence'].includes(a.kind)).map((a) => a.id), ...hypotheses]
+        ? [...everything.filter((a) => ['causal_chain', 'finding', 'evidence'].includes(a.kind)).map((a) => a.id), ...hypotheses]
         : stage === ASSURED_SYNTHESIS_STAGE
-          ? [...context.filter((a) => ['finding', 'recommendation', 'causal_chain', 'option_appraisal', 'evaluation_plan', 'assurance_challenge'].includes(a.kind) || (RESULT_KINDS as readonly string[]).includes(a.kind)).map((a) => a.id), ...hypotheses]
+          ? [...everything.filter((a) => ['finding', 'recommendation', 'causal_chain', 'option_appraisal', 'evaluation_plan', 'assurance_challenge'].includes(a.kind) || (RESULT_KINDS as readonly string[]).includes(a.kind)).map((a) => a.id), ...hypotheses]
           : [];
+    // Scoped and fitted once, so the top-up below asks from the same context.
+    const context = fitOnce(everything, protect);
     // Round ONE of the enquiry has to be told its own ceiling. `remainingQuestions`
     // was passed only to the follow-up rounds, so the first round was bounded by a
     // number written into the prompt — and raising `questions` in the contract then
@@ -1071,7 +1119,7 @@ export async function executeStage(input: StageInput, deps: PipelineDeps): Promi
       const sources = output.artefacts.filter((a) => a.kind === 'research_source');
       const before = output.artefacts.length;
       const context = input.artefacts.filter((a) => a.kind !== 'passage' && (a.kind !== 'actor' || a.id.startsWith('s2_')));
-      await attempt(`round${round}`, [...context, ...asked, ...sources], `Follow-up enquiry round ${round}`, { enquiryRound: round, remainingQuestions: limits.questions, protect: sources.map((a) => a.id) });
+      await attempt(`round${round}`, fitOnce([...context, ...asked, ...sources], sources.map((a) => a.id)), `Follow-up enquiry round ${round}`, { enquiryRound: round, remainingQuestions: limits.questions, protect: sources.map((a) => a.id) });
       const followUps = output.artefacts.slice(before).filter((a) => a.kind === 'research_question');
       if (!followUps.length) { output.warnings.push(`Enquiry round ${round} raised no further question, so the enquiry stopped there.`); break; }
       await pursue(followUps, round);

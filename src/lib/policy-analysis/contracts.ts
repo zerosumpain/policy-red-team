@@ -631,6 +631,45 @@ export const STAGE_KINDS: Kind[][] = [
  */
 export const MODEL_KINDS: Kind[][] = STAGE_KINDS.map((kinds) => kinds.filter((kind) => kind !== 'research_source'));
 /**
+ * WHAT A STAGE IS GIVEN, AS KINDS, IN THE ORDER IT NEEDS THEM.
+ *
+ * `stages.ts` says what each stage is `given` in words for the reader; this is
+ * the same declaration as the pipeline reads it. A stage listed here is sent
+ * ONLY these kinds, and when its context has to be cut the first kind named is
+ * the last to go (`fitToBudget`'s `declared`).
+ *
+ * WHY IT EXISTS. The context used to be "everything, fitted", and the fitter
+ * ranks by how late a kind is produced — so the long, late kinds won at every
+ * stage, whatever the stage was for. Measured on assessment 03c83ea5 in the
+ * review of 25 September 2026: stage 7's context was 90% actor profiles; stage
+ * 14 (theory of change) saw 1 mechanism, 1 assumption and 0 evidence against a
+ * declared input of "mechanisms, evidence and assumptions"; stage 16 (the
+ * challenge) saw no plays at all.
+ *
+ * Every kind a stage's own contract obliges it to CITE is here — the
+ * assumptions a model, scenario, play or chain must rest on; the results a
+ * finding must name — because a model can only cite an id it was shown.
+ * `research_source` sits near the end of the stages after 6: a follow-up source
+ * is read by nothing else, and the one an evidence row has already read is shed
+ * first whatever its position (see `budget.ts`).
+ *
+ * A stage absent from this table keeps the context it always had: 1-4 and 13
+ * build a per-unit context of their own, and 8 makes no model call.
+ */
+export const STAGE_CONTEXT: Partial<Record<number, readonly Kind[]>> = {
+  5: ['assumption', 'claim', 'mechanism', 'actor', 'edge', 'profile', 'research_question', 'research_source'],
+  6: ['claim', 'assumption', 'mechanism', 'actor'],
+  7: ['assumption', 'mechanism', 'edge', 'actor', 'evidence', 'profile', 'claim', 'research_source'],
+  9: ['assumption', 'model', 'test', 'mechanism', 'edge', 'actor', 'evidence', 'profile', 'claim', 'research_source'],
+  10: ['assumption', 'mechanism', 'model', 'scenario', 'test', 'edge', 'actor', 'evidence', 'claim', 'research_source'],
+  11: ['mechanism', 'assumption', 'claim', 'actor', 'exploit', 'test', 'model', 'scenario', 'edge'],
+  12: ['test', 'model', 'scenario', 'exploit', 'cross_policy', 'assumption', 'evidence', 'mechanism', 'claim', 'actor', 'profile', 'edge', 'research_question', 'research_source'],
+  14: ['mechanism', 'evidence', 'assumption', 'claim', 'research_source'],
+  15: ['causal_chain', 'finding', 'recommendation', 'evidence', 'assumption', 'mechanism', 'claim', 'exploit', 'test', 'research_source'],
+  16: ['finding', 'recommendation', 'exploit', 'causal_chain', 'option_appraisal', 'evaluation_plan', 'test', 'model', 'scenario', 'cross_policy', 'assumption', 'evidence', 'mechanism', 'claim', 'actor', 'research_source'],
+  17: ['assurance_challenge', 'finding', 'recommendation', 'causal_chain', 'option_appraisal', 'evaluation_plan', 'exploit', 'test', 'model', 'scenario', 'cross_policy', 'assumption', 'evidence', 'mechanism', 'claim', 'actor', 'research_source'],
+};
+/**
  * What an ADDENDUM pass's stages may emit, indexed by step within the pass.
  *
  * Step 0 mints passages on the server with no model involved, exactly as stage 0

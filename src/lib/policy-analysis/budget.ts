@@ -73,7 +73,7 @@ export function encodedSize(input: unknown): number {
  * long extracts live; every structured field the contracts depend on is left
  * alone, so nothing a later stage references can disappear through a clip.
  */
-export function fitToBudget(artefacts: Artefact[], build: (a: Artefact[]) => unknown, limit: number, protect: Set<string> = new Set()): Fitted {
+export function fitToBudget(artefacts: Artefact[], build: (a: Artefact[]) => unknown, limit: number, protect: Set<string> = new Set(), declared?: readonly string[]): Fitted {
   const notes: string[] = [];
   if (encodedSize(build(artefacts)) <= limit) return { artefacts, notes };
 
@@ -95,7 +95,7 @@ export function fitToBudget(artefacts: Artefact[], build: (a: Artefact[]) => unk
   // the actor being profiled. Shedding those would leave a call that reports
   // success having read nothing.
   const consumed = consumedSources(working);
-  const order = [...working].sort((a, b) => rank(a, protect, consumed) - rank(b, protect, consumed));
+  const order = [...working].sort((a, b) => rank(a, protect, consumed, declared) - rank(b, protect, consumed, declared));
   /**
    * Bisection, not one full serialisation per item shed.
    *
@@ -236,7 +236,7 @@ export function consumedSources(artefacts: Artefact[]): Set<string> {
  * above every unpinned one while still shedding the most expendable pinned item
  * first.
  */
-function rank(a: Artefact, protect: Set<string>, consumed: Set<string>): number {
+function rank(a: Artefact, protect: Set<string>, consumed: Set<string>, declared?: readonly string[]): number {
   // A PINNED SOURCE KEEPS TIER 0, and that exception is load-bearing.
   //
   // `consumed` is derived from the `evidence` rows in the call, and the evidence
@@ -255,7 +255,33 @@ function rank(a: Artefact, protect: Set<string>, consumed: Set<string>): number 
   // because stage 6 has already run.
   const pinned = protect.has(a.id);
   const unread = a.kind === 'research_source' && !pinned && !consumed.has(a.id);
-  return (pinned ? 100 : 0) + (unread ? UNREAD_SOURCE_TIER : (SHED_ORDER[a.kind] ?? 3)) * 10 + (a.confidence ?? 0.5) * 9;
+  // The pin bonus has to clear the tallest declared list, not just the six tiers
+  // of `SHED_ORDER`: a pinned item always outlasts an unpinned one.
+  const tier = declared ? declaredTier(a, declared, consumed, pinned) : unread ? UNREAD_SOURCE_TIER : (SHED_ORDER[a.kind] ?? 3);
+  return (pinned ? 1000 : 0) + tier * 10 + (a.confidence ?? 0.5) * 9;
+}
+
+/**
+ * THE STAGE'S OWN ORDER, when it declares one.
+ *
+ * `SHED_ORDER` is one ranking for every stage, and it ranks by how LATE a kind
+ * is produced — which is exactly how the late, long kinds came to win the fit
+ * at stages that were never about them. Measured on assessment 03c83ea5 (review
+ * of 25 September 2026): stage 7's context was 90% actor profiles; stage 14,
+ * the theory of change, saw 1 mechanism, 1 assumption and no evidence against a
+ * declared input of "mechanisms, evidence and assumptions"; stage 16, the
+ * challenge, saw no plays.
+ *
+ * A stage that declares its inputs (`STAGE_CONTEXT` in contracts.ts) is ranked
+ * by that declaration instead: the first kind it names is the last to go. A
+ * source an evidence row has already read still goes first, for the reason
+ * `SHED_ORDER` gives — the stage has the finding, and can spare the paragraph.
+ */
+function declaredTier(a: Artefact, declared: readonly string[], consumed: Set<string>, pinned: boolean): number {
+  const at = declared.indexOf(a.kind);
+  if (at < 0) return 0;
+  if (a.kind === 'research_source' && !pinned && consumed.has(a.id)) return 0;
+  return declared.length - at;
 }
 
 function summarise(notes: string[]): string {

@@ -956,6 +956,59 @@ describe('shared context ordering', () => {
 });
 
 /**
+ * A STAGE IS SENT WHAT IT DECLARES. Measured on assessment 03c83ea5: stage 14
+ * saw 1 mechanism, 1 assumption and 0 evidence, stage 7's context was 90%
+ * profiles, and stage 16 saw no plays — the late, long kinds won every fit.
+ */
+describe('each stage is given the kinds it declares, and keeps them first', () => {
+  const profileFor = (i: number) => artefact(`s4_${String(i).padStart(3, '0')}_profile`, 'profile', `Profile ${i}`, 'p'.repeat(3_000), { actorId: 's2_x' }, { refs: [] });
+  const mechanisms = Array.from({ length: 3 }, (_, i) => artefact(`s1_${i}_mech`, 'mechanism', `Mechanism ${i}`, 'Machinery.', { intervention: 'i', implementation: 'x', notes: 'n' }, { refs: [] }));
+  const evidence = Array.from({ length: 4 }, (_, i) => artefact(`s6_${i}_evidence`, 'evidence', `Evidence ${i}`, 'What the source shows.', { claimId: null, mechanismId: null, actorId: null, assumptionId: null, sourceId: 'x', evidenceType: 't', result: 'supports', sourceQuality: 'q', relevance: 'r', freshness: 'f', dispute: 'd' }, { refs: [] }));
+  const assumptions = Array.from({ length: 4 }, (_, i) => artefact(`s1_${i}_assumption`, 'assumption', `Assumption ${i}`, 'Assumed.', { importance: 0.5, uncertainty: 0.5, consequence: 0.5, notes: 'n' }, { refs: [] }));
+
+  const payloads = async (stage: number, artefacts: Artefact[], sharedContextFirst: boolean) => {
+    const seen: Artefact[][] = [];
+    const model = vi.fn(async (_s: number, _k: string, raw: unknown) => {
+      seen.push((raw as { artefacts: Artefact[] }).artefacts);
+      return { artefacts: [], warnings: [] };
+    });
+    await executeStage(
+      { stage, title: 'T', jurisdiction: null, policyArea: null, context: null, artefacts },
+      { model, research: neverResearch, signal: AbortSignal.timeout(30_000), sharedContextFirst },
+    ).catch(() => {});
+    return seen;
+  };
+
+  it('gives the theory of change every mechanism, evidence row and assumption, and no profiles, beside 500 of them', async () => {
+    const all = [...Array.from({ length: 500 }, (_, i) => profileFor(i)), ...mechanisms, ...evidence, ...assumptions];
+    for (const first of [true, false]) {
+      const seen = await payloads(THEORY_STAGE, all, first);
+      expect(seen).toHaveLength(mechanisms.length);
+      for (const call of seen) {
+        const ids = new Set(call.map((a) => a.id));
+        expect([...mechanisms, ...evidence, ...assumptions].filter((w) => !ids.has(w.id)).map((w) => w.id)).toEqual([]);
+        expect(call.some((a) => a.kind === 'profile')).toBe(false);
+      }
+    }
+  });
+
+  it('keeps the plays in the challenge when the paper’s claims alone would fill the window', async () => {
+    // Claims are declared well below plays at stage 16, and there are enough of
+    // them to overflow even after every statement is clipped — so something has
+    // to be shed, and it must be claims.
+    const claims = Array.from({ length: 6_000 }, (_, i) => artefact(`s1_${String(i).padStart(5, '0')}_claim`, 'claim', `Claim ${i} ${'c'.repeat(120)}`, 'c'.repeat(400), { category: 'objective', notes: 'n'.repeat(80) }, { refs: [] }));
+    const plays = Array.from({ length: 10 }, (_, i) => artefact(`s10_${i}_exploit`, 'exploit', `Play ${i}`, 'A play.', { actorId: 's2_x' }, { refs: [], confidence: 0.1 }));
+    const seen = await payloads(16, [...claims, ...plays, ...assumptions], true);
+    expect(seen.length).toBeGreaterThan(0);
+    const call = seen[0];
+    expect(call.filter((a) => a.kind === 'exploit')).toHaveLength(plays.length);
+    expect(call.filter((a) => a.kind === 'assumption')).toHaveLength(assumptions.length);
+    expect(call.filter((a) => a.kind === 'claim').length).toBeLessThan(claims.length);
+    expect(JSON.stringify({ artefacts: call }).length).toBeLessThanOrEqual(FIT_LIMIT);
+  });
+});
+
+/**
  * THE ALLOWANCE IS MEASURED, NOT GUESSED.
  *
  * A flat 120,000-character reserve was why stage 6 cached 0.0% on 2026-09-18
