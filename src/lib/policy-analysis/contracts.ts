@@ -352,6 +352,29 @@ export const SCENARIOS = ['genuine_cooperation', 'minimum_compliance', 'strategi
 export const RECONCILE_RELATIONS = ['confirms', 'extends', 'qualifies', 'contradicts', 'supersedes'] as const;
 /** Where a conclusion stands once the material has been read against it. */
 export const REVISION_STATUSES = ['upheld', 'strengthened', 'weakened', 'overturned', 'superseded'] as const;
+/**
+ * WHERE A PLAY'S PRECEDENT CAME FROM.
+ *
+ * 46 of 47 plays on the one completed real run said no precedent was found,
+ * because the prompt allowed only a case the run had evidence for and research
+ * is planned before any play exists. A model does know comparable cases — a
+ * college gaming a completion measure, a council re-basing a waiting list — and
+ * a reader is better served by "this has happened before, from memory, not
+ * checked" than by a blank, PROVIDED the page says which it is.
+ *
+ * So the precedent is labelled rather than trusted. `external_evidence` must
+ * cite a retrieved source or evidence row in refs, or triage downgrades it to
+ * `unverified_recall`; `prior_assessment` is a repeat of a play the persona
+ * library recorded for this body; `unverified_recall` is the model's own memory
+ * and is shown as "not checked"; `none` says nothing comparable was found. A
+ * link in the text is removed whatever the basis — URLs come from retrieval,
+ * never from a model.
+ *
+ * Not an ORIGIN, deliberately: `ORIGINS` describes a whole artefact and every
+ * view reads it that way. This is one field of one kind, so it sits beside that
+ * field.
+ */
+export const PRECEDENT_BASES = ['external_evidence', 'prior_assessment', 'unverified_recall', 'none'] as const;
 export const JUDGEMENTS = ['well_supported', 'supported_with_limits', 'contested', 'provisional', 'unknown'] as const;
 /**
  * The challenge remits, one call each, all with equal weight.
@@ -448,6 +471,9 @@ export const dataSchemas = {
     incentive: unit, ease: unit, impact: unit, concealment: unit,
     exposure: unit.optional(), band: z.string().max(40).optional(),
     earlyWarning: text, counter: text, precedent: text,
+    // Where `precedent` came from. Optional so a play written before it existed
+    // still parses; see PRECEDENT_BASES.
+    precedentBasis: z.enum(PRECEDENT_BASES).optional(),
   }).strict(),
   cross_policy: z.object({
     pattern: z.enum(CROSS_PATTERNS), otherAnalysisId: z.string().max(100), otherAnalysisTitle: text,

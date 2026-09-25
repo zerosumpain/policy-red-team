@@ -502,6 +502,7 @@ export function triageArtefacts(output: StageOutput, stage: number, prior: Artef
   // rather than the passages that mention them, or a claim citing a sibling by a
   // name it had made up.
   for (const a of kept) prune(a, map, dropWarning(a));
+  const relabelled = kept.filter((a) => a.kind === 'exploit' && checkPrecedent(a, map)).map((a) => `“${a.label}”`);
 
   // Dropping an artefact can invalidate whatever pointed at it, so settle.
   for (let pass = 0; pass < 6; pass++) {
@@ -518,6 +519,10 @@ export function triageArtefacts(output: StageOutput, stage: number, prior: Artef
 
   const warnings = [...parsed.warnings];
   if (pruned.length) warnings.push(`${pruned.length} item${pruned.length === 1 ? '' : 's'} referred to something that is not in this assessment; the reference was dropped and the item kept. ${pruned.slice(0, 4).join(' ')}${pruned.length > 4 ? ` And ${pruned.length - 4} more.` : ''}`.slice(0, 1000));
+  // Worded for `stage-facts.ts`'s "the reference was dropped" rule, because that
+  // is what happened: the play is kept, and the one thing it could not back up
+  // — a link, or a claim to evidence it does not cite — is taken off it.
+  if (relabelled.length) warnings.push(`${relabelled.length} play${relabelled.length === 1 ? '' : 's'} gave a precedent the run holds no evidence for, or a link in it; the reference was dropped and the item kept, with the precedent marked as the model's own recall, not checked. ${relabelled.slice(0, 4).join(', ')}${relabelled.length > 4 ? `, and ${relabelled.length - 4} more` : ''}.`.slice(0, 1000));
   // DIVERGENCE: see the narrowing rule in `semanticFault`.
   if (narrowed.length) warnings.push(`${narrowed.length} item${narrowed.length === 1 ? '' : 's'} named something real among the hypotheses ${narrowed.length === 1 ? 'it rests' : 'they rest'} on that is not an assumption record; that citation was dropped and the item kept, with the identifier retained in its provenance. ${narrowed.slice(0, 4).join(' ')}${narrowed.length > 4 ? ` And ${narrowed.length - 4} more.` : ''}`.slice(0, 1000));
   if (rejected.length) {
@@ -570,6 +575,35 @@ function prune(a: Artefact, all: Map<string, Artefact>, note: (what: string) => 
     note(`${values.length - trimmed.length} unresolvable entr${values.length - trimmed.length === 1 ? 'y' : 'ies'} in ${field}`);
     a.data = candidate;
   }
+}
+
+/** A link anywhere in model prose. URLs come from the retrieval adapter and nowhere else. */
+const LINK = /\b(?:https?:\/\/|www\.)[^\s)\]]+/i;
+
+/**
+ * Hold a play's precedent to what it can show. Returns true if it changed it.
+ *
+ * `external_evidence` is a claim that this run holds the evidence, so the play
+ * must cite a retrieved source or an evidence row; one that cites neither is
+ * the model remembering, and is relabelled as that rather than refused — the
+ * precedent is still worth reading, it is simply not checked. A link in the
+ * text is removed whatever the basis: a model-authored URL is the one citation
+ * `semanticFault` already refuses in the `url` field, and it must not come back
+ * in through the prose. See `PRECEDENT_BASES`.
+ */
+function checkPrecedent(a: Artefact, all: Map<string, Artefact>): boolean {
+  let changed = false;
+  const text = typeof a.data.precedent === 'string' ? a.data.precedent : '';
+  if (LINK.test(text)) {
+    a.data.precedent = text.replace(new RegExp(LINK.source, 'gi'), '').replace(/\(\s*\)/g, '').replace(/\s{2,}/g, ' ').replace(/\s+([.,;:)])/g, '$1').trim() || 'A precedent was given only as a link, which was removed.';
+    if (a.data.precedentBasis !== 'none') a.data.precedentBasis = 'unverified_recall';
+    changed = true;
+  }
+  if (a.data.precedentBasis === 'external_evidence' && !a.refs.some((id) => ['research_source', 'evidence'].includes(all.get(id)?.kind ?? ''))) {
+    a.data.precedentBasis = 'unverified_recall';
+    changed = true;
+  }
+  return changed;
 }
 
 export function hasSource(id: string, all: Map<string, Artefact>, seen = new Set<string>()): boolean {

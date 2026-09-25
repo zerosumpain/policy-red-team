@@ -22,7 +22,7 @@
 import type { Artefact } from './contracts';
 import { KEY_SECTIONS, READING_CHAIN } from './glossary';
 import { beyond, destroyed, headline as handlingHeadline, journey, kept, PLACE_LABEL } from './handling';
-import { REPORT_ACTS, actorBoard, addenda, evidenceMix, fragileAssumptions, findingsBySection, headline, isShortProfile, of, plays, recommendations as reportRecommendations, BAND_LABEL, type Band, type PassRow } from './view';
+import { REPORT_ACTS, actorBoard, addenda, evidenceMix, fragileAssumptions, findingsBySection, headline, isShortProfile, of, plays, precedentOf, recommendations as reportRecommendations, BAND_LABEL, type Band, type PassRow } from './view';
 import { checks } from './view';
 import { isBody, network } from './network';
 import { adjacency } from './matrix';
@@ -123,6 +123,19 @@ function verdict(artefacts: Artefact[]): string {
   return block(['## The verdict', lead.statement]);
 }
 
+/**
+ * Where it has happened before, and whether that was checked.
+ *
+ * A Word file lands on somebody's desk with nobody to ask, so a precedent from
+ * the model's own recall says so in the same line — "not checked" — or it
+ * would read as evidence in the one copy nobody can query.
+ */
+function precedentLine(play: Artefact): string | null {
+  const { text, label } = precedentOf(play);
+  if (!clean(text)) return null;
+  return `**Where it has happened before.** ${clean(text)}${label ? ` *(${label}.)*` : ''}`;
+}
+
 function playbook(artefacts: Artefact[]): string {
   const list = plays(artefacts);
   if (!list.length) return '';
@@ -143,6 +156,7 @@ function playbook(artefacts: Artefact[]): string {
       clean(d.costToPolicy) && `**What it costs the policy.** ${clean(d.costToPolicy)}`,
       clean(d.earlyWarning) && `**First sign of it.** ${clean(d.earlyWarning)}`,
       clean(d.counter) && `**What would close it.** ${clean(d.counter)}`,
+      precedentLine(play.artefact),
     ]);
   });
   return block([
