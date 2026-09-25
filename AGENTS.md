@@ -4,26 +4,20 @@ Read `docs/plan.md` first, then the phase document for whatever you are touching
 They carry the decisions and the reasoning; this file is only the things that will
 cost you an hour if nobody says them.
 
-## It is a fork, and most of the code is a copy
+## It was a fork, and it is detached now
 
-`src/lib/policy-analysis/**` and most of `src/lib/**` are copied verbatim from
-`zerosumpain/SR-Policy-Analysis`. `docs/upstream.json` names every copied file.
+`src/lib/policy-analysis/**` and most of `src/lib/**` were copied verbatim from
+`zerosumpain/SR-Policy-Analysis`. **Since 25 September 2026 the fork is DETACHED**
+(`docs/upstream.json` → `detached`): upstream stopped moving on 18 September and
+every lever the review of that week found sat inside the copied files. They are
+ordinary source files now — **edit them in place.**
 
-- **`node scripts/sync-core.mjs` RE-COPIES EVERYTHING.** There is no way to
-  apply a new divergence without also pulling every upstream change that has
-  landed since the last sync — which nearly put an unevaluated pipeline rewrite
-  into a UI commit on 2026-09-19. After running it, check `git status` for files
-  you did not mean to move, `git restore` them, and put their old hash back in
-  `docs/upstream.json` or `sync:check` will report an upstream change as a local
-  edit.
-- **Do not edit a copied file directly.** Add a divergence to the `DIVERGENCES`
-  map in `scripts/sync-core.mjs` and describe it in `docs/upstream.json`, then run
-  `npm run sync`. A hand edit is silently reverted by the next sync.
-- `npm run sync:check` reports drift in three buckets: changed upstream, edited
-  here, and not copied yet. It should be clean before you commit.
-- Every divergence must actually change something. A `.replace()` that no longer
-  matches throws rather than passing quietly, which is how you find out upstream
-  moved the code you were patching.
+- `DIVERGENCES` in `scripts/sync-core.mjs` is history, not a mechanism. Do not
+  add to it.
+- `npm run sync:check` prints DETACHED and exits 0; plain `sync` REFUSES,
+  because a re-copy would overwrite everything done here since.
+- `node scripts/sync-core.mjs --check --compare` still runs the old comparison,
+  for anyone porting a fix across by hand in either direction.
 
 ## The gates
 

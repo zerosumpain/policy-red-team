@@ -1311,6 +1311,34 @@ const mode = process.argv.includes('--check') ? 'check' : 'sync';
  * a failure, which is what the author's own machine and any CI that HAS the
  * checkout should set.
  */
+/*
+ * DETACHED, 25 September 2026. This fork now owns the pipeline.
+ *
+ * Upstream last moved on 18 September; every change since has landed here, and
+ * the review of 25 September put almost every lever it found inside the copied
+ * files. Routing each one through a `.replace()` divergence roughly doubled the
+ * cost of every pipeline change for no one's benefit. So the copied files are
+ * ordinary source files from `detached.commit` on, edited in place.
+ *
+ * A re-copy would now destroy work, so plain `sync` refuses. `--check` stays as
+ * an honest one-line report so `test:all` and CI keep working, and `--compare`
+ * still runs the old three-bucket comparison for anyone porting a fix across.
+ */
+if (manifest.detached && !process.argv.includes('--compare')) {
+  if (mode === 'check') {
+    console.log(
+      `\nDETACHED since ${manifest.detached.on} (${manifest.detached.commit.slice(0, 7)}) — ` +
+        'the copied files are owned here; nothing to check.\n' +
+        '  `node scripts/sync-core.mjs --check --compare` still diffs against upstream.\n'
+    );
+    process.exit(0);
+  }
+  console.error(
+    '\nREFUSED — this fork is detached (docs/upstream.json `detached`). A re-copy\n' +
+      '  would overwrite every change made here since. Port a fix by hand.\n'
+  );
+  process.exit(1);
+}
 const upstreamPresent = await stat(UPSTREAM).then((s) => s.isDirectory()).catch(() => false);
 if (!upstreamPresent) {
   const strict = process.env.UPSTREAM_STRICT === '1';
