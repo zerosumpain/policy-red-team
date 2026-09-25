@@ -120,7 +120,8 @@ Branch `phase19-analysis`. No migration. Prompt generation `3.2`.
   from the paper (`sourceId` + `sourceQuote`, located exactly as an extracted
   fact is), at least one play, the assumption it rests on, `wouldChangeIf`,
   `decision`, `action` and `owner`. Triage refuses one without a mechanism or a
-  play. None left after the top-up fails the stage; a surplus is reconciled.
+  play. None left after the top-up is a counted limit of the run, not a
+  failure (see the review fixes below); a surplus is reconciled.
   The Word export leads with them after the verdict, and the nineteen sections
   become the appendix. A shared copy keeps the quote, as it does for a finding.
 - **The challenge asks whether the report is useful.** Four more remits, one
@@ -170,7 +171,7 @@ Branch `phase19-analysis`. No migration. Prompt generation `3.2`.
 | A top-up for stage 14 | re-dispatch missing units; none | **none** | the majority floor already tolerates a short stage; the old test counts are exact | yes |
 | Precedent basis | a new `ORIGINS` value; a field beside `precedent` | **a field (`precedentBasis`)** | an origin describes a whole artefact and every view reads it that way | yes |
 | A key judgement's quote | send stage 17 the passages; copy a mechanism's or claim's quote | **copy the quote** | every mechanism and claim in 17's context already carries a located `sourceQuote`; passages would crowd the context | yes |
-| No key judgement | warn; fail | **fail, after one top-up** | a report with no "so what" has not done the job; the top-up names the gap (`key_judgements`) so the payload differs from the cached call | yes |
+| No key judgement | warn; fail | **fail, after one top-up** — reversed after review: **warn** | a report with no "so what" has not done the job; the top-up names the gap (`key_judgements`) so the payload differs from the cached call. But a retry replays every call from the cache, so failing threw a finished report away three times | yes |
 | More than five | fail; reconcile | **reconcile: last of each rank, then the top five, renumbered** | `provider.ts` accumulates corrective rounds, so the review-summary trap applies; a surplus is the correction arriving | n/a |
 | Restatement pass | floor as at 17; reconcile only | **reconcile only** | a restatement has never had coverage rules; the view falls back to the previous set | yes |
 | Verdict UI | render key judgements; skip | **skip** | master had no slot for them and R and B own `client/report/**` | n/a |
@@ -273,3 +274,40 @@ Branch `phase19-intel`. Migration `0004-body-evidence.sql`.
   round: it pays to use newer evidence.
 - The National Audit Office is still not on the register, so its reports only
   arrive through Parliament's committees (the Public Accounts Committee).
+
+## Fixes after the independent review
+
+Branch `phase19-fixes`, from a review of master on 25 September 2026. Each has
+a test that failed first.
+
+- **Stage 17 with no key judgement keeps its report.** A throw here was the
+  36ebca37 trap: the retry replays `main`, its repairs and `topup` (whose
+  prefix is always `s17_000_`) from the cache and fails the same way three
+  times. It is now "1 of 1 key judgement sections were not assessed", decided
+  after the final triage.
+- **Stage 17 pins what a key judgement quotes from**: the deep-chain
+  mechanisms and the claims they rest on (`quotableForJudgements`), one set per
+  stage, so the shared block is still fitted once.
+- **Model spellings are read before a strict schema refuses them.**
+  `normaliseReply` in `validation.ts`, on a copy: null on an optional or
+  defaulted field drops the key, an enum spelling becomes the value it spells,
+  a numeric string on a number field becomes the number. It never adds a key.
+  A key judgement's `assumptionId` naming a claim or mechanism is narrowed to
+  its play's assumption.
+- **`fanOut` brakes where it dispatches**: while a failure has landed ahead of
+  the fold, unit k goes out only if k < folded + lanes. Each fan-out passes an
+  `AbortSignal` to its calls (`ModelCall`'s fourth argument, never the
+  payload) and withdraws them when the stage fails.
+- **A register body's own name is not paper text.** `refreshBody` checks the
+  name against the register and sends it unguarded; a skip the guard does cause
+  is never stored in the shared checks table.
+- **A persona's summary travels** by the same rule as its traits, on write, on
+  rebuild, and on the legacy summary.
+- Smaller: deleting a paper rebuilds the persona's aliases (and a non-register
+  name) from the remaining papers; a persona takes its actor's type before its
+  link's, and the boot upgrade moves only version-0 groups; "Check again now"
+  and `research:bodies` respect search `none`; grounded search retries a 429 or
+  5xx twice with a deadline per try; the "could not be fully checked" warning
+  is sorted; `s4_body_*` records reach only stages 4 and 10, and 12 and 17
+  where cited; clashes read only authority relations (not `funds` or
+  `depends_on`); stage 11 gives two runs of one document one slot.
