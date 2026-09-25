@@ -101,6 +101,23 @@ describe('clashes between papers', () => {
     expect(findClashes({ ...rows, names, bodyOf: () => null })).toEqual([]);
   });
 
+  it('does not read paying for a body, or depending on one, as authority over it', () => {
+    // "DfE funds Ofsted" in one paper and "DfE depends on Ofsted" in the next is
+    // a department paying for the inspectorate it relies on — not a hierarchy
+    // turned upside down.
+    const money = [
+      edge('A', 's2_001_dfe', 'funds', 's2_002_of', 'The Department funds Ofsted.'),
+      edge('B', 's2_000_dfe', 'depends_on', 's2_001_of', 'The Department depends on Ofsted for assurance.'),
+    ];
+    expect(findClashes({ ...rows, edges: money, names, bodyOf })).toEqual([]);
+    // Genuine authority, one way in one paper and the other in the next, still is.
+    const authority = [
+      edge('A', 's2_002_of', 'reports_to', 's2_001_dfe', 'Ofsted reports to the Department.'),
+      edge('B', 's2_001_of', 'has_authority_over', 's2_000_dfe', 'Ofsted has authority over the Department.'),
+    ];
+    expect(findClashes({ ...rows, edges: authority, names, bodyOf })).toHaveLength(1);
+  });
+
   it('does not call different duties a clash', () => {
     const calm = edges.filter((e) => e.relation !== 'reports_to');
     expect(findClashes({ ...rows, edges: calm, names, bodyOf })).toEqual([]);
