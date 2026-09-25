@@ -1,7 +1,7 @@
 import { desc, inArray, isNotNull, sql } from 'drizzle-orm';
 import { db, type DbExecutor } from '$lib/db';
 import { policyBodyEvidence, policyBodyEvidenceChecks, policyPersonas } from '$lib/db/schema';
-import { EVIDENCE_SOURCES, EVIDENCE_TTL_MS, pickEvidence, type BodyEvidenceRecord, type EvidenceQuestion, type EvidenceSource } from '../body-evidence';
+import { EVIDENCE_SOURCES, EVIDENCE_TTL_MS, pickEvidence, uncheckedWarning, type BodyEvidenceRecord, type EvidenceQuestion, type EvidenceSource } from '../body-evidence';
 import type { Artefact } from '../contracts';
 import { isAffectedGroup } from '../personas';
 import { resolveBody, type RegisterBody } from '../register';
@@ -222,7 +222,8 @@ export async function evidenceForActors(actors: Artefact[], options: { fetch: bo
         failed.push(body.name);
       }
     });
-    if (failed.length) warnings.push(`The public record for ${failed.length} ${failed.length === 1 ? 'body' : 'bodies'} could not be fully checked (${failed.slice(0, 5).join(', ')}${failed.length > 5 ? ', and others' : ''}). What was already stored was used.`);
+    const unchecked = uncheckedWarning(failed);
+    if (unchecked) warnings.push(unchecked);
   }
   const stored = await storedEvidence(unique.map((b) => b.id));
   const bundles: ActorEvidence[] = [];

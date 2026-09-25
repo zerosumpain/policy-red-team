@@ -5,7 +5,7 @@ import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import {
   classifyCommittee, classifyGovuk, committeeRecords, evidenceArtefacts, EVIDENCE_TTL_MS, govukRecords, hansardRecords,
-  isBodyEvidence, pickEvidence, publicLink, searchTerm, type BodyEvidenceRecord,
+  isBodyEvidence, pickEvidence, publicLink, searchTerm, uncheckedWarning, type BodyEvidenceRecord,
 } from './body-evidence';
 import { artefact, STAGE_KINDS, MODEL_KINDS } from './contracts';
 import { triageArtefacts } from './validation';
@@ -153,6 +153,18 @@ describe('fetching', () => {
       now, guard: allow, sources: ['govuk'], fetch: async () => { throw new Error('ECONNRESET at 10.0.0.1 with secret'); },
     });
     expect(answers[0].error).toBe('could not be reached');
+  });
+});
+
+describe('what could not be checked is said the same way every time', () => {
+  it('names the bodies in a fixed order, not the order the network answered in', () => {
+    // The warning rides into the stage's cached calls: two orders are two
+    // different questions, and a resumed stage would miss its cache.
+    const one = uncheckedWarning(['Ofsted', 'Department for Education', 'Skills England']);
+    const two = uncheckedWarning(['Skills England', 'Ofsted', 'Department for Education']);
+    expect(one).toBe(two);
+    expect(one).toContain('(Department for Education, Ofsted, Skills England)');
+    expect(uncheckedWarning([])).toBeNull();
   });
 });
 
