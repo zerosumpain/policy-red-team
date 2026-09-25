@@ -159,3 +159,139 @@ export function withoutEcho(statement: string, echoed?: string): string {
   // paragraph under a kicker reads as a rendering fault. Keep the statement.
   return rest.length ? rest : text;
 }
+
+/**
+ * ─── THE FINDINGS THAT MATTER FIRST ──────────────────────────────────────
+ *
+ * The Verdict move printed the write-up as nineteen equal cards, section 8 of
+ * 12 — the visual form of "no prioritisation", about 3,000px of grey on the
+ * Post-16 run that a reader had to rank for themselves. The assessment already
+ * carries what a ranking needs, on every assured finding:
+ *
+ *   - `data.resultIds` — the checks, plays and scenarios it cites as results.
+ *     A check that came back HIGH RISK or a SEVERE play is a serious result;
+ *     an indeterminate check or a model is not a severity at all.
+ *   - `data.judgement` — how well the final review thought it was supported.
+ *   - how much it cites — results plus the assumptions (`hypothesisIds`) it
+ *     names — which is the only honest reading of "support" without a model.
+ *
+ * So a finding ranks by how serious the worst thing it cites is, then by how
+ * well supported the review judged it, then by how much it cites, then in the
+ * report's own section order. Every step is a field the page can print, and the
+ * card prints the reason for its severity, so the order can be argued with.
+ *
+ * THE SHAPE IS A JUDGEMENT, NOT A FINDING. Phase 19's analysis workstream adds a
+ * "key judgements" artefact — at most five, each naming a mechanism, a quote, a
+ * play, an assumption, what would prove it wrong and an action with an owner.
+ * `KeyJudgement` is what the Verdict lead draws, and `details` is where those
+ * extra fields will go as labelled rows, so wiring the new artefact in is a
+ * mapping function and no change to the component.
+ */
+
+/** How serious the worst thing a finding cites is. `level` 0 means nothing it cites carries a severity. */
+export type Severity = { level: 0 | 1 | 2 | 3; label: string; reason: string };
+
+export type KeyJudgement = {
+  id: string;
+  /** The record to link to. Null for a judgement that has no drill page. */
+  artefact: Artefact | null;
+  title: string;
+  statement: string;
+  /** Which part of the report it came from, in words — "Test results". */
+  sectionLabel?: string;
+  judgement: { key: string; label: string };
+  severity: Severity;
+  /** How many results and assumptions it cites. */
+  support: number;
+  /** Extra labelled facts, for the key-judgements artefact to come. */
+  details?: { label: string; value: string }[];
+};
+
+/**
+ * Sections that are about the ASSESSMENT rather than the policy.
+ *
+ * The executive assessment is the headline and the standfirst already; scope
+ * and methodology says what the run could see. Neither is a finding about the
+ * paper, so neither competes for a place in the ranked list — both are still
+ * in the appendix.
+ */
+export const NOT_RANKED = new Set(['executive_assessment', 'scope_methodology']);
+
+const SEVERITY_WORD: Record<Severity['level'], string> = { 3: 'High', 2: 'Medium', 1: 'Low', 0: 'Not rated' };
+
+/** The severity one cited result carries, 0 where it carries none. */
+function resultLevel(result: Artefact | undefined): Severity['level'] {
+  if (!result) return 0;
+  if (result.kind === 'test') {
+    const outcome = String(result.data.result ?? '');
+    return outcome === 'high_risk' ? 3 : outcome === 'moderate_risk' ? 2 : 0;
+  }
+  if (result.kind === 'exploit') {
+    const band = String(result.data.band ?? '');
+    return band === 'severe' ? 3 : band === 'significant' ? 2 : band === 'moderate' ? 1 : 0;
+  }
+  return 0;
+}
+
+const idsOf = (value: unknown): string[] =>
+  (Array.isArray(value) ? value.filter((v): v is string => typeof v === 'string') : []);
+
+/** The worst thing a finding cites, and the sentence that says so. */
+export function severityOf(finding: Artefact, byId: Map<string, Artefact>): Severity {
+  const results = idsOf(finding.data.resultIds).map((id) => byId.get(id));
+  const levels = results.map(resultLevel);
+  const level = Math.max(0, ...levels) as Severity['level'];
+  if (!level) return { level, label: SEVERITY_WORD[0], reason: 'Nothing it cites carries a risk rating.' };
+  const at = results.filter((_, i) => levels[i] === level);
+  const checks = at.filter((r) => r?.kind === 'test').length;
+  const plays = at.length - checks;
+  const word = level === 3 ? 'high' : level === 2 ? 'medium' : 'low';
+  const parts = [
+    checks ? `${checks} ${checks === 1 ? 'check' : 'checks'} that found ${word} risk` : '',
+    plays ? `${plays} ${plays === 1 ? 'way' : 'ways'} to beat the policy rated ${word}` : '',
+  ].filter(Boolean);
+  return { level, label: SEVERITY_WORD[level], reason: `It cites ${parts.join(' and ')}.` };
+}
+
+/** Strongest first. `unknown` and anything unrecognised rank with `contested`, below provisional. */
+const STRENGTH: Record<string, number> = { well_supported: 3, supported_with_limits: 2, provisional: 1 };
+
+/** A finding, as the Verdict lead draws it. */
+export function asJudgement(finding: Artefact, byId: Map<string, Artefact>, sectionLabel?: string): KeyJudgement {
+  return {
+    id: finding.id,
+    artefact: finding,
+    title: finding.label,
+    statement: finding.statement,
+    sectionLabel,
+    judgement: judgementOf(finding),
+    severity: severityOf(finding, byId),
+    support: idsOf(finding.data.resultIds).length + idsOf(finding.data.hypothesisIds).length,
+  };
+}
+
+/**
+ * Every finding the write-up shows, ranked, split into the ones that lead and
+ * the rest. `NOT_RANKED` sections are never in `top`; the rest keep report
+ * order, because the appendix is where a reader goes for the whole.
+ */
+export function rankFindings(chapters: Chapter[], artefacts: Artefact[], lead = 5): {
+  top: KeyJudgement[];
+  rest: { chapter: Chapter; item: Artefact }[];
+} {
+  const byId = new Map(artefacts.map((a) => [a.id, a]));
+  const entries = chapters.flatMap((chapter, c) => chapter.items.map((item, i) => ({ chapter, item, order: c * 1000 + i })));
+  const scored = entries
+    .filter((entry) => !NOT_RANKED.has(entry.chapter.section))
+    .map((entry) => ({ ...entry, view: asJudgement(entry.item, byId, entry.chapter.label) }));
+  scored.sort((a, b) => b.view.severity.level - a.view.severity.level
+    || (STRENGTH[b.view.judgement.key] ?? 0) - (STRENGTH[a.view.judgement.key] ?? 0)
+    || b.view.support - a.view.support
+    || a.order - b.order);
+  const top = scored.slice(0, lead);
+  const chosen = new Set(top.map((entry) => entry.item.id));
+  return {
+    top: top.map((entry) => entry.view),
+    rest: entries.filter((entry) => !chosen.has(entry.item.id)).map(({ chapter, item }) => ({ chapter, item })),
+  };
+}
