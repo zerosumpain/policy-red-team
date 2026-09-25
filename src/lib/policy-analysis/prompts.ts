@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { ASSURED_SYNTHESIS_STAGE, SHORT_PROFILE_FIELDS, dataSchemas, FOLLOW_UP_STAGES, indexedOutputSchema, isPassStage, modelKinds, passStep, RECONCILE_RELATIONS, REPORT_SECTIONS, REVISION_STATUSES, stageName, stageOutputSchema, PROMPT_VERSION, PATTERNS, PERSONA_TRAITS, SCENARIOS, CROSS_PATTERNS, type Extraction, type PassKind, RELATIONS } from './contracts';
+import { ASSURANCE_STAGE, ASSURED_SYNTHESIS_STAGE, SYNTHESIS_STAGE, SHORT_PROFILE_FIELDS, dataSchemas, FOLLOW_UP_STAGES, indexedOutputSchema, isPassStage, modelKinds, passStep, RECONCILE_RELATIONS, REPORT_SECTIONS, REVISION_STATUSES, stageName, stageOutputSchema, PROMPT_VERSION, PATTERNS, PERSONA_TRAITS, SCENARIOS, CROSS_PATTERNS, type Extraction, type PassKind, RELATIONS } from './contracts';
 import { EXPOSURE_FACTORS } from './exposure';
 import { RELATION_FAMILIES } from './glossary';
 import type { Rejection } from './validation';
@@ -179,6 +179,20 @@ const FOLLOW_UP_PROMPT: Record<number, string> = Object.fromEntries(
 YOU MAY ALSO ASK. If this stage's reasoning has run into something the outside world could settle, return AT MOST ONE research_question alongside your own artefacts. Ask what published evidence would confirm or refute the conclusion you have just drawn — a comparable reform's actual outcome, an authority or capacity the paper only asserts, a published cost, take-up or enforcement record. Do not ask what the policy document itself answers, do not repeat a question already among the supplied research_question rows, and return none at all if nothing here needs one; an unnecessary question costs the assessment a retrieval it could have spent elsewhere. searchStrategy must be a bounded public web search query with no document quotes and no private context. The server does the retrieving, and what it finds reaches the stages AFTER this one — so ask for what the rest of the assessment needs, not for what would change your answer here.`]),
 );
 /**
+ * What the stages that write ABOUT the plays are told about `playPatterns`.
+ *
+ * On the one completed real run none of the 19 final findings named a play,
+ * and the plays were the best analysis the run made. The patterns arrive
+ * already grouped and ranked (`patterns.ts`), so the instruction is short: lead
+ * with the patterns, cite the sharpest play, and answer the severe plays nobody
+ * has answered. One string for every stage that gets it, so the three cannot
+ * drift apart.
+ */
+const PATTERN_PROMPT = `
+PLAY PATTERNS. If "playPatterns" is supplied, it groups the exploitation plays into patterns — one idea several bodies could run — ranked against each other within this assessment (rank 1 leads). Each pattern lists the bodies that could run it, the mechanisms it is aimed at and its sharpest plays by id. Its "unansweredSeverePlays" lists severe plays that no recommendation answers yet. Write about the leading patterns first, by name and in plain words, and cite their sharpest plays by id in resultIds and refs. A finding that could be about any policy is not a finding: name the play, the body and the mechanism.`;
+const PATTERN_STAGES = new Set([SYNTHESIS_STAGE, ASSURANCE_STAGE, ASSURED_SYNTHESIS_STAGE]);
+
+/**
  * `passKind` decides which instruction table a 100+ ordinal reads, because an
  * ordinal alone cannot say it: pass 2 may be an addendum or a restatement. It
  * also reaches the CACHE KEY — `provider.ts` hashes this prompt into
@@ -231,9 +245,9 @@ export function systemPrompt(stage: number, passKind?: PassKind | null, extracti
   // radius to the one stage this was measured on.
   const indexed = extraction === 'indexed' && stage === 1 && !pass;
   const instruction = !pass
-    ? `${instructions[stage] ?? ''}${indexed ? INDEXED_EXTRACTION : ''}${FOLLOW_UP_PROMPT[stage] ?? ''}`
+    ? `${instructions[stage] ?? ''}${indexed ? INDEXED_EXTRACTION : ''}${PATTERN_STAGES.has(stage) ? PATTERN_PROMPT : ''}${FOLLOW_UP_PROMPT[stage] ?? ''}`
     : passKind === 'restatement'
-      ? `${RESTATEMENT_PREAMBLE}${instructions[ASSURED_SYNTHESIS_STAGE] ?? ''}`
+      ? `${RESTATEMENT_PREAMBLE}${instructions[ASSURED_SYNTHESIS_STAGE] ?? ''}${PATTERN_PROMPT}`
       : ADDENDUM_INSTRUCTIONS[step] ?? '';
   // A pass reasons over an inventory the main run built, so its ids are the main
   // run's ids and the s2_ rule applies to it exactly as it does from stage 3 on.

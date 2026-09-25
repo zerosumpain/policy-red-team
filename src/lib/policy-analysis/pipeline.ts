@@ -11,6 +11,7 @@ import { numbered, sentences } from './sentences';
 import type { ModelCall } from './server/provider';
 import type { Research } from './server/research';
 import { isAffectedGroup, type PersonaPrior } from './personas';
+import { patternBrief } from './patterns';
 
 /** Compact summaries of this reader's OTHER completed assessments, for stage 11. */
 export type Neighbour = { id: string; title: string; policyArea: string | null; jurisdiction: string | null; completedAt: string | null; artefacts: { id: string; kind: string; label: string; statement: string; entityType?: string; aliases?: string[] }[] };
@@ -460,6 +461,23 @@ export async function executeStage(input: StageInput, deps: PipelineDeps): Promi
   };
 
   const hypotheses = input.artefacts.filter((a) => a.kind === 'assumption').map((a) => a.id);
+  /**
+   * THE PLAYS, GROUPED AND RANKED, for the stages that write about them.
+   *
+   * The report and its challenge are handed every play in their context — on
+   * the real run 47 of them that read alike — and none of the 19 final findings
+   * named one. `patternBrief` is the same plays already grouped into patterns and
+   * ranked within the run, plus the severe plays no recommendation answers, so a
+   * finding can cite the sharpest instance of the leading pattern instead of an
+   * arbitrary one. Computed here from the stored plays: no call, nothing re-run.
+   *
+   * An `extra` rather than an artefact, so it rides AFTER the context in the
+   * payload and a stage's cached prefix is untouched.
+   */
+  const brief = [SYNTHESIS_STAGE, ASSURANCE_STAGE, ASSURED_SYNTHESIS_STAGE].includes(stage) || (isPassStage(stage) && deps.passKind === 'restatement')
+    ? patternBrief(input.artefacts)
+    : null;
+  const patterns = brief ? { playPatterns: brief } : {};
 
   /**
    * What the reader's persona library already holds about the bodies in this run.
@@ -504,7 +522,7 @@ export async function executeStage(input: StageInput, deps: PipelineDeps): Promi
     const materialPassages = input.artefacts.filter((a) => a.kind === 'passage' && a.id.startsWith(`m${pass}_`));
     // Which pass each earlier artefact belongs to, so a later pass can tell the
     // assessment's own conclusions from an earlier addendum's.
-    const brief = deps.material ? { material: deps.material } : {};
+    const material = deps.material ? { material: deps.material } : {};
     if (deps.passKind === 'restatement') {
       // The assured-synthesis context, plus everything the addenda added. Pinned
       // the same way stage 17 pins, with the revisions added: a restatement that
@@ -515,7 +533,7 @@ export async function executeStage(input: StageInput, deps: PipelineDeps): Promi
         ...context.filter((a) => ['finding', 'recommendation', 'causal_chain', 'option_appraisal', 'evaluation_plan', 'assurance_challenge', 'revision', 'reconciliation', 'addendum_summary'].includes(a.kind) || (RESULT_KINDS as readonly string[]).includes(a.kind)).map((a) => a.id),
         ...hypotheses,
       ];
-      await request('main', context, { protect });
+      await request('main', context, { protect, ...patterns });
     } else if (step === 1) {
       if (!materialPassages.length) throw new PolicyError('extraction', 'The attached material yielded no readable passages, so there is nothing to read into the assessment.');
       // THE CAST IS PINNED, and this is the rule that makes an addendum worth
@@ -530,7 +548,7 @@ export async function executeStage(input: StageInput, deps: PipelineDeps): Promi
         key: passage.id,
         context: [passage, ...cast],
         describe: `Material passage “${passage.label}”`,
-        extra: { ...brief, protect: [passage.id, ...castIds] },
+        extra: { ...material, protect: [passage.id, ...castIds] },
       })));
     } else if (step === 2) {
       // Everything the assessment holds that the material could bear on, plus
@@ -547,7 +565,7 @@ export async function executeStage(input: StageInput, deps: PipelineDeps): Promi
         ...materialPassages.map((a) => a.id),
         ...context.filter((a) => ['claim', 'mechanism', 'assumption', 'actor'].includes(a.kind)).map((a) => a.id),
       ];
-      await request('main', context, { ...brief, protect });
+      await request('main', context, { ...material, protect });
     } else if (step === 3) {
       const context = input.artefacts.filter((a) => (a.kind !== 'passage' || a.id.startsWith(`m${pass}_`)) && !['alias', 'node'].includes(a.kind) && (a.kind !== 'actor' || a.id.startsWith('s2_')));
       // A revision judges a finding, a recommendation or a play, and must rest on
@@ -557,7 +575,7 @@ export async function executeStage(input: StageInput, deps: PipelineDeps): Promi
         ['finding', 'recommendation', 'exploit', 'reconciliation'].includes(a.kind) ||
         (a.kind === 'evidence' && a.id.startsWith(`s${passOrdinal(pass, 2)}_`)),
       ).map((a) => a.id);
-      await request('main', context, { ...brief, protect });
+      await request('main', context, { ...material, protect });
     }
   } else if (stage === 1) {
     const passages = input.artefacts.filter((a) => a.kind === 'passage');
@@ -921,7 +939,7 @@ export async function executeStage(input: StageInput, deps: PipelineDeps): Promi
       key: category,
       context: orderedContext(context, [], 'assurance', [[]], new Set(assured)),
       describe: `${category.replaceAll('_', ' ')} challenge`,
-      extra: { targetCategory: category, protect: assured },
+      extra: { targetCategory: category, protect: assured, ...patterns },
     });
     await fanOut(ASSURANCE_CATEGORIES.map(remit));
     /**
@@ -987,7 +1005,7 @@ export async function executeStage(input: StageInput, deps: PipelineDeps): Promi
     // was passed only to the follow-up rounds, so the first round was bounded by a
     // number written into the prompt — and raising `questions` in the contract then
     // changed nothing at all, which is the whole of what stage 5 does.
-    const extra = { ...(protect.length ? { protect } : {}), ...(stage === 5 ? { remainingQuestions: limits.questions } : {}) };
+    const extra = { ...(protect.length ? { protect } : {}), ...(stage === 5 ? { remainingQuestions: limits.questions } : {}), ...patterns };
     await request('main', context, extra);
     /**
      * DIVERGENCE: ONE MORE ASK FOR EXACTLY WHAT IS MISSING.
