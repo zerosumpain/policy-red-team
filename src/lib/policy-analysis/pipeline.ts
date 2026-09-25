@@ -261,7 +261,7 @@ export async function executeStage(input: StageInput, deps: PipelineDeps): Promi
     const resolvers: ((landed: Landed) => void)[] = [];
     const landed = units.map((_, k) => new Promise<Landed>((resolve) => { resolvers[k] = resolve; }));
     const inFlight = new Set<number>();
-    const events = new Map<string, { id: number; members: Set<number> }>();
+    const events = new Map<string, { id: number; members: Set<number> }[]>();
     let nextEvent = 0;
     let next = 0;
     let count = 0;
@@ -269,10 +269,14 @@ export async function executeStage(input: StageInput, deps: PipelineDeps): Promi
     const eventOf = (k: number, err: unknown): number => {
       if (!(err instanceof PolicyError) || !CONCURRENT_EVENT_CODES.has(err.code)) return -1;
       const signature = `${err.code}|${err.message}`;
-      const open = events.get(signature);
-      if (open?.members.has(k)) return open.id;
+      // The EARLIEST event this unit was in flight for: a unit can sit in two
+      // (in flight when the first opened, and still when a later unit opened the
+      // next), and it belongs to the one that actually took it down.
+      const seen = events.get(signature) ?? [];
+      const joined = seen.find((event) => event.members.has(k));
+      if (joined) return joined.id;
       const opened = { id: nextEvent++, members: new Set(inFlight) };
-      events.set(signature, opened);
+      events.set(signature, [...seen, opened]);
       return opened.id;
     };
     const lane = async () => {
