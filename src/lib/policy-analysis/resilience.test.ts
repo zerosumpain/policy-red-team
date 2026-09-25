@@ -268,6 +268,38 @@ describe('a conclusion survives an unsupported mention', () => {
     expect(triaged.rejected[0].reason).toContain('No hypothesis this conclusion rests on');
   });
 
+  it('a summing-up survives the loss of one thing it summed up', () => {
+    // The live re-run of 44dd5420's stage 17 (25 Sept), replayed offline: the
+    // review summary cited four assurance responses that were refused in the
+    // same reply, and the settle pass refused it too — "cites an unavailable
+    // source" — in every round of three attempts, until the stage failed "must
+    // contain a review summary". An aggregate is not unfounded because one of
+    // its many parts fell; it sheds the dead citation and is refused only when
+    // nothing it rests on is left.
+    const good = artefact('s17_main_finding_good', 'finding', 'Overall', 'A conclusion.', { section: 'executive_assessment', resultIds: ['s9_scenario'], hypothesisIds: ['s1_assumption'] }, { refs: ['s9_scenario', 's1_assumption'] });
+    const bad = artefact('s17_main_finding_bad', 'finding', 'Doomed', 'A conclusion.', { section: 'exploitation', resultIds: ['s8_test'], hypothesisIds: ['s1_assumption'] }, { refs: ['s8_test', 's1_assumption'] });
+    const summary = artefact('s17_main_review_summary', 'review_summary', 'Review', 'A summing-up.', { decisionUse: 'exploratory', judgement: 'unknown', openChallenges: 0, acceptedChallenges: 0, unresolvedMaterialChallenges: 0, scope: '-', limitations: [] }, { refs: ['s17_main_finding_good', 's17_main_finding_bad'] });
+    const rec = artefact('s17_main_recommendation_1', 'recommendation', 'Fix it', 'Do this.', { findingIds: ['s17_main_finding_good', 's17_main_finding_bad'], change: '-', tradeoffs: '-', beneficiaries: [], burdenBearers: [], validationNeeded: '-', revision: 'assured' }, { refs: ['s17_main_finding_good', 's17_main_finding_bad'], origin: 'normative_judgement' });
+    // Its only finding fell, but it cites something else that stands: it still answers nothing.
+    const lonely = artefact('s17_main_recommendation_2', 'recommendation', 'Fix that', 'Do that.', { findingIds: ['s17_main_finding_bad'], change: '-', tradeoffs: '-', beneficiaries: [], burdenBearers: [], validationNeeded: '-', revision: 'assured' }, { refs: ['s17_main_finding_bad', 's9_scenario'], origin: 'normative_judgement' });
+    const triaged = triageArtefacts({ artefacts: [good, bad, summary, rec, lonely], warnings: [] }, 17, [...prior, scenario]);
+    expect(triaged.rejected.map((r) => r.id).sort()).toEqual(['s17_main_finding_bad', 's17_main_recommendation_2']);
+    const kept = new Map(triaged.artefacts.map((a) => [a.id, a]));
+    expect(kept.get('s17_main_review_summary')?.refs).toEqual(['s17_main_finding_good']);
+    expect(kept.get('s17_main_recommendation_1')?.data.findingIds).toEqual(['s17_main_finding_good']);
+  });
+
+  it('drops a citation of itself instead of refusing the artefact', () => {
+    // The live re-run of 44dd5420's stage 17 (25 Sept): in every round of three
+    // attempts the review summary listed its OWN id first in refs, was refused
+    // as "cites an unavailable source", and the stage failed "must contain a
+    // review summary". Citing yourself is bookkeeping, not a missing source.
+    const finding = artefact('s12_main_finding_9', 'finding', 'Overall', 'A conclusion.', { section: 'executive_assessment', resultIds: ['s9_scenario'], hypothesisIds: ['s1_assumption'] }, { refs: ['s12_main_finding_9', 's9_scenario', 's1_assumption'] });
+    const triaged = triageArtefacts({ artefacts: [finding], warnings: [] }, 12, [...prior, scenario]);
+    expect(triaged.rejected).toHaveLength(0);
+    expect(triaged.artefacts[0].refs).not.toContain('s12_main_finding_9');
+  });
+
   it('refiles an id put under the wrong heading instead of refusing the conclusion', () => {
     // The replay of 44dd5420 after the path hint: the model cited the causal
     // chains it was pointed at, and also left an assumption among its results —

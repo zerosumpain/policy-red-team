@@ -255,6 +255,9 @@ function semanticFault(a: Artefact, all: Map<string, Artefact>, stage: number, n
  */
 const REVISABLE_KINDS: string[] = ['finding', 'recommendation', 'exploit'];
 
+/** Kinds that sum up many siblings, and so shed a refused one rather than fall with it. */
+const SUMMING_UP: string[] = ['review_summary', 'recommendation'];
+
 /**
  * Checks that depend on the whole graph rather than one artefact's own fields.
  *
@@ -670,6 +673,29 @@ export function triageArtefacts(output: StageOutput, stage: number, prior: Artef
   for (let pass = 0; pass < 6; pass++) {
     const all = new Map(prior.map((a) => [a.id, a]));
     for (const a of kept) all.set(a.id, a);
+    /**
+     * A SUMMING-UP SHEDS WHAT FELL, instead of falling with it. A review
+     * summary cites the whole revised report and a recommendation the several
+     * findings behind it; one refused sibling does not make either unfounded.
+     * On the live re-run of 44dd5420 (25 Sept) the review summary cited four
+     * responses refused in the same reply and was refused with them in every
+     * round of three attempts, failing the stage. Only ids refused in THIS
+     * triage are shed — an id that never existed is `prune`'s business — and
+     * whatever is left still has to pass every rule below, so a summing-up of
+     * nothing is refused as before.
+     */
+    const fell = new Set(rejected.map((r) => r.id).filter((id) => !all.has(id)));
+    if (fell.size) for (const a of kept) {
+      if (!SUMMING_UP.includes(a.kind)) continue;
+      const cited = a.refs.filter((id) => fell.has(id));
+      if (!cited.length && !['findingIds', 'challengeIds'].some((f) => Array.isArray(a.data[f]) && (a.data[f] as string[]).some((id) => fell.has(id)))) continue;
+      // A recommendation all of whose findings fell answers nothing: left as
+      // it is, so the rules below refuse it exactly as before.
+      if (a.kind === 'recommendation' && !((a.data.findingIds as string[] | undefined) ?? []).some((id) => !fell.has(id))) continue;
+      a.refs = a.refs.filter((id) => !fell.has(id));
+      for (const f of ['findingIds', 'challengeIds']) if (Array.isArray(a.data[f])) a.data[f] = (a.data[f] as string[]).filter((id) => !fell.has(id));
+      pruned.push(`“${a.label}” lost ${cited.length || 1} citation${cited.length === 1 ? '' : 's'} of something refused in the same reply.`);
+    }
     const survivors = kept.filter((a) => {
       const f = semanticFault(a, all, stage, (what) => narrowed.push(what)) ?? relationalFault(a, all);
       if (f) { drop(a, f); return false; }
