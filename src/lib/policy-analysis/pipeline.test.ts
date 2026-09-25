@@ -2,13 +2,15 @@ import { readFileSync } from 'node:fs';
 import { describe, expect, it, vi } from 'vitest';
 import JSZip from 'jszip';
 import PDFDocument from 'pdfkit';
-import { artefact, ASSURED_SYNTHESIS_STAGE, FOLLOW_UP_STAGES, MAX_BYTES, MODEL_KINDS, PATTERNS, PERSONA_STAGE, SCENARIOS, FIT_LIMIT, STAGE_KINDS, SYNTHESIS_STAGE, THEORY_STAGE, type Artefact, type StageInput } from './contracts';
-import { validateOutput, hasSource, PolicyError } from './validation';
+import { artefact, ASSURED_SYNTHESIS_STAGE, DEPTH_LIMITS, FOLLOW_UP_STAGES, FULL_PROFILES, MAX_BYTES, MODEL_KINDS, PATTERNS, PERSONA_STAGE, RELATIONS, SCENARIOS, FIT_LIMIT, SHORT_PROFILE_FIELDS, STAGE_KINDS, SYNTHESIS_STAGE, THEORY_STAGE, type Artefact, type StageInput } from './contracts';
+import { validateOutput, hasSource, PolicyError, stampProfileForm, triageOutput } from './validation';
 import { expandIndexed, sentences } from './sentences';
 import { ingest, readSubmission, validateBytes } from './server/ingest';
 import { executeStage, priority, rankActors } from './pipeline';
 import { preserveAmbiguity } from './entities';
 import { runPolicyTests, conflictingReportingLines } from './tests';
+import { stageFacts } from './stage-facts';
+import { systemPrompt, WRITING_RULE } from './prompts';
 import { fixtureModel } from '../../../tests/fixtures/policy-analysis/model';
 const fixture = readFileSync('tests/fixtures/policy-analysis/policy.txt');
 const neverResearch = async () => ({ artefacts: [], warnings: ['Synthetic test: external research unavailable.'] });
@@ -184,6 +186,30 @@ describe('stage 3 — the graph fans out instead of asking for the whole policy 
   });
 });
 
+/**
+ * Instruction 3 named 8 of the 26 relationship types, and the graph on the run
+ * the review of 25 September 2026 read had no `delivers` and no `is_measured_by`
+ * edge at all.
+ */
+describe('every stage is told to write plainly, and never to touch a quotation', () => {
+  it('carries the writing rule on every stage and every pass, once', () => {
+    const prompts = [...Array.from({ length: 18 }, (_, stage) => systemPrompt(stage)), systemPrompt(101, 'addendum'), systemPrompt(100, 'restatement'), systemPrompt(1, null, 'indexed')];
+    for (const prompt of prompts) expect(prompt.split(WRITING_RULE)).toHaveLength(2);
+    // The two things the rule must never loosen: quotes stay verbatim, and it is short.
+    expect(WRITING_RULE).toMatch(/never applies to sourceQuote/);
+    expect(WRITING_RULE.length).toBeLessThan(900);
+  });
+});
+
+describe('stage 3 is offered every relationship type', () => {
+  it('names all of them, each once, with a meaning', () => {
+    const prompt = systemPrompt(3);
+    for (const relation of RELATIONS) {
+      expect(prompt.match(new RegExp(`^  ${relation}: the first `, 'gm')) ?? [], relation).toHaveLength(1);
+    }
+  });
+});
+
 describe('stage 4 — one profiling call per body, not per row', () => {
   // Provenance reaching a passage is not optional: a profile whose evidence does
   // not trace back to the document is dropped by triage, which is what makes a
@@ -248,6 +274,99 @@ describe('stage 4 — one profiling call per body, not per row', () => {
     const second = await run(actors);
     expect(second.seen).toEqual(first.seen);
     expect(second.result.artefacts.map((a) => a.id)).toEqual(first.result.artefacts.map((a) => a.id));
+  });
+});
+
+/**
+ * FULL PROFILES FOR THE TOP K, SHORT ONES FOR THE TAIL. Measured on the review
+ * of 25 September 2026: 168 profile calls on one run, 230 of 239 actors
+ * mentioned once.
+ */
+describe('stage 4 — full profiles for the most connected bodies, short ones for the rest', () => {
+  const QUOTE = 'The Council is accountable for delivery and bears implementation costs.';
+  const passage = artefact('passage_0001', 'passage', 'Page 1', QUOTE, {}, { origin: 'extracted_fact', confidence: 1 });
+  const body = (i: number): Artefact =>
+    artefact(`s2_${String(i).padStart(3, '0')}`, 'actor', `Body ${String(i).padStart(3, '0')}`, 'Synthetic actor row.', {
+      entityType: 'agency', aliases: [], mentions: ['passage_0001'], ambiguity: '', dates: [], parent: null,
+    }, { origin: 'extracted_fact', confidence: 1, sourceId: 'passage_0001', sourceQuote: QUOTE, refs: ['passage_0001'] });
+  // Thirty bodies; the LAST thirty-ish by id carry edges, so connectivity — not
+  // id order — has to decide who is in the top K.
+  const bodies = Array.from({ length: FULL_PROFILES + 6 }, (_, i) => body(i));
+  const mechanism = artefact('s1_000_mechanism', 'mechanism', 'A mechanism', QUOTE, { intervention: 'x', implementation: 'y', notes: 'z' },
+    { origin: 'extracted_fact', confidence: 1, sourceId: 'passage_0001', sourceQuote: QUOTE, refs: ['passage_0001'] });
+  const edges = bodies.slice(6).map((b, i) => ({ ...artefact(`s3_${String(i).padStart(3, '0')}_edge`, 'edge', 'accountable', 'x', { notes: 'x' }, { refs: [b.id, mechanism.id] }), fromId: b.id, toId: mechanism.id, relation: 'is_accountable_for' as const, temporal: 'current' as const }));
+  const input: StageInput = { stage: 4, title: 'T', jurisdiction: null, policyArea: null, context: null, artefacts: [passage, mechanism, ...bodies, ...edges] };
+
+  const run = async (model: Parameters<typeof executeStage>[1]['model'] = async (...a) => fixtureModel(...a)) => {
+    const seen: { key: string; ids: string[] | null }[] = [];
+    const result = await executeStage(input, {
+      model: async (stage, key, raw) => {
+        seen.push({ key, ids: (raw as { targetActorIds?: string[] }).targetActorIds ?? null });
+        return model(stage, key, raw);
+      },
+      research: neverResearch, signal: new AbortController().signal,
+    });
+    return { result, seen };
+  };
+
+  it('writes the full profile for the top K by connectivity, and a short one for everybody else', async () => {
+    const { result, seen } = await run();
+    const profiles = result.artefacts.filter((a) => a.kind === 'profile');
+    // Every body has exactly one profile, so "is it profiled" never changes answer.
+    expect(new Set(profiles.map((p) => p.data.actorId))).toEqual(new Set(bodies.map((b) => b.id)));
+    expect(profiles).toHaveLength(bodies.length);
+    const short = profiles.filter((p) => p.data.form === 'short');
+    const full = profiles.filter((p) => p.data.form !== 'short');
+    expect(full).toHaveLength(FULL_PROFILES);
+    // The six without an edge are the six short ones.
+    expect(short.map((p) => p.data.actorId).sort()).toEqual(bodies.slice(0, 6).map((b) => b.id));
+    for (const p of short) for (const field of SHORT_PROFILE_FIELDS) expect(p.data[field]).toBeDefined();
+    // K full calls and ONE batched short call, not thirty.
+    expect(seen).toHaveLength(FULL_PROFILES + 1);
+    expect(seen.filter((c) => c.ids)).toHaveLength(1);
+    expect(result.warnings.join(' ')).toMatch(/6 of 30 bodies were not assessed in full/);
+  });
+
+  it('says once, not once per body, which bodies the model left unprofiled — and drops a profile for a body it was not asked about', async () => {
+    const model: Parameters<typeof executeStage>[1]['model'] = async (stage, key, raw) => {
+      const out = fixtureModel(stage, key, raw);
+      const ids = (raw as { targetActorIds?: string[] }).targetActorIds;
+      if (!ids) return out;
+      // Two of the six answered; a third profile names a top-K body instead.
+      const kept = out.artefacts.slice(0, 2);
+      const stray: Artefact = { ...structuredClone(out.artefacts[2]), data: { ...structuredClone(out.artefacts[2].data), actorId: bodies[29].id }, refs: [bodies[29].id] };
+      for (const field of SHORT_PROFILE_FIELDS) (stray.data[field] as { refs: string[] }).refs = [bodies[29].id];
+      return { ...out, artefacts: [...kept, stray] };
+    };
+    const { result } = await run(model);
+    const missing = result.warnings.filter((w) => w.includes('no incentive profile'));
+    expect(missing).toHaveLength(1);
+    expect(missing[0]).toMatch(/^4 of 30 bodies have no incentive profile/);
+    // Filed as a limit of the run with its own figure, not as an open question.
+    expect(stageFacts(missing).map((f) => [f.kind, f.count, f.of])).toEqual([['not_covered', 4, 30]]);
+    expect(stageFacts(result.warnings).some((f) => f.kind === 'open')).toBe(false);
+    expect(result.warnings.join(' ')).toMatch(/1 short profile named a body the call was not about/);
+    expect(result.artefacts.filter((a) => a.kind === 'profile' && a.data.actorId === bodies[29].id)).toHaveLength(1);
+  });
+
+  it('gives the red team and the persona library full profiles to choose from', () => {
+    // K has to clear the deepest red team, or stage 10 would take a body stage 4
+    // only wrote five lines about.
+    expect(FULL_PROFILES).toBeGreaterThanOrEqual(DEPTH_LIMITS.deep.actors);
+    expect(FULL_PROFILES).toBeGreaterThanOrEqual(DEPTH_LIMITS.standard.actors);
+  });
+
+  it('decides the form itself: a short profile needs five fields, a full one all of them, and the model cannot choose', () => {
+    const fields = (keys: readonly string[]) => Object.fromEntries(keys.map((k) => [k, { value: 'v', origin: 'structural_inference', confidence: null, refs: [] }]));
+    const all = [passage, bodies[0]];
+    const profile = (data: Record<string, unknown>) => ({ artefacts: [artefact('s4_000_profile', 'profile', 'P', 'p', { actorId: bodies[0].id, ...data }, { refs: [bodies[0].id] })], warnings: [] });
+    // Five fields, stamped short: accepted.
+    expect(triageOutput(stampProfileForm(profile(fields(SHORT_PROFILE_FIELDS)), 'short'), 4, all).artefacts).toHaveLength(1);
+    // Five fields on a FULL call, even if the model wrote `form: short`: refused.
+    const claimed = stampProfileForm(profile({ ...fields(SHORT_PROFILE_FIELDS), form: 'short' }), 'full');
+    const refused = triageOutput(claimed, 4, all);
+    expect(refused.artefacts).toHaveLength(0);
+    expect(refused.rejected[0].reason).toMatch(/data\.\w+: required/);
   });
 });
 
@@ -381,6 +500,57 @@ describe('concurrent agents', () => {
     expect((await run(6)).peak).toBeGreaterThan(1);
   });
 
+  /**
+   * THE ROLLING POOL. `fanOut` used to run `Promise.all` over batches of
+   * `lanes`, so one slow call held its whole batch — and the next — hostage:
+   * measured 3.2 to 3.9 of six lanes busy on the review of 25 September 2026.
+   *
+   * The first unit here does not answer until every other unit has STARTED. A
+   * batched fan-out can never get there (units 4 onward wait for unit 1), so the
+   * safety timer releases it instead and the test says which happened.
+   */
+  it('starts the next unit as soon as a lane frees, so one slow call holds up nothing', async () => {
+    const upTo7 = async (model: Parameters<typeof executeStage>[1]['model'], lanes: 1 | 3) => {
+      const all = (await ingest(fixture, 'policy.txt', 'text/plain')).artefacts;
+      for (let stage = 1; stage <= 7; stage++) {
+        const result = await executeStage(
+          { stage, title: 'Synthetic policy', jurisdiction: null, policyArea: null, context: null, artefacts: all },
+          { model: stage === 7 ? model : async (...a) => fixtureModel(...a), research: neverResearch, signal: new AbortController().signal, concurrency: stage === 7 ? lanes : 1 },
+        );
+        if (stage === 7) return result;
+        all.push(...result.artefacts);
+      }
+      throw new Error('unreachable');
+    };
+
+    let release!: (by: string) => void;
+    const slow = new Promise<string>((resolve) => { release = resolve; });
+    const safety = setTimeout(() => release('timer'), 2_000);
+    const started: string[] = [];
+    let inFlight = 0, peak = 0;
+    const model: Parameters<typeof executeStage>[1]['model'] = async (stage, key, input) => {
+      started.push(key);
+      inFlight++; peak = Math.max(peak, inFlight);
+      if (key === PATTERNS[0]) await slow;
+      else if (started.length === PATTERNS.length) release('pool');
+      await new Promise((resolve) => setTimeout(resolve, 1));
+      inFlight--;
+      return fixtureModel(stage, key, input);
+    };
+    const wide = await upTo7(model, 3);
+    clearTimeout(safety);
+
+    // Every other pattern started while the first was still out, and never more
+    // than three at once.
+    expect(await slow).toBe('pool');
+    expect(peak).toBeLessThanOrEqual(3);
+    // And the slow unit's results are still folded FIRST: same assessment as a
+    // serial run, ids and all.
+    const serial = await upTo7(async (...a) => fixtureModel(...a), 1);
+    expect(wide.artefacts).toEqual(serial.artefacts);
+    expect(wide.warnings).toEqual(serial.warnings);
+  });
+
   it('takes a commissioned number of agents, and degrades rather than refusing', async () => {
     const base = () => { const f = new FormData(); f.set('title', 'A policy'); f.set('text', fixture.toString()); return f; };
     const read = (f: FormData) => readSubmission(new Request('http://localhost', { method: 'POST', body: f }));
@@ -388,8 +558,9 @@ describe('concurrent agents', () => {
     const asked = base(); asked.set('concurrency', '4');
     expect(await read(asked)).toMatchObject({ concurrency: 4 });
 
-    // Nothing chosen means the stored default, which is one at a time — so an
-    // assessment submitted before this option existed resumes exactly as it ran.
+    // Nothing chosen is stored as nothing; the pipeline resolves it to
+    // DEFAULT_CONCURRENCY. The HTTP route writes the default down before this
+    // reads the form, so a browser run records the number it ran at.
     expect(await read(base())).toMatchObject({ concurrency: null });
 
     // A number nobody offers is a request the run cannot honour. Same rule as
@@ -398,6 +569,97 @@ describe('concurrent agents', () => {
       const f = base(); f.set('concurrency', bad);
       expect(await read(f)).toMatchObject({ concurrency: null });
     }
+  });
+});
+
+/**
+ * STAGE 13 RUNS THROUGH THE POOL. It was a serial loop — about twelve calls,
+ * 7.7 to 10 minutes on every real run — and the worker applies its links in
+ * the order the stage returns them, so the order is the thing to hold.
+ */
+describe('the persona library fans out like every other stage', () => {
+  // A passage behind every body, or the links have no path to the paper and
+  // triage discards them all.
+  const passage = artefact('passage_0001', 'passage', 'Page 1', 'The bodies named here.', {}, { origin: 'extracted_fact', confidence: 1 });
+  const actors = Array.from({ length: 5 }, (_, i) =>
+    artefact(`s2_00${i}`, 'actor', `Body ${i}`, 'A synthetic body.', { entityType: 'agency', aliases: [], mentions: Array.from({ length: 5 - i }, () => 'p'), ambiguity: '', dates: [], parent: null }, { refs: [passage.id] }));
+  const profiles = actors.map((a, i) => artefact(`s4_00${i}_profile`, 'profile', a.label, 'A synthetic profile.', { actorId: a.id }, { refs: [a.id] }));
+  const input: StageInput = { stage: PERSONA_STAGE, title: 'T', jurisdiction: null, policyArea: null, context: null, artefacts: [passage, ...actors, ...profiles] };
+
+  const run = async (lanes: 1 | 6, model: Parameters<typeof executeStage>[1]['model']) =>
+    executeStage(input, { model, research: neverResearch, signal: new AbortController().signal, concurrency: lanes });
+
+  it('overlaps its calls and still returns the links in rank order', async () => {
+    let inFlight = 0, peak = 0;
+    // The FIRST body answers last, so a fold in landing order would put it last.
+    const model: Parameters<typeof executeStage>[1]['model'] = async (stage, key, raw) => {
+      inFlight++; peak = Math.max(peak, inFlight);
+      await new Promise((resolve) => setTimeout(resolve, key === 's2_000' ? 30 : 1));
+      inFlight--;
+      return fixtureModel(stage, key, raw);
+    };
+    const wide = await run(6, model);
+    const serial = await run(1, async (...a) => fixtureModel(...a));
+    expect(peak).toBeGreaterThan(1);
+    expect(wide.artefacts.map((a) => a.data.actorId)).toEqual(actors.map((a) => a.id));
+    expect(wide.artefacts).toEqual(serial.artefacts);
+  });
+
+  it('never fails the run over a dead provider, however many lanes it had', async () => {
+    const dead: Parameters<typeof executeStage>[1]['model'] = async () => { throw new PolicyError('provider', 'The configured model provider is unavailable.'); };
+    const output = await run(6, dead);
+    expect(output.artefacts).toHaveLength(0);
+    expect(output.warnings.filter((w) => w.includes('was not written to the persona library'))).toHaveLength(actors.length);
+    expect(output.warnings.join(' ')).toContain('Nothing in the assessment above depends on it');
+  });
+});
+
+/**
+ * A THIN GRAPH IS A LIMIT OF THE RUN, NOT A DEFECT IN THE PAPER. On the run the
+ * review of 25 September 2026 read, observability said "43 of 43 … no
+ * is_measured_by → high risk" while stage 1 had extracted 39 measures.
+ */
+describe('a structural check says "extraction gap" when the paper states what the graph did not link', () => {
+  // Everything traces to a passage, or triage discards the checks that cite it.
+  const passage = artefact('passage_0001', 'passage', 'Page 1', 'The paper.', {}, { origin: 'extracted_fact', confidence: 1 });
+  const accountable = Array.from({ length: 3 }, (_, i) => artefact(`s3_${i}_edge`, 'edge', 'Accountable', 'x', { notes: 'x' }, { fromId: `s2_${i}`, toId: 's1_0_mech', relation: 'is_accountable_for', confidence: 0.8, refs: [passage.id] }));
+  const measures = Array.from({ length: 4 }, (_, i) => artefact(`s1_${i}_measure`, 'claim', `Measure ${i}`, 'A measure.', { category: 'measure', notes: 'n' }, { refs: [passage.id] }));
+  const observability = (all: Artefact[]) => runPolicyTests(all).find((t) => t.data.testId === 'observability')!;
+
+  it('files a missing counterpart as a gap in this run when stage 1 extracted what it is drawn from', () => {
+    const check = observability([...accountable, ...measures]);
+    expect(check.data.result).toBe('indeterminate');
+    expect(check.data.basis).toBe('extraction_gap');
+    expect(check.data.extracted).toEqual({ relation: 'is_measured_by', what: 'measures', count: 4 });
+    expect(check.statement).toMatch(/The paper states 4 measures/);
+    expect(check.statement).toMatch(/limit of this run, not a gap in the paper/);
+  });
+
+  it('still reports the paper when the paper itself states nothing', () => {
+    const check = observability(accountable);
+    expect(check.data.result).toBe('high_risk');
+    expect(check.data.basis).toBeUndefined();
+  });
+
+  it('keeps a real shortfall a finding: the graph wired the relation for some, and not the rest', () => {
+    const measured = { ...artefact('s3_9_edge', 'edge', 'Measured', 'x', { notes: 'x' }), fromId: 's2_0', toId: 's1_0_measure', relation: 'is_measured_by' as const, confidence: 0.8 };
+    const check = observability([...accountable, measured, ...measures]);
+    expect(check.data.result).toBe('moderate_risk');
+    expect(check.data.basis).toBeUndefined();
+  });
+
+  it('files an absent trigger as a gap too, and says so once as a counted limit of stage 8', async () => {
+    const mechanism = artefact('s1_0_mech', 'mechanism', 'A programme', 'x', { intervention: 'i', implementation: 'x', notes: 'n' }, { refs: [passage.id] });
+    // Mechanisms extracted, no `delivers` edge: adaptability could not be made.
+    const output = await executeStage({ stage: 8, title: 'T', jurisdiction: null, policyArea: null, context: null, artefacts: [passage, mechanism, ...accountable, ...measures] }, { model: vi.fn(), research: neverResearch, signal: new AbortController().signal });
+    const adaptability = output.artefacts.find((t) => t.data.testId === 'adaptability')!;
+    expect(adaptability.data.basis).toBe('extraction_gap');
+    // It cites what the paper stated, so it survives triage and can be opened.
+    expect(adaptability.refs).toContain(mechanism.id);
+    const gaps = output.artefacts.filter((t) => t.data.basis === 'extraction_gap').length;
+    const facts = stageFacts(output.warnings);
+    expect(facts.find((f) => f.kind === 'not_covered')).toMatchObject({ count: gaps, of: 12 });
+    expect(facts.some((f) => f.kind === 'open')).toBe(false);
   });
 });
 
@@ -858,6 +1120,59 @@ describe('shared context ordering', () => {
     // artefacts would be a different question, and the A/B would be measuring
     // two things at once.
     expect(ids(on[0])).toEqual(ids(off[0]));
+  });
+});
+
+/**
+ * A STAGE IS SENT WHAT IT DECLARES. Measured on assessment 03c83ea5: stage 14
+ * saw 1 mechanism, 1 assumption and 0 evidence, stage 7's context was 90%
+ * profiles, and stage 16 saw no plays — the late, long kinds won every fit.
+ */
+describe('each stage is given the kinds it declares, and keeps them first', () => {
+  const profileFor = (i: number) => artefact(`s4_${String(i).padStart(3, '0')}_profile`, 'profile', `Profile ${i}`, 'p'.repeat(3_000), { actorId: 's2_x' }, { refs: [] });
+  const mechanisms = Array.from({ length: 3 }, (_, i) => artefact(`s1_${i}_mech`, 'mechanism', `Mechanism ${i}`, 'Machinery.', { intervention: 'i', implementation: 'x', notes: 'n' }, { refs: [] }));
+  const evidence = Array.from({ length: 4 }, (_, i) => artefact(`s6_${i}_evidence`, 'evidence', `Evidence ${i}`, 'What the source shows.', { claimId: null, mechanismId: null, actorId: null, assumptionId: null, sourceId: 'x', evidenceType: 't', result: 'supports', sourceQuality: 'q', relevance: 'r', freshness: 'f', dispute: 'd' }, { refs: [] }));
+  const assumptions = Array.from({ length: 4 }, (_, i) => artefact(`s1_${i}_assumption`, 'assumption', `Assumption ${i}`, 'Assumed.', { importance: 0.5, uncertainty: 0.5, consequence: 0.5, notes: 'n' }, { refs: [] }));
+
+  const payloads = async (stage: number, artefacts: Artefact[], sharedContextFirst: boolean) => {
+    const seen: Artefact[][] = [];
+    const model = vi.fn(async (_s: number, _k: string, raw: unknown) => {
+      seen.push((raw as { artefacts: Artefact[] }).artefacts);
+      return { artefacts: [], warnings: [] };
+    });
+    await executeStage(
+      { stage, title: 'T', jurisdiction: null, policyArea: null, context: null, artefacts },
+      { model, research: neverResearch, signal: AbortSignal.timeout(30_000), sharedContextFirst },
+    ).catch(() => {});
+    return seen;
+  };
+
+  it('gives the theory of change every mechanism, evidence row and assumption, and no profiles, beside 500 of them', async () => {
+    const all = [...Array.from({ length: 500 }, (_, i) => profileFor(i)), ...mechanisms, ...evidence, ...assumptions];
+    for (const first of [true, false]) {
+      const seen = await payloads(THEORY_STAGE, all, first);
+      expect(seen).toHaveLength(mechanisms.length);
+      for (const call of seen) {
+        const ids = new Set(call.map((a) => a.id));
+        expect([...mechanisms, ...evidence, ...assumptions].filter((w) => !ids.has(w.id)).map((w) => w.id)).toEqual([]);
+        expect(call.some((a) => a.kind === 'profile')).toBe(false);
+      }
+    }
+  });
+
+  it('keeps the plays in the challenge when the paper’s claims alone would fill the window', async () => {
+    // Claims are declared well below plays at stage 16, and there are enough of
+    // them to overflow even after every statement is clipped — so something has
+    // to be shed, and it must be claims.
+    const claims = Array.from({ length: 6_000 }, (_, i) => artefact(`s1_${String(i).padStart(5, '0')}_claim`, 'claim', `Claim ${i} ${'c'.repeat(120)}`, 'c'.repeat(400), { category: 'objective', notes: 'n'.repeat(80) }, { refs: [] }));
+    const plays = Array.from({ length: 10 }, (_, i) => artefact(`s10_${i}_exploit`, 'exploit', `Play ${i}`, 'A play.', { actorId: 's2_x' }, { refs: [], confidence: 0.1 }));
+    const seen = await payloads(16, [...claims, ...plays, ...assumptions], true);
+    expect(seen.length).toBeGreaterThan(0);
+    const call = seen[0];
+    expect(call.filter((a) => a.kind === 'exploit')).toHaveLength(plays.length);
+    expect(call.filter((a) => a.kind === 'assumption')).toHaveLength(assumptions.length);
+    expect(call.filter((a) => a.kind === 'claim').length).toBeLessThan(claims.length);
+    expect(JSON.stringify({ artefacts: call }).length).toBeLessThanOrEqual(FIT_LIMIT);
   });
 });
 

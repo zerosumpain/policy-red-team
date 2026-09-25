@@ -1,7 +1,7 @@
 // Synthetic provider responses used only by automated tests. Not a runtime fallback.
-import { artefact, ASSURANCE_CATEGORIES, isPassStage, passOf, passStep, PATTERNS, SCENARIOS, PROFILE_FIELDS, REPORT_SECTIONS, type Artefact, type StageInput, type StageOutput } from '../../../src/lib/policy-analysis/contracts';
+import { artefact, ASSURANCE_CATEGORIES, isPassStage, passOf, passStep, PATTERNS, SCENARIOS, PROFILE_FIELDS, REPORT_SECTIONS, SHORT_PROFILE_FIELDS, type Artefact, type StageInput, type StageOutput } from '../../../src/lib/policy-analysis/contracts';
 export function fixtureModel(stage: number, _key: string, raw: unknown): StageOutput {
-  const input = raw as StageInput & { idPrefix: string; targetActorId?: string; targetPattern?: string; targetScenario?: string; targetMechanismId?: string; targetCategory?: string };
+  const input = raw as StageInput & { idPrefix: string; targetActorId?: string | null; targetActorIds?: string[]; targetPattern?: string; targetScenario?: string; targetMechanismId?: string; targetCategory?: string };
   const prefix = input.idPrefix;
   const one = (kind: Artefact['kind']) => input.artefacts.find((a) => a.kind === kind && (kind !== 'actor' || stage < 3 || a.id.startsWith('s2_')))!;
   const make = (id: string, kind: Artefact['kind'], data: Record<string, unknown>, refs: string[], statement = 'Synthetic fixture assessment; not a real policy conclusion.') => artefact(`${prefix}${id}`, kind, `Synthetic ${kind} ${id}`, statement, data, { refs, confidence: 0.5 });
@@ -80,6 +80,12 @@ export function fixtureModel(stage: number, _key: string, raw: unknown): StageOu
     // Edges only: the `node` kind the graph stage used to emit alongside them was
     // rendered by nothing and is retired.
     items = [{ ...make('edge', 'edge', { notes: 'Paper assigns responsibility; authority not documented.' }, [a.id, m.id]), fromId: a.id, toId: m.id, relation: 'is_accountable_for', temporal: 'proposed' }];
+  } else if (stage === 4 && input.targetActorIds?.length) {
+    // A SHORT call: one five-field profile per listed body, as instruction 4 asks.
+    items = input.targetActorIds.map((id, i) => {
+      const fields = Object.fromEntries(SHORT_PROFILE_FIELDS.map((f) => [f, { value: 'A short synthetic answer.', origin: 'structural_inference', confidence: null, refs: [id] }]));
+      return make(`profile_${i}`, 'profile', { actorId: id, ...fields }, [id]);
+    });
   } else if (stage === 4) {
     const a = input.artefacts.find((a) => a.id === input.targetActorId)!;
     const fields = Object.fromEntries(PROFILE_FIELDS.map((f) => [f, { value: 'Documented role or an explicit unknown in this synthetic fixture.', origin: 'structural_inference', confidence: null, refs: [a.id] }]));

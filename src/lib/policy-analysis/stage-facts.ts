@@ -115,7 +115,7 @@ const RULES: Rule[] = [
   {
     kind: 'not_covered',
     test:
-      /\bwere not (?:assessed|red-teamed|searched|analysed)\b|\bwere never resolved\b|\bhave no (?:supporting relationship|theory of change)\b|\bhas no incentive profile\b|\bhas no \w[\w -]* section\b|\braised no further question\b|\bNo sources found\b/i,
+      /\bwere not (?:assessed|red-teamed|searched|analysed)\b|\bwere never resolved\b|\bhave no (?:supporting relationship|theory of change)\b|\bha(?:s|ve) no incentive profile\b|\bhas no \w[\w -]* section\b|\braised no further question\b|\bNo sources found\b/i,
     count: /^(?:The )?(\d+) of \d+\b/i,
     of: /^(?:The )?\d+ of (\d+)\b/i,
   },

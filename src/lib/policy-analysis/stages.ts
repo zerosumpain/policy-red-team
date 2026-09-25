@@ -8,6 +8,10 @@
 // `produced`, `mins`, `calls` and `status` in the design mock are RUN DATA and are
 // NOT included here: take them from `policy_stages`, `policy_executions` and the
 // artefact counts. Everything in this file is static explanatory copy.
+//
+// `given` is the reader's version of `STAGE_CONTEXT` in contracts.ts, which is
+// what the pipeline actually sends each stage since phase 19. Change one and
+// read the other.
 
 export type StagePhaseKey = 'read' | 'who' | 'test' | 'attack' | 'write';
 
@@ -67,10 +71,10 @@ export const STAGE_NOTES: StageNote[] = [
     given: 'Bodies, claims and mechanisms', emits: 'Relationships',
     limit: 'Only relationships the paper states. It does not infer the ones it thinks ought to exist.',
     lands: 'How they connect' },
-  { phase: 'who', name: 'Actor and incentive profiles', what: 'Profiles each body on twenty-one fields, including the one no assurance review asks: who is better off if this fails.',
-    detail: 'Stated objectives against operational objectives, what it is judged on, its time horizon, what it can compel, what it knows that others do not, its outside option, and who gains from failure. Each field carries its own origin — extracted fact, inference or behavioural hypothesis — so a reader can see which parts are read off the paper and which are reasoned.',
+  { phase: 'who', name: 'Actor and incentive profiles', what: 'Profiles the most connected bodies on twenty-one fields, including the one no assurance review asks: who is better off if this fails.',
+    detail: 'Stated objectives against operational objectives, what it is judged on, its time horizon, what it can compel, what it knows that others do not, its outside option, and who gains from failure. Each field carries its own origin — extracted fact, inference or behavioural hypothesis — so a reader can see which parts are read off the paper and which are reasoned. The 24 bodies the policy runs through most get all twenty-one fields; every other body gets a short profile — its role, what it wants and what it controls — several to a call.',
     given: 'Each resolved body and its relationships', emits: 'Profiles',
-    limit: 'A profile is a hypothesis about incentives, never a finding about any named person.',
+    limit: 'A profile is a hypothesis about incentives, never a finding about any named person. A short profile says less, because the paper says less about that body.',
     lands: 'Who is involved' },
   { phase: 'test', name: 'Targeted research', what: 'Plans questions about what the paper leaves unproven, then goes and retrieves sources.',
     detail: 'Questions are ranked on importance, uncertainty and consequence before any search runs, and each round is planned from what the last round found rather than from the paper again — which is how a line of enquiry develops rather than merely widens. This is no longer the only stage that may ask: the interaction models, scenarios, exploitation playbook, theory of change, appraisal and independent challenge may each raise a further question, and what it finds reaches the stages after them.',
@@ -84,7 +88,7 @@ export const STAGE_NOTES: StageNote[] = [
     lands: 'What is backed up' },
   { phase: 'test', name: 'Interaction models', what: 'Names the game each part of the policy sets up — principal-agent, metric gaming, enforcement credibility.',
     detail: 'Ten standing patterns. For each one that applies: the players, the strategies open to them, the order of decisions, who knows what, the rewards and sanctions, and the likely equilibria. This is the machinery the later attack passes reason with.',
-    given: 'Profiles and the relationship graph', emits: 'Interaction models',
+    given: 'Assumptions, mechanisms and the relationship graph, then evidence and profiles', emits: 'Interaction models',
     limit: 'Semi-formal reasoning about behaviour, not a numerical simulation.',
     lands: 'If things change' },
   { phase: 'test', name: 'Automated policy tests', what: 'Twelve deterministic checks over the paper’s own wiring. No model is involved in any of them.',
@@ -94,12 +98,12 @@ export const STAGE_NOTES: StageNote[] = [
     lands: 'Gaps in the paper' },
   { phase: 'attack', name: 'Adversarial scenarios and sensitivity', what: 'Steps through the conditions the policy has to survive, one beat at a time.',
     detail: 'Eight standing conditions — minimum compliance, strategic gaming, limited capacity, leadership change, active opposition. Each is stepped through: what changes, who moves first, what follows, what it lands on, whether anyone would notice, and what would correct it.',
-    given: 'Profiles, models and the graph', emits: 'Scenarios · new assumptions',
+    given: 'Assumptions, interaction models, check results and the graph, then profiles', emits: 'Scenarios · new assumptions',
     limit: 'Each scenario carries its own sensitivity notes: what would change the answer.',
     lands: 'If things change' },
   { phase: 'attack', name: 'Exploitation playbook', what: 'The red team. What each body could do to serve itself at the policy’s expense, scored on four factors.',
     detail: 'For every play: the body that would run it, what it gains, what it costs the policy, what it aims at, whether it stays inside the rules, what would count as early warning, and what would close it. The four factors — incentive, ease, impact and concealment — are judged here; the overall risk figure and its band are computed from them by the server, so the ranking you read on step 02 is reproducible rather than asserted.',
-    given: 'Everything above: profiles, models, scenarios, the graph', emits: 'Threats · new assumptions',
+    given: 'Each body’s own profile, with assumptions, mechanisms, models, scenarios and the graph', emits: 'Threats · new assumptions',
     limit: 'A play is a hypothesis about incentives. Where it says a body would act, that is not a finding about anyone.',
     lands: 'Key threats — step 02', lead: true },
   { phase: 'attack', name: 'Cross-policy exposure', what: 'Compares this paper with your other assessments for failures that only exist because several policies are in force at once.',
@@ -124,7 +128,7 @@ export const STAGE_NOTES: StageNote[] = [
     lands: 'Why it should work' },
   { phase: 'write', name: 'Options and evaluation', what: 'Compares the proposal with doing nothing, doing the minimum, and the alternatives — then plans how anyone would know it worked.',
     detail: 'Each option is appraised on objective fit, cost, benefit, risk, distribution, affordability, deliverability and reversibility. The evaluation plan keeps process, impact and value-for-money questions apart, and every indicator names a baseline, a target, a source, an owner and a cadence.',
-    given: 'Objectives, mechanisms and causal chains', emits: 'Option appraisals · an evaluation plan',
+    given: 'Causal chains and the first report, then evidence, assumptions and the paper’s objectives', emits: 'Option appraisals · an evaluation plan',
     limit: 'It appraises the options the paper admits, plus the obvious counterfactuals. It is not a business case.',
     lands: 'Choices and evaluation' },
   { phase: 'write', name: 'Independent challenge', what: 'A second analytical pass whose only job is to attack the report it was handed.',

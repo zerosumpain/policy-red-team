@@ -1,7 +1,7 @@
-import { APPRAISAL_STAGE, ASSURANCE_CATEGORIES, ASSURANCE_STAGE, ASSURED_SYNTHESIS_STAGE, CONCURRENCY_OPTIONS, DEFAULT_CONCURRENCY, DEFAULT_EXTRACTION, DEPTH_LIMITS, FIT_LIMIT, FOLLOW_UP_STAGES, isPassStage, passOf, passOrdinal, passStep, PATTERNS, PERSONA_STAGE, REPORT_SECTIONS, RESULT_KINDS, REVISION_STATUSES, SCENARIOS, SYNTHESIS_STAGE, THEORY_STAGE, type Artefact, type Concurrency, type Extraction, type PassKind, type StageInput, type StageOutput } from './contracts';
+import { APPRAISAL_STAGE, ASSURANCE_CATEGORIES, ASSURANCE_STAGE, ASSURED_SYNTHESIS_STAGE, CONCURRENCY_OPTIONS, DEFAULT_CONCURRENCY, DEFAULT_EXTRACTION, DEPTH_LIMITS, FIT_LIMIT, FOLLOW_UP_STAGES, FULL_PROFILES, isPassStage, passOf, passOrdinal, passStep, PATTERNS, PERSONA_STAGE, REPORT_SECTIONS, RESULT_KINDS, REVISION_STATUSES, SCENARIOS, SHORT_PROFILE_BATCH, STAGE_CONTEXT, SYNTHESIS_STAGE, THEORY_STAGE, type Artefact, type Concurrency, type Extraction, type PassKind, type StageInput, type StageOutput } from './contracts';
 import { consumedSources, encodedSize, fitToBudget } from './budget';
 import { scoreExploits } from './exposure';
-import { clampWarnings, PolicyError, triageArtefacts, triageOutput } from './validation';
+import { clampWarnings, PolicyError, stampProfileForm, triageArtefacts, triageOutput } from './validation';
 import { modelApplicability } from './models';
 import { crossIdentityHints, preserveAmbiguity } from './entities';
 import { runPolicyTests } from './tests';
@@ -81,9 +81,11 @@ const CONSECUTIVE_TIMEOUT_LIMIT = 6;
  * collapsing them would hide exactly what `CONSECUTIVE_TIMEOUT_LIMIT` exists to
  * report. Same for a contract failure: it describes the response, not the wire.
  *
- * A provider that is genuinely down still stops the stage promptly, because the
- * collapse is per batch: it fails every batch, so the count still climbs one per
- * batch and trips after `CONSECUTIVE_LIMIT` of them.
+ * A provider that is genuinely down still stops the stage promptly, because an
+ * event only ever absorbs the units that were IN FLIGHT when it happened — at
+ * most `lanes` of them. A unit dispatched afterwards that fails the same way is
+ * a new event, so the count still climbs at least once per `lanes` failures and
+ * trips after `CONSECUTIVE_LIMIT` of them. See `fanOut`.
  */
 const CONCURRENT_EVENT_CODES = new Set(['provider']);
 
@@ -115,7 +117,7 @@ export async function executeStage(input: StageInput, deps: PipelineDeps): Promi
   // The failure immediately before this one, so a fan-out can tell "three lanes
   // died together" from "three units failed one after another". Cleared by any
   // success, exactly as `consecutive` is.
-  let priorFailure: { signature: string; batch: number } | null = null;
+  let priorFailure: { signature: string; event: number } | null = null;
   let rejected = 0;
   // A holder, not a bare `let`: control-flow narrowing pins a `let` initialised
   // to null at `null` for the outer scope, so every read after the closure that
@@ -169,18 +171,23 @@ export async function executeStage(input: StageInput, deps: PipelineDeps): Promi
   const request = async (key: string, context: Artefact[], extra: Record<string, unknown> = {}) =>
     absorb(await send(key, context, reserve(key), extra));
 
-  /** A failed unit becomes a recorded gap — until too many in a row fail. */
-  const gap = (describe: string, err: unknown, batch = -1) => {
+  /**
+   * A failed unit becomes a recorded gap — until too many in a row fail.
+   *
+   * `event` is the transport event a fan-out unit's failure belongs to, or -1
+   * where there is no fan-out and so nothing to share an event with.
+   */
+  const gap = (describe: string, err: unknown, event = -1) => {
     deps.signal.throwIfAborted();
     if (!(err instanceof PolicyError)) throw err;
     fault.last = err;
-    // One transport event that took down every lane of a batch counts ONCE. The
+    // One transport event that took down every lane in flight counts ONCE. The
     // unit is still recorded as missing below — what changes is only whether the
     // assessment concludes the provider has stopped answering.
     const signature = `${err.code}|${err.message}`;
-    const sameEvent = batch >= 0 && CONCURRENT_EVENT_CODES.has(err.code) &&
-      priorFailure?.batch === batch && priorFailure.signature === signature;
-    priorFailure = { signature, batch };
+    const sameEvent = event >= 0 && CONCURRENT_EVENT_CODES.has(err.code) &&
+      priorFailure?.event === event && priorFailure.signature === signature;
+    priorFailure = { signature, event };
     if (!sameEvent) consecutive++;
     output.warnings.push(`${describe} could not be assessed: ${err.message} It is missing from this stage.`);
     const limit = err.code === 'timeout' ? CONSECUTIVE_TIMEOUT_LIMIT : CONSECUTIVE_LIMIT;
@@ -203,8 +210,12 @@ export async function executeStage(input: StageInput, deps: PipelineDeps): Promi
     }
   };
 
-  /** One unit of a fan-out: the arguments `attempt` would have been given. */
-  type Unit = { key: string; context: Artefact[]; describe: string; extra?: Record<string, unknown> };
+  /**
+   * One unit of a fan-out: the arguments `attempt` would have been given, and
+   * optionally what the server does to a response before triage reads it.
+   */
+  type Unit = { key: string; context: Artefact[]; describe: string; extra?: Record<string, unknown>; prepare?: (raw: unknown) => unknown };
+  type Landed = { raw: unknown; err: unknown; event: number };
 
   /**
    * Run a fan-out with `lanes` units in flight, and fold the results in order.
@@ -216,46 +227,106 @@ export async function executeStage(input: StageInput, deps: PipelineDeps): Promi
    * agents therefore yields the same artefacts, the same ids and the same
    * warnings as a serial one — `pipeline.test.ts` asserts that directly.
    *
-   * Batched rather than a rolling pool so a dead provider is still caught
-   * promptly: `CONSECUTIVE_LIMIT` is checked as each batch is folded. A provider
-   * that is down fails every batch and trips after `CONSECUTIVE_LIMIT` of them,
-   * so the cost is bounded by `CONSECUTIVE_LIMIT * lanes` calls — and those are
-   * the cheap kind, since a refused connection comes back in milliseconds. That
-   * is the price of not reading one bridge restart as three dead lanes; see
-   * `CONCURRENT_EVENT_CODES`.
+   * A ROLLING POOL, NOT BATCHES. This was `Promise.all` over slices of `lanes`,
+   * so every batch waited for its slowest call before the next one started, and
+   * a model's per-call time is anything but even — a dense page takes four times
+   * a thin one. Measured on the review of 25 September 2026: 3.2 to 3.9 of six
+   * lanes busy, on average, across the fan-out stages. Now a lane that frees
+   * takes the next unit at once, and only the FOLD waits on order: unit 7 may
+   * land before unit 2, and sits until unit 2 has been absorbed.
+   *
+   * The dead-provider rule is kept by giving each failure an EVENT rather than a
+   * batch. A `provider` failure opens an event whose members are the units in
+   * flight at that moment; a later failure with the same signature belongs to it
+   * only if it was one of those members. So one bridge restart that kills every
+   * lane still counts once, but a unit dispatched AFTER it that fails the same
+   * way is a new event — without that, a dead provider would chain one event
+   * into the next forever and never be reported. An event holds at most `lanes`
+   * units, so a dead provider still trips `CONSECUTIVE_LIMIT` within
+   * `CONSECUTIVE_LIMIT * lanes` refused calls, the bound batches gave. The
+   * counting itself still happens in the fold, in unit order.
+   *
+   * `onFailure`, where given, replaces the gap-and-count rule for a stage whose
+   * failures must never end it — the persona library.
    */
-  const fanOut = async (units: Unit[], onResult?: (unit: Unit, result: ReturnType<typeof absorb> | null) => void) => {
+  const fanOut = async (units: Unit[], onResult?: (unit: Unit, result: ReturnType<typeof absorb> | null) => void, onFailure?: (unit: Unit, err: unknown) => void) => {
     // Units that answered with nothing. Silence is a legitimate finding — a body
     // the paper names once has no relationships to assert — but it is still
     // something the reader should be able to see, so it is counted and named once
     // rather than either failing the stage or vanishing.
     const silent: string[] = [];
-    for (let i = 0; i < units.length; i += lanes) {
-      const batch = units.slice(i, i + lanes);
-      const slots = batch.map((u) => reserve(u.key));
-      const settled = await Promise.all(batch.map((u, k) =>
-        send(u.key, u.context, slots[k], u.extra ?? {}).then(
-          (raw) => ({ raw, err: null as unknown }),
-          (err: unknown) => ({ raw: null as unknown, err }),
-        )));
-      // Real progress, reported as each batch lands. The worker turns this into a
-      // liveness beat, so a stage that is working says so — and one that has
-      // stopped working stops saying so, which is the case the probe exists for.
-      deps.onProgress?.(`${Math.min(i + batch.length, units.length)} of ${units.length}`);
-      for (let k = 0; k < batch.length; k++) {
-        const { raw, err } = settled[k];
+    // Every slot, in unit order, before anything is sent: the identifiers a
+    // response mints must not depend on which call happened to come back first.
+    const slots = units.map((u) => reserve(u.key));
+    const resolvers: ((landed: Landed) => void)[] = [];
+    const landed = units.map((_, k) => new Promise<Landed>((resolve) => { resolvers[k] = resolve; }));
+    const inFlight = new Set<number>();
+    const events = new Map<string, { id: number; members: Set<number> }[]>();
+    let nextEvent = 0;
+    let next = 0;
+    let count = 0;
+    let stopped = false;
+    const eventOf = (k: number, err: unknown): number => {
+      if (!(err instanceof PolicyError) || !CONCURRENT_EVENT_CODES.has(err.code)) return -1;
+      const signature = `${err.code}|${err.message}`;
+      // The EARLIEST event this unit was in flight for: a unit can sit in two
+      // (in flight when the first opened, and still when a later unit opened the
+      // next), and it belongs to the one that actually took it down.
+      const seen = events.get(signature) ?? [];
+      const joined = seen.find((event) => event.members.has(k));
+      if (joined) return joined.id;
+      const opened = { id: nextEvent++, members: new Set(inFlight) };
+      events.set(signature, [...seen, opened]);
+      return opened.id;
+    };
+    const lane = async () => {
+      while (!stopped && next < units.length) {
+        const k = next++;
+        const unit = units[k];
+        inFlight.add(k);
+        const outcome = await send(unit.key, unit.context, slots[k], unit.extra ?? {}).then(
+          (raw): Landed => ({ raw, err: null, event: -1 }),
+          (err: unknown): Landed => ({ raw: null, err, event: eventOf(k, err) }),
+        );
+        inFlight.delete(k);
+        // Real progress, reported as each call lands. The worker turns this into
+        // a liveness beat, so a stage that is working says so — and one that has
+        // stopped working stops saying so, which is the case the probe exists for.
+        deps.onProgress?.(`${++count} of ${units.length}`);
+        resolvers[k](outcome);
+        // One tick before taking the next unit, so a fold that was waiting on
+        // THIS result runs first. If it decided the provider is dead, `stopped`
+        // is already set and nothing more goes out — which keeps a serial run to
+        // exactly the calls it always made, rather than one past the failure.
+        await Promise.resolve();
+      }
+    };
+    const running = Array.from({ length: Math.min(lanes, units.length) }, lane);
+    try {
+      for (let k = 0; k < units.length; k++) {
+        const { raw, err, event } = await landed[k];
         let result: ReturnType<typeof absorb> | null;
         try {
           if (err) throw err;
-          result = absorb(raw);
+          const prepare = units[k].prepare;
+          result = absorb(prepare ? prepare(raw) : raw);
           consecutive = 0; priorFailure = null;
         } catch (e) {
-          result = gap(batch[k].describe, e, i);
+          if (onFailure) { onFailure(units[k], e); result = null; }
+          else result = gap(units[k].describe, e, event);
         }
-        if (result && !result.artefacts.length) silent.push(batch[k].describe);
-        onResult?.(batch[k], result);
+        if (result && !result.artefacts.length) silent.push(units[k].describe);
+        onResult?.(units[k], result);
       }
+    } catch (err) {
+      // The stage is ending. Nothing more is dispatched, and the calls already
+      // out are waited for rather than abandoned: a call that lands after its
+      // stage has failed would otherwise write its record beside the retry's.
+      stopped = true;
+      await Promise.allSettled(running);
+      throw err;
     }
+    await Promise.all(running);
     if (silent.length) output.warnings.push(`${silent.length} of ${units.length} parts of this stage had nothing to report: ${silent.slice(0, 8).join(', ')}${silent.length > 8 ? `, and ${silent.length - 8} more` : ''}. The model answered for ${silent.length === 1 ? 'it' : 'each'} and recorded nothing, which is an answer rather than a failure.`);
   };
 
@@ -312,13 +383,18 @@ export async function executeStage(input: StageInput, deps: PipelineDeps): Promi
    * cannot fix that; fitting the shared block ONCE can, which is what happens
    * below, before any call is built.
    *
-   * Both are behind the run's own toggle, so a reader can put a paper through
-   * each way and compare rather than trust this comment. On 2026-09-18 that
-   * comparison gave stage 3 66.1% against 2.3%, and 65% less uncached input.
+   * The ORDER is behind the run's own toggle, so a reader can put a paper
+   * through each way and compare rather than trust this comment. On 2026-09-18
+   * that comparison gave stage 3 66.1% against 2.3%, and 65% less uncached input.
+   *
+   * THE FIT IS NOT, since phase 19. Both orders fit the shared block once, in
+   * the stage's declared order (`STAGE_CONTEXT`), so the two arms send the same
+   * artefacts and the comparison measures ordering alone. The old arm fitted
+   * per call in `provider.ts`, by `SHED_ORDER`, which is the ranking that let
+   * the late verbose kinds starve the stages that needed the early ones.
    */
   const sharedFit = new Map<string, Artefact[]>();
   const orderedContext = (shared: Artefact[], own: Artefact[], key: string, owns: Artefact[][], protect: Set<string> = new Set()): Artefact[] => {
-    if (!deps.sharedContextFirst) return [...new Set([...own, ...shared])];
     let fitted = sharedFit.get(key);
     if (!fitted) {
       // The BIGGEST per-call block in this fan-out decides, because the shared
@@ -335,7 +411,7 @@ export async function executeStage(input: StageInput, deps: PipelineDeps): Promi
       // a set — one that is identical on every call, which is a single decision
       // and cannot move the shedding boundary between calls the way a per-call
       // set does. See the divergence note in scripts/sync-core.mjs.
-      const result = fitToBudget(shared, (artefacts) => ({ artefacts }), FIT_LIMIT - allowance, protect);
+      const result = fitToBudget(scoped(shared), (artefacts) => ({ artefacts }), FIT_LIMIT - allowance, protect, declared);
       fitted = result.artefacts;
       // Said once for the stage rather than once per call: it is one decision.
       for (const note of result.notes) output.warnings.push(`The shared context for this stage was reduced so every call could send the same one: ${note}`);
@@ -343,7 +419,44 @@ export async function executeStage(input: StageInput, deps: PipelineDeps): Promi
     }
     // Shared FIRST so the bytes before a call's own artefacts are identical on
     // every call of the stage, and `own` last so it is never what gets shed.
-    return [...new Set([...fitted, ...own])];
+    // The old order, where a run asked for it, puts `own` first. Merged BY ID:
+    // a call's own artefact may also sit in the shared block, clipped or not,
+    // and must not reach the model twice.
+    const first = deps.sharedContextFirst ? fitted : own;
+    const held = new Set(first.map((a) => a.id));
+    return [...first, ...(deps.sharedContextFirst ? own : fitted).filter((a) => !held.has(a.id))];
+  };
+
+  /**
+   * ONLY WHAT THE STAGE DECLARES, AND IN THE ORDER IT DECLARES IT.
+   *
+   * `STAGE_CONTEXT` names the kinds a stage is given, first-needed first. Every
+   * context below goes through `scoped` — the fan-outs inside `orderedContext`,
+   * the single calls through `fitOnce` — so an undeclared kind is never sent,
+   * and when the declared ones still do not fit, the first named is the last to
+   * go. On the review of 25 September 2026 stage 14 saw 1 mechanism, 1
+   * assumption and no evidence, because 500 profiles and the report's findings
+   * outranked them; profiles are not what a theory of change is built from, and
+   * are not sent to one now.
+   *
+   * A stage that declares nothing — 1 to 4 and 13 build their own per-unit
+   * context, and every pass — is left exactly as it was.
+   */
+  const declared = STAGE_CONTEXT[stage];
+  const scoped = (artefacts: Artefact[]) => (declared ? artefacts.filter((a) => (declared as readonly string[]).includes(a.kind)) : artefacts);
+  /**
+   * A single call's context, scoped and fitted ONCE, here, in declared order.
+   *
+   * Left to `provider.ts` it would be fitted by `SHED_ORDER` — the ranking this
+   * replaces. The margin is the same one a fan-out leaves for the envelope's
+   * scalars, so the provider's own fit is the backstop it was always meant to
+   * be rather than the thing that decides.
+   */
+  const fitOnce = (context: Artefact[], protect: string[] = []): Artefact[] => {
+    if (!declared) return context;
+    const result = fitToBudget(scoped(context), (artefacts) => ({ artefacts }), FIT_LIMIT - SHARED_CALL_MARGIN, new Set(protect), declared);
+    for (const note of result.notes) output.warnings.push(`The context for this stage was reduced to fit the model: ${note}`);
+    return result.artefacts;
   };
 
   const hypotheses = input.artefacts.filter((a) => a.kind === 'assumption').map((a) => a.id);
@@ -554,37 +667,103 @@ export async function executeStage(input: StageInput, deps: PipelineDeps): Promi
       const bucket = groups.get(key);
       if (bucket) bucket.push(a); else groups.set(key, [a]);
     }
-    const units = [...groups.values()].map((members) => {
+    const bodies = [...groups.values()].map((members) => {
       // The best-evidenced row speaks for the group, so the call is pinned to an
       // id that genuinely exists and carries the most to reason from.
       const primary = [...members].sort((x, y) => mentionsOf(y) - mentionsOf(x) || x.id.localeCompare(y.id))[0];
       const related = new Set(members.flatMap((m) => [m.id, ...m.refs, ...input.artefacts.filter((a) => a.fromId === m.id || a.toId === m.id || a.refs.includes(m.id)).flatMap((a) => [a.id, ...a.refs, a.fromId ?? '', a.toId ?? ''])]));
       const context = input.artefacts.filter((a) => related.has(a.id));
       const missing = members.filter((m) => !context.includes(m));
+      return { primary, members, context: [...context, ...missing] };
+    });
+    /**
+     * FULL PROFILES FOR THE BODIES THE POLICY RUNS THROUGH, SHORT ONES FOR THE REST.
+     *
+     * Every body got the full twenty-one fields, one call each. On the review of
+     * 25 September 2026 that was 168 calls on one run, and 230 of its 239 actors
+     * were mentioned ONCE — twenty-one evidenced fields about a body the paper
+     * names in passing is sixteen fields of "unknown" at full price, and the
+     * model writes about 50 tokens a second whatever it is writing.
+     *
+     * The graph is built by now, so connectivity is known: `orderActors` ranks
+     * the bodies exactly as the red team and the persona library will rank them,
+     * and the top `FULL_PROFILES` get the full profile. That is more than either
+     * of those stages takes (`DEPTH_LIMITS.deep.actors`), so every body they
+     * reason about has one. The rest get a SHORT profile — role, what it wants,
+     * what it controls — `SHORT_PROFILE_BATCH` to a call. Every body still has a
+     * profile, so nothing downstream that asks "is this body profiled" changes
+     * its answer; what changes is how much was paid to say "unknown".
+     *
+     * The full units keep their order and their slots, so a paper with no more
+     * than `FULL_PROFILES` bodies makes exactly the calls it always made.
+     */
+    const ranking = orderActors(input.artefacts, bodies.map((b) => b.primary)).actors;
+    const fullIds = new Set(ranking.slice(0, FULL_PROFILES).map((a) => a.id));
+    const tail = bodies.filter((b) => !fullIds.has(b.primary.id));
+    const fullUnits = bodies.filter((b) => fullIds.has(b.primary.id)).map((b) => ({
+      key: b.primary.id,
+      context: b.context,
+      describe: b.members.length === 1
+        ? `The incentive profile for ${b.primary.label}`
+        : `The incentive profile for ${b.primary.label} (${b.members.length} source rows)`,
+      extra: { protect: [b.primary.id], priorPersona: priors.get(b.primary.id) ?? null },
+      prepare: (raw: unknown) => stampProfileForm(raw, 'full'),
+    }));
+    const batches: (typeof bodies)[] = [];
+    for (let i = 0; i < tail.length; i += SHORT_PROFILE_BATCH) batches.push(tail.slice(i, i + SHORT_PROFILE_BATCH));
+    const shortUnits = batches.map((batch) => {
+      const wanted = new Set(batch.flatMap((b) => b.context.map((a) => a.id)));
+      const labels = batch.map((b) => b.primary.label);
       return {
-        key: primary.id,
-        members,
-        context: [...context, ...missing],
-        describe: members.length === 1
-          ? `The incentive profile for ${primary.label}`
-          : `The incentive profile for ${primary.label} (${members.length} source rows)`,
-        extra: { protect: [primary.id], priorPersona: priors.get(primary.id) ?? null },
+        key: `brief_${batch[0].primary.id}`,
+        context: input.artefacts.filter((a) => wanted.has(a.id)),
+        describe: `Short profiles for ${labels.length} bod${labels.length === 1 ? 'y' : 'ies'} (${labels.slice(0, 3).join(', ')}${labels.length > 3 ? ', …' : ''})`,
+        // `targetActorId` cleared, `targetActorIds` set: the one field a short
+        // call is told by. `profileForm` reaches the model too, and `provider.ts`
+        // reads it to stamp the form before triage.
+        extra: { targetActorId: null, targetActorIds: batch.map((b) => b.primary.id), profileForm: 'short', protect: batch.map((b) => b.primary.id) },
+        prepare: (raw: unknown) => stampProfileForm(raw, 'short'),
       };
     });
-    const coveredBy = new Map<string, Artefact[]>(units.map((u) => [u.key, u.members]));
-    await fanOut(units, (unit, result) => {
-      const members = coveredBy.get(unit.key) ?? [];
+    const bodyOf = new Map(bodies.map((b) => [b.primary.id, b]));
+    const batchOf = new Map(shortUnits.map((u, i) => [u.key, batches[i]]));
+    // Bodies whose call answered and wrote no profile for them. One sentence for
+    // the lot at the end: a warning per body was ~130 lines on a real paper.
+    const unprofiled: string[] = [];
+    let strays = 0;
+    await fanOut([...fullUnits, ...shortUnits], (unit, result) => {
       const produced = result?.artefacts.filter((a) => a.kind === 'profile') ?? [];
-      // Stamped here, by the server, from what it already knows — never asked of
-      // the model, which cannot be trusted to enumerate a grouping it did not do.
-      for (const profile of produced) profile.data.coversActorIds = members.map((m) => m.id);
-      if (result && !produced.length) {
-        const label = members[0]?.label ?? unit.key;
-        output.warnings.push(members.length === 1
-          ? `${label} has no incentive profile in this assessment; its motivations were not modelled.`
-          : `${label} has no incentive profile in this assessment, covering ${members.length} source rows; its motivations were not modelled.`);
+      const batch = batchOf.get(unit.key);
+      if (!batch) {
+        const members = bodyOf.get(unit.key)?.members ?? [];
+        // Stamped here, by the server, from what it already knows — never asked of
+        // the model, which cannot be trusted to enumerate a grouping it did not do.
+        for (const profile of produced) profile.data.coversActorIds = members.map((m) => m.id);
+        if (result && !produced.length) unprofiled.push(members[0]?.label ?? unit.key);
+        return;
       }
+      // A short call answers for several bodies, so each profile is matched to
+      // the body it names. One naming a body this call was not about, or a body
+      // it has already profiled, is dropped: two profiles for one body would give
+      // it two sets of motives.
+      const named = new Map(batch.map((b) => [b.primary.id, b]));
+      const done = new Set<string>();
+      const dropped = new Set<Artefact>();
+      for (const profile of produced) {
+        const body = named.get(String(profile.data.actorId));
+        if (!body || done.has(body.primary.id)) { dropped.add(profile); continue; }
+        done.add(body.primary.id);
+        profile.data.coversActorIds = body.members.map((m) => m.id);
+      }
+      if (dropped.size) {
+        output.artefacts = output.artefacts.filter((a) => !dropped.has(a));
+        strays += dropped.size;
+      }
+      if (result) for (const body of batch) if (!done.has(body.primary.id)) unprofiled.push(body.primary.label);
     });
+    if (tail.length) output.warnings.push(`${tail.length} of ${bodies.length} bodies were not assessed in full: each has a short profile — its role, what it wants and what it controls — because the policy graph runs less of the policy through them than through the ${fullUnits.length} profiled in full.`);
+    if (strays) output.warnings.push(`${strays} short profile${strays === 1 ? '' : 's'} named a body the call was not about, or one it had already profiled, and ${strays === 1 ? 'was' : 'were'} discarded.`);
+    if (unprofiled.length) output.warnings.push(`${unprofiled.length} of ${bodies.length} bodies have no incentive profile in this assessment: ${unprofiled.slice(0, 8).join(', ')}${unprofiled.length > 8 ? `, and ${unprofiled.length - 8} more` : ''}. The model answered and wrote none, so their motivations were not modelled.`);
   } else if (stage === 7 || stage === 9) {
     const context = input.artefacts.filter((a) => !['passage', 'alias', 'node'].includes(a.kind) && !supersededSource(a) && (a.kind !== 'actor' || a.id.startsWith('s2_')));
     // `modelApplicability` counts the graph assertions that trigger each pattern
@@ -619,16 +798,24 @@ export async function executeStage(input: StageInput, deps: PipelineDeps): Promi
     await fanOut(answerable.map(({ question, sources }) => ({ key: question.id, context: orderedContext(inventory, [question, ...sources], 'evidence', evidenceOwns), describe: `Evidence for “${question.label}”`, extra: { protect: [question.id, ...sources.map((a) => a.id), ...claims] } })));
     // The document's own evidence pass runs last and alone: its key is `main`, so
     // it takes no sequence number and cannot be reordered by the fan-out above.
-    await attempt('main', inventory, 'Evidence drawn from the policy document itself', { protect: claims });
+    await attempt('main', fitOnce(inventory, claims), 'Evidence drawn from the policy document itself', { protect: claims });
   } else if (stage === 8) {
     output.artefacts = runPolicyTests(input.artefacts, { discarded: input.graphLoss ?? 0, uncovered: graphUncovered(input.artefacts) });
+    // Said once, as a limit of the run and in the sentence `stage-facts.ts`
+    // counts — "N of 12 … were not assessed" — so it is filed as something this
+    // run did not cover, never as a question the paper failed to answer.
+    const gaps = output.artefacts.filter((a) => a.data.basis === 'extraction_gap');
+    if (gaps.length) output.warnings.push(`${gaps.length} of ${output.artefacts.length} structural checks were not assessed: ${gaps.map((a) => a.label).join(', ')}. The paper states what ${gaps.length === 1 ? 'it tests' : 'they test'}, but the relationship graph built on this run did not link it. This is a limit of this run, not a gap in the paper.`);
   } else if (stage === 10) {
     // Every resolved actor with a profile is a candidate for the red team, and
     // `limits.actors` bounds how many get one. The most connected go first —
     // an actor nothing depends on has little to exploit — and the rest are named
     // in a warning rather than dropped silently.
     const profiles = input.artefacts.filter((a) => a.kind === 'profile');
-    const { actors: ranked, basis } = rankActors(input.artefacts, profiles);
+    // Full profiles only, where there are any: a short one is three lines of
+    // motive, and the red team needs the whole profile to reason from. Stage 4
+    // wrote full ones for more bodies than this stage takes, ranked the same way.
+    const { actors: ranked, basis } = rankActors(input.artefacts, fullOnly(profiles));
     // Which signal chose them is part of the finding, not a footnote: on a thin
     // graph this is "who the paper talks about most", not "who the policy runs
     // through", and those are different claims.
@@ -638,9 +825,11 @@ export async function executeStage(input: StageInput, deps: PipelineDeps): Promi
     if (basis === 'prominence') output.warnings.push('The policy graph held no relationships for the profiled actors, so the red team selected its actors by how prominently the document names them rather than by connectivity. Treat the choice of who was red-teamed as a reflection of the document, not of the policy structure.');
     if (ranked.length > limits.actors) output.warnings.push(`${ranked.length - limits.actors} of ${ranked.length} profiled actors were not red-teamed in this pass: ${ranked.slice(limits.actors).map((a) => a.label).join(', ')}. ${order} A deep run covers more of them.`);
     const base = input.artefacts.filter((a) => !['passage', 'alias', 'node', 'profile'].includes(a.kind) && !supersededSource(a) && (a.kind !== 'actor' || a.id.startsWith('s2_')));
-    // STAGE 14'S SHAPE: the actor and its profiles come OUT of the shared block
-    // and go in as this call's own, so a per-call `protect` can no longer move
-    // the shedding boundary. See sync-core.mjs.
+    // STAGE 14'S SHAPE: the actor and its profiles go in as this call's own, so a
+    // per-call `protect` can no longer move the shedding boundary. The actor
+    // STAYS in the shared block too: that block is fitted once and reused by
+    // every call, so taking the first call's actor out of it took that body out
+    // of every other call's context as well.
     const chosen = ranked.slice(0, limits.actors);
     const playOwns = chosen.map((actor) => [
       ...base.filter((a) => a.id === actor.id),
@@ -648,7 +837,7 @@ export async function executeStage(input: StageInput, deps: PipelineDeps): Promi
     ]);
     await fanOut(chosen.map((actor, i) => ({
       key: actor.id,
-      context: orderedContext(base.filter((a) => a.id !== actor.id), playOwns[i], 'plays', playOwns, new Set(hypotheses)),
+      context: orderedContext(base, playOwns[i], 'plays', playOwns, new Set(hypotheses)),
       describe: `Exploitation plays for ${actor.label}`,
       extra: { protect: [actor.id, ...profiles.filter((p) => p.data.actorId === actor.id).map((p) => p.id), ...hypotheses], priorPersona: priors.get(actor.id) ?? null },
     })));
@@ -664,22 +853,34 @@ export async function executeStage(input: StageInput, deps: PipelineDeps): Promi
     // it — so running the fan-out anyway spends one model call per profiled body
     // to produce artefacts whose only consumer will throw them away.
     const profiles = input.sealed ? [] : input.artefacts.filter((a) => a.kind === 'profile');
-    const ranked = input.sealed ? [] : rankActors(input.artefacts, profiles).actors.slice(0, limits.actors);
+    const ranked = input.sealed ? [] : rankActors(input.artefacts, fullOnly(profiles)).actors.slice(0, limits.actors);
     if (input.sealed) {
       output.warnings.push('This is a sealed assessment, so nothing was written to the persona library and no model call was made for it. A dossier drawn from this paper would outlive the run and survive its purge, which is the residue sealing exists to remove.');
     }
-    for (const actor of ranked) {
+    /**
+     * THROUGH `fanOut`, NOT A LOOP OF ITS OWN.
+     *
+     * This was a serial `for` over the ranked actors — twelve calls one after
+     * another, 7.7 to 10 minutes on every real run, for work whose units share
+     * nothing. The pool runs them `lanes` at a time and folds them in rank order,
+     * so the write-back the worker applies afterwards meets the same links in
+     * the same order at any number of lanes.
+     *
+     * The failure rule is the one thing that differs from every other fan-out.
+     * The library is a bonus, so a failed unit is a warning about the library
+     * and nothing more: no gap, no consecutive count, and so no way for a dead
+     * provider here to fail a run whose report is already written.
+     */
+    await fanOut(ranked.map((actor) => {
       const own = profiles.filter((p) => p.data.actorId === actor.id);
       const plays = input.artefacts.filter((a) => a.kind === 'exploit' && a.data.actorId === actor.id);
       const context = [actor, ...own, ...plays];
-      try {
-        await request(actor.id, context, { protect: context.map((a) => a.id), priorPersona: priors.get(actor.id) ?? null });
-      } catch (err) {
-        deps.signal.throwIfAborted();
-        if (!(err instanceof PolicyError)) throw err;
-        output.warnings.push(`${actor.label} was not written to the persona library: ${err.message} The assessment itself is unaffected.`);
-      }
-    }
+      return { key: actor.id, context, describe: actor.label, extra: { protect: context.map((a) => a.id), priorPersona: priors.get(actor.id) ?? null } };
+    }), undefined, (unit, err) => {
+      deps.signal.throwIfAborted();
+      if (!(err instanceof PolicyError)) throw err;
+      output.warnings.push(`${unit.describe} was not written to the persona library: ${err.message} The assessment itself is unaffected.`);
+    });
     if (!output.artefacts.length && ranked.length) output.warnings.push('No actor could be written to the persona library on this run. Nothing in the assessment above depends on it.');
   } else if (stage === THEORY_STAGE) {
     // A causal theory is inspectable per intervention. One enormous narrative
@@ -692,10 +893,12 @@ export async function executeStage(input: StageInput, deps: PipelineDeps): Promi
     const theoryOwns = mechanisms.map((mechanism) => context.filter((a) => a.id === mechanism.id));
     await fanOut(mechanisms.map((mechanism) => ({
       key: mechanism.id,
-      // The mechanism being written about is pulled OUT of the shared block and
-      // appended as this call's own, so the shared prefix is identical on all of
-      // them and the one artefact the call exists for is never shed.
-      context: orderedContext(context.filter((a) => a.id !== mechanism.id), context.filter((a) => a.id === mechanism.id), 'theory', theoryOwns),
+      // The mechanism being written about is appended as this call's own, so the
+      // one artefact the call exists for is never shed. It stays in the shared
+      // block as well: that block is fitted ONCE and reused, and pulling the
+      // first call's mechanism out of it pulled that mechanism out of every
+      // other call — found by the phase 19 test that counts them.
+      context: orderedContext(context, context.filter((a) => a.id === mechanism.id), 'theory', theoryOwns),
       describe: `Theory of change for ${mechanism.label}`,
       extra: { protect: [mechanism.id, ...hypotheses] },
     })));
@@ -748,7 +951,7 @@ export async function executeStage(input: StageInput, deps: PipelineDeps): Promi
     } else {
       const context = input.artefacts.filter((a) => !['passage', 'alias', 'node'].includes(a.kind) && !supersededSource(a) && (a.kind !== 'actor' || a.id.startsWith('s2_')));
       const identity = crossIdentityHints(input.artefacts, neighbours);
-      await attempt('main', context, `Cross-policy exposure against ${neighbours.length} other assessment${neighbours.length === 1 ? '' : 's'}`, { neighbours, identity });
+      await attempt('main', fitOnce(context), `Cross-policy exposure against ${neighbours.length} other assessment${neighbours.length === 1 ? '' : 's'}`, { neighbours, identity });
       const known = new Set(neighbours.map((n) => n.id));
       const invented = output.artefacts.filter((a) => a.kind === 'cross_policy' && !known.has(String(a.data.otherAnalysisId)));
       if (invented.length) {
@@ -759,19 +962,21 @@ export async function executeStage(input: StageInput, deps: PipelineDeps): Promi
   } else {
     // Full source text was inspected passage by passage. Later stages receive the
     // structured inventory plus source quotes, not a silently truncated paper.
-    const context = input.artefacts.filter((a) => a.kind !== 'passage' && (stage !== 2 || a.kind === 'actor') && (stage < 3 || a.kind !== 'actor' || a.id.startsWith('s2_')));
+    const everything = input.artefacts.filter((a) => a.kind !== 'passage' && (stage !== 2 || a.kind === 'actor') && (stage < 3 || a.kind !== 'actor' || a.id.startsWith('s2_')));
     // A finding must cite a test, model, scenario, exploitation play or
     // cross-policy exposure, so synthesis pins every one of them into the call.
     // Without that the context budget shed the lot — they are the last things
     // produced and carry the lowest confidence — and the model, still required
     // to cite a result, invented identifiers for results it had never seen.
     const protect = stage === SYNTHESIS_STAGE
-      ? [...context.filter((a) => (RESULT_KINDS as readonly string[]).includes(a.kind)).map((a) => a.id), ...hypotheses]
+      ? [...everything.filter((a) => (RESULT_KINDS as readonly string[]).includes(a.kind)).map((a) => a.id), ...hypotheses]
       : stage === APPRAISAL_STAGE
-        ? [...context.filter((a) => ['causal_chain', 'finding', 'evidence'].includes(a.kind)).map((a) => a.id), ...hypotheses]
+        ? [...everything.filter((a) => ['causal_chain', 'finding', 'evidence'].includes(a.kind)).map((a) => a.id), ...hypotheses]
         : stage === ASSURED_SYNTHESIS_STAGE
-          ? [...context.filter((a) => ['finding', 'recommendation', 'causal_chain', 'option_appraisal', 'evaluation_plan', 'assurance_challenge'].includes(a.kind) || (RESULT_KINDS as readonly string[]).includes(a.kind)).map((a) => a.id), ...hypotheses]
+          ? [...everything.filter((a) => ['finding', 'recommendation', 'causal_chain', 'option_appraisal', 'evaluation_plan', 'assurance_challenge'].includes(a.kind) || (RESULT_KINDS as readonly string[]).includes(a.kind)).map((a) => a.id), ...hypotheses]
           : [];
+    // Scoped and fitted once, so the top-up below asks from the same context.
+    const context = fitOnce(everything, protect);
     // Round ONE of the enquiry has to be told its own ceiling. `remainingQuestions`
     // was passed only to the follow-up rounds, so the first round was bounded by a
     // number written into the prompt — and raising `questions` in the contract then
@@ -942,7 +1147,9 @@ export async function executeStage(input: StageInput, deps: PipelineDeps): Promi
       safe = safe.slice(0, affordable);
     }
     if (!safe.length) return;
-    const researched = await deps.research(safe, deps.signal, limits.results);
+    // The run's own lanes: a question's search and its full reads are I/O, and
+    // were the one part of a research stage still going one request at a time.
+    const researched = await deps.research(safe, deps.signal, limits.results, lanes);
     output.artefacts.push(...researched.artefacts);
     output.warnings.push(...researched.warnings.map((w) => round > 1 ? `Enquiry round ${round}: ${w}` : w));
   };
@@ -994,7 +1201,7 @@ export async function executeStage(input: StageInput, deps: PipelineDeps): Promi
       const sources = output.artefacts.filter((a) => a.kind === 'research_source');
       const before = output.artefacts.length;
       const context = input.artefacts.filter((a) => a.kind !== 'passage' && (a.kind !== 'actor' || a.id.startsWith('s2_')));
-      await attempt(`round${round}`, [...context, ...asked, ...sources], `Follow-up enquiry round ${round}`, { enquiryRound: round, remainingQuestions: limits.questions, protect: sources.map((a) => a.id) });
+      await attempt(`round${round}`, fitOnce([...context, ...asked, ...sources], sources.map((a) => a.id)), `Follow-up enquiry round ${round}`, { enquiryRound: round, remainingQuestions: limits.questions, protect: sources.map((a) => a.id) });
       const followUps = output.artefacts.slice(before).filter((a) => a.kind === 'research_question');
       if (!followUps.length) { output.warnings.push(`Enquiry round ${round} raised no further question, so the enquiry stopped there.`); break; }
       await pursue(followUps, round);
@@ -1284,6 +1491,17 @@ function requireMajority(output: StageOutput, library: readonly string[], of: (a
  * ordering so the assessment can say so.
  */
 export function rankActors(all: Artefact[], profiles: Artefact[]): { actors: Artefact[]; basis: 'connectivity' | 'prominence' } {
+  return orderActors(all, profiles
+    .map((p) => all.find((a) => a.kind === 'actor' && a.id === p.data.actorId))
+    .filter((a): a is Artefact => !!a));
+}
+
+/**
+ * `rankActors` over actors rather than their profiles. Stage 4 needs the same
+ * order BEFORE any profile exists, to decide which bodies get a full one, and a
+ * second copy of the arithmetic would drift from the one stages 10 and 13 use.
+ */
+export function orderActors(all: Artefact[], actors: Artefact[]): { actors: Artefact[]; basis: 'connectivity' | 'prominence' } {
   const degree = new Map<string, number>();
   for (const edge of all) {
     if (edge.kind !== 'edge') continue;
@@ -1300,16 +1518,19 @@ export function rankActors(all: Artefact[], profiles: Artefact[]): { actors: Art
   const mentions = (a: Artefact) => (Array.isArray(a.data.mentions) ? a.data.mentions.length : 0);
   const rows = (a: Artefact) => byLabel.get(a.label.trim().toLowerCase()) ?? 1;
 
-  const actors = profiles
-    .map((p) => all.find((a) => a.kind === 'actor' && a.id === p.data.actorId))
-    .filter((a): a is Artefact => !!a)
-    .sort((a, b) =>
-      (degree.get(b.id) ?? 0) - (degree.get(a.id) ?? 0) ||
-      mentions(b) - mentions(a) ||
-      rows(b) - rows(a) ||
-      a.id.localeCompare(b.id));
+  const ordered = [...actors].sort((a, b) =>
+    (degree.get(b.id) ?? 0) - (degree.get(a.id) ?? 0) ||
+    mentions(b) - mentions(a) ||
+    rows(b) - rows(a) ||
+    a.id.localeCompare(b.id));
 
-  return { actors, basis: actors.some((a) => (degree.get(a.id) ?? 0) > 0) ? 'connectivity' : 'prominence' };
+  return { actors: ordered, basis: ordered.some((a) => (degree.get(a.id) ?? 0) > 0) ? 'connectivity' : 'prominence' };
+}
+
+/** Full profiles where there are any; every profile otherwise, as before short ones existed. */
+function fullOnly(profiles: Artefact[]): Artefact[] {
+  const full = profiles.filter((p) => p.data.form !== 'short');
+  return full.length ? full : profiles;
 }
 
 /**

@@ -170,7 +170,10 @@ describe('a stage survives the loss of part of its fan-out', () => {
 
   it('stops early rather than burning the whole document on a dead provider', async () => {
     const model = vi.fn(async () => { throw new PolicyError('provider', 'The configured model provider is unavailable.'); });
-    await expect(executeStage(input, { model, research, signal })).rejects.toThrow('consecutive');
+    // ONE LANE, because this is the serial count. At six lanes four refusals in
+    // the same instant are one event, not four — see the concurrent-event tests
+    // in pipeline.test.ts, which cover the wide case.
+    await expect(executeStage(input, { model, research, signal, concurrency: 1 })).rejects.toThrow('consecutive');
     expect(model).toHaveBeenCalledTimes(3);
   });
 
@@ -182,7 +185,7 @@ describe('a stage survives the loss of part of its fan-out', () => {
     // unavailable. It was not: it was Sol.
     const slow = vi.fn(async () => { throw new PolicyError('timeout', '“gpt-5.6-sol” did not answer within 420 seconds on this call.'); });
     const wide = { ...input, artefacts: Array.from({ length: 9 }, (_, i) => passage(`passage_${String(i + 1).padStart(4, '0')}`)) };
-    await expect(executeStage(wide, { model: slow, research, signal })).rejects.toThrow('too slow for this document, not unavailable');
+    await expect(executeStage(wide, { model: slow, research, signal, concurrency: 1 })).rejects.toThrow('too slow for this document, not unavailable');
     expect(slow).toHaveBeenCalledTimes(6);
   });
 

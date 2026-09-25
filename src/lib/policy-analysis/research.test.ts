@@ -105,3 +105,60 @@ describe('retrieval is instant first and escalates on what it finds', () => {
     expect(result.warnings.join(' ')).toMatch(/read in full/);
   });
 });
+
+/**
+ * RESEARCH IN PARALLEL. Measured on the review of 25 September 2026: 11.7 to
+ * 15.6 minutes of wall clock per round for about 1.5 minutes of model time, all
+ * of it one search and one extract after another.
+ */
+describe('research runs its questions at once, and reads the same sources whatever order they land in', () => {
+  beforeEach(() => { vi.mocked(search).mockReset(); vi.mocked(extract).mockReset(); });
+
+  it('does not wait for one question’s search before starting the next', async () => {
+    let release!: (by: string) => void;
+    const slow = new Promise<string>((resolve) => { release = resolve; });
+    const safety = setTimeout(() => release('timer'), 2_000);
+    const started: string[] = [];
+    vi.mocked(search).mockImplementation(async (query: string) => {
+      started.push(query);
+      if (query.endsWith('q1')) await slow;
+      else if (started.length === 4) release('pool');
+      return { results: [found(`https://example.com/${query.split(' ').pop()}`, 'x'.repeat(4000))] };
+    });
+    const result = await research(['q1', 'q2', 'q3', 'q4'].map((id, i) => asking(id, .9 - i / 10)), new AbortController().signal, 1, 4);
+    clearTimeout(safety);
+    // Every other search started while the first was still out.
+    expect(await slow).toBe('pool');
+    // And the sources still come back in priority order, one per question.
+    expect(result.artefacts.map((a) => a.data.questionId)).toEqual(['q1', 'q2', 'q3', 'q4']);
+  });
+
+  it('spends the full-read budget on the same sources at one lane and at four', async () => {
+    // Every excerpt is thin, so every source wants a full read and the budget
+    // decides. The searches land in REVERSE priority order at four lanes — the
+    // lowest question answers first — which is exactly when a budget spent as
+    // results arrive would go to the wrong question.
+    const questions = [asking('low', .55), asking('high', .94), asking('mid', .7), asking('lower', .54)];
+    const delay: Record<string, number> = { high: 20, mid: 10, low: 5, lower: 1 };
+    const run = async (lanes: number) => {
+      vi.mocked(search).mockReset(); vi.mocked(extract).mockReset();
+      vi.mocked(search).mockImplementation(async (query: string) => {
+        const id = query.split(' ').pop()!;
+        await new Promise((resolve) => setTimeout(resolve, delay[id]));
+        return { results: [found(`https://example.com/${id}/a`, 'thin'), found(`https://example.com/${id}/b`, 'thin')] };
+      });
+      vi.mocked(extract).mockImplementation(async (urls: string[]) => ({ results: [{ url: urls[0], raw_content: 'y'.repeat(5000) }], failed_results: [] }));
+      const result = await research(questions, new AbortController().signal, 2, lanes);
+      const read = vi.mocked(extract).mock.calls.map((c) => c[0][0]).sort();
+      return { read, artefacts: result.artefacts.map((a) => ({ ...a, data: { ...a.data, retrievedAt: null } })), warnings: result.warnings };
+    };
+    const serial = await run(1);
+    const wide = await run(4);
+    expect(wide.read).toEqual(serial.read);
+    expect(wide.artefacts).toEqual(serial.artefacts);
+    expect(wide.warnings).toEqual(serial.warnings);
+    // The top question is still the one read in full.
+    expect(wide.read.some((url) => url.includes('/high/'))).toBe(true);
+    expect(wide.read.some((url) => url.includes('/lower/'))).toBe(false);
+  });
+});

@@ -49,7 +49,7 @@ import { ownerPayload, sharedPayload } from '$lib/policy-analysis/offline/payloa
 import { runFacts, type PackPayload } from '$lib/offline-run';
 import { forProgress, forTheReport } from '$lib/detail-views';
 import { shareableReport } from '$lib/policy-analysis/share';
-import { STAGES } from '$lib/policy-analysis/contracts';
+import { DEFAULT_CONCURRENCY, STAGES } from '$lib/policy-analysis/contracts';
 import { analysisStatus } from '$lib/worker';
 
 const owner = () => getOwnerEmails()[0];
@@ -201,6 +201,16 @@ export async function handleApi(
      * old behaviour still gets it by sending the field as 'false'.
      */
     if (form.fields.sharedContextFirst === undefined) form.fields.sharedContextFirst = 'true';
+    /*
+     * THE LANES ARE WRITTEN DOWN, NOT LEFT TO A NULL.
+     *
+     * A NULL column already resolves to `DEFAULT_CONCURRENCY`, so this changes
+     * nothing a run does. It changes what the run RECORDS: a caller that sent no
+     * field gets the number it actually ran at on its row, and the day the
+     * default moves again an old run still says how it was commissioned. The form
+     * always sends one; this is for everything else that posts here.
+     */
+    if (form.fields.concurrency === undefined) form.fields.concurrency = String(DEFAULT_CONCURRENCY);
     const submission = await readSubmission(asRequest(form.fields, form.file));
     const { createAnalysis } = await import('$lib/policy-analysis/server/store');
     const analysis = await createAnalysis(owner(), submission);

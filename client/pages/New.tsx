@@ -5,6 +5,14 @@ import { Button, ButtonGroup, Details, ErrorSummary, FileUpload, Input, Radios, 
 import { MEASURED_RUN, MEASURED_STANDARD_HINT } from '../measured';
 import { isFinished, spent } from '../status';
 import { usePageTitle } from '../layout/Template';
+import { DEFAULT_CONCURRENCY, OFFERED_CONCURRENCY } from '$lib/policy-analysis/contracts';
+
+/** The three answers the lanes question offers, in the words the form uses. */
+const LANE_TEXT: Record<(typeof OFFERED_CONCURRENCY)[number], string> = {
+  1: 'One at a time',
+  3: 'Three at once',
+  6: 'Six at once',
+};
 
 /**
  * Commissioning an assessment.
@@ -41,6 +49,7 @@ export function New() {
   const [runs, setRuns] = useState<AnalysisRow[]>([]);
   const [depth, setDepth] = useState('standard');
   const [sealed, setSealed] = useState(false);
+  const [lanes, setLanes] = useState(String(DEFAULT_CONCURRENCY));
   const [errors, setErrors] = useState<{ text: string; href: string }[]>([]);
   const [submitting, setSubmitting] = useState(false);
 
@@ -65,6 +74,7 @@ export function New() {
     if (found.length) return;
 
     form.set('depth', depth);
+    form.set('concurrency', lanes);
     form.set('sealed', sealed ? 'sealed' : '');
     setSubmitting(true);
     try {
@@ -184,6 +194,20 @@ export function New() {
               </p>
             )}
           </Details>
+
+          {/*
+            THE LANES, ASKED. This form had no such field, so every run started
+            from the browser went one call at a time: 387 minutes on the review
+            of 25 September 2026, against about 126 at six. The answer changes
+            only how long the run takes — the fan-out folds its results in order,
+            so the assessment is the same at any setting.
+          */}
+          <Radios
+            id="concurrency" legend="How many parts should it work on at once?" legendSize="s"
+            hint="More at once is faster. Six is what every real run has used. Choose one at a time only if your model provider limits how many requests you can make."
+            value={lanes} onChange={setLanes}
+            items={OFFERED_CONCURRENCY.map((n) => ({ value: String(n), text: LANE_TEXT[n] }))}
+          />
 
           {models.length ? (
             <Select

@@ -91,7 +91,14 @@ export function isPassStage(ordinal: number): boolean { return ordinal >= PASS_B
 /** The first ordinal of pass `n`. */
 export function passOrdinal(pass: number, step: number): number { return PASS_BASE * pass + step; }
 
-export const PROMPT_VERSION = 'policy-analysis/3.0';
+/**
+ * The prompt generation, as `policy_model_calls` records it. The cache key also
+ * carries a hash of the prompt itself (`provider.ts`), which is what actually
+ * stops an old reply being replayed; this names the generation for a person
+ * reading the log. 3.1 is phase 19: every relationship type offered to stage 3,
+ * short profiles at stage 4, and a plain-English writing rule on every call.
+ */
+export const PROMPT_VERSION = 'policy-analysis/3.1';
 export const MAX_BYTES = 10 * 1024 * 1024;
 export const MAX_CHARACTERS = 600_000;
 export const MAX_PAGES = 400;
@@ -189,14 +196,28 @@ export type Depth = (typeof DEPTHS)[number];
 export const CONCURRENCY_OPTIONS = [1, 2, 3, 4, 5, 6] as const;
 export type Concurrency = (typeof CONCURRENCY_OPTIONS)[number];
 /**
- * What an assessment with no stored preference does: one at a time.
+ * What an assessment with no stored preference does: six at a time.
  *
- * Every assessment before this option existed ran serially, and a run that is
- * mid-flight when this ships must carry on exactly as it started rather than
- * silently widening under it. The submission form suggests a higher number; a
- * NULL column does not.
+ * It was ONE, so that a run in flight when the option shipped would not widen
+ * under itself. That reason is spent, and the default it left behind was the
+ * single largest cost in the review of 25 September 2026: the submit form had no
+ * field, so every run started from the browser ran serially — 387 minutes where
+ * the same run at six lanes is about 126. Six is what every real run through the
+ * CLI has used, and no 429 has been seen at it.
+ *
+ * Widening a paused run is now safe to do, not merely tolerable: the fan-out
+ * folds in unit order, so the artefacts, the ids and the payloads a stage sends
+ * are the same at any number of lanes (`pipeline.test.ts` asserts all three), and
+ * a resumed run still hits its response cache.
  */
-export const DEFAULT_CONCURRENCY: Concurrency = 1;
+export const DEFAULT_CONCURRENCY: Concurrency = 6;
+/**
+ * What the submit form offers. The contract takes any of `CONCURRENCY_OPTIONS`;
+ * the form asks a plainer question with three answers — one at a time for a
+ * provider that throttles, three for a bridge at its own default cap, six for
+ * everything else.
+ */
+export const OFFERED_CONCURRENCY = [1, 3, 6] as const satisfies readonly Concurrency[];
 /**
  * HOW DECOMPOSITION ASKS FOR THE DOCUMENT INVENTORY.
  *
@@ -340,7 +361,32 @@ const unit = z.number().min(0).max(1);
 export const confidenceSchema = unit.nullable().default(null);
 const field = z.object({ value: text, origin: z.enum(ORIGINS), confidence: confidenceSchema, refs: ids }).strict();
 export const PROFILE_FIELDS = ['formalRole', 'statedObjectives', 'operationalObjectives', 'accountableTo', 'successCriteria', 'timeHorizon', 'resources', 'constraints', 'legalPowers', 'informationPossessed', 'informationControlled', 'dependencies', 'costs', 'benefits', 'risks', 'outsideOption', 'gainFromFailure', 'reputationalIncentives', 'politicalIncentives', 'institutionalMotivations', 'strategies'] as const;
-const profileFields = Object.fromEntries(PROFILE_FIELDS.map((k) => [k, field])) as Record<(typeof PROFILE_FIELDS)[number], typeof field>;
+/**
+ * THE FIELDS A SHORT PROFILE CARRIES: its role, what it wants, what it controls.
+ *
+ * Stage 4 wrote all twenty-one fields for every body, one call each — 168 calls
+ * on one real run, where 230 of 239 actors were mentioned once. The top
+ * `FULL_PROFILES` bodies by connectivity still get the full twenty-one; every
+ * other body gets these five, several to a call, so it still HAS a profile —
+ * every view and rule downstream reads "has a profile" — without paying for
+ * sixteen fields the paper cannot support for a body it names once in passing.
+ */
+export const SHORT_PROFILE_FIELDS = ['formalRole', 'statedObjectives', 'operationalObjectives', 'legalPowers', 'resources'] as const satisfies readonly (typeof PROFILE_FIELDS)[number][];
+/**
+ * How many bodies get the full profile. Above `DEPTH_LIMITS.deep.actors`, so
+ * every body the red team or the persona library takes has a full one — a test
+ * holds the two numbers apart.
+ */
+export const FULL_PROFILES = 24;
+/** How many short profiles one call writes. */
+export const SHORT_PROFILE_BATCH = 8;
+/**
+ * OPTIONAL IN THE SHAPE, REQUIRED BY THE FORM. `validation.ts` demands every
+ * field of a full profile and the five of a short one; the schema cannot say
+ * "which fields depends on `form`" without a refinement the prompt's JSON schema
+ * would not show, so the rule lives beside the other contract checks instead.
+ */
+const profileFields = Object.fromEntries(PROFILE_FIELDS.map((k) => [k, field.optional()])) as Record<(typeof PROFILE_FIELDS)[number], z.ZodOptional<typeof field>>;
 /**
  * A persona trait carries its own origin and confidence.
  *
@@ -364,12 +410,19 @@ export const dataSchemas = {
   // label, so this records which rows one profile was drawn for without
   // asserting they are one body. Optional because a profile from before this
   // existed, or from a single-row group, carries none.
-  profile: z.object({ actorId: text, coversActorIds: ids.optional(), ...profileFields }),
+  // `form` is stamped by the SERVER too, from the call the profile came from —
+  // never taken from the model, which could otherwise excuse a full profile
+  // from sixteen of its fields by calling it short. Absent means full, which is
+  // every profile written before short ones existed.
+  profile: z.object({ actorId: text, coversActorIds: ids.optional(), form: z.enum(['full', 'short']).optional(), ...profileFields }),
   research_question: z.object({ importance: unit, uncertainty: unit, consequence: unit, priority: unit.optional(), rationale: text, searchStrategy: text, gap: text }),
   research_source: z.object({ questionId: text, retrievedAt: text, quality: text, qualityBasis: text, freshness: text, jurisdictionalRelevance: text, retrieval: z.enum(['full_text', 'search_excerpt']), gap: text }),
   evidence: z.object({ claimId: z.string().nullable(), mechanismId: z.string().nullable(), actorId: z.string().nullable(), assumptionId: z.string().nullable(), sourceId: text, evidenceType: text, result: z.enum(['supports', 'contradicts', 'mixed', 'insufficient']), sourceQuality: text, relevance: text, freshness: text, dispute: text }),
   model: z.object({ pattern: z.enum(PATTERNS), players: ids, strategies: strings, decisionOrder: text, information: text, costs: text, benefits: text, rewards: text, sanctions: text, dependencies: ids, assumptions: ids.min(1), responses: strings, equilibria: strings, explanation: text, applicability: text }),
-  test: z.object({ testId: text, rationale: text, inputs: ids, rule: text, reasoning: text, result: z.enum(['low_risk', 'moderate_risk', 'high_risk', 'indeterminate']), severity: z.enum(['low', 'moderate', 'high', 'unknown']), actors: ids, mitigation: text }),
+  // `basis` and `extracted` are written by `tests.ts`, never by a model: a check
+  // the run could not make because its own graph did not link what the paper
+  // states is an EXTRACTION GAP, and says which relation and how many items.
+  test: z.object({ testId: text, rationale: text, inputs: ids, rule: text, reasoning: text, result: z.enum(['low_risk', 'moderate_risk', 'high_risk', 'indeterminate']), severity: z.enum(['low', 'moderate', 'high', 'unknown']), actors: ids, mitigation: text, basis: z.literal('extraction_gap').optional(), extracted: z.object({ relation: text, what: text, count: z.number().int().positive() }).optional() }),
   scenario: z.object({ scenario: z.enum(SCENARIOS), changedConditions: text, firstActor: z.string().nullable(), strategy: text, downstreamEffects: strings, affectedOutcomes: ids, detectability: text, correction: text, weaknesses: strings, assumptions: ids.min(1), sensitivity: strings.min(1) }),
   exploit: z.object({
     actorId: text, motivation: text, play: text, legality: z.enum(LEGALITY),
@@ -616,6 +669,45 @@ export const STAGE_KINDS: Kind[][] = [
  * this is the one place the two lists are allowed to differ.
  */
 export const MODEL_KINDS: Kind[][] = STAGE_KINDS.map((kinds) => kinds.filter((kind) => kind !== 'research_source'));
+/**
+ * WHAT A STAGE IS GIVEN, AS KINDS, IN THE ORDER IT NEEDS THEM.
+ *
+ * `stages.ts` says what each stage is `given` in words for the reader; this is
+ * the same declaration as the pipeline reads it. A stage listed here is sent
+ * ONLY these kinds, and when its context has to be cut the first kind named is
+ * the last to go (`fitToBudget`'s `declared`).
+ *
+ * WHY IT EXISTS. The context used to be "everything, fitted", and the fitter
+ * ranks by how late a kind is produced — so the long, late kinds won at every
+ * stage, whatever the stage was for. Measured on assessment 03c83ea5 in the
+ * review of 25 September 2026: stage 7's context was 90% actor profiles; stage
+ * 14 (theory of change) saw 1 mechanism, 1 assumption and 0 evidence against a
+ * declared input of "mechanisms, evidence and assumptions"; stage 16 (the
+ * challenge) saw no plays at all.
+ *
+ * Every kind a stage's own contract obliges it to CITE is here — the
+ * assumptions a model, scenario, play or chain must rest on; the results a
+ * finding must name — because a model can only cite an id it was shown.
+ * `research_source` sits near the end of the stages after 6: a follow-up source
+ * is read by nothing else, and the one an evidence row has already read is shed
+ * first whatever its position (see `budget.ts`).
+ *
+ * A stage absent from this table keeps the context it always had: 1-4 and 13
+ * build a per-unit context of their own, and 8 makes no model call.
+ */
+export const STAGE_CONTEXT: Partial<Record<number, readonly Kind[]>> = {
+  5: ['assumption', 'claim', 'mechanism', 'actor', 'edge', 'profile', 'research_question', 'research_source'],
+  6: ['claim', 'assumption', 'mechanism', 'actor'],
+  7: ['assumption', 'mechanism', 'edge', 'actor', 'evidence', 'profile', 'claim', 'research_source'],
+  9: ['assumption', 'model', 'test', 'mechanism', 'edge', 'actor', 'evidence', 'profile', 'claim', 'research_source'],
+  10: ['assumption', 'mechanism', 'model', 'scenario', 'test', 'edge', 'actor', 'evidence', 'claim', 'research_source'],
+  11: ['mechanism', 'assumption', 'claim', 'actor', 'exploit', 'test', 'model', 'scenario', 'edge'],
+  12: ['test', 'model', 'scenario', 'exploit', 'cross_policy', 'assumption', 'evidence', 'mechanism', 'claim', 'actor', 'profile', 'edge', 'research_question', 'research_source'],
+  14: ['mechanism', 'evidence', 'assumption', 'claim', 'research_source'],
+  15: ['causal_chain', 'finding', 'recommendation', 'evidence', 'assumption', 'mechanism', 'claim', 'exploit', 'test', 'research_source'],
+  16: ['finding', 'recommendation', 'exploit', 'causal_chain', 'option_appraisal', 'evaluation_plan', 'test', 'model', 'scenario', 'cross_policy', 'assumption', 'evidence', 'mechanism', 'claim', 'actor', 'research_source'],
+  17: ['assurance_challenge', 'finding', 'recommendation', 'causal_chain', 'option_appraisal', 'evaluation_plan', 'exploit', 'test', 'model', 'scenario', 'cross_policy', 'assumption', 'evidence', 'mechanism', 'claim', 'actor', 'research_source'],
+};
 /**
  * What an ADDENDUM pass's stages may emit, indexed by step within the pass.
  *

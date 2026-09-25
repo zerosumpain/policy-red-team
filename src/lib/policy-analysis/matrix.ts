@@ -25,7 +25,7 @@
 import { PROFILE_FIELDS, type Artefact } from './contracts';
 import { familyOf, RELATION_FAMILIES, type RelationFamilyKey } from './glossary';
 import { isBody, type Edge, type Network } from './network';
-import type { ActorView, Play } from './view';
+import { isShortProfile, type ActorView, type Play } from './view';
 
 /**
  * How long a cell may be before it is clipped.
@@ -114,6 +114,10 @@ const profileField = (profile: Artefact | null, key: string): Cell => {
 export function traitGrid(board: ActorView[], personas: { actorId: string | null }[] = []): TraitRow[] {
   const known = new Set(personas.map((p) => p.actorId).filter((id): id is string => Boolean(id)));
   return board
+    // A SHORT profile answers none of the six columns — it carries role, wants
+    // and powers only — so its row would be six blanks, and on a real paper
+    // there are two hundred of them. They stay on the drill and in the counts.
+    .filter((view) => !isShortProfile(view.profile))
     .map((view) => ({
       id: view.actor.id,
       label: view.actor.label,
