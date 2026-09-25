@@ -145,6 +145,18 @@ delete.** Do not weaken it.
   register:refresh` rewrites it. It is not under `data/`, which is gitignored
   for the settings key. `build.mjs` fails if the refresher's page URL reaches a
   fixture bundle.
+- **A body's PUBLIC RECORD IS evidence; its persona is not.** `policy_body_evidence`
+  is dated documents from GOV.UK and Parliament, keyed by register body and
+  shared by every owner. A run gets up to three per fully profiled body as
+  stage 4's own `research_source` artefacts (`s4_body_<n>`), so provenance
+  treats them as sources. A sealed run, one that may not search, and a `none`
+  install READ the store and never FETCH. Queries are built from the register,
+  never from a paper. See `body-evidence.ts`.
+- **The public-record APIs are swapped out of every test.** `build.mjs`
+  redirects `server/body-sources` to its fixture in both fixture bundles and
+  asserts the three API addresses are absent; `tests/setup-integration.ts`
+  mocks it for every integration file. Keep each address ONE literal in
+  `body-sources.ts`, or the check stops seeing it.
 - **"Seen in N papers" counts documents.** Two runs of one file are one paper,
   in the figure, in a prior and on the dossier page. The walk submits a
   DIFFERENT second document for exactly this reason.

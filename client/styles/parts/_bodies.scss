@@ -1,0 +1,24 @@
+@use "../govuk" as govuk;
+
+// ── The bodies × papers grid (phase 19, workstream X) ─────────────────────
+//
+// THE BODY NAME SURVIVES THE HORIZONTAL SCROLL, for the reason
+// `.prt-actors__bodies` gives: a column of papers scrolled to the right is
+// "3 asks · 1 play" belonging to nobody. Restated rather than shared, as that
+// file explains.
+.prt-bodies {
+  th[scope="row"] {
+    position: sticky;
+    left: 0;
+    background: govuk.govuk-colour("white");
+    overflow-wrap: break-word;
+    min-width: 12rem;
+    border-right: 1px solid govuk.govuk-colour("black", $variant: "tint-50");
+  }
+}
+
+@media print {
+  .prt-bodies th[scope="row"] {
+    position: static;
+  }
+}

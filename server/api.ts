@@ -219,6 +219,22 @@ export async function handleApi(
     return true;
   }
 
+  /*
+   * GET /api/policy-analysis/bodies — every register body the library has met,
+   * against every paper that named it, and the clashes the rule finds between
+   * papers. Phase 19, workstream X. Before the /:id routes, or "bodies" is read
+   * as an id.
+   *
+   * THE OWNER'S OWN PAGE, and nothing here leaves: it is built from the persona
+   * library and the papers' graphs, which `share.ts` withholds and no export
+   * reads. Sealed papers are not in it at all.
+   */
+  if (segments[0] === 'bodies' && segments.length === 1 && method === 'GET') {
+    const { bodiesGrid } = await import('$lib/policy-analysis/server/intel');
+    sendJson(res, 200, { ...(await bodiesGrid(owner())), readOnly: isReadOnly() });
+    return true;
+  }
+
   // The persona library. Before the /:id routes, or "personas" is read as an id.
   if (segments[0] === 'personas') {
     const { affectedGroups, duplicateSuggestions, listPersonas, personaDetail, removePersona } = await import('$lib/policy-analysis/server/personas');
@@ -245,6 +261,43 @@ export async function handleApi(
       const { searchBodies } = await import('$lib/policy-analysis/server/personas');
       const q = (url.searchParams.get('q') ?? '').slice(0, 120);
       sendJson(res, 200, { results: q.trim() ? await searchBodies(q) : [] });
+      return true;
+    }
+    /*
+     * GET …/personas/:id/intel — the body across papers: what each asked of it,
+     * its public record, where it sits in the register's hierarchy, and any
+     * clash between papers that involves it. Phase 19, workstream X.
+     */
+    if (segments.length === 3 && segments[2] === 'intel' && method === 'GET') {
+      const { bodyIntel } = await import('$lib/policy-analysis/server/intel');
+      const intel = await bodyIntel(owner(), segments[1]);
+      if (!intel) throw new HttpError(404, 'No such persona.');
+      sendJson(res, 200, intel);
+      return true;
+    }
+    /*
+     * POST …/personas/:id/evidence — check the public record for this body again
+     * now, rather than when its thirty days run out.
+     *
+     * FREE, and still a POST behind the read-only gate, because it writes to the
+     * shared store and it makes requests to other people's services. A brake
+     * like the enquiry's, so a stuck loop cannot hammer GOV.UK or Parliament —
+     * not because it costs anything.
+     */
+    if (segments.length === 3 && segments[2] === 'evidence' && method === 'POST') {
+      const persona = (await personaDetail(owner(), segments[1]))?.persona;
+      if (!persona) throw new HttpError(404, 'No such persona.');
+      if (!persona.bodyId) throw new HttpError(409, 'This body is not matched to the GOV.UK list, so there is no public record to check. Find it on the list first.');
+      const limit = rateLimit(`body-evidence:${owner()}`, { capacity: 6, refillPerSecond: 1 / 60 });
+      if (!limit.allowed) throw new HttpError(429, `That is enough checks for now. Try again in ${Math.max(1, Math.ceil(limit.retryAfterMs / 60000))} minutes.`);
+      const { refreshBody } = await import('$lib/policy-analysis/server/body-evidence');
+      const { registerIndex } = await import('$lib/policy-analysis/server/register');
+      const body = (await registerIndex()).bodies.get(persona.bodyId);
+      if (!body) throw new HttpError(409, 'That body is no longer on the GOV.UK list this install holds.');
+      const controller = new AbortController();
+      res.on('close', () => { if (!res.writableFinished) controller.abort(); });
+      const result = await refreshBody(body, { force: true, signal: controller.signal });
+      sendJson(res, 200, result);
       return true;
     }
     if (segments.length === 2 && method === 'GET') {

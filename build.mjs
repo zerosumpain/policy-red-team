@@ -34,7 +34,7 @@ const lib = path.join(root, 'src', 'lib');
  * and is erased before this runs. The importer is checked so a future `./provider`
  * somewhere else cannot be silently swapped too.
  */
-function fixtureProviderPlugin(target, registryTarget, tavilyTarget) {
+function fixtureProviderPlugin(target, registryTarget, tavilyTarget, bodySourcesTarget) {
   return {
     name: 'fixture-provider',
     setup(b) {
@@ -77,6 +77,22 @@ function fixtureProviderPlugin(target, registryTarget, tavilyTarget) {
         if (!args.path.includes('deepdive')) return null;
         return { path: tavilyTarget };
       });
+
+      /*
+       * AND THE PUBLIC-RECORD SOURCES — GOV.UK search, Parliament's committees
+       * and Hansard (phase 19, workstream X).
+       *
+       * Free and keyless, so not a question of money: a fixture run must not
+       * depend on a network it cannot promise, and the walk must not ask a
+       * government API about a synthetic paper's bodies. Exactly one module
+       * imports the adapter, and the importer is checked for the reason the
+       * provider's is.
+       */
+      b.onResolve({ filter: /^\.\/body-sources$/ }, (args) => {
+        const from = args.importer.replace(/\\/g, '/');
+        if (!from.endsWith('/policy-analysis/server/body-evidence.ts')) return null;
+        return { path: bodySourcesTarget };
+      });
     },
   };
 }
@@ -113,12 +129,16 @@ await bundle({ entry: 'server/index.ts', outfile: path.join(root, 'dist', 'serve
 // run by hand, writes a file that is committed, and has no business in a
 // bundle that serves readers. See the GOV.UK line in ENDPOINTS below.
 await bundle({ entry: 'server/register-refresh.ts', outfile: path.join(root, 'dist', 'register-refresh.js') });
+// `npm run research:bodies`: checks the public record for every body in the
+// library. Its own entry for the same reason — run by hand, never served.
+await bundle({ entry: 'server/research-bodies.ts', outfile: path.join(root, 'dist', 'research-bodies.js') });
 
 const fixtureProvider = () => [
   fixtureProviderPlugin(
     path.join(lib, 'policy-analysis', 'server', 'provider.fixture.ts'),
     path.join(lib, 'llm', 'providers', 'index.fixture.ts'),
-    path.join(lib, 'deepdive', 'tavily.fixture.ts')
+    path.join(lib, 'deepdive', 'tavily.fixture.ts'),
+    path.join(lib, 'policy-analysis', 'server', 'body-sources.fixture.ts')
   ),
 ];
 
@@ -172,6 +192,13 @@ const ENDPOINTS = [
   // avoids one. The refresher's page URL is one literal for exactly this check
   // — see `register-fetch.ts`. Phase 19.
   'www.gov.uk/api/organisations?page=',
+  // The three public-record APIs a body's track record comes from. Free, and
+  // on this list for the register's reason. Added AFTER the redirect above, in
+  // that order, as Tavily was: the names without the stub fail the build.
+  // Phase 19, workstream X.
+  'www.gov.uk/api/search.json',
+  'committees-api.parliament.uk',
+  'hansard-api.parliament.uk',
 ];
 for (const [name, source] of [['cli-fixture.js', fixture], ['server-fixture.js', fixtureServer]]) {
   const found = ENDPOINTS.filter((endpoint) => source.includes(endpoint));
@@ -182,4 +209,4 @@ for (const [name, source] of [['cli-fixture.js', fixture], ['server-fixture.js',
   }
 }
 
-console.log('built cli.js, cli-fixture.js, server.js, server-fixture.js and register-refresh.js in dist/');
+console.log('built cli.js, cli-fixture.js, server.js, server-fixture.js, register-refresh.js and research-bodies.js in dist/');

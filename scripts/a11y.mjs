@@ -138,6 +138,32 @@ const API_STUBS = {
   // `stages` draws the eighteen. A stub missing either renders an empty page
   // that audits clean, which is the failure this whole stub exists to avoid.
   '/api/policy-analysis': { analyses: [], models: [], stages: [], readOnly: false },
+  // Phase 19, workstream X: the bodies × papers grid. Two bodies, two papers
+  // and one clash, so the audit sees the sticky row headers, a scrolling table,
+  // a dash for "not named" and the side-by-side quotes — not an empty state.
+  '/api/policy-analysis/bodies': {
+    papers: [
+      { id: '00000000-0000-4000-8000-000000000001', title: 'Schools white paper: opportunity for every child', completedAt: '2026-09-01T00:00:00Z', sha256: 'a' },
+      { id: '00000000-0000-4000-8000-000000000002', title: 'Inspection reform', completedAt: '2026-09-20T00:00:00Z', sha256: 'b' },
+    ],
+    rows: [
+      { bodyId: 'govuk:department-for-education', name: 'Department for Education', papers: 2, load: 7, cells: {
+        '00000000-0000-4000-8000-000000000001': { duties: 3, powers: 1, plays: 1, worstBand: 'moderate', worstExposure: 0.4 },
+        '00000000-0000-4000-8000-000000000002': { duties: 1, powers: 0, plays: 2, worstBand: 'severe', worstExposure: 0.8 },
+      } },
+      { bodyId: 'govuk:ofsted', name: 'Ofsted', papers: 1, load: 1, cells: {
+        '00000000-0000-4000-8000-000000000002': { duties: 1, powers: 0, plays: 0, worstBand: null, worstExposure: null },
+      } },
+    ],
+    clashes: [{
+      bodyId: 'govuk:department-for-education', bodyName: 'Department for Education', otherId: 'govuk:ofsted', otherName: 'Ofsted',
+      rule: 'In one paper Department for Education is over Ofsted. In the other it is the other way round.',
+      a: { paper: { id: '00000000-0000-4000-8000-000000000001', title: 'Schools white paper: opportunity for every child', completedAt: '2026-09-01T00:00:00Z', sha256: 'a' }, words: 'Department for Education commissions Ofsted', quote: 'The Department commissions Ofsted to inspect every school.', artefactId: 's3_000_edge' },
+      b: { paper: { id: '00000000-0000-4000-8000-000000000002', title: 'Inspection reform', completedAt: '2026-09-20T00:00:00Z', sha256: 'b' }, words: 'Department for Education reports to Ofsted', quote: 'The Department will report to Ofsted on progress.', artefactId: 's3_001_edge' },
+    }],
+    personaOf: { 'govuk:department-for-education': '00000000-0000-4000-8000-00000000000a' },
+    readOnly: false,
+  },
 };
 
 async function listFiles(dir) {

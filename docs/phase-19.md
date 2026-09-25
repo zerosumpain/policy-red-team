@@ -183,3 +183,93 @@ Branch `phase19-analysis`. No migration. Prompt generation `3.2`.
   words gets more "other" plays. That is shown, not hidden.
 - It has not met a real paper. The fixture proves the plumbing, not the
   quality of the judgements.
+
+## Workstream X — actor intelligence: what landed
+
+Branch `phase19-intel`. Migration `0004-body-evidence.sql`.
+
+- **A dated public record for every register body.** `policy_body_evidence`
+  holds what GOV.UK and Parliament published about a body: title, link,
+  publisher, the date it was published, when it was fetched, and what it can
+  tell a red team — track record, money and staff, powers, its own aims, or
+  what it has said. `policy_body_evidence_checks` records when each source was
+  last asked, so "asked, and nothing" is an answer too. It is public data keyed
+  by register id and shared by every owner, like `policy_bodies`.
+- **Three free sources, no model, no key.** Each checked by fetching it on 25
+  September 2026:
+  - GOV.UK search by organisation slug —
+    `https://www.gov.uk/api/search.json?filter_organisations=ofsted&filter_content_store_document_type[]=corporate_report&…&order=-public_timestamp&fields[]=title&fields[]=link&fields[]=public_timestamp&fields[]=description&fields[]=content_store_document_type`
+  - Parliament committee reports, special reports and responses that name the
+    body — `https://committees-api.parliament.uk/api/Publications?SearchTerm="Ofsted"&PublicationTypeIds=1&PublicationTypeIds=2&PublicationTypeIds=12&SortOrder=PublicationDateDescending&Take=12`
+  - Hansard debates titled with the body —
+    `https://hansard-api.parliament.uk/search/debates.json?queryParameters.searchTerm="Ofsted"&queryParameters.orderBy=SittingDateDesc&queryParameters.take=12`
+
+  A live check returned 12/12/12 records for Ofsted, 12/11/9 for the
+  Department for Education and 12/0/2 for Skills England.
+- **What a record answers is a rule.** On GOV.UK's document kind and the title:
+  "annual report and accounts" is money and staff, "framework document" is
+  powers, a committee response is what the body said back. Thirty days a check;
+  a source that failed is asked again the next day.
+- **It reaches a run as evidence.** For each body stage 4 profiles in full, up
+  to three records — one of each kind first, newest first — become the stage's
+  own `research_source` artefacts (`s4_body_<n>`, origin `external_evidence`,
+  the publication date in `freshness`). They go in that body's call after its
+  own context, and in the same body's stage-10 call, never in the shared block.
+  A profile or play that cites one rests on a source; a persona prior still
+  does not. Stage 4 and 10 prompts say so, and ask for the title and year in
+  `precedent`.
+- **Fetching is narrower than reading.** Any run may read the store. Only an
+  unsealed run allowed to search, on an install whose search is not `none`,
+  fetches what is stale. The query is the register's slug or official name,
+  and the in-run document guard (`quotesDocument`) still runs over the name.
+- **`npm run research:bodies`** checks every body in the library (stale
+  sources only; `--force` for all). It opens the database, so stop the server
+  first, as for `npm run assess`.
+- **Stage 11 reads the library.** Neighbours are ranked by how many register
+  bodies they share with this paper — this paper's actors resolved against the
+  register, theirs read from the persona library — and date only breaks ties.
+  Same document and sealed runs are still out. Each neighbour names its
+  `sharedBodies`, each actor carries its `bodyId`, and `crossIdentityHints`
+  calls two actors with the same body id `same_body` (basis `register`) and
+  never links two different ones.
+- **Bodies across papers** (`/bodies`): register bodies down, assessed papers
+  across, and in each cell what that paper gives the body — asks, powers,
+  plays and the worst one — counted from the paper's own graph. A table,
+  because a policy graph is a star.
+- **A body's page** gains four sections: where it sits on the register (parent
+  and child bodies, linked where the library has them), what each paper asks of
+  it, its asks next to what the record says about its money and staff, and a
+  dated track record with a free "Check again now".
+- **Clashes, by one rule.** Two papers that put the same two register bodies in
+  opposite order — one over the other in one paper, the other way round in the
+  next. Both sides are the papers' own edges, quoted and linked. Anything else
+  is shown as "same body, different asks" for the reader to judge.
+
+### Decision log — X
+
+| Decision | Options | Chosen | Why | Reversible |
+|---|---|---|---|---|
+| Where the record lives | on the persona; per owner; per register body | **per register body, shared** | it is public and the same whoever asks; a persona is per owner and is context | yes |
+| Sources | Tavily; free APIs; both | **free APIs only** | no money, no key, dated by the publisher; `researchPersona` stays the paid, reader-triggered path | yes |
+| legislation.gov.uk | include; descope | **descoped** | its search is by Act title, and a body's name is rarely in the title of the Act that set it up — nothing for most bodies, the wrong Act for some | yes |
+| GOV.UK kinds | everything; reports and papers | **reports, research, policy papers, consultation outcomes, impact assessments, statutory guidance** | transparency data is mostly monthly spend lines and would crowd out every report | yes |
+| Classifying a record | a model; rules | **rules on kind and title** | the store must not depend on a call; a reader can check a rule on sight | yes |
+| How it enters a run | a prompt field like `priorPersona`; `research_source` artefacts | **`research_source`, minted at stage 4** | provenance rules already treat a retrieved source as evidence; a field cannot be cited | yes |
+| How many | all; top K bodies × 3 | **the `FULL_PROFILES` bodies, 3 each** | per-call context stays small; later stages shed unread sources first | yes — `RUN_RECORDS_PER_BODY` |
+| Who may fetch at run time | every run; unsealed and searching | **unsealed, may search, search not `none`** | which bodies a sealed paper asked about says something about it; `none` is a reader saying the estate has no route out | yes |
+| `questionId` on a body record | a synthetic question; the actor | **the actor** | the question is "what is this body's record"; it must resolve, and does | yes |
+| Stage 11 ranking | recency; shared bodies | **shared bodies, then recency** | a paper from three months ago giving the same department a conflicting duty is the neighbour that matters | yes |
+| Clash rule | semantic comparison of duties; opposite hierarchy | **opposite hierarchy between the same two register bodies** | the only conflict the graph can show honestly; different duties are shown side by side instead | yes |
+| Redirect in tests | per file; setup file | **setup file, for every integration test** | a guarantee, not an accident of which bodies a fixture names | yes |
+
+### Left open
+
+- Hansard search is by title only; committee search by the quoted name still
+  catches reports that list a body among many (the Secondary Legislation
+  Scrutiny Committee names the DfE in passing). Both are shown as they come,
+  dated, and never more than three reach a run.
+- A resumed stage 4 whose store gained records between attempts asks a
+  different question and misses its cached answer. Rare, and the right way
+  round: it pays to use newer evidence.
+- The National Audit Office is still not on the register, so its reports only
+  arrive through Parliament's committees (the Public Accounts Committee).

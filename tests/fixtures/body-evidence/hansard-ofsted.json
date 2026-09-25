@@ -1,0 +1,53 @@
+{
+    "Results": [
+        {
+            "DebateSection": "Lords Chamber",
+            "SittingDate": "2024-09-05T00:00:00",
+            "House": "Lords",
+            "Title": "Ofsted",
+            "Rank": 240,
+            "DebateSectionExtId": "4BFB17F1-E7F2-462E-8338-6E553EAEAC42"
+        },
+        {
+            "DebateSection": "Commons Chamber",
+            "SittingDate": "2024-09-03T00:00:00",
+            "House": "Commons",
+            "Title": " Ofsted",
+            "Rank": 240,
+            "DebateSectionExtId": "AEB4DFE2-967F-4508-8681-3012120C884D"
+        },
+        {
+            "DebateSection": "Commons Chamber",
+            "SittingDate": "2024-03-11T00:00:00",
+            "House": "Commons",
+            "Title": "Ofsted Ratings",
+            "Rank": 240,
+            "DebateSectionExtId": "C6D58FD7-0487-435A-B86D-39242022A1F2"
+        },
+        {
+            "DebateSection": "Lords Chamber",
+            "SittingDate": "2024-02-13T00:00:00",
+            "House": "Lords",
+            "Title": "Ofsted: Pupil Absence Rates",
+            "Rank": 240,
+            "DebateSectionExtId": "9D625321-E595-468A-92C3-6BF23AF16259"
+        },
+        {
+            "DebateSection": "Westminster Hall",
+            "SittingDate": "2023-12-06T00:00:00",
+            "House": "Commons",
+            "Title": " Hertfordshire SEND Services:  Ofsted Findings",
+            "Rank": 240,
+            "DebateSectionExtId": "A0D62D93-8DFA-42ED-98A9-39F73E45B9A8"
+        },
+        {
+            "DebateSection": "Westminster Hall",
+            "SittingDate": "2022-12-06T00:00:00",
+            "House": "Commons",
+            "Title": " Ofsted School Inspections",
+            "Rank": 240,
+            "DebateSectionExtId": "22A8A750-64C6-4302-B2A8-376F50BCDB2E"
+        }
+    ],
+    "TotalResultCount": 39
+}

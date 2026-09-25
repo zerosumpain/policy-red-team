@@ -15,8 +15,16 @@ import { mkdtempSync } from 'node:fs';
 import { rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { afterAll } from 'vitest';
+import { afterAll, vi } from 'vitest';
 import './../src/lib/polyfills';
+
+// NO INTEGRATION TEST ASKS GOV.UK OR PARLIAMENT ANYTHING (phase 19, workstream
+// X). A run resolves its bodies against the register and checks their public
+// record at stage 4; every file here would reach three government APIs the
+// moment a fixture paper named a real body. Swapped for the same stand-in the
+// fixture build uses, for every file, so it is a guarantee rather than an
+// accident of which bodies the fixtures happen to name.
+vi.mock('../src/lib/policy-analysis/server/body-sources', () => import('../src/lib/policy-analysis/server/body-sources.fixture'));
 
 const root = mkdtempSync(path.join(tmpdir(), 'policy-test-'));
 process.env.POLICY_DATA_DIR = path.join(root, 'db');

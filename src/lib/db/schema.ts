@@ -215,6 +215,42 @@ export const policyPersonaObservations = pgTable('policy_persona_observations', 
 ]);
 
 /**
+ * What the public record says about a register body — phase 19, workstream X.
+ *
+ * PUBLIC DATA shared by every owner, like `policy_bodies`: fetched from free
+ * GOV.UK and Parliament APIs with queries built from the register's own names,
+ * never from a paper. `question` is set by rules on the document's kind and
+ * title (see `body-evidence.ts`), not by a model.
+ */
+export const policyBodyEvidence = pgTable('policy_body_evidence', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  bodyId: text('body_id').notNull().references(() => policyBodies.id, { onDelete: 'cascade' }),
+  source: text('source').notNull(),
+  sourceKind: text('source_kind').notNull(),
+  question: text('question').notNull(),
+  title: text('title').notNull(),
+  url: text('url').notNull(),
+  publisher: text('publisher'),
+  publishedAt: timestamp('published_at', { withTimezone: true }),
+  retrievedAt: timestamp('retrieved_at', { withTimezone: true }).notNull(),
+  expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+  excerpt: text('excerpt'),
+}, (t) => [
+  uniqueIndex('policy_body_evidence_url_idx').on(t.bodyId, t.url),
+  index('policy_body_evidence_body_idx').on(t.bodyId, t.publishedAt),
+]);
+
+/** When each source was last asked about each body. "Asked, and nothing" is an answer too. */
+export const policyBodyEvidenceChecks = pgTable('policy_body_evidence_checks', {
+  bodyId: text('body_id').notNull().references(() => policyBodies.id, { onDelete: 'cascade' }),
+  source: text('source').notNull(),
+  checkedAt: timestamp('checked_at', { withTimezone: true }).notNull(),
+  expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+  found: integer('found').notNull().default(0),
+  error: text('error'),
+}, (t) => [primaryKey({ columns: [t.bodyId, t.source] })]);
+
+/**
  * A reader's ruling on identity: this persona is (or is not) that persona, that
  * register body, or the body a paper meant by that name. The matcher never
  * links against a "different".

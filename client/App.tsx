@@ -45,6 +45,7 @@ const SetupSpend = lazy(() => import('./pages/Setup').then((m) => ({ default: m.
 const SetupSearch = lazy(() => import('./pages/Setup').then((m) => ({ default: m.SetupSearch })));
 const SetupEgress = lazy(() => import('./pages/Setup').then((m) => ({ default: m.SetupEgress })));
 const Persona = lazy(() => import('./pages/Persona').then((m) => ({ default: m.Persona })));
+const Bodies = lazy(() => import('./pages/Bodies').then((m) => ({ default: m.Bodies })));
 const PersonaRegister = lazy(() => import('./pages/PersonaIdentity').then((m) => ({ default: m.PersonaRegister })));
 const PersonaMerge = lazy(() => import('./pages/PersonaIdentity').then((m) => ({ default: m.PersonaMerge })));
 const PersonaMergeConfirm = lazy(() => import('./pages/PersonaIdentity').then((m) => ({ default: m.PersonaMergeConfirm })));
@@ -90,6 +91,8 @@ export function App() {
       <Route path="/setup/search" element={<Template backLink={{ href: '/setup' }}><SetupSearch /></Template>} />
       <Route path="/setup/egress" element={<Template backLink={{ href: '/setup' }}><SetupEgress /></Template>} />
       <Route path="/personas" element={<Template wide backLink={{ href: '/' }}><Personas /></Template>} />
+      {/* Phase 19, workstream X: every register body against every paper. */}
+      <Route path="/bodies" element={<Template wide backLink={{ href: '/personas', text: 'Back to the library' }}><Bodies /></Template>} />
       <Route path="/personas/:id" element={<Template wide backLink={{ href: '/personas', text: 'Back to the library' }}><Persona /></Template>} />
       {/* Phase 19: a reader's rulings on who a body is. Routes, never dialogs. */}
       <Route path="/personas/:id/register" element={<Template backLink={{ href: '/personas', text: 'Back to the library' }}><PersonaRegister /></Template>} />
