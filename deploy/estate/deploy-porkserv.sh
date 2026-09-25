@@ -49,6 +49,7 @@ rsync -a --delete \
   --exclude '.git' \
   --exclude '.data' \
   --exclude 'shots' \
+  --exclude '.claude' \
   --exclude '.env' \
   --exclude 'data' \
   ./ "$HOST:$DEST/"
