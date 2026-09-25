@@ -156,6 +156,16 @@ describe.skipIf(!local)('stage 11 compares papers that share bodies, not the lat
     // Date fills the rest, newest first.
     expect(neighbours.slice(1).map((n) => n.id)).toEqual(recent.slice(-5).reverse());
   });
+
+  it('gives two runs of one other document one slot, not two — the newer', async () => {
+    const older = await paperNaming('Repeat inspection paper', [{ id: 's2_000_of', label: 'Ofsted' }], [], new Date('2026-02-01T00:00:00Z'));
+    const newer = await paperNaming('Repeat inspection paper', [{ id: 's2_000_of', label: 'Ofsted' }], [], new Date('2026-03-01T00:00:00Z'));
+    const mine = await paper('Yet another paper', 'Yet another paper', new Date('2026-09-24T00:00:00Z'));
+    await db.transaction((tx) => persistArtefacts(tx, mine, 2, [actor('s2_000_of', 'Ofsted', 'agency')]));
+    const ids = (await neighbourSummaries(owner, mine)).map((n) => n.id);
+    expect(ids).toContain(newer);
+    expect(ids).not.toContain(older);
+  });
 });
 
 describe.skipIf(!local)('the cross-paper views', () => {
