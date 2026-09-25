@@ -91,7 +91,14 @@ export function isPassStage(ordinal: number): boolean { return ordinal >= PASS_B
 /** The first ordinal of pass `n`. */
 export function passOrdinal(pass: number, step: number): number { return PASS_BASE * pass + step; }
 
-export const PROMPT_VERSION = 'policy-analysis/3.0';
+/**
+ * The prompt generation, as `policy_model_calls` records it. The cache key also
+ * carries a hash of the prompt itself (`provider.ts`), which is what actually
+ * stops an old reply being replayed; this names the generation for a person
+ * reading the log. 3.1 is phase 19: every relationship type offered to stage 3,
+ * short profiles at stage 4, and a plain-English writing rule on every call.
+ */
+export const PROMPT_VERSION = 'policy-analysis/3.1';
 export const MAX_BYTES = 10 * 1024 * 1024;
 export const MAX_CHARACTERS = 600_000;
 export const MAX_PAGES = 400;

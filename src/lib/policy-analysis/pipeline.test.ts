@@ -10,7 +10,7 @@ import { executeStage, priority, rankActors } from './pipeline';
 import { preserveAmbiguity } from './entities';
 import { runPolicyTests, conflictingReportingLines } from './tests';
 import { stageFacts } from './stage-facts';
-import { systemPrompt } from './prompts';
+import { systemPrompt, WRITING_RULE } from './prompts';
 import { fixtureModel } from '../../../tests/fixtures/policy-analysis/model';
 const fixture = readFileSync('tests/fixtures/policy-analysis/policy.txt');
 const neverResearch = async () => ({ artefacts: [], warnings: ['Synthetic test: external research unavailable.'] });
@@ -191,6 +191,16 @@ describe('stage 3 — the graph fans out instead of asking for the whole policy 
  * the review of 25 September 2026 read had no `delivers` and no `is_measured_by`
  * edge at all.
  */
+describe('every stage is told to write plainly, and never to touch a quotation', () => {
+  it('carries the writing rule on every stage and every pass, once', () => {
+    const prompts = [...Array.from({ length: 18 }, (_, stage) => systemPrompt(stage)), systemPrompt(101, 'addendum'), systemPrompt(100, 'restatement'), systemPrompt(1, null, 'indexed')];
+    for (const prompt of prompts) expect(prompt.split(WRITING_RULE)).toHaveLength(2);
+    // The two things the rule must never loosen: quotes stay verbatim, and it is short.
+    expect(WRITING_RULE).toMatch(/never applies to sourceQuote/);
+    expect(WRITING_RULE.length).toBeLessThan(900);
+  });
+});
+
 describe('stage 3 is offered every relationship type', () => {
   it('names all of them, each once, with a meaning', () => {
     const prompt = systemPrompt(3);
