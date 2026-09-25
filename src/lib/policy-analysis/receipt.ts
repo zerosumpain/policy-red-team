@@ -7,7 +7,7 @@
  * cross-policy prose about the deleted paper on a neighbouring assessment, and
  * leaving that paper's artefacts inside other runs' stored prompts.
  *
- * So the purge ASKS — twelve probes, one per place a reference can live, each
+ * So the purge ASKS — thirteen probes, one per place a reference can live, each
  * returning a count that must be zero — and says plainly what it cannot reach,
  * because a receipt that quietly omits the model provider would be worse than no
  * receipt at all.

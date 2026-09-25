@@ -149,6 +149,33 @@ export const policyModelCalls = pgTable('policy_model_calls', {
   index('policy_model_calls_hash_idx').on(t.inputHash, t.promptVersion),
 ]);
 
+/**
+ * THE REGISTER OF PUBLIC BODIES — phase 19, `migrations/0003-actor-identity.sql`.
+ *
+ * Seeded from the GOV.UK organisations API through the committed snapshot in
+ * `register/`. Public data and shared by every owner: nothing here came
+ * from a paper. See `$lib/policy-analysis/register`.
+ */
+export const policyBodies = pgTable('policy_bodies', {
+  id: text('id').primaryKey(),
+  source: text('source').notNull(),
+  sourceId: text('source_id').notNull(),
+  name: text('name').notNull(),
+  slug: text('slug'),
+  acronym: text('acronym'),
+  format: text('format'),
+  status: text('status').notNull().default('live'),
+  closedStatus: text('closed_status'),
+  closedAt: timestamp('closed_at', { withTimezone: true }),
+  parentIds: jsonb('parent_ids').$type<string[]>().notNull().default([]),
+  childIds: jsonb('child_ids').$type<string[]>().notNull().default([]),
+  supersedesIds: jsonb('supersedes_ids').$type<string[]>().notNull().default([]),
+  supersededByIds: jsonb('superseded_by_ids').$type<string[]>().notNull().default([]),
+  aliases: jsonb('aliases').$type<string[]>().notNull().default([]),
+  webUrl: text('web_url'),
+  fetchedAt: timestamp('fetched_at', { withTimezone: true }).notNull(),
+}, (t) => [uniqueIndex('policy_bodies_source_idx').on(t.source, t.sourceId)]);
+
 export const policyPersonas = pgTable('policy_personas', {
   id: uuid('id').primaryKey().defaultRandom(),
   owner: text('owner').notNull(),
@@ -158,11 +185,15 @@ export const policyPersonas = pgTable('policy_personas', {
   summary: text('summary'),
   dossier: jsonb('dossier').$type<{ key: string; label: string; value: string; origin: string; confidence: number | null }[]>().notNull().default([]),
   jurisdiction: text('jurisdiction'),
+  /** The register body this persona IS. Two personas with one body are one body. */
+  bodyId: text('body_id').references(() => policyBodies.id, { onDelete: 'set null' }),
+  /** 1 once the dossier is computed from the observations rather than merged model prose. */
+  dossierVersion: integer('dossier_version').notNull().default(0),
   sightings: integer('sightings').notNull().default(0),
   researchedAt: timestamp('researched_at', { withTimezone: true }),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
-}, (t) => [index('policy_personas_owner_idx').on(t.owner, t.name)]);
+}, (t) => [index('policy_personas_owner_idx').on(t.owner, t.name), index('policy_personas_body_idx').on(t.owner, t.bodyId)]);
 
 export const policyPersonaObservations = pgTable('policy_persona_observations', {
   id: uuid('id').primaryKey().defaultRandom(),
@@ -175,10 +206,49 @@ export const policyPersonaObservations = pgTable('policy_persona_observations', 
   plays: jsonb('plays').$type<{ label: string; band: string; exposure: number; legality: string }[]>().notNull().default([]),
   sources: jsonb('sources').$type<{ url: string; title: string; quality: string }[]>().notNull().default([]),
   note: text('note'),
+  /** This paper's own summary of the body, so the persona's can be rebuilt when a paper goes. */
+  summary: text('summary'),
   observedAt: timestamp('observed_at', { withTimezone: true }).notNull().defaultNow(),
 }, (t) => [
   index('policy_persona_observations_persona_idx').on(t.personaId, t.observedAt),
   index('policy_persona_observations_analysis_idx').on(t.analysisId),
+]);
+
+/**
+ * A reader's ruling on identity: this persona is (or is not) that persona, that
+ * register body, or the body a paper meant by that name. The matcher never
+ * links against a "different".
+ */
+export const policyPersonaDecisions = pgTable('policy_persona_decisions', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  owner: text('owner').notNull(),
+  personaId: uuid('persona_id').notNull().references(() => policyPersonas.id, { onDelete: 'cascade' }),
+  /** `persona:<uuid>`, `body:<register id>` or `name:<normalised name>`. */
+  subject: text('subject').notNull(),
+  verdict: text('verdict').notNull(),
+  decidedBy: text('decided_by').notNull().default('human'),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  uniqueIndex('policy_persona_decisions_subject_idx').on(t.personaId, t.subject),
+  index('policy_persona_decisions_owner_idx').on(t.owner),
+]);
+
+/**
+ * Groups of people a paper affects — "children", "parents", "care leavers".
+ * Kept apart from bodies: a group has no strategy to profile, and a generic
+ * name like "children" was what split the persona library.
+ */
+export const policyAffectedGroups = pgTable('policy_affected_groups', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  owner: text('owner').notNull(),
+  analysisId: uuid('analysis_id').notNull().references(() => policyAnalyses.id, { onDelete: 'cascade' }),
+  actorId: text('actor_id').notNull(),
+  name: text('name').notNull(),
+  aliases: jsonb('aliases').$type<string[]>().notNull().default([]),
+  observedAt: timestamp('observed_at', { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  uniqueIndex('policy_affected_groups_actor_idx').on(t.analysisId, t.actorId),
+  index('policy_affected_groups_owner_idx').on(t.owner, t.name),
 ]);
 
 export const policyPasses = pgTable('policy_passes', {

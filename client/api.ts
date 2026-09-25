@@ -133,6 +133,44 @@ export interface PersonaSummary {
   worstBand: string | null;
   plays: number;
   researchNotes: number;
+  /** The GOV.UK register body this row IS, if one is known. */
+  bodyId?: string | null;
+  body?: { id: string; name: string } | null;
+}
+
+/**
+ * What the GOV.UK register says about a body. Mirrors `BodyFacts` in
+ * `$lib/policy-analysis/register`, which is the server's and decides.
+ * Public data: nothing here came from a paper.
+ */
+export interface BodyFacts {
+  id: string;
+  name: string;
+  acronym: string | null;
+  kind: string | null;
+  kindMeans: string | null;
+  parents: { id: string; name: string }[];
+  open: boolean;
+  status: string;
+  closedBecause: string | null;
+  closedOn: string | null;
+  replacedBy: { id: string; name: string }[];
+  url: string | null;
+}
+
+/** Two rows that may be one body recorded twice. Offered, never acted on. */
+export interface DuplicateSuggestion {
+  a: { id: string; name: string };
+  b: { id: string; name: string };
+  reason: string;
+  strong: boolean;
+}
+
+/** A group of people papers named — kept apart from bodies, because a group has no strategy. */
+export interface AffectedGroup {
+  name: string;
+  papers: number;
+  analyses: { id: string; title: string }[];
 }
 
 /** One assessment's or one research pass's contribution to a persona. */
@@ -154,6 +192,14 @@ export interface PersonaDossier {
   persona: PersonaSummary;
   observations: PersonaObservation[];
   analyses: { id: string; title: string; status: string; completedAt: string | null; policyArea: string | null }[];
+  /** The register body, with what GOV.UK says about it. */
+  body: BodyFacts | null;
+  /** Other rows that may be this same body. */
+  suggestions: { id: string; name: string; reason: string; strong: boolean }[];
+  /** Rows the reader said are NOT this body. */
+  notSameAs: { id: string; name: string }[];
+  /** Register bodies the reader said this is NOT. */
+  notBody: { id: string; name: string }[];
   readOnly: boolean;
 }
 
@@ -371,13 +417,33 @@ export const api = {
     forget(id);
     return request<{ receipt: unknown }>(`/api/policy-analysis/${id}`, { method: 'DELETE' });
   },
-  personas: () => request<{ personas: PersonaSummary[]; readOnly: boolean }>('/api/policy-analysis/personas'),
+  personas: () => request<{ personas: PersonaSummary[]; groups: AffectedGroup[]; duplicates: DuplicateSuggestion[]; readOnly: boolean }>('/api/policy-analysis/personas'),
   persona: (id: string) => request<PersonaDossier>(`/api/policy-analysis/personas/${id}`),
   forgetPersona: (id: string) => request<{ removed: boolean }>(`/api/policy-analysis/personas/${id}`, { method: 'DELETE' }),
   /** Spends: two model calls plus retrieval. Refused outright in a read-only copy. */
   researchPersona: (id: string) =>
     request<{ sources: number; traits: number }>(`/api/policy-analysis/personas/${id}/research`, { method: 'POST' }),
+  /** The GOV.UK list of organisations, searched. Public data; spends nothing. */
+  searchRegister: (q: string) =>
+    request<{ results: BodyFacts[] }>(`/api/policy-analysis/personas/register?q=${encodeURIComponent(q)}`),
+  /** Fold `other` into `id`. The observations move and the dossier is rebuilt. */
+  mergePersonas: (id: string, other: string) => personaAction<{ id: string }>(id, 'merge', { other }),
+  /** Record that two rows are different bodies, so neither is offered as the other again. */
+  notSamePersona: (id: string, other: string) => personaAction<{ recorded: boolean }>(id, 'different', { other }),
+  /** This row is (or is not) that GOV.UK body. */
+  linkBody: (id: string, bodyId: string, verdict: 'same' | 'different') =>
+    personaAction<{ sameBodyAs: { id: string; name: string }[] }>(id, 'body', { bodyId, verdict }),
+  /** One paper meant a different body: move its sighting to a row of its own. */
+  splitSighting: (id: string, observationId: string) => personaAction<{ id: string }>(id, 'split', { observationId }),
 };
+
+function personaAction<T>(id: string, action: string, body: Record<string, string>): Promise<T> {
+  return request<T>(`/api/policy-analysis/personas/${id}/${action}`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+}
 
 /**
  * The admin panel, which is the only part of this service behind a password.

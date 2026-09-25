@@ -19,6 +19,7 @@
  * assessment in front of you is the opposite of a red team.
  */
 import type { PersonaObservation, PersonaTrait } from '$lib/policy-analysis/personas';
+import { travelsOf } from '$lib/policy-analysis/travels';
 
 /** One play, and which paper found it. */
 export type DossierPlay = {
@@ -36,6 +37,8 @@ export type Sighting = {
   /** The observation's own id. A paper can produce more than one, so nothing else is a stable key. */
   id: string;
   analysisId: string | null;
+  /** Which PAPER this was: the document's hash where known, so two runs of one document are one paper. */
+  paper: string;
   title: string;
   observedAt: string | null;
   traits: PersonaTrait[];
@@ -121,6 +124,7 @@ export function dossier(observations: PersonaObservation[]): Dossier {
     .map((o) => ({
       id: o.id,
       analysisId: o.analysisId,
+      paper: o.documentSha ? `sha:${o.documentSha}` : o.analysisId ? `analysis:${o.analysisId}` : `title:${o.analysisTitle ?? ''}`,
       title: o.analysisTitle ?? 'An assessment no longer in this install',
       observedAt: o.observedAt,
       traits: o.traits,
@@ -153,8 +157,10 @@ export function dossier(observations: PersonaObservation[]): Dossier {
  */
 function papers(sightings: Sighting[]): { title: string; traits: PersonaTrait[] }[] {
   const grouped = new Map<string, { title: string; traits: PersonaTrait[] }>();
+  // BY DOCUMENT since phase 19: two runs of one paper agreeing with each other
+  // is one paper saying the same thing twice, which is not agreement.
   for (const sighting of sightings) {
-    const key = sighting.analysisId ?? `title:${sighting.title}`;
+    const key = sighting.paper;
     const found = grouped.get(key);
     if (found) found.traits.push(...sighting.traits);
     else grouped.set(key, { title: sighting.title, traits: [...sighting.traits] });
@@ -173,6 +179,13 @@ function papers(sightings: Sighting[]): { title: string; traits: PersonaTrait[] 
  *
  * A trait said once, or said identically everywhere, is not here — it is in the
  * dossier proper, which is what `foldTraits` already produced.
+ *
+ * ON THE PART THAT TRAVELS, since phase 19. Two papers about two policies each
+ * name their own budget and their own deadline, so compared on the whole
+ * wording almost every trait read as a disagreement — "£523 million by 2028"
+ * against "£40 million from April 2026" is two papers, not two views of the
+ * body. The paper-specific sentences are still in each sighting below; what is
+ * compared here is what the library keeps.
  */
 type Readings = Map<string, { origin: string; where: Set<string> }>;
 
@@ -180,7 +193,7 @@ function index(sightings: Sighting[]): Map<string, { label: string; values: Read
   const byKey = new Map<string, { label: string; values: Readings }>();
   for (const paper of papers(sightings)) {
     for (const trait of paper.traits) {
-      const value = flat(trait.value);
+      const value = flat(travelsOf(trait) ?? '');
       if (!value) continue;
       const entry = byKey.get(trait.key) ?? { label: trait.label, values: new Map() as Readings };
       const reading = entry.values.get(value) ?? { origin: trait.origin, where: new Set<string>() };

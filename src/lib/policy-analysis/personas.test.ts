@@ -2,7 +2,7 @@
 // what may not.
 import { describe, expect, it } from 'vitest';
 import { artefact, ASSURED_SYNTHESIS_STAGE, PERSONA_STAGE, PERSONA_TRAITS, SYNTHESIS_STAGE, STAGES, type Artefact } from './contracts';
-import { foldTraits, matchPersona, observationFromProfile, personaPrior, playsFor, sendableQueries, type PersonaObservation, type PersonaRecord } from './personas';
+import { foldTraits, isAffectedGroup, matchPersona, nameSubject, observationFromProfile, onePerActor, personaPrior, personaSubject, playsFor, possibleDuplicates, rebuildDossier, sendableQueries, travellingValue, type PersonaObservation, type PersonaRecord } from './personas';
 import { documentShingles } from './query-guard';
 import { executeStage } from './pipeline';
 
@@ -96,12 +96,12 @@ describe('a prior is bounded, and never reads the run it is enriching', () => {
 
   it('excludes the running analysis from the track record', () => {
     const prior = personaPrior('s2_0', { persona: persona(), basis: 'Identical name' }, observations, 'this-one');
-    expect(prior.trackRecord.map((p) => p.label)).toEqual(['Elsewhere']);
+    expect(prior!.trackRecord.map((p) => p.label)).toEqual(['Elsewhere']);
   });
 
   it('caps the traits it carries', () => {
     const dossier = Array.from({ length: 30 }, (_, i) => ({ key: `k${i}`, label: `l${i}`, value: 'v', origin: 'structural_inference', confidence: null }));
-    expect(personaPrior('s2_0', { persona: persona({ dossier }), basis: 'x' }, [], null).traits).toHaveLength(12);
+    expect(personaPrior('s2_0', { persona: persona({ dossier }), basis: 'x' }, [], null)!.traits).toHaveLength(12);
   });
 });
 
@@ -167,5 +167,155 @@ describe('a persona query never carries the paper it was drawn from', () => {
   it('does nothing when the persona has no documents behind it', () => {
     const asked = [query('q1', 'anything at all here about a named public body')];
     expect(sendableQueries(asked, new Set())).toHaveLength(1);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Phase 19 — actor identity. Every case below is a measurement from the live
+// library on 25 September 2026, reproduced in miniature.
+// ---------------------------------------------------------------------------
+
+const trait = (key: string, value: string, origin = 'extracted_fact') => ({ key, label: key, value, origin, confidence: 0.8 });
+const observation = (over: Partial<PersonaObservation> = {}): PersonaObservation => ({
+  id: 'o', personaId: persona().id, kind: 'assessment', analysisId: 'a1', analysisTitle: 'Paper one', actorId: 's2_0',
+  traits: [], plays: [], sources: [], note: null, summary: null, observedAt: '2026-09-01T00:00:00.000Z', ...over,
+});
+
+describe('the register decides before the name does', () => {
+  it('links "DfE" typed as an agency to the Department for Education once both carry the register id', () => {
+    // Never linked on the live box: the acronym caps at 0.84 and the types differed.
+    const dfe = persona({ aliases: [], bodyId: 'govuk:department-for-education' });
+    const match = matchPersona({ id: 's2_0', label: 'DfE', entityType: 'agency', aliases: [] }, [dfe], { bodyId: 'govuk:department-for-education', bodyName: 'Department for Education' });
+    expect(match?.persona.id).toBe(dfe.id);
+    expect(match?.basis).toContain('GOV.UK register');
+  });
+
+  it('never links two different register bodies, however alike the names', () => {
+    const one = persona({ name: 'Education Funding Agency', aliases: [], bodyId: 'govuk:education-funding-agency' });
+    const match = matchPersona({ id: 's2_0', label: 'Education Funding Agency', entityType: 'agency', aliases: [] }, [one], { bodyId: 'govuk:education-and-skills-funding-agency' });
+    expect(match).toBeNull();
+  });
+
+  it('lets a department and an agency meet on an identical name, which exact type equality refused', () => {
+    const ofsted = persona({ name: 'Ofsted', entityType: 'department', aliases: [] });
+    expect(matchPersona({ id: 's2_0', label: 'Ofsted', entityType: 'agency', aliases: [] }, [ofsted])?.persona.id).toBe(ofsted.id);
+  });
+
+  it('keeps a person apart from a body of the same name, as before', () => {
+    expect(matchPersona({ id: 's2_0', label: 'Ofsted', entityType: 'person', aliases: [] }, [persona({ name: 'Ofsted', entityType: 'agency' })])).toBeNull();
+  });
+});
+
+describe("a reader's ruling reaches the identity policy", () => {
+  it('never links a name the reader said is a different body', () => {
+    const dfe = persona();
+    const rulings = [{ personaId: dfe.id, subject: nameSubject('DfE'), verdict: 'different' as const }];
+    expect(matchPersona({ id: 's2_0', label: 'DfE', entityType: 'department', aliases: [] }, [dfe], { rulings })).toBeNull();
+  });
+
+  it('links a name the reader said is the same body, across types', () => {
+    const dfe = persona({ aliases: [] });
+    const rulings = [{ personaId: dfe.id, subject: nameSubject('The Department'), verdict: 'same' as const }];
+    expect(matchPersona({ id: 's2_0', label: 'The Department', entityType: 'concept', aliases: [] }, [dfe], { rulings })?.persona.id).toBe(dfe.id);
+  });
+});
+
+describe('groups of people are not bodies', () => {
+  it('never matches or opens a persona for a user group', () => {
+    // "Children" twice was the live library's worst split.
+    const children = persona({ name: 'Children', entityType: 'user_group', aliases: ['children'] });
+    expect(isAffectedGroup('user_group')).toBe(true);
+    expect(matchPersona({ id: 's2_0', label: 'Children', entityType: 'user_group', aliases: [] }, [children])).toBeNull();
+  });
+});
+
+describe('one link per actor', () => {
+  it('keeps the fullest of two links for one actor and says how many it dropped', () => {
+    const link = (id: string, observed: { value: string }[]) => artefact(id, 'persona_link', 'Children', 'x', { actorId: 's2_3', observed }, {});
+    const { kept, dropped } = onePerActor([link('s13_0_a', [{ value: 'x' }]), link('s13_0_b', [{ value: 'x' }, { value: 'y' }])]);
+    expect(dropped).toBe(1);
+    expect(kept.map((k) => k.id)).toEqual(['s13_0_b']);
+  });
+});
+
+describe('what travels between policies', () => {
+  it('drops the money, the year and the named programme from the standing dossier', () => {
+    const value = 'Sets national children’s social care policy. Committed £523 million annually for the Families First Partnership. Reforms land by 2028.';
+    expect(travellingValue(value)).toBe('Sets national children’s social care policy.');
+  });
+
+  it('drops a sentence naming one of the paper’s own programmes', () => {
+    expect(travellingValue('Funds councils. Runs Best Start Family Hubs directly.', ['Best Start Family Hubs'])).toBe('Funds councils.');
+  });
+
+  it('keeps "May" as a power rather than reading it as a month', () => {
+    expect(travellingValue('May direct a local authority.')).toBe('May direct a local authority.');
+  });
+
+  it('returns nothing when nothing travels', () => {
+    expect(travellingValue('£40m in 2025-26.')).toBeNull();
+  });
+});
+
+describe('the dossier is computed from what is left', () => {
+  it('folds each paper’s travelling traits and ignores what the model carried from the library', () => {
+    const { dossier, summary } = rebuildDossier([
+      observation({ id: 'o1', traits: [trait('mandate', 'Sets policy. Spends £1bn.')], summary: 'Older.' }),
+      observation({ id: 'o2', analysisId: 'a2', observedAt: '2026-09-02T00:00:00.000Z', traits: [trait('resources', 'Carried over', 'prior_assessment')], summary: 'Newer.' }),
+    ]);
+    expect(dossier.map((t) => [t.key, t.value])).toEqual([['mandate', 'Sets policy.']]);
+    expect(summary).toBe('Newer.');
+  });
+
+  it('forgets a deleted paper entirely: its traits and its summary', () => {
+    const kept = observation({ id: 'o1', traits: [trait('mandate', 'Sets policy.')], summary: 'Kept.' });
+    const { dossier, summary } = rebuildDossier([kept]);
+    expect(dossier.map((t) => t.value)).toEqual(['Sets policy.']);
+    expect(summary).toBe('Kept.');
+  });
+
+  it('prefers the travelling form computed at write time', () => {
+    const { dossier } = rebuildDossier([observation({ traits: [{ ...trait('mandate', 'Runs the Foo Hubs. Sets policy.'), travels: 'Sets policy.' }] })]);
+    expect(dossier[0].value).toBe('Sets policy.');
+  });
+});
+
+describe('a re-run of the same paper is not another policy', () => {
+  it('offers no prior when every other sighting is the same document', () => {
+    // The live library's only "seen twice" personas were two runs of one paper.
+    const observations = [observation({ id: 'o1', analysisId: 'run-1' }), observation({ id: 'o2', analysisId: 'run-2' })];
+    expect(personaPrior('s2_0', { persona: persona(), basis: 'x' }, observations, new Set(['run-1', 'run-2']))).toBeNull();
+  });
+
+  it('builds the prior only from the other papers', () => {
+    const observations = [
+      observation({ id: 'o1', analysisId: 'same', traits: [trait('mandate', 'From the same paper.')] }),
+      observation({ id: 'o2', analysisId: 'other', traits: [trait('judgedOn', 'From another paper.')] }),
+    ];
+    const prior = personaPrior('s2_0', { persona: persona(), basis: 'x' }, observations, new Set(['same', 'this']));
+    expect(prior?.traits.map((t) => t.value)).toEqual(['From another paper.']);
+    expect(prior?.sightings).toBe(1);
+  });
+});
+
+describe('possible duplicates are offered, not acted on', () => {
+  it('offers two personas on one register body as a strong pair', () => {
+    const a = persona({ id: '11111111-1111-4111-8111-111111111111', name: 'DfE', bodyId: 'govuk:dfe' });
+    const b = persona({ id: '22222222-2222-4222-8222-222222222222', name: 'Department for Education', bodyId: 'govuk:dfe' });
+    const [pair] = possibleDuplicates([a, b], [], new Map([['govuk:dfe', 'Department for Education']]));
+    expect(pair.strong).toBe(true);
+    expect(pair.reason).toContain('Department for Education');
+  });
+
+  it('offers an abbreviation and its expansion as a weak pair', () => {
+    const a = persona({ id: '11111111-1111-4111-8111-111111111111', name: 'NAO', aliases: [] });
+    const b = persona({ id: '22222222-2222-4222-8222-222222222222', name: 'National Audit Office', aliases: [] });
+    expect(possibleDuplicates([a, b], [])[0]?.strong).toBe(false);
+  });
+
+  it('does not offer a pair the reader ruled different', () => {
+    const a = persona({ id: '11111111-1111-4111-8111-111111111111', name: 'DfE', bodyId: 'govuk:dfe' });
+    const b = persona({ id: '22222222-2222-4222-8222-222222222222', name: 'DfE', bodyId: 'govuk:dfe' });
+    expect(possibleDuplicates([a, b], [{ personaId: a.id, subject: personaSubject(b.id), verdict: 'different' }])).toEqual([]);
   });
 });

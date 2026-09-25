@@ -133,7 +133,7 @@ describe.skipIf(!local)('a sealed run on isolated Postgres', () => {
     expect(neighbours.map((n) => n.id)).not.toContain(shut.id);
   });
 
-  it('purges to twelve zeroes, with the key destroyed first', async () => {
+  it('purges to thirteen zeroes, with the key destroyed first', async () => {
     const owner = nextOwner();
     const a = await create(owner, true);
     expect(await readKey(a.id)).not.toBeNull();
@@ -154,7 +154,7 @@ describe.skipIf(!local)('a sealed run on isolated Postgres', () => {
     expect(await readKey(a.id)).toBeNull();
 
     const probes = await census(a.id);
-    expect(probes).toHaveLength(12);
+    expect(probes).toHaveLength(13);
     expect(probes.filter((p) => p.rows !== 0)).toEqual([]);
 
     // The queue envelope is gone too — `policy_stages.run_id` has no cascade, so

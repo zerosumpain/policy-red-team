@@ -109,6 +109,10 @@ async function bundle({ outfile, plugins = [], entry = 'cli.ts' }) {
 
 await bundle({ outfile: path.join(root, 'dist', 'cli.js') });
 await bundle({ entry: 'server/index.ts', outfile: path.join(root, 'dist', 'server.js') });
+// The register refresher is its own entry and nothing else imports it: it is
+// run by hand, writes a file that is committed, and has no business in a
+// bundle that serves readers. See the GOV.UK line in ENDPOINTS below.
+await bundle({ entry: 'server/register-refresh.ts', outfile: path.join(root, 'dist', 'register-refresh.js') });
 
 const fixtureProvider = () => [
   fixtureProviderPlugin(
@@ -163,6 +167,11 @@ const ENDPOINTS = [
   // list in phase 18 along with `tavily.fixture.ts`, and in that order: adding
   // the name without the redirect fails the build on the next line.
   'api.tavily.com',
+  // Free and public, so not a question of money: a fixture run must not depend
+  // on a network it cannot promise, and the committed snapshot is how it
+  // avoids one. The refresher's page URL is one literal for exactly this check
+  // — see `register-fetch.ts`. Phase 19.
+  'www.gov.uk/api/organisations?page=',
 ];
 for (const [name, source] of [['cli-fixture.js', fixture], ['server-fixture.js', fixtureServer]]) {
   const found = ENDPOINTS.filter((endpoint) => source.includes(endpoint));
@@ -173,4 +182,4 @@ for (const [name, source] of [['cli-fixture.js', fixture], ['server-fixture.js',
   }
 }
 
-console.log('built cli.js, cli-fixture.js, server.js and server-fixture.js in dist/');
+console.log('built cli.js, cli-fixture.js, server.js, server-fixture.js and register-refresh.js in dist/');

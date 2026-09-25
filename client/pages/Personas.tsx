@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router';
-import { api, type PersonaSummary } from '../api';
+import { api, type AffectedGroup, type DuplicateSuggestion, type PersonaSummary } from '../api';
 import { Table, type Column } from '../govuk';
 import { BandMark } from '../BandMark';
 import { Bar } from '../report/Metrics';
@@ -22,10 +22,20 @@ import { usePageTitle } from '../layout/Template';
 export function Personas() {
   usePageTitle('Persona library');
   const [rows, setRows] = useState<PersonaSummary[] | null>(null);
+  const [groups, setGroups] = useState<AffectedGroup[]>([]);
+  const [duplicates, setDuplicates] = useState<DuplicateSuggestion[]>([]);
+  const [readOnly, setReadOnly] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    api.personas().then((data) => setRows(data.personas)).catch((err: Error) => setError(err.message));
+    api.personas()
+      .then((data) => {
+        setRows(data.personas);
+        setGroups(data.groups ?? []);
+        setDuplicates(data.duplicates ?? []);
+        setReadOnly(data.readOnly);
+      })
+      .catch((err: Error) => setError(err.message));
   }, []);
 
   const seenTwice = rows?.filter((r) => r.sightings > 1).length ?? 0;
@@ -69,6 +79,55 @@ export function Personas() {
           </div>
         </div>
       ) : null}
+
+      {/* ONE BODY RECORDED TWICE, offered and never acted on. The same GOV.UK
+          body is the strong case; a short name and its long form, or two names
+          very alike, the weak one. A pair the reader rules different goes. */}
+      {duplicates.length ? (
+        <section aria-labelledby="library-duplicates" className="govuk-grid-row">
+          <div className="govuk-grid-column-two-thirds">
+            <h2 className="govuk-heading-m" id="library-duplicates">These may be the same body — {duplicates.length}</h2>
+            <p className="govuk-body">
+              Each pair may be one body the library has recorded twice. Check them side by side
+              and say whether they are the same.
+            </p>
+            <ul className="govuk-list govuk-list--bullet">
+              {duplicates.map((pair) => (
+                <li key={`${pair.a.id}-${pair.b.id}`}>
+                  {readOnly ? `${pair.a.name} and ${pair.b.name}` : (
+                    <Link className="govuk-link" to={`/personas/${pair.a.id}/merge/${pair.b.id}`}>
+                      {pair.a.name} and {pair.b.name}
+                    </Link>
+                  )}{' '}
+                  <span className="prt-meta">— {pair.reason}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        </section>
+      ) : null}
+
+      {/* GROUPS OF PEOPLE ARE NOT BODIES. 18 of the 35 personas on the live box
+          were groups like "children", and a generic name like that is what split
+          the library. They are listed here, for what they are: who the papers
+          say a policy affects. */}
+      {groups.length ? (
+        <section aria-labelledby="library-groups" className="govuk-grid-row">
+          <div className="govuk-grid-column-two-thirds">
+            <h2 className="govuk-heading-m" id="library-groups">Groups of people the papers name — {groups.length}</h2>
+            <p className="govuk-body">
+              The people a policy affects, such as children or parents. They are kept apart from the
+              bodies above: a group has no plan of its own to profile.
+            </p>
+            <Table
+              caption="Named in the most papers first"
+              captionSize="s"
+              columns={[{ header: 'Group' }, { header: 'Papers', numeric: true }]}
+              rows={groups.map((g) => [g.name, String(g.papers)])}
+            />
+          </div>
+        </section>
+      ) : null}
     </>
   );
 }
@@ -101,8 +160,10 @@ function Library({ rows }: { rows: PersonaSummary[] }) {
   const showLastSeen = varies((row) => recorded(row.lastSeen));
   const mostPlays = Math.max(1, ...rows.map((row) => row.plays));
 
+  const showBody = rows.some((row) => row.body);
   const columns: Column[] = [
     { header: 'Body' }, { header: 'Kind' },
+    ...(showBody ? [{ header: 'On GOV.UK as' }] : []),
     ...(showPapers ? [{ header: 'Papers', numeric: true }] : []),
     { header: 'Plays', numeric: true },
     { header: 'Worst band' },
@@ -136,6 +197,7 @@ function Library({ rows }: { rows: PersonaSummary[] }) {
         rows={rows.map((row) => [
           <Link key="n" className="govuk-link" to={`/personas/${row.id}`}>{row.name}</Link>,
           row.entityType.replaceAll('_', ' ') || '—',
+          ...(showBody ? [row.body?.name ?? <span key="g" className="prt-meta">Not matched</span>] : []),
           ...(showPapers ? [String(row.sightings)] : []),
           <Bar key="p" value={row.plays} max={mostPlays} digits={0} scale={`plays, 0 to ${mostPlays} on this table`} />,
           <BandMark key="b" band={row.worstBand} />,
