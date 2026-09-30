@@ -41,6 +41,7 @@ export type MoveSizes = {
 };
 
 export type MoveCounts = {
+  overview?: string;
   verdict?: string;
   causality?: string;
   threats?: string;

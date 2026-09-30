@@ -1,3 +1,4 @@
+import type { OverviewCard } from '$lib/overview';
 /**
  * Talking to the server.
  *
@@ -34,6 +35,12 @@ export interface AnalysisRow {
   completedAt: string | null;
   jurisdiction: string | null;
   policyArea: string | null;
+  /**
+   * How it came out, for the landing page's cards (phase 20). Only on the list
+   * route, only for runs with a report, and null where there is nothing to
+   * count — see `overviewCard` in `$lib/overview`.
+   */
+  summary?: OverviewCard | null;
 }
 
 export interface StageRow {

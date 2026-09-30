@@ -1,9 +1,10 @@
-import { useEffect, useState } from 'react';
+import { Fragment, useEffect, useState } from 'react';
 import { Link } from 'react-router';
 import { api, type AnalysisRow } from '../api';
-import { NotificationBanner, Table, Tag, type TagColour } from '../govuk';
+import { Details, NotificationBanner, Table, Tag, type TagColour } from '../govuk';
+import type { OverviewCard } from '$lib/overview';
 import { MOVES } from '../moves';
-import { spent, statusLabel, statusColour } from '../status';
+import { isFinished, spent, statusLabel, statusColour } from '../status';
 import { usePageTitle } from '../layout/Template';
 
 /**
@@ -105,9 +106,41 @@ export function Home() {
         stages. Bracketing them would be inventing a correspondence the pipeline
         does not assert, on the first screen of the service.
       */}
+      {/*
+        THE LATEST FINISHED ASSESSMENT LEADS (phase 20). A reader arriving here
+        was almost always sent to read one assessment, and it is almost always
+        the newest. Its answer, its exposure and its four figures are on the
+        first screen, with one way in: the summary.
+      */}
+      {(() => {
+        // A FINISHED run leads where there is one; a failed run's partial
+        // report only when nothing has finished.
+        const latest = rows?.find((row) => row.summary && isFinished(row.status)) ?? rows?.find((row) => row.summary);
+        return latest?.summary ? (
+          <div className="govuk-grid-column-full govuk-!-margin-top-6">
+            <h2 className="govuk-heading-l">Latest assessment</h2>
+            <Feature row={latest} card={latest.summary} />
+          </div>
+        ) : null;
+      })()}
+
+      <div className="govuk-grid-column-full govuk-!-margin-top-6">
+        <h2 className="govuk-heading-l">All assessments</h2>
+        {error ? <p className="govuk-body govuk-error-message">{error}</p> : null}
+        {rows === null && !error ? <p className="govuk-body">Loading…</p> : null}
+        {rows?.length === 0 ? (
+          <p className="govuk-body">Nothing assessed yet. Start with a paper you already know well — it is the fastest way to judge whether the thing is any good.</p>
+        ) : null}
+        {rows?.length ? <Assessments rows={rows} /> : null}
+      </div>
+
       {stages.length ? (
         <div className="govuk-grid-column-full govuk-!-margin-top-6">
-          <h2 className="govuk-heading-l">What it does to a paper</h2>
+          {/* BEHIND A DISCLOSURE SINCE PHASE 20. The landing page is where a
+              reader finds the assessments they were sent to read; eighteen
+              stage names above them was the first thing they met, and it
+              answers a question only a commissioner asks. */}
+          <Details summary="How it works: what it does to a paper">
           <ol className="prt-pipeline">
             {stages.map((stage, i) => (
               <li key={stage} className="prt-pipeline__step">
@@ -121,10 +154,10 @@ export function Home() {
           </ol>
           <p className="govuk-body prt-pipeline__joint">
             {stages.length === 18 ? 'Eighteen' : stages.length} stages produce one report in{' '}
-            {MOVES.length === 5 ? 'five' : MOVES.length} moves.
+            {MOVES.length - 1 === 5 ? 'five' : MOVES.length - 1} moves, opened by a one-page summary.
           </p>
           <ol className="prt-moves">
-            {MOVES.map((move) => (
+            {MOVES.filter((move) => move.id !== 'overview').map((move) => (
               <li key={move.id} className="prt-moves__move">
                 <span className="prt-moves__step">{move.step}</span>
                 <span className="prt-moves__label">{move.label}</span>
@@ -132,18 +165,10 @@ export function Home() {
               </li>
             ))}
           </ol>
+          </Details>
         </div>
       ) : null}
 
-      <div className="govuk-grid-column-full govuk-!-margin-top-6">
-        <h2 className="govuk-heading-l">Assessments</h2>
-        {error ? <p className="govuk-body govuk-error-message">{error}</p> : null}
-        {rows === null && !error ? <p className="govuk-body">Loading…</p> : null}
-        {rows?.length === 0 ? (
-          <p className="govuk-body">Nothing assessed yet. Start with a paper you already know well — it is the fastest way to judge whether the thing is any good.</p>
-        ) : null}
-        {rows?.length ? <Assessments rows={rows} /> : null}
-      </div>
     </div>
   );
 }
@@ -169,10 +194,20 @@ function Assessments({ rows }: { rows: AnalysisRow[] }) {
   });
   const table = (list: AnalysisRow[]) => (
     <Table
-      columns={[{ header: 'Paper' }, { header: 'Area' }, { header: 'Started' }, { header: 'Ran for' }, { header: 'Status' }]}
+      columns={[{ header: 'Paper' }, { header: 'What it found' }, { header: 'Started' }, { header: 'Ran for' }, { header: 'Status' }]}
       rows={list.map((row) => [
-        <Link key="t" className="govuk-link" to={`/assessments/${row.id}`}>{row.title}</Link>,
-        row.policyArea ?? row.jurisdiction ?? '—',
+        <Fragment key="t">
+          <Link className="govuk-link prt-runs__title" to={`/assessments/${row.id}`}>{row.title}</Link>
+          {row.policyArea ?? row.jurisdiction ? <span className="prt-runs__area">{row.policyArea ?? row.jurisdiction}</span> : null}
+        </Fragment>,
+        row.summary && row.summary.plays ? (
+          <span key="f" className="prt-runs__found">
+            <MiniBands bands={row.summary.bands} total={row.summary.plays} />
+            <span className="prt-runs__figure">
+              {row.summary.plays} ways to beat it{row.summary.bands.severe ? `, ${row.summary.bands.severe} severe` : ''}
+            </span>
+          </span>
+        ) : <span key="f" className="prt-meta">—</span>,
         when(row.createdAt),
         // The ladder lives in `client/status.ts` now. It was private here, and
         // the assessment header and the commissioning page both had to state
@@ -199,5 +234,84 @@ function Assessments({ rows }: { rows: AnalysisRow[] }) {
         </button>
       </p>
     </>
+  );
+}
+
+const BANDS = [
+  ['severe', 'Severe'], ['significant', 'Significant'], ['moderate', 'Moderate'], ['limited', 'Limited'],
+] as const;
+
+/**
+ * The exposure bar in miniature — the band ramp the report uses, not a new
+ * one. An image with its words in the label, because on this page it is a
+ * picture of a count rather than a control; the report's own bar is the one a
+ * reader presses.
+ *
+ * THE BANDS ARE WRITTEN OUT HERE rather than imported from the view layer:
+ * `Home` is the one eagerly loaded route and `$lib/policy-analysis/view` would
+ * bring `contracts.ts` and its zod schemas into the first paint (see App.tsx).
+ */
+function MiniBands({ bands, total, large }: { bands: OverviewCard['bands']; total: number; large?: boolean }) {
+  const words = BANDS.filter(([band]) => bands[band]).map(([band, word]) => `${bands[band]} ${word.toLowerCase()}`).join(', ');
+  return (
+    <span className={`prt-minibands${large ? ' prt-minibands--large' : ''}`} role="img" aria-label={`How exposed: ${words}`}>
+      {BANDS.filter(([band]) => bands[band]).map(([band]) => (
+        <span key={band} className={`prt-minibands__seg prt-band--${band}`} style={{ flexGrow: bands[band] / total }}>
+          {large ? <span aria-hidden="true">{bands[band]}</span> : null}
+        </span>
+      ))}
+    </span>
+  );
+}
+
+/**
+ * THE NEWEST FINISHED ASSESSMENT, AS A CARD. Every figure is the summary's own
+ * (`overviewCard`), which is the Summary tab's, which is the tabs' — so the four
+ * numbers here are the four the reader meets again one click in.
+ */
+function Feature({ row, card }: { row: AnalysisRow; card: OverviewCard }) {
+  const when = new Date(row.createdAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' });
+  const figures: [number, string, string?][] = [
+    [card.plays, card.plays === 1 ? 'way to beat it' : 'ways to beat it', card.bands.severe ? `${card.bands.severe} severe` : undefined],
+    [card.parts, card.parts === 1 ? 'part of the policy exposed' : 'parts of the policy exposed'],
+    [card.bodies, card.bodies === 1 ? 'body could do it' : 'bodies could do it'],
+    [card.recs, card.recs === 1 ? 'recommendation' : 'recommendations'],
+  ];
+  return (
+    <section className="prt-feature" aria-labelledby={`feature-${row.id}`}>
+      <p className="prt-feature__meta">
+        <Tag colour={statusColour(row.status) as TagColour}>{statusLabel(row.status)}</Tag>
+        <span>Started {when} · ran for {spent(row.createdAt, row.updatedAt)}</span>
+      </p>
+      <h3 className="govuk-heading-m prt-feature__title" id={`feature-${row.id}`}>
+        <Link className="govuk-link" to={`/assessments/${row.id}`}>{row.title}</Link>
+      </h3>
+      {card.headline ? <p className="govuk-body-l prt-feature__headline">{card.headline}</p> : null}
+      {card.plays ? (
+        <div className="prt-feature__bar">
+          <MiniBands bands={card.bands} total={card.plays} large />
+          <p className="prt-feature__key" aria-hidden="true">
+            {BANDS.filter(([band]) => card.bands[band]).map(([band, word]) => (
+              <span key={band} className="prt-feature__keyitem">
+                <span className={`prt-stack__swatch prt-band--${band}`} />
+                {word} {card.bands[band]}
+              </span>
+            ))}
+          </p>
+        </div>
+      ) : null}
+      <ul className="prt-feature__figures">
+        {figures.filter(([n]) => n).map(([n, label, note]) => (
+          <li key={label} className="prt-feature__figure">
+            <span className="prt-feature__n">{n.toLocaleString()}</span>
+            <span className="prt-feature__label">{label}</span>
+            {note ? <span className="prt-feature__note">{note}</span> : null}
+          </li>
+        ))}
+      </ul>
+      <Link to={`/assessments/${row.id}`} className="govuk-button govuk-!-margin-bottom-0" role="button" draggable={false} data-module="govuk-button">
+        Open the summary<span className="govuk-visually-hidden"> of {row.title}</span>
+      </Link>
+    </section>
   );
 }

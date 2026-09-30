@@ -37,7 +37,7 @@ import { commissionableModels, refreshModelMenu } from '$lib/server/models/offer
 import { runProgress } from '$lib/server/progress';
 import { readSubmission, readMaterial } from '$lib/policy-analysis/server/ingest';
 import {
-  addMaterial, control, detail, listAnalyses, ownedAnalysis, purge, restate,
+  addMaterial, control, detail, listAnalyses, loadArtefacts, ownedAnalysis, purge, restate,
 } from '$lib/policy-analysis/server/store';
 import { census } from '$lib/policy-analysis/server/census';
 import { buildReceipt } from '$lib/policy-analysis/receipt';
@@ -52,6 +52,34 @@ import { forProgress, forTheReport } from '$lib/detail-views';
 import { shareableReport, withheldPhrases } from '$lib/policy-analysis/share';
 import { DEFAULT_CONCURRENCY, STAGES } from '$lib/policy-analysis/contracts';
 import { analysisStatus } from '$lib/worker';
+import { overviewCard, type OverviewCard } from '$lib/overview';
+
+/** A run with a report worth a card: finished, finished with gaps, or failed late (a failed run renders its report). */
+const REPORTED = new Set(['completed', 'completed_with_gaps', 'failed']);
+/**
+ * How many runs get a card: all of them the list returns (it stops at 50), so a
+ * "—" under "What it found" always means there was nothing to count, never that
+ * the run was too old to be counted. Each is computed once and cached.
+ */
+const SUMMARISED = 50;
+const summaries = new Map<string, { at: number; card: OverviewCard | null }>();
+
+async function summaryCard(id: string, updatedAt: Date | string | null): Promise<OverviewCard | null> {
+  const at = updatedAt ? new Date(updatedAt).getTime() : 0;
+  const hit = summaries.get(id);
+  if (hit && hit.at === at) return hit.card;
+  try {
+    const card = overviewCard(await loadArtefacts(id));
+    summaries.set(id, { at, card });
+    return card;
+  } catch {
+    // A summary is a courtesy. A run whose artefacts cannot be read (a lost
+    // seal key, a database hiccup) still lists, without its figures — and the
+    // failure is NOT cached, so a transient error does not hide a run's
+    // figures until it next changes.
+    return null;
+  }
+}
 
 const owner = () => getOwnerEmails()[0];
 
@@ -128,6 +156,10 @@ export async function handleApi(
 ): Promise<boolean> {
   const segments = url.pathname.replace(/^\/api\/policy-analysis\/?/, '').split('/').filter(Boolean);
   const method = req.method ?? 'GET';
+  // Anything that writes may change what a card summarises — a purge empties
+  // a run without touching its `updatedAt` — so every write drops the cache.
+  // Writes are rare and a card is one query to rebuild.
+  if (method !== 'GET' && method !== 'HEAD') summaries.clear();
 
   // One gate for every mutation, rather than a check per handler. A route added
   // later is covered without anyone remembering to cover it — which is the only
@@ -156,7 +188,19 @@ export async function handleApi(
      * nothing wanted, which on a hostname with no authentication in front of it
      * is the whole of the exposure.
      */
-    const analyses = (await listAnalyses(owner())).map((row) => ({
+    const rows = await listAnalyses(owner());
+    /*
+     * A SUMMARY CARD PER FINISHED RUN (phase 20), so the landing page can show
+     * how each assessment came out without fetching five whole reports. Counts
+     * and the headline only — see `overviewCard` — for the newest runs that
+     * have a report to summarise, cached against `updatedAt` so a landing page
+     * load after the first costs nothing.
+     */
+    const cards = new Map<string, OverviewCard | null>();
+    for (const row of rows.filter((r) => REPORTED.has(r.status)).slice(0, SUMMARISED)) {
+      cards.set(row.id, await summaryCard(row.id, row.updatedAt));
+    }
+    const analyses = rows.map((row) => ({
       id: row.id,
       title: row.title,
       status: row.status,
@@ -165,6 +209,7 @@ export async function handleApi(
       completedAt: row.completedAt,
       jurisdiction: row.jurisdiction,
       policyArea: row.policyArea,
+      summary: cards.get(row.id) ?? null,
     }));
     sendJson(res, 200, {
       analyses,

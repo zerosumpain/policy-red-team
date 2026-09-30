@@ -116,8 +116,35 @@ try {
 
   // 4 — the report, once the run finishes. The page follows its own progress
   // over the event stream, so this is waiting for the UI to update itself.
-  await page.getByRole('heading', { name: 'Main findings' }).waitFor({ timeout: 120000 });
+  // THE SUMMARY IS THE FRONT DOOR SINCE PHASE 20, so the report is ready when
+  // its heading is — the Verdict's "Main findings" is one tab away and hidden.
+  await page.getByRole('heading', { name: 'The report at a glance' }).waitFor({ timeout: 120000 });
   const id = page.url().split('/').pop();
+
+  /*
+   * THE SUMMARY (phase 20): the default tab, four figures that agree with the
+   * tabs they open, and a way on that actually changes tab. A summary that
+   * disagrees with its own detail is worse than none, so the figure on the
+   * first tile is checked against the Threats tab's own count.
+   */
+  {
+    const selected = await page.locator('[role="tab"][aria-selected="true"]').innerText().catch(() => '');
+    if (!/summary/i.test(selected)) failures.push(`summary: the report opened on "${selected.replace(/\s+/g, ' ').slice(0, 40)}", not the summary`);
+    const panel = page.locator('#report-panel-overview');
+    const tiles = await panel.locator('.prt-kpi').count();
+    if (tiles < 2) failures.push(`summary: ${tiles} headline figures, expected at least two`);
+    const cards = await panel.locator('.prt-card').count();
+    if (cards < 3) failures.push(`summary: ${cards} summary boxes, expected at least three`);
+    const first = (await panel.locator('.prt-kpi__value').first().innerText()).trim();
+    const threatsTab = (await page.getByRole('tab', { name: /threats/i }).innerText()).replace(/\s+/g, ' ');
+    if (!threatsTab.includes(`${first} way`)) failures.push(`summary: the first figure says ${first} and the Threats tab says "${threatsTab}"`);
+    await panel.getByRole('link', { name: /^See all \d+ ways to beat it/ }).click();
+    await page.waitForTimeout(300);
+    const now = await page.locator('[role="tab"][aria-selected="true"]').innerText().catch(() => '');
+    if (!/threats/i.test(now)) failures.push(`summary: "See all … ways to beat it" left the reader on "${now.replace(/\s+/g, ' ').slice(0, 40)}"`);
+    if (new URL(page.url()).searchParams.get('move') !== 'threats') failures.push('summary: the way on changed tab without changing the URL');
+    note(`summary: ${tiles} figures, ${cards} boxes, and the way on opens Threats`);
+  }
 
   /*
    * THE REPORT IS FOUR MOVES NOW, so a section being absent from the page is
@@ -128,6 +155,7 @@ try {
   const MOVES = [
     // THE TAB NAMES ARE PLAIN ENGLISH SINCE PHASE 19 — "Causes", "Who is
     // involved", "Where this comes from" — so the regex is the visible label.
+    ['summary', 'The report at a glance'],
     ['verdict', 'Main findings'],
     ['causes', 'How they connect'],
     ['threats', 'Ways to beat it'],
@@ -202,7 +230,10 @@ try {
   // and the segments are the control. The walk went green on a selector that
   // matched nothing, reporting "no exposure band to select" rather than passing
   // — which is the right failure, and is why this is a walk and not a unit test.
-  const band = page.locator('.prt-stack__seg').first();
+  // SCOPED TO THE THREATS PANEL since phase 20: the Summary draws the same
+  // bar, and a page-wide `.first()` resolves inside its hidden panel and waits
+  // forever for it to become visible.
+  const band = page.locator('#report-panel-threats .prt-stack__seg').first();
   if (await band.count()) {
     await band.click();
     const banner = page.locator('.prt-selection');
@@ -549,7 +580,9 @@ try {
       { timeout: 180000, polling: 1000 },
     );
     await page.reload({ waitUntil: 'networkidle' });
-    await page.getByRole('heading', { name: 'Main findings' }).waitFor({ timeout: 60000 });
+    // ATTACHED, NOT VISIBLE: the reload restores whichever view the URL names,
+    // and the summary's heading is in the DOM whichever that is.
+    await page.locator('#overview').waitFor({ state: 'attached', timeout: 60000 });
     const detail = await page.evaluate(async (a) => (await fetch(`/api/policy-analysis/${a}`)).json(), id);
     if (!detail.passes.some((p) => p.kind === 'restatement' && /completed/.test(p.status))) {
       failures.push('restate: no completed restatement was recorded');
@@ -664,7 +697,7 @@ try {
   const showing = await page.locator('[role="tab"][aria-selected="true"]').innerText().catch(() => '');
   await page.waitForFunction(() => true, null, { timeout: 1000 }).catch(() => {});
   await page.waitForTimeout(600);
-  const cameBack = new URL(page.url()).searchParams.get('move') ?? 'verdict';
+  const cameBack = new URL(page.url()).searchParams.get('move') ?? 'summary';
   if (!showing.toLowerCase().includes(cameBack)) {
     failures.push(`drill: the back link showed "${showing.replace(/\s+/g, ' ').slice(0, 40)}" and the URL settled on ${cameBack} — a reload would lose the reader's place`);
   }
@@ -682,17 +715,30 @@ try {
   // phone they have to fit on. `<Table scroll>` is the fix and this is what
   // notices the next one.
   await page.setViewportSize({ width: 320, height: 800 });
-  for (const [label, url, ready] of [
-    // WAIT FOR THE CONTENT, NOT THE SHELL. `Template` paints an h1 before the
-    // detail request returns, so waiting on a level-1 heading measured a page
-    // that had not drawn a single table yet — this check has been passing on an
-    // empty page. The second wait names something only the loaded report has.
-    ['report', `http://127.0.0.1:${PORT}/assessments/${id}`, 'Main findings'],
+  /*
+   * EVERY VIEW OF THE REPORT, ONE AT A TIME (phase 20). Below `tablet` the
+   * report used to show all its panels at once — 162,585px on the real Best
+   * Start run — and this check measured that one long document. A phone now
+   * shows one view at a time, so the check visits each through the `?move=`
+   * URL and waits for a heading only that view has. Measuring only the view
+   * that happens to be open is the silent narrowing the old assertion below
+   * existed to catch; this makes the narrowing impossible instead.
+   */
+  const views = [
+    ['report (summary)', `http://127.0.0.1:${PORT}/assessments/${id}`, 'The report at a glance'],
+    ['report (verdict)', `http://127.0.0.1:${PORT}/assessments/${id}?move=verdict`, 'Main findings'],
+    ['report (causes)', `http://127.0.0.1:${PORT}/assessments/${id}?move=causality`, 'How they connect'],
+    ['report (threats)', `http://127.0.0.1:${PORT}/assessments/${id}?move=threats`, 'Ways to beat it'],
+    ['report (who is involved)', `http://127.0.0.1:${PORT}/assessments/${id}?move=actors`, 'Who is involved'],
+    ['report (where this comes from)', `http://127.0.0.1:${PORT}/assessments/${id}?move=provenance`, 'How this was produced'],
     ['drill', drillUrl, null],
-  ]) {
+  ];
+  for (const [label, url, ready] of views) {
     await page.goto(url, { waitUntil: 'networkidle' });
     await page.getByRole('heading', { level: 1 }).waitFor({ timeout: 20000 });
-    if (ready) await page.getByRole('heading', { name: ready }).waitFor({ timeout: 30000 });
+    // WAIT FOR THE CONTENT, NOT THE SHELL. `Template` paints an h1 before the
+    // detail request returns; the second wait names something only this view has.
+    if (ready) await page.getByRole('heading', { name: ready, exact: true }).first().waitFor({ timeout: 30000 });
     const wide = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
     if (wide > 0) failures.push(`${label}: at 320px the page scrolls ${wide}px sideways — a table needs <Table scroll>`);
     /*
@@ -707,28 +753,37 @@ try {
   }
 
   /*
-   * AND THIS CHECK ONLY WORKS BECAUSE EVERY MOVE IS VISIBLE AT 320px.
-   *
-   * `Tabs` tears its own semantics down below the framework's tablet breakpoint
-   * and stops hiding panels, exactly as `tabs.mjs` does — so at this width the
-   * report is one document again and every table is measured. Hide them here and
-   * the check silently narrows to whichever move happens to be open, which is
-   * what it did for one build of the moves. Asserted rather than assumed.
+   * AND A PHONE REALLY DOES SHOW ONE VIEW. The list of views stays, with the
+   * current one marked, and exactly one panel is visible.
    */
   await page.goto(`http://127.0.0.1:${PORT}/assessments/${id}`, { waitUntil: 'networkidle' });
-  await page.getByRole('heading', { name: 'Main findings' }).waitFor({ timeout: 30000 });
-  const narrow = await page.locator('#main-content').innerText();
-  for (const heading of ['Ways to beat it', 'Who is involved', 'How they connect']) {
-    if (!narrow.includes(heading)) {
-      failures.push(`report at 320px: "${heading}" is hidden, so the reflow check cannot see its tables`);
-    }
-  }
+  await page.getByRole('heading', { name: 'The report at a glance' }).waitFor({ timeout: 30000 });
+  const shown = await page.locator('.govuk-tabs__panel:not([hidden])').count();
+  if (shown !== 1) failures.push(`report at 320px: ${shown} views are drawn at once, expected one`);
+  if (!(await page.locator('.prt-tab[aria-current="true"]').count())) failures.push('report at 320px: the list of views does not mark the current one');
+  // A VIEW CHOSEN FROM THE LIST, THEN LEFT ANOTHER WAY, MUST NOT COME BACK. The
+  // list's anchors write `#report-panel-*`; a summary box moves on without one,
+  // and a stale hash would win the next Back or reload.
+  await page.locator('.prt-tab', { hasText: 'Summary' }).click();
+  await page.locator('#report-panel-overview .prt-kpi__link').first().click();
+  await page.waitForTimeout(400);
+  const leftBy = new URL(page.url());
+  if (leftBy.hash === '#report-panel-overview') failures.push(`report at 320px: moved to ${leftBy.searchParams.get('move')} but the address still names the summary (${leftBy.hash}), so Back or reload returns there`);
+  await page.reload({ waitUntil: 'networkidle' });
+  await page.locator('#overview').waitFor({ state: 'attached', timeout: 30000 });
+  const reloaded = await page.locator('.govuk-tabs__panel:not([hidden])').getAttribute('id');
+  if (reloaded === 'report-panel-overview') failures.push('report at 320px: a reload after leaving the summary by a box lands on the summary again');
   await page.setViewportSize({ width: 1280, height: 900 });
   note('nothing overflows at 320px');
 
   // 9 — the history now has a row, and it links back
   await page.goto(`http://127.0.0.1:${PORT}/`, { waitUntil: 'networkidle' });
-  if (!(await page.getByRole('link', { name: 'Walk fixture paper' }).isVisible())) failures.push('landing: the finished assessment is not listed');
+  // TWICE SINCE PHASE 20: the newest finished run leads as a card with its
+  // figures, and every run is in the table below with how it came out.
+  if (!(await page.locator('table').getByRole('link', { name: 'Walk fixture paper' }).isVisible())) failures.push('landing: the finished assessment is not listed');
+  const feature = page.locator('.prt-feature');
+  if (!(await feature.count())) failures.push('landing: the newest finished assessment does not lead as a card');
+  else if (!(await feature.locator('.prt-feature__figure').count())) failures.push('landing: the feature card carries no figures');
   await audit('/ (with a row)');
   note('history lists it');
 
@@ -750,7 +805,7 @@ try {
   await page.getByLabel('The paper', { exact: true }).setInputFiles({ name: 'second-policy.txt', mimeType: 'text/plain', buffer: secondPaper });
   await page.getByRole('button', { name: 'Start the assessment' }).click();
   await page.waitForURL('**/assessments/**', { timeout: 20000 });
-  await page.getByRole('heading', { name: 'Main findings' }).waitFor({ timeout: 120000 });
+  await page.getByRole('heading', { name: 'The report at a glance' }).waitFor({ timeout: 120000 });
 
   await page.goto(`http://127.0.0.1:${PORT}/personas`, { waitUntil: 'networkidle' });
   await page.getByRole('heading', { name: 'Persona library', level: 1 }).waitFor({ timeout: 20000 });

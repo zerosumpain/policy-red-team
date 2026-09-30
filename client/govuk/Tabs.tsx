@@ -283,6 +283,7 @@ export function Tabs({ id, label, tabs, current, onSelect, above }: {
                     id={`${id}-tab-${tab.id}`}
                     className="govuk-tabs__tab prt-tab"
                     href={`#${id}-panel-${tab.id}`}
+                    aria-current={selected ? 'true' : undefined}
                     onClick={() => onSelect(tab.id)}
                   >
                     {inside}
@@ -314,8 +315,17 @@ export function Tabs({ id, label, tabs, current, onSelect, above }: {
           key={tab.id}
           id={`${id}-panel-${tab.id}`}
           className="govuk-tabs__panel"
+          /*
+           * ONE PANEL ON A PHONE TOO (phase 20). The framework's teardown shows
+           * every panel under `tablet`, which on the real Best Start run was a
+           * 162,585px page — five moves of a report already measured in screens,
+           * stacked. The list above stays a list of links with no tab roles, so
+           * it reads as what it now is: navigation between views, with the
+           * current one marked. Print is untouched: `_base.scss` un-hides every
+           * `[hidden]` panel on paper.
+           */
           {...(stripped
-            ? {}
+            ? { hidden: tab.id !== activeId }
             : {
                 role: 'tabpanel',
                 'aria-labelledby': `${id}-tab-${tab.id}`,

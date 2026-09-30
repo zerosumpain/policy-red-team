@@ -30,6 +30,8 @@ export type ContentsEntry = {
    * about the panel before.
    */
   count?: { n: number; noun: string };
+  /** What the section answers, in a line — drawn on the service's cards only. */
+  note?: string;
   /**
    * Headings inside the section, for a section that is itself several screens.
    *
@@ -56,10 +58,20 @@ export type ContentsEntry = {
  * "Contents of Move 2, Causality" is a name, "Contents of causality" is an
  * internal id read aloud.
  */
-export function Contents({ sections, id = 'contents', of }: {
+export function Contents({ sections, id = 'contents', of, cards }: {
   sections: ContentsEntry[];
   id?: string;
   of?: string;
+  /**
+   * DRAWN AS A GRID OF LINK CARDS, the service's "in this tab" (phase 20).
+   *
+   * A numbered list of eight links reads as a table of contents, and a reader
+   * new to the tool reads a table of contents as homework. The same entries as
+   * cards — number, title, and the figure that says how much is behind each —
+   * read as a choice. The pack keeps the list: it is one long document, and a
+   * document's contents is a list.
+   */
+  cards?: boolean;
 }) {
   /*
    * ENTRIES, NOT SECTIONS — the guard counted the wrong things and skipped the
@@ -81,6 +93,33 @@ export function Contents({ sections, id = 'contents', of }: {
   const denominator = (count: ContentsEntry['count']): ReactNode => (
     count ? <> <span className="prt-denom">{count.n.toLocaleString()} {count.noun}</span></> : null
   );
+
+  if (cards) {
+    return (
+      <nav className="prt-tiles" aria-label={of ? `In ${of}` : 'In this tab'}>
+        <h2 className="govuk-heading-s prt-tiles__title" id={id}>In this tab</h2>
+        <ol className="prt-tiles__list">
+          {sections.map((section, index) => (
+            <li key={section.id} className="prt-tile">
+              <span className="prt-tile__n" aria-hidden="true">{index + 1}</span>
+              <a className="govuk-link prt-tile__link" href={`#${section.id}`}>{section.title}</a>
+              {section.note ? <span className="prt-tile__note">{section.note}</span> : null}
+              {section.count ? (
+                <span className="prt-tile__count">{section.count.n.toLocaleString()} {section.count.noun}</span>
+              ) : null}
+              {section.anchors?.length ? (
+                <ul className="prt-tile__sub">
+                  {section.anchors.map((anchor) => (
+                    <li key={anchor.id}><a className="govuk-link" href={`#${anchor.id}`}>{anchor.title}</a></li>
+                  ))}
+                </ul>
+              ) : null}
+            </li>
+          ))}
+        </ol>
+      </nav>
+    );
+  }
 
   return (
     <nav className="govuk-!-margin-bottom-6 prt-contents" aria-label={of ? `Contents of ${of}` : 'Contents'}>

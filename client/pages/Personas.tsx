@@ -79,6 +79,23 @@ export function Personas() {
       {rows?.length ? (
         <div className="govuk-grid-row">
           <div className="govuk-grid-column-full">
+            {/* THE LIBRARY IN FOUR FIGURES (phase 20), before the table of all
+                of it — the same summary-first opening the report and the
+                landing page have. Every figure is a count of the rows below. */}
+            <ul className="prt-kpis" aria-label="The library in four figures">
+              {([
+                [rows.length, rows.length === 1 ? 'body profiled' : 'bodies profiled', 'across every assessment here'],
+                [seenTwice, 'seen in more than one paper', 'the dossiers worth opening'],
+                [rows.filter((r) => r.body).length, 'matched to GOV.UK', 'a body on the public register'],
+                [rows.filter((r) => r.worstBand === 'severe').length, 'with a severe way to beat a policy', 'in at least one paper'],
+              ] as const).map(([n, label, note]) => (
+                <li key={label} className={`prt-kpi prt-kpi--static${label.startsWith('with a severe') && n ? ' prt-kpi--severe' : ''}`}>
+                  <span className="prt-kpi__value">{n.toLocaleString()}</span>
+                  <span className="prt-kpi__label">{label}</span>
+                  <span className="prt-kpi__note">{note}</span>
+                </li>
+              ))}
+            </ul>
             <Library rows={rows} />
           </div>
         </div>

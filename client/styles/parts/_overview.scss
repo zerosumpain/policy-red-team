@@ -1,0 +1,411 @@
+@use "../govuk" as govuk;
+@use "../tokens" as *;
+
+// ── The summary — the front door of every assessment (phase 20) ────────────
+//
+// GOV.UK has no card or dashboard component, so everything here is composed
+// from the framework's own parts: its spacing scale, its type scale, its
+// colours, and the metric card's top rule that the report already uses for a
+// figure. No new colour enters — the band ramp in `_base.scss` carries every
+// magnitude, and every band is captioned with its word, never colour alone.
+//
+// ANCHORS ARE COLOURED WITH `&:link, &:visited`. `$govuk-global-styles` emits
+// `a:link` at (0,1,1); a bare `.prt-*` class is (0,1,0) and loses without a
+// sound — the defect that once put link blue on dark grey at 1.48:1.
+
+.prt-overview {
+  &__intro {
+    max-width: $prt-measure;
+  }
+}
+
+// ── The four figures ───────────────────────────────────────────────────────
+.prt-kpis {
+  list-style: none;
+  margin: 0 0 govuk.govuk-spacing(8);
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: govuk.govuk-spacing(3);
+
+  @include govuk.govuk-media-query($from: tablet) {
+    gap: govuk.govuk-spacing(4);
+  }
+}
+
+.prt-kpi {
+  background: govuk.govuk-colour("black", $variant: "tint-95");
+  border-top: 5px solid govuk.govuk-colour("black");
+  padding: govuk.govuk-spacing(3) govuk.govuk-spacing(4) govuk.govuk-spacing(4);
+  display: flex;
+  flex-direction: column;
+  gap: govuk.govuk-spacing(1);
+
+  &--severe { border-top-color: var(--band-severe); }
+
+  // A figure that is not a way anywhere — the library's — reads as a caption,
+  // not as a link.
+  &--static &__label {
+    text-decoration: none;
+    color: govuk.govuk-colour("black");
+  }
+
+  &__link {
+    display: flex;
+    flex-direction: column;
+    text-decoration: none;
+
+    &:link, &:visited { color: govuk.govuk-functional-colour("link"); }
+    &:hover .prt-kpi__label { text-decoration-thickness: 3px; }
+    // The framework's focus state paints the anchor yellow with a black
+    // underline bar; the figure inside it must stay black on yellow.
+    &:focus .prt-kpi__value { color: govuk.govuk-colour("black"); }
+  }
+
+  &__value {
+    @include govuk.govuk-font($size: 36, $weight: bold);
+
+    @include govuk.govuk-media-query($from: tablet) {
+      @include govuk.govuk-font($size: 48, $weight: bold);
+    }
+    color: govuk.govuk-colour("black");
+    line-height: 1;
+    font-variant-numeric: tabular-nums;
+  }
+
+  &__of {
+    @include govuk.govuk-font($size: 24, $weight: bold);
+    color: govuk.govuk-colour("black", $variant: "tint-25");
+  }
+
+  &__label {
+    @include govuk.govuk-font($size: 19, $weight: bold);
+    margin-top: govuk.govuk-spacing(1);
+    text-decoration: underline;
+    text-underline-offset: 0.1em;
+  }
+
+  &__note {
+    @include govuk.govuk-font($size: 16);
+    color: govuk.govuk-colour("black", $variant: "tint-25");
+  }
+}
+
+// ── What matters most ──────────────────────────────────────────────────────
+.prt-matters {
+  margin-bottom: govuk.govuk-spacing(8);
+
+  &__more {
+    margin: 0;
+    font-weight: 700;
+  }
+
+  &__list {
+    list-style: none;
+    margin: 0 0 govuk.govuk-spacing(4);
+    padding: 0;
+    display: grid;
+    gap: govuk.govuk-spacing(4);
+
+    @include govuk.govuk-media-query($from: desktop) {
+      &--2 { grid-template-columns: repeat(2, 1fr); }
+      &--3 { grid-template-columns: repeat(3, 1fr); }
+    }
+  }
+}
+
+.prt-matter {
+  position: relative;
+  border-left: 5px solid govuk.govuk-colour("black");
+  padding: govuk.govuk-spacing(1) 0 govuk.govuk-spacing(1) govuk.govuk-spacing(4);
+
+  &--severe { border-left-color: var(--band-severe); }
+  &--significant { border-left-color: var(--band-significant); }
+  &--moderate { border-left-color: var(--band-moderate); }
+  &--limited { border-left-color: var(--band-limited); }
+
+  &__rank {
+    @include govuk.govuk-font($size: 36, $weight: bold);
+    color: govuk.govuk-colour("black", $variant: "tint-25");
+    line-height: 1;
+    margin: 0 0 govuk.govuk-spacing(2);
+  }
+
+  &__title { margin-bottom: govuk.govuk-spacing(2); }
+  &__statement { margin-bottom: govuk.govuk-spacing(3); }
+  &__play, &__owner { margin-bottom: govuk.govuk-spacing(2); }
+}
+
+// ── The six boxes ──────────────────────────────────────────────────────────
+.prt-cards {
+  display: grid;
+  gap: govuk.govuk-spacing(8) govuk.govuk-spacing(6);
+  margin-bottom: govuk.govuk-spacing(8);
+
+  @include govuk.govuk-media-query($from: desktop) {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+.prt-card {
+  border-top: 5px solid govuk.govuk-colour("black");
+  padding-top: govuk.govuk-spacing(3);
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+
+  &__title { margin-bottom: govuk.govuk-spacing(3); }
+
+  &__body {
+    flex: 1 1 auto;
+
+    > :last-child { margin-bottom: govuk.govuk-spacing(3); }
+  }
+
+  // THE ONE WAY ON, and it always sits on the card's last line — a reader who
+  // has learned where one box's link is has learned where all of them are.
+  &__more {
+    margin: govuk.govuk-spacing(2) 0 0;
+    padding-top: govuk.govuk-spacing(2);
+    border-top: 1px solid govuk.govuk-colour("black", $variant: "tint-80");
+    font-weight: 700;
+  }
+}
+
+// A card's short list: a band tag or a number in a fixed column, then a name
+// with a line of grey under it. Ten rows of this would be a table; five are a
+// glance.
+.prt-glance {
+  list-style: none;
+  margin: 0 0 govuk.govuk-spacing(3);
+  padding: 0;
+
+  &__row {
+    display: grid;
+    grid-template-columns: 7.25rem minmax(0, 1fr);
+    gap: govuk.govuk-spacing(3);
+    align-items: start;
+    padding: govuk.govuk-spacing(2) 0;
+    border-bottom: 1px solid govuk.govuk-colour("black", $variant: "tint-80");
+
+    &:first-child { padding-top: 0; }
+  }
+
+  &--numbered &__row { grid-template-columns: 2em minmax(0, 1fr); }
+
+  // Every tag the same width, so the names line up on one edge whatever the
+  // band's word is.
+  &__tag {
+    justify-self: stretch;
+    text-align: center;
+  }
+
+  &__num {
+    @include govuk.govuk-font($size: 24, $weight: bold);
+    line-height: 1.1;
+  }
+
+  &__text {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+  }
+
+  &__name {
+    @include govuk.govuk-font($size: 19, $weight: bold);
+  }
+
+  &__meta {
+    @include govuk.govuk-font($size: 16);
+    color: govuk.govuk-colour("black", $variant: "tint-25");
+  }
+}
+
+// Five bars on one scale, the bands stacked inside each. The number beside the
+// bar is the value; the bar is only its shape.
+.prt-minibars {
+  list-style: none;
+  margin: 0 0 govuk.govuk-spacing(3);
+  padding: 0;
+
+  &__row {
+    display: grid;
+    grid-template-columns: minmax(0, 11em) minmax(0, 1fr) 2.5em;
+    gap: govuk.govuk-spacing(3);
+    align-items: center;
+    padding: govuk.govuk-spacing(1) 0;
+
+    @include govuk.govuk-media-query($until: tablet) {
+      grid-template-columns: minmax(0, 1fr) 2.5em;
+
+      .prt-minibars__label { grid-column: 1 / -1; }
+    }
+  }
+
+  &__label {
+    @include govuk.govuk-font($size: 16, $weight: bold);
+  }
+
+  &__track {
+    display: block;
+    height: 20px;
+    background: govuk.govuk-colour("black", $variant: "tint-95");
+  }
+
+  &__fill {
+    display: flex;
+    gap: 2px;
+    height: 100%;
+  }
+
+  &__seg {
+    display: block;
+    height: 100%;
+    padding: 0;
+    flex-basis: 0;
+  }
+
+  &__n {
+    @include govuk.govuk-font($size: 19, $weight: bold);
+    font-variant-numeric: tabular-nums;
+    text-align: right;
+  }
+}
+
+.prt-trust {
+  li { margin-bottom: govuk.govuk-spacing(2); }
+}
+
+// ── Read the report in full ────────────────────────────────────────────────
+.prt-wayon {
+  border-top: 2px solid govuk.govuk-colour("black");
+  padding-top: govuk.govuk-spacing(4);
+
+  &__list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: grid;
+    gap: govuk.govuk-spacing(4);
+    grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+  }
+
+  &__item {
+    border-left: 3px solid govuk.govuk-colour("black", $variant: "tint-80");
+    padding-left: govuk.govuk-spacing(3);
+    display: flex;
+    flex-direction: column;
+  }
+
+  &__link {
+    display: flex;
+    flex-direction: column;
+  }
+
+  &__step {
+    @include govuk.govuk-font($size: 16);
+    color: govuk.govuk-colour("black", $variant: "tint-25");
+  }
+
+  &__link:focus &__step { color: govuk.govuk-colour("black"); }
+
+  &__label {
+    @include govuk.govuk-font($size: 19, $weight: bold);
+  }
+
+  &__hint {
+    @include govuk.govuk-font($size: 16);
+    color: govuk.govuk-colour("black", $variant: "tint-25");
+    margin-top: 2px;
+  }
+}
+
+// ── "In this tab" — each move's contents as cards ──────────────────────────
+.prt-tiles {
+  margin-bottom: govuk.govuk-spacing(8);
+
+  &__title { margin-bottom: govuk.govuk-spacing(3); }
+
+  &__list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: grid;
+    gap: govuk.govuk-spacing(3);
+    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  }
+}
+
+.prt-tile {
+  border: 1px solid govuk.govuk-colour("black", $variant: "tint-80");
+  border-top: 4px solid govuk.govuk-colour("black");
+  padding: govuk.govuk-spacing(2) govuk.govuk-spacing(3) govuk.govuk-spacing(3);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+
+  &__n {
+    @include govuk.govuk-font($size: 16, $weight: bold);
+    color: govuk.govuk-colour("black", $variant: "tint-25");
+  }
+
+  &__link {
+    @include govuk.govuk-font($size: 19, $weight: bold);
+  }
+
+  &__note {
+    @include govuk.govuk-font($size: 16);
+    margin-top: 2px;
+  }
+
+  &__count {
+    @include govuk.govuk-font($size: 16);
+    color: govuk.govuk-colour("black", $variant: "tint-25");
+  }
+
+  &__sub {
+    list-style: none;
+    margin: govuk.govuk-spacing(1) 0 0;
+    padding: 0;
+    @include govuk.govuk-font($size: 16);
+
+    li { margin-top: 2px; }
+
+    // A 24px target, which WCAG 2.2's target-size asks of a link this close
+    // to its neighbours — the same floor the old contents list's sub-entries met.
+    a {
+      display: inline-block;
+      min-height: 24px;
+      line-height: 24px;
+    }
+  }
+}
+
+// ── The tab list on a phone ────────────────────────────────────────────────
+//
+// Below `tablet` the strip is a list of links and only the chosen view is
+// drawn (see `Tabs.tsx`), so the list has to say which one that is. The
+// current entry drops its underline and takes a rule, the way GOV.UK's own
+// contents lists and side navigation mark "you are here".
+@include govuk.govuk-media-query($until: tablet) {
+  .govuk-tabs__list-item {
+    margin-bottom: govuk.govuk-spacing(2);
+  }
+
+  .prt-tab[aria-current="true"] {
+    &:link, &:visited { color: govuk.govuk-colour("black"); }
+    display: inline-block;
+    border-left: 4px solid govuk.govuk-functional-colour("link");
+    padding-left: govuk.govuk-spacing(2);
+
+    .prt-tab__label { text-decoration: none; }
+  }
+
+  .prt-tab__hint { display: inline; }
+  .prt-tab__hint::before { content: " — "; }
+}
+
+@media print {
+  .prt-kpi, .prt-card, .prt-matter, .prt-tile { break-inside: avoid; }
+  .prt-minibars__seg { print-color-adjust: exact; -webkit-print-color-adjust: exact; }
+}

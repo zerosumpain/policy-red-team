@@ -22,6 +22,8 @@ import { VerdictLead } from './moves/VerdictLead';
 import { Brief } from './Brief';
 import { PatternGrid } from './PatternGrid';
 import { briefOf } from '$lib/brief';
+import { overviewOf } from '$lib/overview';
+import { Overview } from './Overview';
 import { WorstPlays } from './moves/WorstPlays';
 import { CausalityLead } from './moves/CausalityLead';
 import { ThreatsLead } from './moves/ThreatsLead';
@@ -92,7 +94,7 @@ import { DownloadGrid } from './DownloadGrid';
  * first time a section is added, and a contents entry pointing at nothing is
  * worse than no contents at all.
  */
-type Move = 'verdict' | 'causality' | 'threats' | 'actors' | 'provenance' | 'do';
+type Move = 'overview' | 'verdict' | 'causality' | 'threats' | 'actors' | 'provenance' | 'do';
 
 /**
  * `do` IS NOT A TAB, and that is the point.
@@ -141,7 +143,7 @@ interface Section extends ContentsEntry {
  * order of the page — and then the two artefacts agree about the shape of the
  * report as well as about its contents.
  */
-const MOVE_ORDER: Move[] = ['verdict', 'causality', 'threats', 'actors', 'provenance', 'do'];
+const MOVE_ORDER: Move[] = ['overview', 'verdict', 'causality', 'threats', 'actors', 'provenance', 'do'];
 
 /**
  * The moves that are tabs, which is not all of them.
@@ -158,11 +160,55 @@ const MOVE_ORDER: Move[] = ['verdict', 'causality', 'threats', 'actors', 'proven
 const TABS: Move[] = MOVE_ORDER.filter((move) => move !== ACTIONS);
 
 /**
+ * WHAT EACH SECTION ANSWERS, in a line, for the "In this tab" cards (phase 20).
+ *
+ * A title like "What makes them work" is a good heading once you are reading
+ * the section and a riddle on a card you are choosing from. A section with no
+ * entry here simply draws its card without a line.
+ */
+const SECTION_NOTES: Record<string, string> = {
+  'exposure-profile': 'The three most dangerous, ranked.',
+  legality: 'How many break a rule, and how many do not.',
+  suggests: 'What to change, what it costs, and who carries it.',
+  howyoudknow: 'The measures that would show whether it is working.',
+  rests: 'The assumptions the most conclusions depend on.',
+  writeup: 'Every finding, grouped by what it is about.',
+  checks: 'Twelve fixed tests of how the policy is wired.',
+  patterns: 'Which kinds of idea, aimed at which parts.',
+  bands: 'How many are severe, significant, moderate or limited.',
+  weights: 'Every way to beat it, worst first.',
+  watch: 'Early warnings, and what would stop each one.',
+  spread: 'Whether the scores bunch together or spread out.',
+  factors: 'Incentive, ease, impact and how hard each is to see.',
+  scores: 'The four scores behind every way to beat it.',
+  scenarios: 'Changes in the world the policy has to survive.',
+  stress: 'Switch off an assumption and see what falls.',
+  change: 'How each part is meant to work, step by step.',
+  network: 'Who the paper says is connected to what.',
+  actors: 'How many bodies could act, and which could not.',
+  cast: 'What moves each body, and what the paper leaves open.',
+  models: 'The games between bodies that the policy sets up.',
+  resolution: 'Names the paper leaves ambiguous.',
+  machine: 'How much the run produced.',
+  discarded: 'What the model wrote that was thrown out, and why.',
+  provenance: 'Which model, how long each step took, what it cost.',
+  withheld: 'Steps where the model saw only part of the assessment.',
+  gaps: 'Every limit a step recorded, each said once.',
+  composition: 'The claims and machinery the paper is built from.',
+  evidence: 'Which claims have evidence behind them.',
+  assurance: 'The challenge round that attacked the findings.',
+};
+
+/** Where a reader lands, and the one move the URL leaves unsaid. */
+const DEFAULT_MOVE: Move = 'overview';
+
+/**
  * What a move is called, for anything that has to say its name rather than use
  * its key. `Contents of causality` is an internal id read aloud to a screen
  * reader; `Contents of Move 2, Causality` is the name on the tab that opens it.
  */
 const MOVE_LABEL: Record<Move, string> = {
+  overview: 'Summary',
   verdict: 'Move 1, Verdict',
   causality: 'Move 2, Causes',
   threats: 'Move 3, Threats',
@@ -226,7 +272,12 @@ export function Report({ detail, offline, linkTo, onChanged }: {
    * them now. Order matters here in a way it did not when the report was one
    * cascade that honoured no selection at all.
    */
-  const [move, setMove] = useState<Move>('verdict');
+  /*
+   * THE SUMMARY IS WHERE A READER LANDS (phase 20). It was the Verdict, which
+   * is a finding at full length followed by 13,000px of what supports it; the
+   * summary is one screen that points into all five moves.
+   */
+  const [move, setMove] = useState<Move>('overview');
   const [selection, setSelection] = useState<Selection>(null);
   /*
    * THE SCENARIO, HELD HERE SO IT CAN GO IN THE URL. It was plain state inside
@@ -257,7 +308,7 @@ export function Report({ detail, offline, linkTo, onChanged }: {
    */
   const at = useMemo(() => {
     const params = new URLSearchParams();
-    if (move !== 'verdict') params.set('move', move);
+    if (move !== DEFAULT_MOVE) params.set('move', move);
     const sel = selectionParam(selection);
     if (sel) params.set('sel', sel);
     if (failed.length) params.set('fail', failed.join(','));
@@ -328,9 +379,9 @@ export function Report({ detail, offline, linkTo, onChanged }: {
   useEffect(() => {
     if (offline) return;
     const params = new URLSearchParams(window.location.search);
-    // `verdict` is the default, so it is left out — a reader who has not chosen
-    // anything gets the URL they arrived on.
-    if (move === 'verdict') params.delete('move'); else params.set('move', move);
+    // The summary is the default, so it is left out — a reader who has not
+    // chosen anything gets the URL they arrived on.
+    if (move === DEFAULT_MOVE) params.delete('move'); else params.set('move', move);
     const sel = selectionParam(selection);
     if (sel) params.set('sel', sel); else params.delete('sel');
     // Ids are ~28 characters, so a three-lever scenario costs about 90 of
@@ -338,7 +389,16 @@ export function Report({ detail, offline, linkTo, onChanged }: {
     // `file://` document has no URL worth keeping.
     if (failed.length) params.set('fail', failed.join(',')); else params.delete('fail');
     const query = params.toString();
-    const next = `${window.location.pathname}${query ? `?${query}` : ''}${window.location.hash}`;
+    /*
+     * A HASH NAMING ANOTHER VIEW IS DROPPED. On a phone the list of views is
+     * made of `#report-panel-*` anchors, and moving on any other way — a summary
+     * box, a band — left the old one in the address bar, where `apply()` lets it
+     * win on the next Back or reload. Hidden panels made that visible: Back
+     * from a drill landed on the Summary rather than Threats.
+     */
+    const named = /^#report-(?:tab|panel)-([a-z]+)$/.exec(window.location.hash)?.[1];
+    const hash = named && named !== move ? '' : window.location.hash;
+    const next = `${window.location.pathname}${query ? `?${query}` : ''}${hash}`;
     if (next !== `${window.location.pathname}${window.location.search}${window.location.hash}`) {
       window.history.replaceState(window.history.state, '', next);
     }
@@ -395,6 +455,9 @@ export function Report({ detail, offline, linkTo, onChanged }: {
    * the other shaping this component re-runs on every stage event.
    */
   const brief = useMemo(() => briefOf(artefacts, stages), [artefacts, stages]);
+  /** The summary's figures — see `$lib/overview` for why they are the tabs' own. */
+  const overview = useMemo(() => overviewOf(artefacts), [artefacts]);
+  const byId = useMemo(() => new Map(artefacts.map((a) => [a.id, a])), [artefacts]);
   /** What the report prints as its conclusions — the current generation only, for "what rests on what". */
   const shownConclusions = useMemo(() => new Set([
     ...findingsBySection(artefacts).flatMap((group) => group.items.map((item) => item.id)),
@@ -643,7 +706,7 @@ export function Report({ detail, offline, linkTo, onChanged }: {
       onClear={() => setSelection(null)}
       written={playsWritten}
       onProvenance={() => goTo('provenance', 'discarded')}
-    />);
+    />, list.length ? { count: { n: list.length, noun: 'ways to beat it' } } : undefined);
   /*
    * MOVE 4 GETS THE LEAD IT NEVER HAD. The other three each open with one; this
    * one opened with a twelve-row table, which is why its panel measured 919px
@@ -1077,6 +1140,109 @@ export function Report({ detail, offline, linkTo, onChanged }: {
     }
   }
 
+  /* Hoisted above the summary (phase 20), which needs to know where each move starts. */
+  const READING_ORDER: Partial<Record<Move, string[]>> = {
+    verdict: [
+      'main-findings', 'exposure-profile', 'legality',
+      'suggests', 'howyoudknow', 'rests',
+      'writeup', 'checks',
+    ],
+    threats: [
+      'patterns', 'bands', 'weights', 'watch', 'spread', 'factors', 'scores', 'scenarios', 'stress',
+    ],
+    causality: ['mechanisms', 'change', 'network'],
+    provenance: [
+      'machine', 'discarded', 'provenance', 'withheld', 'gaps', 'composition', 'evidence', 'assurance', 'paper',
+    ],
+  };
+  const inMove = (move: Move) => {
+    const rows = sections.filter((entry) => entry.move === move);
+    const order = READING_ORDER[move];
+    if (!order) return rows;
+    const rank = (id: string) => (order.indexOf(id) === -1 ? order.length : order.indexOf(id));
+    return rows
+      .map((row, pushed) => ({ row, pushed }))
+      .sort((a, b) => rank(a.row.id) - rank(b.row.id) || a.pushed - b.pushed)
+      .map((entry) => entry.row);
+  };
+
+  /*
+   * HOW BIG EACH MOVE IS, SAID IN THE TAB THAT OPENS IT.
+   *
+   * Every figure here is one a panel already prints: the findings the write-up
+   * renders, the recommendations the assured filter keeps, the rows the
+   * mechanism chart draws, the relationships the network resolves, the playbook
+   * and its severe band, the bodies "Who is involved" counts BY NAME, the parts
+   * under pressure drawn and hidden, and every stage warning. Nothing is counted
+   * a second way, and three of the obvious raw counts are wrong for this: 32
+   * finding artefacts against the 19 the write-up shows, 151 mechanisms against
+   * the 41 that generate a play, 171 board rows against 12 bodies.
+   *
+   * THE ROW COUNT IS RE-DERIVED FROM `mechanismChart`, the same function
+   * `CausalityLead` builds its bars from, given the same inputs — so the tab and
+   * the chart cannot disagree unless the shared function changes under both.
+   * Plain, not memoised: it walks 47 plays.
+   *
+   * BEFORE THE PACK'S `return` since phase 20, because the summary's way-on
+   * list prints these same phrases and the pack renders the summary. Still
+   * plain `const`s, not hooks: the walk is 47 plays.
+   */
+  const mechanismRows = mechanismChart(
+    narrowExcept(list, selection, mechanismIds, 'mechanism'),
+    (play) => mechanismsOf(play, mechanismIds),
+  ).rows.length;
+  const counts = moveCounts({
+    findings: sectionFindings.reduce((n, group) => n + group.items.length, 0),
+    suggestions: recs.length,
+    mechanisms: mechanismRows,
+    relationships: net.edges.length,
+    plays: list.length,
+    severe: bands.find((band) => band.band === 'severe')?.count ?? 0,
+    bodies: namedActive,
+    targets: interplayMap.targets.length + interplayMap.hidden,
+    limits: warnings.length,
+  });
+  /*
+   * THE "IN THIS TAB" CARDS COUNT WHAT THE TAB COUNTS. The parts and bodies
+   * leads narrow under a selection, and so does the tab label beside them, so
+   * their cards take the same narrowed figures — set here because `namedActive`
+   * and `mechanismRows` are settled only now. The Summary alone reads the whole
+   * assessment, and says so under a selection.
+   */
+  for (const entry of sections) {
+    if (entry.id === 'mechanisms' && mechanismRows) entry.count = { n: mechanismRows, noun: mechanismRows === 1 ? 'part' : 'parts' };
+    if (entry.id === 'interplay' && namedActive) entry.count = { n: namedActive, noun: namedActive === 1 ? 'body' : 'bodies' };
+  }
+  /** Where each move starts, for the pack's copy of the summary, which has no tab panels to point at. */
+  const moveStarts: Partial<Record<Move, string>> = Object.fromEntries(
+    MOVE_ORDER.map((m) => [m, inMove(m)[0]?.id]).filter(([, id]) => id),
+  );
+
+  /*
+   * THE SUMMARY (phase 20), registered LAST because it reads the figures every
+   * other move has already settled — `counts` above, the brief, the body count
+   * by name — and first in reading order because `MOVE_ORDER` puts `overview`
+   * first. The pack gets it too, at the head of its cascade, with every way out
+   * of it an anchor rather than a tab switch.
+   */
+  lead('overview', 'The report at a glance', 'overview', (
+    <Overview
+      view={overview}
+      brief={brief}
+      stages={stages}
+      counts={counts}
+      starts={offline ? moveStarts : undefined}
+      selection={selection}
+      byId={byId}
+      linkTo={link}
+      onGo={offline ? undefined : (next, anchor) => goTo(next, anchor)}
+      onSelectBand={(band) => {
+        setSelection({ kind: 'band', id: band });
+        if (!offline) goTo('threats', 'weights');
+      }}
+    />
+  ));
+
   /*
    * THE OFFLINE PACK KEEPS THE CASCADE, and that is not a shortcut.
    *
@@ -1147,30 +1313,6 @@ export function Report({ detail, offline, linkTo, onChanged }: {
    * WHERE THIS COMES FROM opens with what the run made, then what it threw
    * away, then how it ran.
    */
-  const READING_ORDER: Partial<Record<Move, string[]>> = {
-    verdict: [
-      'main-findings', 'exposure-profile', 'legality',
-      'suggests', 'howyoudknow', 'rests',
-      'writeup', 'checks',
-    ],
-    threats: [
-      'patterns', 'bands', 'weights', 'watch', 'spread', 'factors', 'scores', 'scenarios', 'stress',
-    ],
-    causality: ['mechanisms', 'change', 'network'],
-    provenance: [
-      'machine', 'discarded', 'provenance', 'withheld', 'gaps', 'composition', 'evidence', 'assurance', 'paper',
-    ],
-  };
-  const inMove = (move: Move) => {
-    const rows = sections.filter((entry) => entry.move === move);
-    const order = READING_ORDER[move];
-    if (!order) return rows;
-    const rank = (id: string) => (order.indexOf(id) === -1 ? order.length : order.indexOf(id));
-    return rows
-      .map((row, pushed) => ({ row, pushed }))
-      .sort((a, b) => rank(a.row.id) - rank(b.row.id) || a.pushed - b.pushed)
-      .map((entry) => entry.row);
-  };
 
   const ordered = offline
     ? MOVE_ORDER.flatMap((move) => inMove(move))
@@ -1259,43 +1401,6 @@ export function Report({ detail, offline, linkTo, onChanged }: {
     );
   }
 
-  /*
-   * HOW BIG EACH MOVE IS, SAID IN THE TAB THAT OPENS IT.
-   *
-   * Every figure here is one a panel already prints: the findings the write-up
-   * renders, the recommendations the assured filter keeps, the rows the
-   * mechanism chart draws, the relationships the network resolves, the playbook
-   * and its severe band, the bodies "Who is involved" counts BY NAME, the parts
-   * under pressure drawn and hidden, and every stage warning. Nothing is counted
-   * a second way, and three of the obvious raw counts are wrong for this: 32
-   * finding artefacts against the 19 the write-up shows, 151 mechanisms against
-   * the 41 that generate a play, 171 board rows against 12 bodies.
-   *
-   * THE ROW COUNT IS RE-DERIVED FROM `mechanismChart`, the same function
-   * `CausalityLead` builds its bars from, given the same inputs — so the tab and
-   * the chart cannot disagree unless the shared function changes under both.
-   * Plain, not memoised: it walks 47 plays.
-   *
-   * AFTER THE PACK'S `return`, so the pack does none of this work — and plain
-   * `const`s rather than hooks for the same reason, since a hook below a
-   * conditional return is a hook that runs on one branch only.
-   */
-  const mechanismRows = mechanismChart(
-    narrowExcept(list, selection, mechanismIds, 'mechanism'),
-    (play) => mechanismsOf(play, mechanismIds),
-  ).rows.length;
-  const counts = moveCounts({
-    findings: sectionFindings.reduce((n, group) => n + group.items.length, 0),
-    suggestions: recs.length,
-    mechanisms: mechanismRows,
-    relationships: net.edges.length,
-    plays: list.length,
-    severe: bands.find((band) => band.band === 'severe')?.count ?? 0,
-    bodies: namedActive,
-    targets: interplayMap.targets.length + interplayMap.hidden,
-    limits: warnings.length,
-  });
-
   /* Declared before `panel`, which calls them: the pack's rule, kept here too. */
   const leadsFirst = (move: Move) => move === 'verdict' && inMove(move)[0]?.id === 'main-findings';
   const renderEntry = (entry: Section) => (entry.bare ? (
@@ -1322,7 +1427,7 @@ export function Report({ detail, offline, linkTo, onChanged }: {
         of eight links to it. Every other move keeps its contents first.
       */}
       {leadsFirst(move) ? renderEntry(inMove(move)[0]) : null}
-      <Contents sections={leadsFirst(move) ? inMove(move).slice(1) : inMove(move)} id={`contents-${move}`} of={MOVE_LABEL[move]} />
+      <Contents cards sections={(leadsFirst(move) ? inMove(move).slice(1) : inMove(move)).map((entry) => ({ ...entry, note: SECTION_NOTES[entry.id] }))} id={`contents-${move}`} of={MOVE_LABEL[move]} />
       {(leadsFirst(move) ? inMove(move).slice(1) : inMove(move)).map((entry) => (entry.bare ? (
         <Fragment key={entry.id}>{entry.body}</Fragment>
       ) : (

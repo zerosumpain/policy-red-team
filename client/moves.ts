@@ -21,7 +21,7 @@
  * and zod behind it, straight back into the first paint of `/`. This file
  * imports nothing at all, so both sides can have it for free.
  */
-export type MoveId = 'verdict' | 'causality' | 'threats' | 'actors' | 'provenance';
+export type MoveId = 'overview' | 'verdict' | 'causality' | 'threats' | 'actors' | 'provenance';
 
 export type MoveEntry = {
   id: MoveId;
@@ -33,6 +33,13 @@ export type MoveEntry = {
 };
 
 export const MOVES: readonly MoveEntry[] = [
+  /*
+   * THE SUMMARY, FIRST AND THE DEFAULT (phase 20). Not a move of the argument
+   * but the front door to all five: the figures, the judgements and one box per
+   * question, each ending in a link to the move that answers it. A bare
+   * `/assessments/:id` opens here; `?move=verdict` still opens the Verdict.
+   */
+  { id: 'overview', step: 'Start here', label: 'Summary', hint: 'The report at a glance' },
   { id: 'verdict', step: 'Move 1', label: 'Verdict', hint: 'What did it find' },
   { id: 'causality', step: 'Move 2', label: 'Causes', hint: 'Why could it happen' },
   { id: 'threats', step: 'Move 3', label: 'Threats', hint: 'How could it be beaten' },
