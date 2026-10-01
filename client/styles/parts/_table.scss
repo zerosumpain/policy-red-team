@@ -93,10 +93,11 @@
   // which also lets the browser shrink a column below its longest word, and at
   // 420px it did: "Con / ceal / me / nt". `break-word` still breaks a token that
   // genuinely overflows, but sizes the column to whole words first.
-  // And a column's heading is sized to whole words for the same reason: at
-  // 1280px the persona library's last column read "Last recorde / d".
-  th[scope="row"],
-  th[scope="col"] { overflow-wrap: break-word; }
+  // And so is every other cell, for the same reason: at 1280px the persona
+  // library's last heading read "Last recorde / d" and a dossier's legality
+  // column "complian / t".
+  .govuk-table__header,
+  .govuk-table__cell { overflow-wrap: break-word; }
 }
 
 // Banded, at `tint-95` — 1.12:1 against white, which is the point: a band is a

@@ -309,7 +309,7 @@ export function Persona() {
       {view.plays.length ? (
         <section aria-labelledby="persona-plays">
           <h2 className="govuk-heading-m" id="persona-plays">
-            What it has been found able to run — {view.plays.length}
+            Ways it has been found to beat a policy — {view.plays.length}
           </h2>
           <p className="govuk-body">
             Across every paper, worst first. A way to beat one policy is not a way to beat
