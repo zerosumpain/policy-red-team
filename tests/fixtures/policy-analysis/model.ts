@@ -153,6 +153,15 @@ export function fixtureModel(stage: number, _key: string, raw: unknown, _options
     items = [make('challenge', 'assurance_challenge', {
       category, finding: category === 'citation' ? 'cleared' : 'issue', materiality: category === 'completeness' ? 'high' : 'medium', targetIds: [target.id],
       challenge: `Synthetic ${category} challenge.`, testApplied: 'Trace the conclusion through its cited results to source.', evidence: 'The synthetic report is provisional.', resolutionNeeded: 'Qualify or revise the conclusion.',
+      // The one remit that builds rather than criticises (phase 22): the
+      // competing account and what would tell the two apart.
+      ...(category === 'rival_explanation' ? {
+        rival: 'Councils already wanted to widen access, so use would rise without the programme; the programme is taking credit for a change that was coming anyway.',
+        discriminators: [
+          'If use rises as fast in councils outside the programme, that favours the rival.',
+          'If use rises only where the programme funds staff, that favours the report.',
+        ],
+      } : {}),
     }, [target.id])];
   } else if (stage === 17) {
     const initial = input.artefacts.filter((a) => a.kind === 'finding' && a.data.revision !== 'assured');
@@ -162,7 +171,11 @@ export function fixtureModel(stage: number, _key: string, raw: unknown, _options
     items = REPORT_SECTIONS.map((section) => make(section, 'finding', {
       section, resultIds: [result.id], hypothesisIds: [assumption.id], revision: 'assured', reviewedFindingIds: [initial[0].id], challengeIds: challenges.map((c) => c.id), judgement: 'supported_with_limits',
     }, [result.id, assumption.id, initial[0].id, ...challenges.map((c) => c.id)]));
-    items.push(...challenges.map((challenge, i) => make(`response_${i}`, 'assurance_response', {
+    items.push(...challenges.map((challenge, i) => make(`response_${i}`, 'assurance_response', challenge.data.category === 'rival_explanation' ? {
+      // Weighed, and honestly left open: the fixture's evidence cannot tell
+      // the two accounts apart, which is what `unresolved` is for.
+      challengeId: challenge.id, disposition: 'unresolved', response: 'The evidence supplied cannot tell the two accounts apart: nothing compares councils inside and outside the programme.', changes: 'The report now says the rise in use may have happened without the programme.', remainingLimit: 'Use in councils outside the programme, over the same period, would settle it.',
+    } : {
       challengeId: challenge.id, disposition: challenge.data.finding === 'issue' ? 'accepted' : 'rejected', response: 'The revised report addresses the challenge.', changes: 'The conclusion is qualified.', remainingLimit: 'Human review remains outside scope.',
     }, [challenge.id])));
     items.push({ ...make('redesign', 'recommendation', { findingIds: [items[0].id], change: 'Commit resources and review authority.', tradeoffs: 'Additional public expenditure.', beneficiaries: ['Service users'], burdenBearers: ['Department'], validationNeeded: 'Verify capacity and legal powers.', revision: 'assured', challengeIds: challenges.map((c) => c.id), judgement: 'supported_with_limits' }, [items[0].id, ...challenges.map((c) => c.id)]), origin: 'normative_judgement' });

@@ -227,6 +227,18 @@ function semanticFault(a: Artefact, all: Map<string, Artefact>, stage: number, n
     a.data.findingIds = findings;
     for (const id of [String(a.data.mechanismId), ...plays, String(a.data.assumptionId), ...findings]) if (!a.refs.includes(id)) a.refs = [...a.refs, id];
   }
+  /**
+   * A RIVAL EXPLANATION THAT DOES NOT SAY WHAT THE RIVAL IS, OR HOW TO TELL, IS
+   * NOT ONE (phase 22). The two fields are optional in the shared shape and
+   * required here for this category alone — refused rather than narrowed,
+   * because there is nothing to narrow to: stage 16's top-up re-asks the remit,
+   * and stage 17 can only weigh a rival that was written down.
+   */
+  if (a.kind === 'assurance_challenge' && a.data.category === 'rival_explanation') {
+    const rival = typeof a.data.rival === 'string' ? a.data.rival.trim() : '';
+    const discriminators = Array.isArray(a.data.discriminators) ? (a.data.discriminators as unknown[]).filter((d) => typeof d === 'string' && d.trim()) : [];
+    if (!rival || !discriminators.length) return fault('contract', 'A rival explanation challenge must state the competing explanation in rival and what would tell the two apart in discriminators.');
+  }
   if (a.origin === 'normative_judgement' && a.kind === 'research_source') return fault('source', 'A recommendation is not an external source.');
   if (a.kind === 'recommendation' && a.origin !== 'normative_judgement') return fault('recommendation', 'Redesign options must be labelled as normative recommendations.');
   if (a.kind === 'profile') {

@@ -98,6 +98,16 @@ describe('the report view', () => {
   });
 });
 
+describe('a rival explanation through the report view (phase 22)', () => {
+  it('keeps what makes it one, and leaves every other challenge a bare stub', () => {
+    const rival = a('challenge_rival', 'assurance_challenge', { data: { category: 'rival_explanation', finding: 'issue', targetIds: ['finding_1'], rival: 'Another story.', discriminators: ['What tells them apart.'], testApplied: 'prose the report never draws' } });
+    const other = a('challenge_other', 'assurance_challenge', { data: { category: 'omission', finding: 'issue', targetIds: ['finding_1'], testApplied: 'prose' } });
+    const [kept, stub] = forTheReport({ ...full, artefacts: [rival, other] }).artefacts;
+    expect(kept.data).toEqual({ category: 'rival_explanation', finding: 'issue', targetIds: ['finding_1'], rival: 'Another story.', discriminators: ['What tells them apart.'] });
+    expect(stub.data).toEqual({});
+  });
+});
+
 describe('the progress view', () => {
   const many = Array.from({ length: RUN_INDEX_CAP + 7 }, (_, i) => a(`actor_${i}`, 'actor'));
   const view = forProgress({ ...full, artefacts: [...SET, ...many], artefactMetadata: [...SET, ...many].map((x, i) => ({ id: x.id, stage: i, updatedAt: '' })) });

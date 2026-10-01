@@ -75,6 +75,31 @@
   margin: 0 0 govuk.govuk-spacing(1);
 }
 
+// ── Another explanation (phase 22) ─────────────────────────────────────────
+//
+// The rival account, with what would tell it from the report's and what the
+// report concluded. The same left rule as a challenge row, because it is one:
+// the one challenge that builds an argument rather than taking one apart.
+.prt-rival {
+  &__item {
+    border-left: 4px solid govuk.govuk-colour("black", $variant: "tint-50");
+    padding-left: govuk.govuk-spacing(4);
+    margin-bottom: govuk.govuk-spacing(6);
+
+    &:last-child { margin-bottom: 0; }
+  }
+
+  &__text { @include govuk.govuk-font($size: 19); }
+
+  // A sentence in a tag: GOV.UK caps a tag at 160px, which set "The evidence
+  // cannot yet tell them apart" on three lines. It is one short clause.
+  &__outcome {
+    margin: 0 0 govuk.govuk-spacing(2);
+
+    .govuk-tag { max-width: none; }
+  }
+}
+
 // ── Checked and cleared (phase 22) ─────────────────────────────────────────
 //
 // One line per cleared body: its name, then the reason in the run's words. A

@@ -64,6 +64,17 @@ export function stubForReport(artefact: Artefact): Artefact {
   for (const key of CITATION_KEYS) {
     if (artefact.data?.[key] !== undefined) data[key] = artefact.data[key];
   }
+  /*
+   * A RIVAL EXPLANATION IS RENDERED (phase 22), on Findings and in the
+   * challenge round, so its category and the fields that make it one travel.
+   * Every other challenge stays a bare stub: its label is still all the report
+   * prints of it, and the response carries the rest.
+   */
+  if (artefact.kind === 'assurance_challenge' && artefact.data?.category === 'rival_explanation') {
+    for (const key of ['category', 'finding', 'targetIds', 'rival', 'discriminators']) {
+      if (artefact.data?.[key] !== undefined) data[key] = artefact.data[key];
+    }
+  }
   if (artefact.kind === 'causal_chain') {
     if (typeof artefact.data?.mechanismId === 'string') data.mechanismId = artefact.data.mechanismId;
     // The chain's own reading of where it breaks (stage 14 since prompt 3.2),

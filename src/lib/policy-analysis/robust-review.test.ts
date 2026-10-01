@@ -71,7 +71,10 @@ describe('the revised report replaces the initial report without deleting its tr
     );
     const summary = result.artefacts.find((a) => a.kind === 'review_summary')!;
     expect(summary.data.decisionUse).toBe('exploratory');
-    expect(summary.data.openChallenges).toBe(1);
+    // Two open: the high-materiality one forced above, and the fixture's rival
+    // explanation, which it honestly leaves unresolved (phase 22). Only the
+    // first is material, so the material count is still exactly one.
+    expect(summary.data.openChallenges).toBe(2);
     expect(summary.data.unresolvedMaterialChallenges).toBe(1);
   });
 });

@@ -851,6 +851,9 @@ try {
     ['report (who is involved)', `${base}/who`, 'Who is coming for what'],
     ['report (how it was made)', `${base}/method`, 'What was discarded, and why'],
     ['report (a section page)', `${base}/threats/weights`, 'Ways to beat it'],
+    // Phase 22: the fixture's challenge round writes a rival explanation and
+    // its synthesis leaves it unresolved, so Findings has this page to draw.
+    ['report (another explanation)', `${base}/findings/rival`, 'What would tell them apart'],
     ['report (what you can do)', `${base}/use`, 'Take it away'],
     ['drill', drillUrl, null],
     ['drill (what it rests on)', restsOnUrl, 'What it rests on'],

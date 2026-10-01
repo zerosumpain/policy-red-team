@@ -147,6 +147,66 @@ export function assuranceReview(artefacts: Artefact[]): AssuranceReview | null {
   };
 }
 
+/**
+ * THE STRONGEST OTHER ACCOUNT, AND WHAT THE REPORT DID WITH IT (phase 22).
+ *
+ * The `rival_explanation` challenge is the one remit that builds rather than
+ * criticises: a different mechanism or actor behaviour that would produce the
+ * same observations, and the evidence that would favour each. It is worth
+ * nothing printed alone — a reader needs the conclusion it competes with and
+ * the assured report's answer beside it, so that is the join.
+ *
+ * EMPTY ON EVERY RUN BEFORE IT, and the Findings section is gated on this list
+ * being non-empty, so an older assessment shows no box at all. A rival row
+ * whose fields are missing (a hand-built or pre-validation row) is skipped,
+ * not printed with blanks.
+ */
+export type RivalView = {
+  id: string;
+  challenge: Artefact;
+  /** The conclusions it competes with, as the run named them. */
+  about: Artefact[];
+  rival: string;
+  discriminators: string[];
+  /** `issue` when the rival fits about as well as the report's account. */
+  standing: 'issue' | 'cleared' | string;
+  response: {
+    artefact: Artefact;
+    disposition: string;
+    dispositionLabel: string;
+    response: string;
+    changes: string;
+    remainingLimit: string;
+  } | null;
+};
+
+export function rivalExplanations(artefacts: Artefact[]): RivalView[] {
+  const byId = new Map(artefacts.map((a) => [a.id, a]));
+  const responses = new Map(artefacts.filter((a) => a.kind === 'assurance_response').map((r) => [str(r.data.challengeId), r]));
+  return artefacts
+    .filter((a) => a.kind === 'assurance_challenge' && a.data.category === 'rival_explanation' && str(a.data.rival).trim())
+    .map((challenge) => {
+      const reply = responses.get(challenge.id) ?? null;
+      const disposition = reply ? str(reply.data.disposition) || 'unresolved' : 'open';
+      return {
+        id: challenge.id,
+        challenge,
+        about: strings(challenge.data.targetIds).map((id) => byId.get(id)).filter((a): a is Artefact => Boolean(a)),
+        rival: str(challenge.data.rival).trim(),
+        discriminators: strings(challenge.data.discriminators).map((d) => d.trim()).filter(Boolean),
+        standing: str(challenge.data.finding),
+        response: reply ? {
+          artefact: reply,
+          disposition,
+          dispositionLabel: DISPOSITION_LABEL[disposition] ?? disposition,
+          response: str(reply.data.response),
+          changes: str(reply.data.changes),
+          remainingLimit: str(reply.data.remainingLimit),
+        } : null,
+      };
+    });
+}
+
 export type EvaluationPlan = {
   statement: string;
   counterfactual: string;

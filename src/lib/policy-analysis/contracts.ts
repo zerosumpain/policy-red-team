@@ -405,8 +405,32 @@ export const JUDGEMENTS = ['well_supported', 'supported_with_limits', 'contested
  * play left with no recommendation answering it? Appended, never inserted: a
  * stored challenge carries its category as a string and nothing reads the
  * position.
+ *
+ * `rival_explanation` is phase 22's, and it is the only one that BUILDS rather
+ * than criticises. Every other remit asks whether the report's account is wrong
+ * or thin; none asks what ELSE would produce the same observations — the
+ * dialectical step (Analysis of Competing Hypotheses, in the intelligence
+ * trade) that keeps an analyst from confirming the first story that fits. It
+ * carries two fields the others do not (`rival`, `discriminators`), optional in
+ * the shape because the shape is shared, and required by `validation.ts` for
+ * this category alone.
  */
-export const ASSURANCE_CATEGORIES = ['omission', 'citation', 'causality', 'counterevidence', 'confidence', 'recommendation', 'completeness', 'generic', 'actionability', 'sharpest_play', 'unanswered_play'] as const;
+export const ASSURANCE_CATEGORIES = ['omission', 'citation', 'causality', 'counterevidence', 'confidence', 'recommendation', 'completeness', 'generic', 'actionability', 'sharpest_play', 'unanswered_play', 'rival_explanation'] as const;
+/**
+ * HOW FAR A PIECE OF EVIDENCE CAN BEAR WEIGHT, in four steps (phase 22).
+ *
+ * `evidence.sourceQuality` is prose — "Moderate…, but weak because this is a
+ * search excerpt…" — on all 197 rows of the real Best Start run, and prose
+ * cannot cap a judgement. The grade can. It follows the usual hierarchy of
+ * evidence, written out for the model in prompt 6 (`GRADE_RUBRIC` in
+ * `prompts.ts`): systematic review, trial or robust quasi-experiment is strong;
+ * official statistics or an evaluation with a stated method is moderate; one
+ * observational study, a stakeholder report, a government's own assertion, or
+ * anything read only as a search excerpt is weak at best; no source is none.
+ * Strongest first, so an index comparison is a ranking.
+ */
+export const EVIDENCE_GRADES = ['strong', 'moderate', 'weak', 'none'] as const;
+export type EvidenceGrade = (typeof EVIDENCE_GRADES)[number];
 const text = z.string().min(1).max(12000);
 const strings = z.array(text).max(80);
 const ids = z.array(z.string().max(100)).max(10000);
@@ -558,6 +582,11 @@ export const dataSchemas = {
     category: z.enum(ASSURANCE_CATEGORIES), finding: z.enum(['issue', 'cleared']),
     materiality: z.enum(['high', 'medium', 'low']), targetIds: ids.min(1), challenge: text,
     testApplied: text, evidence: text, resolutionNeeded: text,
+    // `rival_explanation` only, and required there by `validation.ts`: the
+    // strongest competing account of the report's most consequential
+    // conclusion, and the evidence that would favour each account over the
+    // other. Optional in the shape because every other category shares it.
+    rival: text.optional(), discriminators: strings.optional(),
   }).strict(),
   assurance_response: z.object({
     challengeId: text, disposition: z.enum(['accepted', 'partly_accepted', 'rejected', 'unresolved']),

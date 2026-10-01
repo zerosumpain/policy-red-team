@@ -1,6 +1,6 @@
 import { useMemo } from 'react';
 import type { Artefact } from '$lib/policy-analysis/contracts';
-import { assuranceReview } from '$lib/assurance-view';
+import { assuranceReview, rivalExplanations } from '$lib/assurance-view';
 import { Details, InsetText, Tag, type TagColour } from '../govuk';
 import { Metrics } from './Metrics';
 
@@ -63,6 +63,9 @@ const DISPOSITION_COLOUR: Record<string, TagColour> = {
 
 export function Assurance({ artefacts }: { artefacts: Artefact[] }) {
   const review = useMemo(() => assuranceReview(artefacts), [artefacts]);
+  // The rival explanation's two extra fields, by challenge id (phase 22). Its
+  // row here is the record; Findings carries the same join for a reader.
+  const rivals = useMemo(() => new Map(rivalExplanations(artefacts).map((r) => [r.id, r])), [artefacts]);
   if (!review || (!review.rows.length && !review.statement)) return null;
 
   return (
@@ -99,6 +102,19 @@ export function Assurance({ artefacts }: { artefacts: Artefact[] }) {
         {review.rows.map((row) => (
           <li key={row.id} className="prt-assurance__item">
             <h3 className="govuk-heading-s prt-assurance__head">{row.label}</h3>
+            {rivals.get(row.id) ? (
+              <>
+                <p className="govuk-body-s"><strong>Another explanation:</strong> {rivals.get(row.id)!.rival}</p>
+                {rivals.get(row.id)!.discriminators.length ? (
+                  <>
+                    <h4 className="govuk-heading-s govuk-!-font-size-16 govuk-!-margin-bottom-1">What would tell them apart</h4>
+                    <ul className="govuk-list govuk-list--bullet govuk-body-s">
+                      {rivals.get(row.id)!.discriminators.map((d) => <li key={d}>{d}</li>)}
+                    </ul>
+                  </>
+                ) : null}
+              </>
+            ) : null}
             <p className="prt-assurance__disposition">
               <Tag colour={DISPOSITION_COLOUR[row.disposition] ?? 'grey'}>{row.dispositionLabel}</Tag>
             </p>

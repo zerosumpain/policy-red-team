@@ -52,7 +52,9 @@ import { Legality } from './Legality';
 import { EvidenceCoverage } from './EvidenceCoverage';
 import { CheckLedger } from './CheckLedger';
 import { Assurance } from './Assurance';
+import { Rival } from './Rival';
 import { Cleared } from './Cleared';
+import { rivalExplanations } from '$lib/assurance-view';
 import { clearanceNotes, clearedBodies } from '$lib/policy-analysis/cleared';
 import { Options } from './Options';
 import { Fragile } from './Fragile';
@@ -198,7 +200,7 @@ const SECTION_NOTES: Record<string, string> = {
  */
 const READING_ORDER: Partial<Record<Move, string[]>> = {
   verdict: [
-    'main-findings', 'exposure-profile', 'legality',
+    'main-findings', 'exposure-profile', 'rival', 'legality',
     'suggests', 'howyoudknow', 'rests',
     'writeup', 'checks',
   ],
@@ -736,6 +738,15 @@ export function Report({ detail, offline, linkTo, onChanged, route, onTitle }: {
   section('cleared', 'Checked and cleared', 'threats', cleared.length || clearedNotes.length ? (
     <Cleared bodies={cleared} notes={clearedNotes} actors={byId} linkTo={link} />
   ) : null, cleared.length ? { count: { n: cleared.length, noun: cleared.length === 1 ? 'body' : 'bodies' } } : undefined);
+  /*
+   * ANOTHER EXPLANATION (phase 22): the strongest competing account of the
+   * report's most consequential conclusion, what would tell the two apart, and
+   * how the assured report disposed of it. On Findings, beside the conclusions
+   * it competes with — a rival kept on the method page is a rival nobody
+   * deciding anything reads. Nothing on a run before the remit existed.
+   */
+  const rivals = rivalExplanations(artefacts);
+  section('rival', 'Another explanation', 'verdict', rivals.length ? <Rival rivals={rivals} linkTo={link} /> : null);
   /*
    * EVERY SECTION BELOW IS GATED ON ITS OWN INPUT, and six of tonight's were
    * handed over ungated. `section()` keeps any TRUTHY body and a JSX element is
