@@ -64,7 +64,7 @@ function stub(
     fields,
     problem: (config) =>
       fields.every((f) => f.optional || !visible(f, config) || config[f.name]?.trim()) ? null : `Fill in ${label}.`,
-    model: (config) => config.model?.trim() || config.deployment?.trim() || '',
+    model: (config) => config.model?.trim() || config.deployment?.trim() || config.endpoint?.trim() || '',
     client: () => unreachable(label),
     /*
      * A CATALOGUE THAT REACHES NOTHING, so the browser walk can drive the model
@@ -78,7 +78,7 @@ function stub(
      */
     catalogue: async () => FIXTURE_CATALOGUE,
     models: (config) => {
-      const own = config.model?.trim() || config.deployment?.trim();
+      const own = config.model?.trim() || config.deployment?.trim() || config.endpoint?.trim();
       return own ? [{ id: own, name: own, note: 'Configured here.' }] : [];
     },
   };
@@ -139,6 +139,33 @@ const ALL: ProviderDefinition[] = [
     { name: 'federatedTokenFile', label: 'Federated token file', hint: 'Blank to use the cluster’s own.', optional: true, showWhen: { field: 'authMode', is: ['workload-identity'] } },
     { name: 'authorityHost', label: 'Entra authority', hint: 'Blank unless this is a sovereign cloud.', optional: true, showWhen: { field: 'authMode', is: ['entra-app', 'workload-identity'] } },
     { name: 'apiVersion', label: 'API version', hint: 'Leave blank for the default.', optional: true },
+  ]),
+  stub('databricks', 'Databricks Model Serving', 'The models your workspace already serves.', ['your workspace URL'], [
+    { name: 'host', label: 'Workspace URL', hint: 'Where the workspace is.' },
+    { name: 'endpoint', label: 'Serving endpoint', hint: 'The endpoint’s name.' },
+    {
+      name: 'route',
+      label: 'Which API',
+      hint: 'Leave on Model Serving unless told otherwise.',
+      kind: 'select',
+      options: [
+        { value: 'serving-endpoints', text: 'Model Serving endpoints (/serving-endpoints)' },
+        { value: 'ai-gateway', text: 'AI Gateway (/ai-gateway/mlflow/v1)' },
+      ],
+    },
+    {
+      name: 'authMode',
+      label: 'How to authenticate',
+      hint: 'A Databricks App runs as a service principal.',
+      kind: 'select',
+      options: [
+        { value: 'oauth-m2m', text: 'A service principal (OAuth) — what a Databricks App runs as' },
+        { value: 'pat', text: 'A personal access token' },
+      ],
+    },
+    { name: 'clientId', label: 'Service principal client ID', hint: 'Set for you inside an App.', showWhen: { field: 'authMode', is: ['oauth-m2m'] } },
+    { name: 'clientSecret', label: 'Service principal OAuth secret', hint: 'Set for you inside an App.', secret: true, showWhen: { field: 'authMode', is: ['oauth-m2m'] } },
+    { name: 'token', label: 'Personal access token', hint: 'Starts dapi.', secret: true, showWhen: { field: 'authMode', is: ['pat'] } },
   ]),
 ];
 

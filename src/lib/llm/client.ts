@@ -71,6 +71,23 @@ const ENV_NAMES: Record<string, Record<string, string>> = {
     federatedTokenFile: 'AZURE_FEDERATED_TOKEN_FILE',
     authorityHost: 'AZURE_AUTHORITY_HOST',
   },
+  /*
+   * THE NAMES A DATABRICKS APP IS STARTED WITH. The platform sets
+   * `DATABRICKS_HOST`, `DATABRICKS_CLIENT_ID` and `DATABRICKS_CLIENT_SECRET`
+   * for the app's own service principal, and `DATABRICKS_TOKEN` /
+   * `DATABRICKS_AUTH_TYPE` are the SDK's own names — so inside a workspace the
+   * panel needs only the endpoint, and `DATABRICKS_SERVING_ENDPOINT` (set from
+   * the app's serving-endpoint resource in `app.yaml`) removes even that.
+   */
+  databricks: {
+    host: 'DATABRICKS_HOST',
+    endpoint: 'DATABRICKS_SERVING_ENDPOINT',
+    route: 'DATABRICKS_ROUTE',
+    authMode: 'DATABRICKS_AUTH_TYPE',
+    clientId: 'DATABRICKS_CLIENT_ID',
+    clientSecret: 'DATABRICKS_CLIENT_SECRET',
+    token: 'DATABRICKS_TOKEN',
+  },
 };
 
 let cached: { key: string; client: OpenAI } | undefined;

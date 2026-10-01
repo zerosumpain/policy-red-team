@@ -181,6 +181,9 @@ const fixtureServer = await bundle({
 const ENDPOINTS = [
   'openrouter.ai/api',
   'openai.azure.com',
+  // Phase 21: the Databricks token exchange. Model calls go to the reader's own
+  // workspace host, which cannot be named, but this path is fixed.
+  '/oidc/v1/token',
   'login.microsoftonline.com',
   '169.254.169.254',
   // Metered, and it receives the reader's research questions. It joined this

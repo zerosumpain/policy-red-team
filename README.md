@@ -90,6 +90,7 @@ without a rebuild, which is how you ship this without the Codex entry:
 | | |
 |---|---|
 | **Azure AI Foundry** | a deployment you have already provisioned. API key, or Microsoft Entra — app registration, managed identity or AKS workload identity, for a resource with local authentication switched off |
+| **Databricks Model Serving** | the models a Databricks workspace already serves — Foundation Model APIs, provisioned throughput or an external model behind a serving endpoint. Signs in as a service principal (OAuth), which is what a Databricks App runs as, or with a personal access token |
 | **OpenRouter** | one key, billed per token, reaching every model in the picker |
 | **An OpenAI-compatible endpoint** | anything speaking that API at a URL you control: a local Ollama or vLLM, a gateway of your own, an APIM front end, a Codex bridge |
 
@@ -131,6 +132,9 @@ Per provider, for a deployment that sets them in a file rather than typing them:
 | Azure, API key | `AZURE_FOUNDRY_KEY` |
 | Azure, Entra | `AZURE_TENANT_ID`, `AZURE_CLIENT_ID`, `AZURE_CLIENT_SECRET`, `AZURE_FEDERATED_TOKEN_FILE`, `AZURE_AUTHORITY_HOST` |
 | OpenAI-compatible | `CODEX_BASE_URL`, `CODEX_MODEL`, `CODEX_API_KEY` |
+| Databricks | `DATABRICKS_HOST`, `DATABRICKS_SERVING_ENDPOINT`, `DATABRICKS_ROUTE` (`serving-endpoints` or `ai-gateway`), `DATABRICKS_AUTH_TYPE` (`oauth-m2m` or `pat`) |
+| Databricks, service principal | `DATABRICKS_CLIENT_ID`, `DATABRICKS_CLIENT_SECRET` — a Databricks App is started with these and `DATABRICKS_HOST` already set |
+| Databricks, token | `DATABRICKS_TOKEN` |
 
 A `.env` beside the application is read at startup by both the server and the
 command line. Copy `.env.example` if you want one.

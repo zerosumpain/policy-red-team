@@ -298,7 +298,7 @@ export function normaliseEndpoint(raw: string): string {
  * the panel at a different deployment therefore starts the negotiation again,
  * rather than inheriting an answer that belonged to the old one.
  */
-function adaptTokenParameter(client: AzureOpenAI): OpenAI {
+export function adaptTokenParameter<C extends OpenAI>(client: C): OpenAI {
   const completions = client.chat.completions;
   const create = completions.create.bind(completions);
   let useCompletionTokens: boolean | null = null;

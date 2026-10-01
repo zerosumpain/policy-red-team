@@ -71,3 +71,31 @@ artefact → item · move → section · stage → step · play/exploit → way 
 | Offline pack | split / one document | **one document** | `file://`, Ctrl-F is its interface | yes |
 | Refused items | display only / record label + quote | **record** in `validation.ts`, display parses both shapes | John's call; old runs still read by page | yes |
 | The chain chart | fix labels / replace | **replace** with a four-step ladder whose every box carries text | it restated the lists beneath it | yes |
+
+## Databricks Model Serving (added before the merge, at John's request)
+
+"This repo will likely be deployed into a bricks environment and utilise their
+LLM model infrastructure." A fourth provider, `src/lib/llm/providers/databricks.ts`:
+
+- Calls go to `https://<workspace>/serving-endpoints` (or `/ai-gateway/mlflow/v1`)
+  with the OpenAI client; the serving endpoint's name is the `model`.
+- OAuth M2M: the service principal's id and secret are exchanged at
+  `<workspace>/oidc/v1/token` (basic auth, `grant_type=client_credentials`,
+  `scope=all-apis`) for a one-hour token, cached and refreshed a minute early.
+  A personal access token is the alternative.
+- `client.ts` maps `DATABRICKS_HOST`, `DATABRICKS_CLIENT_ID`,
+  `DATABRICKS_CLIENT_SECRET` — what a Databricks App is started with — so inside a
+  workspace the panel needs only the endpoint, and `DATABRICKS_SERVING_ENDPOINT`
+  removes that too.
+- The panel's "Browse" lists the workspace's chat endpoints from
+  `GET /api/2.0/serving-endpoints`.
+- No web search (`grounded`), like Azure.
+- **Never called against a real workspace.** Every request shape is asserted
+  against the documentation with `fetch` stubbed. The first real use should be
+  the panel's "Test the connection".
+
+**Not done, and needed before this runs AS a Databricks App:** the server binds
+`127.0.0.1:5290` (`POLICY_HOST`, `POLICY_PORT`) and an App must listen on
+`0.0.0.0:$DATABRICKS_APP_PORT`; PGlite writes to a local directory, and an App's
+filesystem does not survive a redeploy, so the database needs a home (a Unity
+Catalog volume, or Lakebase Postgres) before anything run there is kept.
