@@ -157,6 +157,13 @@ delete.** Do not weaken it.
   asserts the three API addresses are absent; `tests/setup-integration.ts`
   mocks it for every integration file. Keep each address ONE literal in
   `body-sources.ts`, or the check stops seeing it.
+- **This server reads public pages itself** (`src/lib/server/fetch-page.ts`,
+  phase 22 part 2): research's full-text fallback and a page a reader names.
+  `build.mjs` swaps it for `fetch-page.fixture.ts` in both fixture bundles and
+  `tests/setup-integration.ts` mocks it; keep its user agent ONE literal, or
+  the absence check stops seeing it. Unit tests pass their own `fetch`.
+- **A reader's source is graded like any other.** `supplied: 'reader'` says who
+  chose it, never how strong it is; `retrieval` still says how much was read.
 - **"Seen in N papers" counts documents.** Two runs of one file are one paper,
   in the figure, in a prior and on the dossier page. The walk submits a
   DIFFERENT second document for exactly this reason.
