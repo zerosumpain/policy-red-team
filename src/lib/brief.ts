@@ -2,6 +2,7 @@ import type { Artefact } from '$lib/policy-analysis/contracts';
 import { keyJudgements } from '$lib/policy-analysis/judgements';
 import { isPlay } from '$lib/policy-analysis/cleared';
 import { evidenceReadLine, NOTHING_READ } from '$lib/evidence-grade';
+import { decisionUseReason } from '$lib/assurance-view';
 import { patternOf, PLAY_PATTERNS, OTHER_PATTERN } from '$lib/policy-analysis/patterns';
 import { stageFacts, truncations } from '$lib/policy-analysis/stage-facts';
 import { BAND_LABEL, findingsBySection, headlineSentence, recommendations, type Band } from '$lib/policy-analysis/view';
@@ -306,6 +307,13 @@ export function briefLimits(stages: StageWarnings[], artefacts?: Artefact[]): st
    */
   const read = artefacts ? evidenceReadLine(artefacts) : null;
   if (read && !(read === NOTHING_READ && (sealed || research))) lines.push(read);
+  /*
+   * AN OPEN RIVAL KEEPS THE REPORT EXPLORATORY, and the trust card is where a
+   * reader decides whether to act on it (phase 22 part 2). Second, after what
+   * was read, so the cap of three never drops it.
+   */
+  const rival = artefacts ? decisionUseReason(artefacts) : null;
+  if (rival) lines.push(rival);
   if (sealed) {
     lines.push('This assessment was sealed, so it did not search for outside evidence. Its judgements rest on the paper and the model alone.');
   } else if (research) {

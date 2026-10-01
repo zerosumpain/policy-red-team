@@ -1,3 +1,4 @@
+import { capForRival } from './decision-use';
 import { APPRAISAL_STAGE, ASSURANCE_CATEGORIES, ASSURANCE_STAGE, ASSURED_SYNTHESIS_STAGE, CONCURRENCY_OPTIONS, DEEP_CHAINS, DEFAULT_CONCURRENCY, DEFAULT_EXTRACTION, DEPTH_LIMITS, FIT_LIMIT, FOLLOW_UP_STAGES, FULL_PROFILES, MAX_KEY_JUDGEMENTS, isPassStage, passOf, passOrdinal, passStep, PATTERNS, PERSONA_STAGE, REPORT_SECTIONS, RESULT_KINDS, REVISION_STATUSES, SCENARIOS, SHORT_PROFILE_BATCH, STAGE_CONTEXT, SYNTHESIS_STAGE, THEORY_STAGE, type Artefact, type Concurrency, type Extraction, type PassKind, type StageInput, type StageOutput } from './contracts';
 import { consumedSources, encodedSize, fitToBudget } from './budget';
 import { scoreExploits } from './exposure';
@@ -1524,7 +1525,13 @@ export async function executeStage(input: StageInput, deps: PipelineDeps): Promi
     summary.data.openChallenges = unresolved.length;
     summary.data.acceptedChallenges = accepted;
     summary.data.unresolvedMaterialChallenges = material;
-    summary.data.decisionUse = material ? 'exploratory' : unresolved.length ? 'decision_support' : 'independently_challenged';
+    const counted = material ? 'exploratory' : unresolved.length ? 'decision_support' : 'independently_challenged';
+    // An open rival explanation caps it, whatever the count says (phase 22
+    // part 2): read against the challenges in force and this stage's responses.
+    const capped = capForRival(counted, [...input.artefacts.filter((a) => a.kind === 'assurance_challenge'), ...responses]);
+    summary.data.decisionUse = capped.use;
+    if (capped.reason) summary.data.decisionUseReason = capped.reason;
+    else delete summary.data.decisionUseReason;
   }
   // A restatement runs the stage-17 contract, so its surplus is reconciled the
   // same way. No floor: a restatement has never had coverage rules of its own,

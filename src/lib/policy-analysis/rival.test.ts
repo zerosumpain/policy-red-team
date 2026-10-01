@@ -69,6 +69,8 @@ describe('the challenge stage asks for it and the synthesis answers it', () => {
     expect(rival.discriminators).toHaveLength(2);
     expect(rival.about.map((a) => a.kind)).toEqual(['finding']);
     expect(rival.response).toMatchObject({ disposition: 'unresolved', remainingLimit: expect.stringMatching(/would settle it/) });
+    // And an unresolved rival keeps the report exploratory, with the reason written down.
+    expect(all.find((a) => a.kind === 'review_summary')?.data).toMatchObject({ decisionUse: 'exploratory', decisionUseReason: expect.stringMatching(/^Another explanation fits/) });
   }, 60_000);
 
   it('shows nothing for a run before the remit existed', () => {

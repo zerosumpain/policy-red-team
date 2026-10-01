@@ -603,6 +603,10 @@ export const dataSchemas = {
     judgement: z.enum(JUDGEMENTS), openChallenges: z.number().int().nonnegative(),
     acceptedChallenges: z.number().int().nonnegative(), unresolvedMaterialChallenges: z.number().int().nonnegative(),
     scope: text, limitations: strings,
+    // Written by the SERVER, never asked of the model (phase 22 part 2): why
+    // `decisionUse` is what it is when a rule decided it — today only an open
+    // rival explanation. See `decision-use.ts`.
+    decisionUseReason: text.optional(),
   }).strict(),
   /**
    * THE "SO WHAT", in at most `MAX_KEY_JUDGEMENTS` ranked sentences.

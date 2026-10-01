@@ -27,6 +27,7 @@
  * reliability, so both figures are returned and the component prints both.
  */
 import type { Artefact } from '$lib/policy-analysis/contracts';
+import { capForRival } from '$lib/policy-analysis/decision-use';
 
 const str = (v: unknown): string => (typeof v === 'string' ? v : '');
 const strings = (v: unknown): string[] => (Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string') : []);
@@ -72,6 +73,12 @@ export type AssuranceReview = {
   statement: string;
   judgement: string;
   decisionUse: string;
+  /**
+   * Why `decisionUse` is what it is, when a rule rather than the count decided
+   * it — an open rival explanation (phase 22 part 2). The stored sentence, or
+   * the same rule applied here to a summary written before it existed.
+   */
+  decisionUseReason: string | null;
   limitations: string[];
   /**
    * Where the summary's own accepted count disagrees with the rows, said in
@@ -79,6 +86,19 @@ export type AssuranceReview = {
    */
   disagreement: string | null;
 };
+
+/** The stored decision use, read through the rival rule (`decision-use.ts`). */
+function decided(summary: Artefact | null, artefacts: Artefact[]): { decisionUse: string; decisionUseReason: string | null } {
+  const stored = str(summary?.data.decisionUse);
+  if (!stored) return { decisionUse: '', decisionUseReason: null };
+  const capped = capForRival(stored, artefacts);
+  return { decisionUse: capped.use, decisionUseReason: str(summary?.data.decisionUseReason) || capped.reason };
+}
+
+/** Why the review summary says what it does about decision use, or null. */
+export function decisionUseReason(artefacts: Artefact[]): string | null {
+  return decided(artefacts.find((a) => a.kind === 'review_summary') ?? null, artefacts).decisionUseReason;
+}
 
 export function assuranceReview(artefacts: Artefact[]): AssuranceReview | null {
   const challenges = artefacts.filter((a) => a.kind === 'assurance_challenge');
@@ -138,7 +158,7 @@ export function assuranceReview(artefacts: Artefact[]): AssuranceReview | null {
     open: seen.filter((key) => key === 'open' || key === 'unresolved').length,
     statement: summary?.statement ?? '',
     judgement: str(summary?.data.judgement),
-    decisionUse: str(summary?.data.decisionUse),
+    ...decided(summary, artefacts),
     limitations: strings(summary?.data.limitations),
     disagreement: claimed !== null && claimed !== accepted
       ? `The review summary records ${claimed} accepted; ${accepted} of the ${seen.length} responses `

@@ -79,6 +79,9 @@ export function Assurance({ artefacts }: { artefacts: Artefact[] }) {
         ))}
       </p>
 
+      {/* Said beside the label it explains, before anything else (phase 22 part 2). */}
+      {review.decisionUseReason ? <InsetText>{review.decisionUseReason}</InsetText> : null}
+
       {review.statement ? <p className="govuk-body">{review.statement}</p> : null}
 
       {/*
