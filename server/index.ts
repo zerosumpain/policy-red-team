@@ -44,8 +44,17 @@ import { refreshModelMenu } from '$lib/server/models/offered-store';
 const ROOT = path.resolve(fileURLToPath(new URL('..', import.meta.url)));
 const CLIENT = path.join(ROOT, 'dist', 'client');
 
-const PORT = Number(process.env.POLICY_PORT ?? 5290);
-const HOST = process.env.POLICY_HOST ?? '127.0.0.1';
+/*
+ * INSIDE A DATABRICKS APP, THE PLATFORM DECIDES (phase 21). An App must listen
+ * on `0.0.0.0:$DATABRICKS_APP_PORT`: the workspace's own proxy is in front of
+ * it and signs every visitor in with workspace SSO before a request arrives, so
+ * the loopback rule below — there because NOTHING else authenticates here — is
+ * the platform's job there, and binding loopback would leave the proxy nothing
+ * to reach. `POLICY_PORT` and `POLICY_HOST` still win when set.
+ */
+const inDatabricksApp = Boolean(process.env.DATABRICKS_APP_PORT?.trim());
+const PORT = Number(process.env.POLICY_PORT ?? process.env.DATABRICKS_APP_PORT ?? 5290);
+const HOST = process.env.POLICY_HOST ?? (inDatabricksApp ? '0.0.0.0' : '127.0.0.1');
 
 /**
  * Who is watching which assessment, for the progress stream.
@@ -311,7 +320,9 @@ server.listen(PORT, HOST, async () => {
     console.warn(`\n  ${problem}`);
     console.warn(`  Existing assessments still open and export; a new one will not start.\n`);
   }
-  if (HOST !== '127.0.0.1' && HOST !== 'localhost') {
+  if (inDatabricksApp && !process.env.POLICY_HOST) {
+    console.log('  Running as a Databricks App: the workspace signs visitors in before they reach this port.');
+  } else if (HOST !== '127.0.0.1' && HOST !== 'localhost') {
     console.warn(
       `\n  WARNING: bound to ${HOST}, not loopback.\n` +
         `  This service has no authentication of any kind. Anyone who can reach\n` +

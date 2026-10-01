@@ -181,9 +181,12 @@ const fixtureServer = await bundle({
 const ENDPOINTS = [
   'openrouter.ai/api',
   'openai.azure.com',
-  // Phase 21: the Databricks token exchange. Model calls go to the reader's own
-  // workspace host, which cannot be named, but this path is fixed.
-  '/oidc/v1/token',
+  // Phase 21: Databricks model calls. The workspace host is the reader's own and
+  // cannot be named, but these paths are fixed. NOT `/oidc/v1/token`: the
+  // Lakebase database signs in through that too, and a fixture build may
+  // legitimately run against Postgres — the guarantee is about models.
+  '/serving-endpoints',
+  '/ai-gateway/mlflow/v1',
   'login.microsoftonline.com',
   '169.254.169.254',
   // Metered, and it receives the reader's research questions. It joined this

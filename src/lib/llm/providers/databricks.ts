@@ -2,6 +2,7 @@ import OpenAI from 'openai';
 import { adaptTokenParameter } from './azure';
 import { longRunningTransport } from './transport';
 import type { CatalogueEntry, ProviderConfig, ProviderDefinition } from './types';
+import { clearWorkspaceTokenCache, normaliseHost, workspaceToken } from '$lib/databricks/oauth';
 
 /**
  * DATABRICKS MODEL SERVING — the workspace's own models.
@@ -43,9 +44,8 @@ import type { CatalogueEntry, ProviderConfig, ProviderDefinition } from './types
  * `DATABRICKS_AUTH_TYPE` values, so that variable works here as it does
  * everywhere else.
  *
- * NO DEPENDENCY. The Databricks SDK for JavaScript would do the token exchange,
- * and it is one form POST with basic auth — the same argument `entra.ts` makes
- * against `@azure/identity`.
+ * The token exchange lives in `$lib/databricks/oauth`, shared with the Lakebase
+ * database connection, which signs in as the same principal.
  *
  * ── WHAT IT DOES NOT DO ────────────────────────────────────────────────────
  *
@@ -62,8 +62,8 @@ const AUTH_MODES: { value: AuthMode; text: string }[] = [
 type AuthMode = 'oauth-m2m' | 'pat';
 
 const ROUTES: { value: Route; text: string }[] = [
-  { value: 'serving-endpoints', text: 'Model Serving endpoints (/serving-endpoints)' },
-  { value: 'ai-gateway', text: 'AI Gateway (/ai-gateway/mlflow/v1)' },
+  { value: 'serving-endpoints', text: 'Model Serving endpoints' },
+  { value: 'ai-gateway', text: 'AI Gateway' },
 ];
 
 type Route = 'serving-endpoints' | 'ai-gateway';
@@ -74,19 +74,8 @@ const mode = (config: ProviderConfig): AuthMode =>
 const route = (config: ProviderConfig): Route =>
   ROUTES.find((r) => r.value === config.route?.trim())?.value ?? 'serving-endpoints';
 
-/** One-hour tokens; refresh a minute early so a call in flight never holds a dead one. */
-const EARLY_REFRESH_MS = 60_000;
-const TOKEN_TIMEOUT_MS = 15_000;
-
-type Cached = { token: string; expiresAt: number };
-
-/** Keyed on host + principal, so a credential edited in the panel takes effect on the next call. */
-const tokens = new Map<string, Cached>();
-
 /** Dropped between tests, and whenever configuration changes underneath. */
-export function clearDatabricksTokenCache(): void {
-  tokens.clear();
-}
+export const clearDatabricksTokenCache = clearWorkspaceTokenCache;
 
 export const databricks: ProviderDefinition = {
   id: 'databricks',
@@ -221,48 +210,11 @@ export const databricks: ProviderDefinition = {
   callTimeoutMs: 420_000,
 };
 
-/** Any URL a reader might paste, reduced to `https://<workspace>`. A bare host gets a scheme. */
-export function normaliseHost(raw: string): string {
-  const trimmed = raw.trim();
-  const url = new URL(/^[a-z]+:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`);
-  return url.origin;
-}
+/** The principal this configuration names. The token itself is `$lib/databricks/oauth`'s, shared with Lakebase. */
+const bearer = (config: ProviderConfig) =>
+  workspaceToken({ host: config.host, clientId: config.clientId, clientSecret: config.clientSecret });
 
-/** A bearer token for the service principal, cached until a minute before it expires. */
-async function bearer(config: ProviderConfig): Promise<string> {
-  const host = normaliseHost(config.host);
-  const clientId = config.clientId.trim();
-  const key = `${host}|${clientId}|${config.clientSecret.trim()}`;
-  const hit = tokens.get(key);
-  if (hit && hit.expiresAt - EARLY_REFRESH_MS > Date.now()) return hit.token;
-
-  let response: Response;
-  try {
-    response = await fetch(`${host}/oidc/v1/token`, {
-      method: 'POST',
-      headers: {
-        authorization: `Basic ${Buffer.from(`${clientId}:${config.clientSecret.trim()}`).toString('base64')}`,
-        'content-type': 'application/x-www-form-urlencoded',
-      },
-      body: new URLSearchParams({ grant_type: 'client_credentials', scope: 'all-apis' }),
-      signal: AbortSignal.timeout(TOKEN_TIMEOUT_MS),
-    });
-  } catch (err) {
-    throw new Error(
-      `${host} could not be reached for a token. In a restricted network the workspace URL needs to be on the egress allow-list. ` +
-        `(${err instanceof Error ? err.message : String(err)})`,
-    );
-  }
-  const text = await response.text();
-  if (!response.ok) {
-    throw new Error(`Databricks refused to issue a token for the service principal (${response.status}): ${text.slice(0, 600)}`);
-  }
-  const body = JSON.parse(text) as { access_token?: string; expires_in?: number };
-  if (!body.access_token) throw new Error('Databricks answered without a token.');
-  const fresh = { token: body.access_token, expiresAt: Date.now() + (body.expires_in ?? 3600) * 1000 };
-  tokens.set(key, fresh);
-  return fresh.token;
-}
+export { normaliseHost };
 
 type WireEndpoint = {
   name?: unknown;
@@ -277,7 +229,7 @@ export async function listServingEndpoints(config: ProviderConfig): Promise<Cata
   const auth = mode(config) === 'pat' ? config.token.trim() : await bearer(config);
   const response = await fetch(`${host}/api/2.0/serving-endpoints`, {
     headers: { authorization: `Bearer ${auth}` },
-    signal: AbortSignal.timeout(TOKEN_TIMEOUT_MS),
+    signal: AbortSignal.timeout(15_000),
   });
   const text = await response.text();
   if (!response.ok) throw new Error(`Databricks would not list the serving endpoints (${response.status}): ${text.slice(0, 400)}`);

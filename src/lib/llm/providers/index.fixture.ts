@@ -149,8 +149,8 @@ const ALL: ProviderDefinition[] = [
       hint: 'Leave on Model Serving unless told otherwise.',
       kind: 'select',
       options: [
-        { value: 'serving-endpoints', text: 'Model Serving endpoints (/serving-endpoints)' },
-        { value: 'ai-gateway', text: 'AI Gateway (/ai-gateway/mlflow/v1)' },
+        { value: 'serving-endpoints', text: 'Model Serving endpoints' },
+        { value: 'ai-gateway', text: 'AI Gateway' },
       ],
     },
     {

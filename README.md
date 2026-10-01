@@ -108,7 +108,9 @@ needs none of it.
 |---|---|
 | `POLICY_PORT`, `POLICY_HOST` | where it listens. Loopback by default, deliberately |
 | `POLICY_HOSTNAME` | the public name, if it has one. Used to refuse a citation that points back at this service |
-| `POLICY_DATA_DIR` | the database |
+| `POLICY_DATA_DIR` | the database, embedded (the default) |
+| `POLICY_DATABASE_URL`, `PGHOST` … | a Postgres server instead. See **Running it as a Databricks App** |
+| `POLICY_SETTINGS_KEY` | the settings key as 64 hex characters, for a host whose disk does not last |
 | `POLICY_SEAL_KEY_DIR` | the settings key and the per-run sealing keys. **See Backing it up** |
 | `POLICY_ADMIN_PASSWORD` | pins the admin password and is the recovery path if it is lost |
 | `POLICY_SETUP_TOKEN` | required to claim an install that is not bound to loopback |
@@ -158,6 +160,27 @@ default is `open`, so nothing changes for an existing install until you decide.
 **Do not gate this on a source address.** Behind a tunnel or a reverse proxy every
 request arrives from `127.0.0.1`, so "local connections only" is a gate that passes
 for the entire internet. Nothing in the application does this and nothing should.
+
+## Running it as a Databricks App
+
+`deploy/databricks/app.yaml` is the whole configuration; its header lists the
+four resources to add first (a serving endpoint, a Lakebase database and two
+secrets). What changes inside a workspace:
+
+| | |
+|---|---|
+| **Listening** | `0.0.0.0:$DATABRICKS_APP_PORT`, because the workspace proxy is in front and signs every visitor in. Outside an App the default is still loopback |
+| **Models** | Databricks Model Serving, as the app's own service principal. Only the endpoint is configured, and that comes from the app's resource |
+| **The database** | Lakebase Postgres instead of the embedded one, because an App's disk is rebuilt on every deploy. Adding the database resource sets the `PG*` variables; the password is a one-hour OAuth token minted per connection (`LAKEBASE_INSTANCE` or `LAKEBASE_ENDPOINT` says which kind of Lakebase) |
+| **The settings key** | `POLICY_SETTINGS_KEY`, from a secret, instead of a file — still never in the database |
+
+**Sealed assessments do not survive a redeploy there.** Each sealed run's key is
+a file under `POLICY_SEAL_KEY_DIR`, kept apart from the database on purpose so a
+database copy cannot read it. An App has no disk that outlives a deploy, so a
+sealed run's key goes with the old deployment and the run reads as purged.
+Ordinary runs are unaffected.
+
+`POLICY_DATABASE_URL` points any install at any Postgres 16+, not only Lakebase.
 
 ## Deploying somewhere restricted
 

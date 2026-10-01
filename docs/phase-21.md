@@ -94,8 +94,27 @@ LLM model infrastructure." A fourth provider, `src/lib/llm/providers/databricks.
   against the documentation with `fetch` stubbed. The first real use should be
   the panel's "Test the connection".
 
-**Not done, and needed before this runs AS a Databricks App:** the server binds
-`127.0.0.1:5290` (`POLICY_HOST`, `POLICY_PORT`) and an App must listen on
-`0.0.0.0:$DATABRICKS_APP_PORT`; PGlite writes to a local directory, and an App's
-filesystem does not survive a redeploy, so the database needs a home (a Unity
-Catalog volume, or Lakebase Postgres) before anything run there is kept.
+### Then the App itself (John: "yes do both databricks app changes too")
+
+- **Listening:** with `DATABRICKS_APP_PORT` set, the server binds
+  `0.0.0.0:$DATABRICKS_APP_PORT` (the workspace proxy authenticates); `POLICY_*`
+  still win. Verified by running the server that way locally.
+- **The database:** `$lib/db` takes `POLICY_DATABASE_URL` or libpq's `PGHOST`
+  and runs the same schema on a `pg` pool under `drizzle-orm/node-postgres` —
+  upstream's own shape, so the store layer is unchanged. The Lakebase password is
+  an async function `pg` calls per connection: `PGPASSWORD`, else a credential
+  minted from `/api/2.0/database/credentials` (`LAKEBASE_INSTANCE`) or
+  `/api/2.0/postgres/credentials` (`LAKEBASE_ENDPOINT`), else the workspace
+  token. Verified: a complete fixture assessment (18 steps, 110 items, 464
+  provenance rows, 15 migrations) against a throwaway `postgres:16` container;
+  the server started in App mode against it.
+- **The settings key:** `POLICY_SETTINGS_KEY` (64 hex), from a secret.
+- `deploy/databricks/app.yaml` with the four resources it needs.
+- The workspace token exchange moved to `$lib/databricks/oauth.ts`, shared by the
+  model provider and the database. `build.mjs`'s fixture guard now names the
+  Databricks MODEL paths (`/serving-endpoints`, `/ai-gateway/mlflow/v1`) rather
+  than `/oidc/v1/token`, which the database legitimately uses.
+
+**Not verified against a real workspace:** the Lakebase credential calls, the
+App's build of this package, and the Node version the App runtime ships. Sealed
+runs lose their keys on a redeploy there (README).

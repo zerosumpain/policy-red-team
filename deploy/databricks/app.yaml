@@ -1,0 +1,53 @@
+# Policy Red Team as a Databricks App (phase 21).
+#
+# Copy this to the root of the source you deploy (`app.yaml` beside
+# `package.json`). The platform runs `npm install` and `npm run build`, then the
+# command below. Before the first deploy, add three RESOURCES to the app in the
+# workspace UI, under the keys these `valueFrom` lines name:
+#
+#   serving-endpoint   a Model Serving endpoint, permission Can Query
+#                      (e.g. databricks-claude-sonnet-4-5)
+#   database           a Lakebase database, permission Can connect and create.
+#                      Adding it sets PGHOST, PGPORT, PGDATABASE, PGUSER and
+#                      PGSSLMODE for the app; nothing below needs to name them.
+#   settings-key       a secret holding 64 hex characters (`openssl rand -hex 32`).
+#                      It encrypts the stored settings and is never in the
+#                      database. Lose it and stored settings read as unset.
+#   admin-password     a secret, 12+ characters, for /admin.
+#
+# DATABRICKS_HOST, DATABRICKS_CLIENT_ID, DATABRICKS_CLIENT_SECRET and
+# DATABRICKS_APP_PORT are set by the platform. The server listens on
+# 0.0.0.0:$DATABRICKS_APP_PORT, and the workspace signs visitors in before they
+# reach it.
+command: ['node', 'dist/server.js']
+
+env:
+  # Models: the workspace's own, and nothing else on offer.
+  - name: POLICY_PROVIDER
+    value: databricks
+  - name: POLICY_PROVIDERS
+    value: databricks
+  - name: DATABRICKS_SERVING_ENDPOINT
+    valueFrom: serving-endpoint
+
+  # The database password. Name ONE of these to match the Lakebase you added:
+  # a provisioned instance by name, or an autoscaling project's compute
+  # endpoint. With neither, the workspace token itself is tried.
+  - name: LAKEBASE_INSTANCE
+    value: policy-red-team
+  # - name: LAKEBASE_ENDPOINT
+  #   value: projects/<project>/branches/production/endpoints/<endpoint>
+
+  - name: POLICY_SETTINGS_KEY
+    valueFrom: settings-key
+  - name: POLICY_ADMIN_PASSWORD
+    valueFrom: admin-password
+
+  # The workspace already decides who may open the app.
+  - name: POLICY_ACCESS
+    value: open
+  # No Tavily key here: research says what it could not check rather than
+  # searching. Add TAVILY_API_KEY from a secret, and allow api.tavily.com in
+  # the workspace's egress, to change that.
+  - name: POLICY_SEARCH
+    value: none

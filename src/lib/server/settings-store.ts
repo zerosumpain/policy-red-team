@@ -43,6 +43,19 @@ let cachedKey: Buffer | undefined;
  */
 async function settingsKey(): Promise<Buffer> {
   if (cachedKey) return cachedKey;
+  /*
+   * FROM THE ENVIRONMENT WHERE THE DISK DOES NOT LAST (phase 21). A Databricks
+   * App's filesystem is rebuilt on every deploy, so a key minted into it would
+   * be a new key each time — and every stored secret unreadable after it.
+   * There the key is a secret resource, passed in as 64 hex characters. It is
+   * still never IN the database, which is the separation that matters.
+   */
+  const pinned = process.env.POLICY_SETTINGS_KEY?.trim();
+  if (pinned) {
+    if (!/^[0-9a-f]{64}$/i.test(pinned)) throw new Error('POLICY_SETTINGS_KEY must be 64 hexadecimal characters (32 bytes). `openssl rand -hex 32` makes one.');
+    cachedKey = Buffer.from(pinned, 'hex');
+    return cachedKey;
+  }
   const file = settingsKeyPath();
   const existing = await readFile(file, 'utf8').catch(() => null);
   if (existing && /^[0-9a-f]{64}$/i.test(existing.trim())) {
