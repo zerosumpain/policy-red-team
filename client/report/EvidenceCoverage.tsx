@@ -1,7 +1,8 @@
 import { useMemo, type ReactNode } from 'react';
 import type { Artefact } from '$lib/policy-analysis/contracts';
 import { evidenceShape } from '$lib/evidence-view';
-import { InsetText, Table } from '../govuk';
+import { GRADE_LABEL, GRADE_RUBRIC, evidenceReadLine, gradeOf, gradeTally } from '$lib/evidence-grade';
+import { Details, InsetText, Table } from '../govuk';
 import { Metrics } from './Metrics';
 
 /**
@@ -56,7 +57,10 @@ export function EvidenceCoverage({ artefacts, mix, linkTo }: {
    * the report re-renders on every stage event while a run is in flight.
    */
   const shape = useMemo(() => evidenceShape(artefacts), [artefacts]);
+  const grades = useMemo(() => gradeTally(artefacts), [artefacts]);
+  const byId = useMemo(() => new Map(artefacts.map((a) => [a.id, a])), [artefacts]);
   if (!shape.total) return null;
+  const read = evidenceReadLine(artefacts);
 
   const degenerate = mix.filter((entry) => entry.count).length <= 1;
 
@@ -96,6 +100,45 @@ export function EvidenceCoverage({ artefacts, mix, linkTo }: {
 
       {shape.reading.map((line) => <p className="govuk-body" key={line}>{line}</p>)}
 
+      {/*
+        HOW STRONG, NOT ONLY WHICH WAY (phase 22). The four cards above say
+        whether the evidence supports or contradicts; this says whether it
+        could bear the weight either way. Zeros are KEPT — "0 strong, 0
+        moderate" is the reading on a run that opened nothing in full, and it
+        is the reason the judgements above it were marked down.
+      */}
+      <h3 className="govuk-heading-s" id="evidence-grades">How strong the evidence is</h3>
+      <ul className="govuk-list prt-grades" aria-label="Evidence links by grade">
+        {grades.rows.map((row) => (
+          <li key={row.grade} className={`prt-grades__item prt-grades__item--${row.grade}`}>
+            <span className="prt-grades__figure">{row.count.toLocaleString()}</span>
+            <span className="prt-grades__label">{row.label}</span>
+          </li>
+        ))}
+      </ul>
+      {read ? <p className="govuk-body">{read}</p> : null}
+      {grades.derived ? (
+        <p className="govuk-body-s prt-meta">
+          {grades.derived === grades.total ? 'Every grade here was' : `${grades.derived} of ${grades.total} grades were`} worked
+          out from the run’s own note on each source, taking the lowest step the note names. A
+          search snippet or the paper’s own word is never graded above weak.
+        </p>
+      ) : null}
+      <Details summary="How a grade is decided">
+        <dl className="govuk-summary-list prt-grades__rubric">
+          {GRADE_RUBRIC.map((step) => (
+            <div className="govuk-summary-list__row" key={step.grade}>
+              <dt className="govuk-summary-list__key">{GRADE_LABEL[step.grade]}</dt>
+              <dd className="govuk-summary-list__value">{step.means}</dd>
+            </div>
+          ))}
+        </dl>
+        <p className="govuk-body-s">
+          A judgement the final review called well supported is marked down to supported with
+          limits when the best evidence behind it is weak.
+        </p>
+      </Details>
+
       <div className="prt-evidence">
         <Table className="prt-table prt-table--zebra"
           caption="Every evidence link, and what it does not establish"
@@ -106,6 +149,7 @@ export function EvidenceCoverage({ artefacts, mix, linkTo }: {
             { header: 'What it backs' },
             { header: 'Page', numeric: true, width: '5rem' },
             { header: 'Kind of evidence' },
+            { header: 'Grade', width: '6rem' },
             { header: 'What it does not establish' },
           ]}
           rows={shape.rows.map((row) => [
@@ -129,6 +173,7 @@ export function EvidenceCoverage({ artefacts, mix, linkTo }: {
             </span>,
             row.page === null ? <span className="prt-meta">—</span> : String(row.page),
             <span className="prt-evidence__kind">{row.evidenceType || '—'}</span>,
+            (() => { const own = byId.get(row.id); return own ? GRADE_LABEL[gradeOf(own, byId).grade] : '—'; })(),
             <span className="prt-evidence__dispute">{row.dispute || '—'}</span>,
           ])}
         />

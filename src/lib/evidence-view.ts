@@ -99,7 +99,15 @@ export function evidenceShape(artefacts: Artefact[]): EvidenceShape {
    * but a URL is the one field that cannot be true of a passage of the paper
    * being assessed, so it is the field the split is made on.
    */
-  const external = rows.filter((row) => row.url).length;
+  /*
+   * …OR A SOURCE THE RESEARCH STEP RETRIEVED (phase 22). The URL lives on the
+   * `research_source` the row cites, not on the evidence row, so on the real
+   * Best Start run this read "all 197 are passages of the paper" over 97 rows
+   * resting on retrieved search excerpts — directly above the grade tally
+   * saying they were snippets. The row's own source decides it now.
+   */
+  const outside = (id: string) => byId.get(id)?.kind === 'research_source';
+  const external = evidence.filter((row) => row.url || outside(str(row.sourceId)) || outside(str(row.data.sourceId))).length;
   const internal = rows.length - external;
 
   /** Distinct, not per row: two links to the same claim cover one claim. */

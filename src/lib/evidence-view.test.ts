@@ -80,3 +80,13 @@ describe('evidenceShape', () => {
     expect(shape.reading).toEqual([]);
   });
 });
+
+describe('a link resting on a retrieved source is from outside the paper (phase 22)', () => {
+  it('counts a row whose source is a research_source as external, though the row itself has no URL', () => {
+    const source = artefact('source_s5_000_rq_001_1', 'research_source', 'An evaluation', 'A snippet.', { retrieval: 'search_excerpt' }, { url: 'https://example.org/evaluation' });
+    const outside = link('e9', { claimId: 'c2', sourceId: source.id }, { page: null, origin: 'external_evidence', sourceId: source.id });
+    const shape = evidenceShape([...world(), source, outside]);
+    expect(shape.external).toBe(1);
+    expect(shape.reading[0]).toBe('4 of the 5 evidence links are passages of the policy paper itself; the other 1 cites a source outside it.');
+  });
+});

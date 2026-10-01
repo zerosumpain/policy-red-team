@@ -23,6 +23,7 @@ import { Brief } from './Brief';
 import { PatternGrid } from './PatternGrid';
 import { briefOf } from '$lib/brief';
 import { overviewOf } from '$lib/overview';
+import { markDownJudgements } from '$lib/evidence-grade';
 import { Overview } from './Overview';
 import { WorstPlays } from './moves/WorstPlays';
 import { CausalityLead } from './moves/CausalityLead';
@@ -292,7 +293,18 @@ export function Report({ detail, offline, linkTo, onChanged, route, onTitle }: {
    */
   onChanged?: () => void;
 }) {
-  const { artefacts, analysis, stages } = detail;
+  const { analysis, stages } = detail;
+  /*
+   * THE JUDGEMENTS THE EVIDENCE WILL CARRY, ONCE, AT THE ROOT (phase 22). A
+   * "well supported" with nothing better than weak evidence behind it is read
+   * as "supported with limits" by every figure, chip and tally below, and
+   * carries the sentence that says why — see `$lib/evidence-grade`. Done here
+   * rather than in each component because three components printing a
+   * judgement and one of them forgetting to mark it down is the disagreement
+   * this report exists to catch in other documents. Same array back when
+   * nothing changes, so nothing downstream re-renders for it.
+   */
+  const artefacts = useMemo(() => markDownJudgements(detail.artefacts), [detail.artefacts]);
 
   /*
    * Declared before the shaping, because the board and the leads all narrow by

@@ -1,6 +1,7 @@
 import type { Artefact } from '$lib/policy-analysis/contracts';
 import { keyJudgements } from '$lib/policy-analysis/judgements';
 import { isPlay } from '$lib/policy-analysis/cleared';
+import { evidenceReadLine, NOTHING_READ } from '$lib/evidence-grade';
 import { patternOf, PLAY_PATTERNS, OTHER_PATTERN } from '$lib/policy-analysis/patterns';
 import { stageFacts, truncations } from '$lib/policy-analysis/stage-facts';
 import { BAND_LABEL, findingsBySection, headlineSentence, recommendations, type Band } from '$lib/policy-analysis/view';
@@ -288,13 +289,23 @@ const RESEARCH_GAP = /^Research unavailable for\b/i;
  * Counted by `stageFacts` and `truncations` — the code that already classifies
  * these sentences — never by a third parser.
  */
-export function briefLimits(stages: StageWarnings[]): string[] {
+export function briefLimits(stages: StageWarnings[], artefacts?: Artefact[]): string[] {
   const all = stages.flatMap((s) => s.warnings ?? []);
   const facts = stages.flatMap((s) => stageFacts(s.warnings ?? []));
   const lines: string[] = [];
 
   const sealed = facts.filter((f) => f.kind === 'sealed').reduce((n, f) => n + f.count, 0);
   const research = all.filter((w) => RESEARCH_GAP.test(clean(w))).length;
+  /*
+   * WHAT WAS READ, BEFORE WHAT COULD NOT BE SEARCHED (phase 22). On the real
+   * Best Start run the research step returned 116 sources and opened none of
+   * them: every one is a search snippet. That is the single fact that most
+   * limits how far the judgements above can be trusted, and nothing said it.
+   * First, so the three-line cap never drops it. The "paper alone" form is
+   * left out where a sealed or search-unavailable line below already says it.
+   */
+  const read = artefacts ? evidenceReadLine(artefacts) : null;
+  if (read && !(read === NOTHING_READ && (sealed || research))) lines.push(read);
   if (sealed) {
     lines.push('This assessment was sealed, so it did not search for outside evidence. Its judgements rest on the paper and the model alone.');
   } else if (research) {
@@ -340,7 +351,7 @@ export function briefOf(artefacts: Artefact[], stages: StageWarnings[]): Brief {
     standfirst: rest && rest !== headline ? sentences(rest, 1) : '',
     source,
     items,
-    limits: briefLimits(stages),
+    limits: briefLimits(stages, artefacts),
   };
 }
 

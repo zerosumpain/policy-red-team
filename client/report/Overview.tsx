@@ -260,8 +260,21 @@ export function Overview({
             </li>
             {findings.total ? (
               <li>
-                Of the <strong>{findings.total} findings</strong>, the final review judged{' '}
+                Of the <strong>{findings.total} findings</strong>, {findings.markedDown ? 'the judgements are ' : 'the final review judged '}
                 {findings.confidence.map((row) => `${row.count} ${row.label.toLowerCase()}`).join(', ')}.
+                {/*
+                  WHY A FIGURE READS LOWER THAN THE REVIEW WROTE IT (phase 22).
+                  The counts above are after the mark-down, so this says what
+                  moved and why in one sentence rather than leaving a reader of
+                  the item page to find a word the summary did not use.
+                */}
+                {findings.markedDown ? (
+                  <>
+                    {' '}{findings.markedDown === 1 ? 'One is' : `${findings.markedDown} are`} counted a step lower
+                    than the final review wrote {findings.markedDown === 1 ? 'it' : 'them'}, because the evidence
+                    behind {findings.markedDown === 1 ? 'it is' : 'them is'} too weak to carry more.
+                  </>
+                ) : null}
               </li>
             ) : null}
             {brief.limits.map((limit) => <li key={limit}>{limit}</li>)}

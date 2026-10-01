@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { Link, useParams, useSearchParams } from 'react-router';
 import type { Artefact } from '$lib/policy-analysis/contracts';
 import { explain } from '$lib/policy-analysis/glossary';
+import { GRADE_LABEL, gradeOf, markDownJudgements, markedDown } from '$lib/evidence-grade';
 import { isCleared } from '$lib/policy-analysis/cleared';
 import { BAND_LABEL, confidenceJudgement, plays, precedentOf, stageOfId } from '$lib/policy-analysis/view';
 import { STAGES, isPassStage } from '$lib/policy-analysis/contracts';
@@ -112,7 +113,14 @@ export function Drill() {
   // for this being a page rather than a drawer, and three tabs all reading
   // "Policy Red Team" is that argument not actually working. A part names
   // itself after the item, so two parts of one item in two tabs differ.
-  const artefact = detail?.artefacts.find((a) => a.id === artefactId) ?? null;
+  /*
+   * MARKED DOWN AS THE REPORT MARKS THEM (phase 22), so an item page and the
+   * section it was opened from say the same word about the same finding — and
+   * the item itself is read from the marked copy, or its standing would be the
+   * one word on the page that disagrees. Above the early returns: a hook.
+   */
+  const judged = useMemo(() => (detail ? markDownJudgements(detail.artefacts) : null), [detail]);
+  const artefact = judged?.find((a) => a.id === artefactId) ?? null;
   usePageTitle(artefact ? (part && part !== 'item' ? `${artefact.label} — ${PART_TITLE[part]}` : artefact.label) : undefined);
   /*
    * ONLY WHEN THERE IS SOMETHING TO DRAW.
@@ -172,7 +180,7 @@ export function Drill() {
     );
   }
 
-  const all = detail.artefacts;
+  const all = judged ?? detail.artefacts;
 
   if (!artefact || !part) {
     return (
@@ -587,6 +595,8 @@ function ItemPart({
    * that does not apply. A row with nothing to say is left out.
    */
   const standing = confidenceJudgement(artefact);
+  const down = markedDown(artefact);
+  const grade = artefact.kind === 'evidence' ? gradeOf(artefact, byId) : null;
   const time = artefact.temporal ? fieldLabel(artefact.temporal) : null;
   const standingRows = [
     {
@@ -608,7 +618,25 @@ function ItemPart({
             <>
               {standing}
               <br />
-              <span className="prt-meta">A qualitative judgement, not a probability.</span>
+              {/* WHY IT READS LOWER THAN THE RUN WROTE IT, in the one sentence
+                  `markDownJudgements` left on the copy (phase 22). */}
+              <span className="prt-meta">{down ? down.reason : 'A qualitative judgement, not a probability.'}</span>
+            </>
+          ),
+        }]
+      : []),
+    ...(grade
+      ? [{
+          key: 'How strong the evidence is',
+          value: (
+            <>
+              {GRADE_LABEL[grade.grade]}
+              <br />
+              <span className="prt-meta">
+                {grade.derived
+                  ? 'Worked out from the run’s note on this source, taking the lowest step it names.'
+                  : 'Graded by the run against the rubric under “What is backed up by evidence”.'}
+              </span>
             </>
           ),
         }]

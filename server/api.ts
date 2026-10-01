@@ -45,6 +45,7 @@ import { keyDir } from '$lib/policy-analysis/server/seal';
 import { PolicyError } from '$lib/policy-analysis/validation';
 import { assessmentDocument, briefDocument, isDownloadFormat, isExportFormat } from '$lib/policy-analysis/server/export';
 import { briefOf } from '$lib/brief';
+import { markDownJudgements } from '$lib/evidence-grade';
 import { assessmentBundle } from '$lib/policy-analysis/server/bundle';
 import { ownerPayload, sharedPayload } from '$lib/policy-analysis/offline/payload';
 import { runFacts, type PackPayload } from '$lib/offline-run';
@@ -684,10 +685,14 @@ export async function handleApi(
           .map(([name, warnings]) => ({ name, warnings }))
       : result.stages.map((s) => ({ name: s.name, ordinal: s.ordinal, warnings: s.warnings }));
 
+    // The documents print judgements, so they read them as the page does: marked
+    // down where the evidence will not carry them (phase 22). The pack is handed
+    // the stored rows and marks them down itself, in `Report`.
+    const judged = markDownJudgements(artefacts);
     const response = part === 'brief' && isExportFormat(format)
-      ? await briefDocument(artefacts, redacted ? { ...meta, withheld: withheldPhrases(redacted.withheld) } : meta, format, briefOf(artefacts, briefStages))
+      ? await briefDocument(judged, redacted ? { ...meta, withheld: withheldPhrases(redacted.withheld) } : meta, format, briefOf(judged, briefStages))
       : isExportFormat(format)
-      ? await assessmentDocument(artefacts, meta, format)
+      ? await assessmentDocument(judged, meta, format)
       : await assessmentBundle({ payload: pack, meta });
 
     await pipeResponse(response, res);

@@ -127,7 +127,10 @@ try {
     .catch(() => failures.push('the report did not render from file://'));
 
   const body = await page.locator('#main-content').innerText().catch(() => '');
-  for (const expected of ['Offline pack check', 'Ways to beat it', 'How this was produced']) {
+  // Phase 22: the rival explanation and the evidence grades are in the pack's
+  // cascade too — the pack renders the section list, so a section the service
+  // draws and this does not is one a reader offline never sees.
+  for (const expected of ['Offline pack check', 'Ways to beat it', 'How this was produced', 'Another explanation', 'What would tell them apart', 'What the report concluded', 'How strong the evidence is']) {
     if (!body.includes(expected)) failures.push(`offline page missing "${expected}"`);
   }
   if (body.length < 500) failures.push(`offline page rendered only ${body.length} characters`);

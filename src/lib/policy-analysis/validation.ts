@@ -738,24 +738,45 @@ export function triageArtefacts(output: StageOutput, stage: number, prior: Artef
   }
 
   /*
-   * A NORMALISATION OF WHAT SURVIVED, after the settle so they read the final
-   * set (phase 22). It refuses nothing.
+   * TWO NORMALISATIONS OF WHAT SURVIVED, after the settle so they read the final
+   * set (phase 22). Neither refuses anything.
    *
    * A CLEARANCE IN WORDS IS A CLEARANCE. Prompt 10 asks for `cleared: true`;
    * a model that writes "No material way to beat it" and forgets the flag has
    * still written a clearance, and stamping it here keeps the stored row
    * honest instead of leaving the view's wording test to catch it forever.
+   *
+   * A SEARCH EXCERPT CANNOT CARRY MORE THAN "WEAK". A row whose only sources
+   * are excerpts — a paragraph of a document nobody opened — and which grades
+   * itself moderate or strong is NARROWED to weak and kept, the way a play's
+   * misfiled precondition is: the link it records is real, the weight it
+   * claimed is not. A passage of the paper is not capped here — the rubric
+   * already calls the paper's own assertion weak, and a row citing the paper
+   * AND a full text may be right to grade higher.
    */
+  const finalById = new Map(prior.map((a) => [a.id, a]));
+  for (const a of kept) finalById.set(a.id, a);
   const stamped: string[] = [];
+  const capped: string[] = [];
   for (const a of kept) {
     if (a.kind === 'exploit' && a.data.cleared === undefined && clearedByWording(a.label, a.data.play)) {
       a.data.cleared = true;
       stamped.push(`“${a.label}”`);
     }
+    if (a.kind === 'evidence' && (a.data.grade === 'strong' || a.data.grade === 'moderate')) {
+      const sources = [...new Set([a.sourceId, String(a.data.sourceId ?? ''), ...a.refs])]
+        .map((id) => (id ? finalById.get(id) : undefined))
+        .filter((s): s is Artefact => s?.kind === 'passage' || s?.kind === 'research_source');
+      if (sources.length && sources.every((s) => s.kind === 'research_source' && s.data.retrieval === 'search_excerpt')) {
+        capped.push(`“${a.label}” (${a.data.grade})`);
+        a.data.grade = 'weak';
+      }
+    }
   }
 
   const warnings = [...parsed.warnings];
   if (stamped.length) warnings.push(`${stamped.length} row${stamped.length === 1 ? '' : 's'} said a body had no material way to beat the policy; ${stamped.length === 1 ? 'it is' : 'they are'} recorded as a cleared check, not counted as a way to beat it. ${stamped.slice(0, 4).join(', ')}${stamped.length > 4 ? `, and ${stamped.length - 4} more` : ''}.`.slice(0, 1000));
+  if (capped.length) warnings.push(`${capped.length} evidence row${capped.length === 1 ? '' : 's'} graded ${capped.length === 1 ? 'itself' : 'themselves'} above weak on a search excerpt alone; the grade was lowered to weak and the row kept, because nothing behind ${capped.length === 1 ? 'it' : 'them'} was read in full. ${capped.slice(0, 4).join(', ')}${capped.length > 4 ? `, and ${capped.length - 4} more` : ''}.`.slice(0, 1000));
   if (pruned.length) warnings.push(`${pruned.length} item${pruned.length === 1 ? '' : 's'} referred to something that is not in this assessment; the reference was dropped and the item kept. ${pruned.slice(0, 4).join(' ')}${pruned.length > 4 ? ` And ${pruned.length - 4} more.` : ''}`.slice(0, 1000));
   // Worded for `stage-facts.ts`'s "the reference was dropped" rule, because that
   // is what happened: the play is kept, and the one thing it could not back up

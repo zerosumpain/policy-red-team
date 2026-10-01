@@ -43,3 +43,43 @@
 // inside `.prt-scroll` whatever happens; capped it asks for about 760px and
 // uncapped about 1,350, so the reader scrolls half as far for the same rows.
 
+
+// ── How strong the evidence is (phase 22) ──────────────────────────────────
+//
+// Four counts in a row, strongest first, each a figure over its word. Not
+// metric cards: four boxes of which three may read 0 is the degenerate row the
+// section above already collapses, and here the zeros are the point — so they
+// are printed small and level, as a tally, with the figure in tabular digits
+// so a column of them lines up. No colour: a grade is a step on a ladder, not
+// a status, and the word is always there.
+.prt-grades {
+  display: flex;
+  flex-wrap: wrap;
+  gap: govuk.govuk-spacing(2) govuk.govuk-spacing(6);
+  margin-bottom: govuk.govuk-spacing(4);
+
+  &__item {
+    display: flex;
+    flex-direction: column;
+    min-width: 6rem;
+    padding-top: govuk.govuk-spacing(1);
+    border-top: 4px solid govuk.govuk-colour("black", $variant: "tint-80");
+  }
+
+  // The rule thickens with the weight the step can bear, so the ladder reads
+  // in monochrome print as well as on screen.
+  &__item--strong { border-top-color: govuk.govuk-colour("black"); }
+  &__item--moderate { border-top-color: govuk.govuk-colour("black", $variant: "tint-25"); }
+
+  &__figure {
+    @include govuk.govuk-font($size: 36, $weight: bold, $tabular: true);
+  }
+
+  &__label {
+    @include govuk.govuk-font($size: 16);
+  }
+
+  &__rubric .govuk-summary-list__key {
+    width: 8rem;
+  }
+}

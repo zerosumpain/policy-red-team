@@ -102,6 +102,12 @@ export type Overview = {
     total: number;
     /** How well supported the final review judged them, in the words the page prints. */
     confidence: { label: string; count: number }[];
+    /**
+     * How many of those read lower than the review wrote them, because the
+     * evidence behind them is weak (phase 22, `markDownJudgements`). Zero on
+     * an artefact list nobody marked down — the caller marks, this counts.
+     */
+    markedDown: number;
   };
 };
 
@@ -201,6 +207,7 @@ export function overviewOf(artefacts: Artefact[]): Overview {
 
   /* ── How far to trust it ─────────────────────────────────────────────── */
   const findings = findingsBySection(artefacts).flatMap((group) => group.items);
+  const markedDown = findings.filter((finding) => Boolean((finding.data?.markedDown as { reason?: string } | undefined)?.reason)).length;
   const confidence = new Map<string, number>();
   for (const finding of findings) {
     const word = confidenceJudgement(finding);
@@ -227,6 +234,7 @@ export function overviewOf(artefacts: Artefact[]): Overview {
     },
     findings: {
       total: findings.length,
+      markedDown,
       confidence: [...confidence.entries()]
         .map(([label, count]) => ({ label, count }))
         .sort((a, b) => rank(a.label) - rank(b.label)),

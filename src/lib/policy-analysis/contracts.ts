@@ -100,8 +100,11 @@ export function passOrdinal(pass: number, step: number): number { return PASS_BA
  * 3.2 is phase 19's analysis: key judgements at stage 17, four more challenge
  * remits, the play patterns handed to 12, 16 and 17, a programme logic model
  * with deep chains at 14, and a labelled precedent at 10.
+ * 3.4 is phase 22: a rival-explanation challenge at 16 that 17 must weigh, a
+ * cleared row at 10 for a body with no material way to beat the policy, and an
+ * ordinal evidence grade with a written rubric at 6.
  */
-export const PROMPT_VERSION = 'policy-analysis/3.3';
+export const PROMPT_VERSION = 'policy-analysis/3.4';
 export const MAX_BYTES = 10 * 1024 * 1024;
 export const MAX_CHARACTERS = 600_000;
 export const MAX_PAGES = 400;
@@ -498,7 +501,10 @@ export const dataSchemas = {
   // by whom — written by `body-evidence.ts`, never by a model, which may not
   // write this kind at all. Without them in the shape, triage strips them.
   research_source: z.object({ questionId: text, retrievedAt: text, quality: text, qualityBasis: text, freshness: text, jurisdictionalRelevance: text, retrieval: z.enum(['full_text', 'search_excerpt']), gap: text, bodyId: z.string().max(200).optional(), question: z.string().max(40).optional(), publishedAt: z.string().max(40).nullable().optional(), publisher: z.string().max(300).nullable().optional() }),
-  evidence: z.object({ claimId: z.string().nullable(), mechanismId: z.string().nullable(), actorId: z.string().nullable(), assumptionId: z.string().nullable(), sourceId: text, evidenceType: text, result: z.enum(['supports', 'contradicts', 'mixed', 'insufficient']), sourceQuality: text, relevance: text, freshness: text, dispute: text }),
+  // `grade` is phase 22's ordinal reading of `sourceQuality` (EVIDENCE_GRADES).
+  // Optional so every row written before it still parses; the view derives one
+  // for those from the prose, conservatively (`$lib/evidence-grade`).
+  evidence: z.object({ claimId: z.string().nullable(), mechanismId: z.string().nullable(), actorId: z.string().nullable(), assumptionId: z.string().nullable(), sourceId: text, evidenceType: text, result: z.enum(['supports', 'contradicts', 'mixed', 'insufficient']), sourceQuality: text, relevance: text, freshness: text, dispute: text, grade: z.enum(EVIDENCE_GRADES).optional() }),
   model: z.object({ pattern: z.enum(PATTERNS), players: ids, strategies: strings, decisionOrder: text, information: text, costs: text, benefits: text, rewards: text, sanctions: text, dependencies: ids, assumptions: ids.min(1), responses: strings, equilibria: strings, explanation: text, applicability: text }),
   // `basis` and `extracted` are written by `tests.ts`, never by a model: a check
   // the run could not make because its own graph did not link what the paper
