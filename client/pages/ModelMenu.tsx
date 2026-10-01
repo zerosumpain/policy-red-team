@@ -93,7 +93,7 @@ export function ModelMenu({ config, busy, onSave }: {
       <div className="govuk-grid-row">
         <div className="govuk-grid-column-full">
           <p className="govuk-body">
-            This is the list the submit form offers. An eighteen-stage assessment makes one model
+            This is the list the submit form offers. An eighteen-step assessment makes one model
             call per passage in decomposition alone, so the difference between a cheap model and a
             frontier one is a bill rather than a rounding error.
           </p>

@@ -82,7 +82,7 @@ export const FACTOR_TERMS: Term[] = [
     'incentive',
     'Incentive',
     'How much the actor gains by doing it — money, autonomy, reputation, a quieter life.',
-    'A play nobody wants to run is not a threat, however easy it is. This is the factor that separates a theoretical weakness from a live one.',
+    'A way to beat it that nobody wants to use is not a threat, however easy it is. This is the factor that separates a theoretical weakness from a live one.',
     'High means somebody is actively better off doing this. That is the hardest kind of weakness to close, because goodwill will not close it.',
     'model judgement',
     { plain: 'Reason to do it' },
@@ -90,7 +90,7 @@ export const FACTOR_TERMS: Term[] = [
   term(
     'ease',
     'Ease',
-    'How little effort, capability, budget or coordination the play takes.',
+    'How little effort, capability, budget or coordination it takes.',
     'A weakness only one very capable body could exploit is a different risk from one any of two hundred could.',
     'High means it is within reach of an ordinary actor on an ordinary day. Low does not mean safe — it means fewer bodies can reach it.',
     'model judgement',
@@ -99,8 +99,8 @@ export const FACTOR_TERMS: Term[] = [
   term(
     'impact',
     'Impact',
-    'How much of the policy’s stated objective the play defeats.',
-    'Separates the irritating from the fatal. A play that shaves a target is not the same as one that inverts it.',
+    'How much of the policy’s stated objective it defeats.',
+    'Separates the irritating from the fatal. One that shaves a target is not the same as one that inverts it.',
     'High means the policy substantially fails to do what it says it does, even while everybody follows it.',
     'model judgement',
     { plain: 'Damage if it happens' },
@@ -123,15 +123,15 @@ export const BAND_TERMS: Term[] = [
     'Severe',
     'The four factors blend above 0.70.',
     'Strong incentive, low effort, real damage, and the policy would not see it.',
-    'These are the plays to answer before the paper goes out. There is usually no monitoring answer to a severe play — it needs a design change.',
+    'These are the ones to answer before the paper goes out. There is usually no monitoring answer to a severe one — it needs a design change.',
     'computed here',
   ),
   term(
     'significant',
     'Significant',
     'The four factors blend between 0.50 and 0.70.',
-    'A play a rational actor would at least consider.',
-    'Needs either a counter-measure or an explicit, recorded decision to accept it. Silence here reads as an oversight later.',
+    'One a rational body would at least consider.',
+    'Needs either something that would stop it or an explicit, recorded decision to accept it. Silence here reads as an oversight later.',
     'computed here',
   ),
   term(
@@ -171,7 +171,7 @@ export const CHECK_TERMS: Term[] = [
 /** Where a statement came from. This is the page's epistemic backbone. */
 export const ORIGIN_TERMS: Term[] = [
   term('extracted_fact', 'Extracted fact', 'Lifted from the paper, with the sentence it came from.', 'Near-certain by construction — it is a quotation.', 'Argue with the paper, not with the assessment.', 'from the paper', { plain: 'Quoted from the paper', short: 'quoted' }),
-  term('external_evidence', 'External evidence', 'Retrieved from outside the paper during the enquiry stage.', 'The only claims here that are not about the document itself.', 'Check the retrieval date and whether it was full text or a search excerpt.', 'computed here', { plain: 'Found outside the paper', short: 'external' }),
+  term('external_evidence', 'External evidence', 'Retrieved from outside the paper during the enquiry step.', 'The only claims here that are not about the document itself.', 'Check the retrieval date and whether it was full text or a search excerpt.', 'computed here', { plain: 'Found outside the paper', short: 'external' }),
   term('structural_inference', 'Structural inference', 'Derived from the relationships the paper states.', 'Deterministic — it follows from the graph rather than from a judgement.', 'If you disagree, you disagree with a relationship the paper asserted.', 'computed here', { plain: 'Worked out from how the paper fits together', short: 'structural' }),
   term('behavioural_hypothesis', 'Behavioural hypothesis', 'A claim about how a body would act.', 'The whole red team rests on these, and they are the most arguable thing in the assessment.', 'This is where to push back. The stress test exists so you can fail one and see what falls.', 'model judgement', { plain: 'A guess about how a body would act', short: 'hypothesis' }),
   term('model_result', 'Model result', 'Output of a game-theoretic interaction model.', 'Semi-formal reasoning about incentives, not a numerical simulation.', 'Read its assumptions before its conclusion.', 'model judgement', { plain: 'Worked out from incentives', short: 'modelled' }),
@@ -184,14 +184,14 @@ export const ASSUMPTION_TERMS: Term[] = [
   term('importance', 'Importance', 'How much of the policy turns on this being true.', 'Separates load-bearing assumptions from stated ones.', 'High means a lot is stacked on it.', 'model judgement', { plain: 'How much turns on it' }),
   term('uncertainty', 'Uncertainty', 'How doubtful the assumption is.', 'A load-bearing assumption everybody agrees with is not a risk.', 'High means reasonable people would argue about it.', 'model judgement', { plain: 'How arguable it is' }),
   term('consequence', 'Consequence', 'What it would cost if it turned out false.', 'Some assumptions fail cheaply.', 'High means the failure is not recoverable inside the policy as written.', 'model judgement', { plain: 'Cost if it is wrong' }),
-  term('dependants', 'Rests on it', 'How many models, scenarios, plays and conclusions cite this assumption.', 'Computed by walking the citations the assessment already made.', 'High means failing this one switch moves a lot of the page. Try it in the stress test.', 'computed here', { plain: 'Things resting on it', formula: 'A count of the models, scenarios, plays and conclusions whose own citations name this assumption.' }),
+  term('dependants', 'Rests on it', 'How many models, scenarios, ways to beat it and conclusions cite this assumption.', 'Computed by walking the citations the assessment already made.', 'High means failing this one switch moves a lot of the page. Try it in the stress test.', 'computed here', { plain: 'Things resting on it', formula: 'A count of the models, scenarios, ways to beat it and conclusions whose own citations name this assumption.' }),
 ];
 
 /** The measures the actor atlas can be redrawn on. */
 export const ACTOR_MEASURE_TERMS: Term[] = [
-  term('worst', 'Biggest risk', 'The highest-ranked play this body could run.', 'Answers "who should I worry about" in one number.', 'High means this body has at least one severe option. It says nothing about how many.', 'computed here', { plain: 'Worst thing it could do', formula: 'The single highest exposure among the plays that name this body.' }),
-  term('plays', 'Exposures', 'How many exploitation plays name this body as the actor.', 'A body with one severe play is a different problem from one with nine moderate ones.', 'High means a broad surface rather than a single sharp edge.', 'computed here', { plain: 'How many things it could do', formula: 'A count of the plays whose actor is this body.' }),
-  term('role', 'Role in the policy', 'How central this body is — how often the paper names it, weighted by how many relationships run through it.', 'The paper’s own sense of who matters, computed rather than asserted.', 'High means the policy runs through this body. If it also carries plays, that is the combination to read first.', 'computed here', { plain: 'How central it is', formula: 'Mentions in the paper × relationships in the graph, scaled so the most central body reads 100.' }),
+  term('worst', 'Biggest risk', 'The highest-ranked way to beat the policy this body could use.', 'Answers "who should I worry about" in one number.', 'High means this body has at least one severe option. It says nothing about how many.', 'computed here', { plain: 'Worst thing it could do', formula: 'The single highest score among the ways to beat it that name this body.' }),
+  term('plays', 'Exposures', 'How many ways to beat the policy name this body as the one using them.', 'A body with one severe way to beat it is a different problem from one with nine moderate ones.', 'High means a broad surface rather than a single sharp edge.', 'computed here', { plain: 'How many things it could do', formula: 'A count of the ways to beat it that this body would use.' }),
+  term('role', 'Role in the policy', 'How central this body is — how often the paper names it, weighted by how many relationships run through it.', 'The paper’s own sense of who matters, computed rather than asserted.', 'High means the policy runs through this body. If it also has ways to beat it, that is the combination to read first.', 'computed here', { plain: 'How central it is', formula: 'Mentions in the paper × relationships in the graph, scaled so the most central body reads 100.' }),
   term('mentions', 'Times referenced', 'How many passages of the paper mention this body.', 'The rawest available measure of prominence.', 'High means the paper talks about it a lot. Prominence is not the same as power.', 'from the paper', { plain: 'Times the paper names it' }),
   term('degree', 'Relationships', 'How many relationships in the knowledge graph touch this body.', 'A body with many relationships is a single point of failure whether or not anyone attacks it.', 'High means a lot of the machinery is wired through it.', 'computed here', { plain: 'Links to other bodies', formula: 'A count of stated relationships with this body at either end, counting only those whose other end resolves to a body in the paper.' }),
 ];
@@ -278,7 +278,7 @@ export const STRUCTURE_TERMS: Term[] = [
     'claim',
     'Claim',
     'Something the paper states as fact.',
-    'Separates what the document asserts from what anybody has established. The evidence stage tests these against material outside the paper.',
+    'Separates what the document asserts from what anybody has established. The evidence step tests these against material outside the paper.',
     'A claim is what the paper SAYS. Its presence here is not agreement with it.',
     'from the paper',
     { plain: 'Something the paper states' },
@@ -297,7 +297,7 @@ export const STRUCTURE_TERMS: Term[] = [
     'Body',
     'An organisation, a class of organisation, or a group of people the policy runs through.',
     'A policy does not act; bodies act. Most of a paper’s actors are CLASSES — "large registered providers", "tenants" — rather than named institutions, and the assessment keeps them as they are found.',
-    'A class is not a body with a board. Read a play against a class as "some member of this group could", never as "they would".',
+    'A class is not a body with a board. Read a way to beat it against a class as "some member of this group could", never as "they would".',
     'from the paper',
     { plain: 'Who the policy runs through' },
   ),
@@ -305,7 +305,7 @@ export const STRUCTURE_TERMS: Term[] = [
     'profile',
     'Profile',
     'A body’s dossier: its mandate, who it answers to, what it is judged on, how far ahead it can look, what it controls, what constrains it, what it would do instead, and who gains if the policy fails.',
-    'A play is only credible if the body running it has a reason. The profile is where that reason is written down and argued with.',
+    'A way to beat it is only credible if the body using it has a reason. The profile is where that reason is written down and argued with.',
     'The line to read first is the one an assurance review never asks: who is better off if this fails.',
     'model judgement',
     { plain: 'What moves a body' },
@@ -359,8 +359,8 @@ export const STRUCTURE_TERMS: Term[] = [
     'exploit',
     'Play',
     'A concrete thing one named body could do to serve itself at the policy’s expense, preferring the things that stay inside the rules as written.',
-    'This is the red team. Enforcement answers a breach; only a design change answers a play that is compliant.',
-    'A play is a hypothesis about incentives, not an accusation about anyone. It assumes no bad intent — only that bodies respond to what they are judged on.',
+    'This is the red team. Enforcement answers a breach; only a design change answers one that stays inside the rules.',
+    'A way to beat it is a hypothesis about incentives, not an accusation about anyone. It assumes no bad intent — only that bodies respond to what they are judged on.',
     'model judgement',
     { plain: 'A way to beat the policy' },
   ),
@@ -376,7 +376,7 @@ export const STRUCTURE_TERMS: Term[] = [
   term(
     'finding',
     'Finding',
-    'A conclusion in the written assessment. Every one has to cite a check, a model, a scenario, a play or a cross-policy exposure.',
+    'A conclusion in the written assessment. Every one has to cite a check, a model, a scenario, a way to beat it or a cross-policy exposure.',
     'It is the rule that stops the report asserting things the working never produced.',
     'Follow the citation. A finding you cannot trace to a result is a finding this assessment would have thrown away.',
     'model judgement',
@@ -394,7 +394,7 @@ export const STRUCTURE_TERMS: Term[] = [
   term(
     'persona',
     'Persona',
-    'A body’s standing dossier across every assessment you have run — twelve traits chosen because they survive a change of policy, plus the plays it has been shown able to run.',
+    'A body’s standing dossier across every assessment you have run — twelve traits chosen because they survive a change of policy, plus the ways to beat a policy it has been shown able to use.',
     'The same bodies turn up in paper after paper, and starting from nothing each time throws that away.',
     'A prior is CONTEXT, never evidence. Nothing in the findings rests on it, and a field shaped by one says so.',
     'computed here',
@@ -418,12 +418,12 @@ const ALL: Term[] = [
     'Exposure',
     'The even blend of incentive, ease, impact and concealment, on a 0–100 scale.',
     'Computed here rather than asked of a model, so two runs over the same four judgements always rank the same way.',
-    'It is a SEVERITY, not a certainty. A play at 82 is not one the assessment is 82% sure exists — it is one that would hurt.',
+    'It is a SEVERITY, not a certainty. One at 82 is not one the assessment is 82% sure exists — it is one that would hurt.',
     'computed here',
     {
       plain: 'Overall risk',
       formula:
-        'The geometric mean of the four factors — the fourth root of their product — so four scores of 50 read as 50, and any one factor at zero takes the play off the table. Concealment alone has a floor of 0.15, because an overt play (open lobbying, a public veto, judicial review) is honestly unhidden and still a threat. Bands: severe from 70, significant from 50, moderate from 30.',
+        'The geometric mean of the four factors — the fourth root of their product — so four scores of 50 read as 50, and any one factor at zero takes it off the table. Concealment alone has a floor of 0.15, because an overt one (open lobbying, a public veto, judicial review) is honestly unhidden and still a threat. Bands: severe from 70, significant from 50, moderate from 30.',
     },
   ),
   term(
@@ -438,9 +438,9 @@ const ALL: Term[] = [
   term(
     'legality',
     'Legality',
-    'Whether the play stays inside the rules as written.',
-    'The red team deliberately prefers plays that are COMPLIANT.',
-    '"Stays within the rules" is the worst case, not the best: there is no enforcement answer to it. Only a design change closes a compliant play.',
+    'Whether it stays inside the rules as written.',
+    'The red team deliberately prefers ways to beat it that stay INSIDE THE RULES.',
+    '"Stays within the rules" is the worst case, not the best: there is no enforcement answer to it. Only a design change closes one that stays inside the rules.',
     'model judgement',
     { plain: 'Whether it breaks any rule' },
   ),
@@ -456,7 +456,7 @@ const ALL: Term[] = [
   term(
     'disarmed',
     'Disarmed',
-    'A play whose precondition the reader has switched off.',
+    'A way to beat it whose precondition the reader has switched off.',
     'The opposite direction to a weakened conclusion, from the same switch.',
     'The actor needed that to be true. This is the direction that helps the paper — which is why the two are never added together.',
     'computed here',
@@ -500,8 +500,8 @@ export const READING_CHAIN: { step: string; then: string }[] = [
   { step: 'The paper’s own words', then: 'give the relationships between them — who directs, who pays, who delivers, who answers.' },
   { step: 'Those relationships', then: 'are enough on their own for twelve structural checks, computed with no model.' },
   { step: 'Profiles and relationships', then: 'drive the interaction models and the scenarios.' },
-  { step: 'All of it', then: 'produces the plays: what one body could do, preferring what stays inside the rules.' },
-  { step: 'The findings', then: 'must each cite a check, a model, a scenario, a play or a cross-policy clash.' },
+  { step: 'All of it', then: 'produces the ways to beat it: what one body could do, preferring what stays inside the rules.' },
+  { step: 'The findings', then: 'must each cite a check, a model, a scenario, a way to beat it or a cross-policy clash.' },
   { step: 'Redesign options', then: 'hang off a finding, and are labelled as opinions rather than results.' },
 ];
 
@@ -519,7 +519,7 @@ export const KEY_SECTIONS: { title: string; blurb: string; terms: Term[] }[] = [
     terms: STRUCTURE_TERMS,
   },
   {
-    title: 'How a play is ranked',
+    title: 'How a way to beat it is ranked',
     blurb: 'Four judgements a policy professional can argue with, and one figure computed from them.',
     terms: [...FACTOR_TERMS, explain('exposure')!, explain('legality')!],
   },
@@ -544,7 +544,7 @@ export const KEY_SECTIONS: { title: string; blurb: string; terms: Term[] }[] = [
     terms: CHECK_TERMS,
   },
   {
-    title: 'What the evidence stage can find',
+    title: 'What the evidence step can find',
     blurb: 'A claim in the paper tested against something outside it.',
     terms: EVIDENCE_TERMS,
   },

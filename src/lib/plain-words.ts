@@ -58,6 +58,12 @@ export const VOCABULARY: readonly Word[] = [
   { was: 'stage N of 18 (on an item)', now: 'step N of 18, and what that step was doing' },
   { was: 'structural inference', now: 'worked out from how the paper fits together' },
   { was: 'Unknown (as a value)', now: 'nothing — a row whose value is unknown is not printed' },
+  // Phase 21, workstream D: the sweep. Step names (`STAGE_NAMES`, "Exploitation
+  // playbook") stay: they are the pipeline's names for its own steps and feed
+  // its prompts, and the model's own words are quoted, never reworded.
+  { was: 'move / tab (of the report)', now: 'section, or the section\'s name ("under Causes")' },
+  { was: 'artefact (in a refusal reason)', now: 'item — swapped at display, the stored reason is untouched' },
+  { was: 'an N-stage assessment / stages done', now: 'an N-step assessment / steps done' },
 ];
 
 export type GlossaryEntry = { term: string; meaning: string };

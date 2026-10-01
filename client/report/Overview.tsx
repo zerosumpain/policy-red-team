@@ -73,10 +73,6 @@ export function Overview({
   return (
     <section aria-labelledby="overview" className="prt-overview">
       <h2 className="govuk-heading-l" id="overview">The report at a glance</h2>
-      <p className="govuk-body prt-overview__intro">
-        Start here. Each box below sums up one part of the report in a sentence or two. Follow the
-        link at the foot of a box to see everything behind it.
-      </p>
       <ScopeNote selection={selection} subject="the whole assessment" />
 
       {/* ── The four figures ──────────────────────────────────────────── */}

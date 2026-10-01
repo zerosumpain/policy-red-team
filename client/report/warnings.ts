@@ -99,19 +99,38 @@ export function humaniseReason(reason: string): string {
       .map((m) => m[1])
       .filter((name) => name !== field);
     const missing = absent.length
-      ? `An artefact arrived with ${list(absent.map((name) => `no ${name}`))}, and a ${field}`
-      : `An artefact arrived with a ${field}`;
+      ? `An item arrived with ${list(absent.map((name) => `no ${name}`))}, and a ${field}`
+      : `An item arrived with a ${field}`;
     return `${missing} the contract does not define — not one of the ${count} values it allows`;
   }
   if (/does not belong to this stage/i.test(reason)) {
     const kind = /kind “([^”]+)”/.exec(reason)?.[1];
-    return `${kind ? plural(kind) : 'Artefacts'} produced by a stage that does not write them`;
+    return `${kind ? plural(kind) : 'Items'} produced by a step that does not write them`;
   }
   if (/required/i.test(reason) && /data\./.test(reason)) {
     const field = /data\.(\w+)/.exec(reason)?.[1];
     return `Output missing ${field ? `its ${field}` : 'a required field'}`;
   }
-  return reason;
+  return inPlainWords(reason);
+}
+
+/**
+ * THE PIPELINE'S NOUNS, SWAPPED FOR THE REPORT'S, AND NOTHING ELSE.
+ *
+ * Every other reason is printed as the validator wrote it, because the exact
+ * wording is what makes a discard checkable — but "An artefact cites an
+ * unavailable source" put the one word `plain-words.ts` retired in phase 19 at
+ * the head of six rows of the refusals table. Only whole nouns move; the
+ * rule's own wording, which the disclosure under each row quotes verbatim, is
+ * untouched, and `byReason` still groups on the raw string.
+ */
+function inPlainWords(reason: string): string {
+  return reason
+    .replace(/\bAn artefact\b/g, 'An item')
+    .replace(/\bartefacts\b/g, 'items')
+    .replace(/\bartefact\b/g, 'item')
+    .replace(/\bAn exploitation play\b/g, 'A way to beat the policy')
+    .replace(/\bits stage contract\b/g, "its step's contract");
 }
 
 function plural(kind: string): string {

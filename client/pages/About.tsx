@@ -7,7 +7,7 @@ export function About() {
       <div className="govuk-grid-column-full">
         <h1 className="govuk-heading-xl">About this tool</h1>
         <p className="govuk-body-l">
-          It reads a policy paper as an adversary would, across eighteen stages, and tells you
+          It reads a policy paper as an adversary would, in eighteen steps, and tells you
           who gains from it failing and what they can do about it while staying compliant.
         </p>
         <p className="govuk-body">

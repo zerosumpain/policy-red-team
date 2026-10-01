@@ -469,7 +469,7 @@ export function SetupSpend() {
         <p className="govuk-body">
           A run billed to a subscription costs nothing per call, so nothing stops it if it goes
           wrong. This does. A run that passes the ceiling is stopped where it stands and keeps the
-          stages it finished — you can raise this and resume.
+          steps it finished — you can raise this and resume.
         </p>
       }
     >
@@ -524,7 +524,7 @@ export function SetupSearch() {
       title="Looking things up"
       intro={
         <p className="govuk-body">
-          One of the eighteen stages goes and checks claims against the outside world. It is
+          One of the eighteen steps goes and checks claims against the outside world. It is
           optional: without it every finding rests on the paper alone, which is a limit on the
           assessment rather than a fault in it — as long as the report says so, which it does.
         </p>

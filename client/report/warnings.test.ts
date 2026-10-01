@@ -79,12 +79,18 @@ describe('making zod legible without hiding it', () => {
 
   it('names the kind a stage was not supposed to write', () => {
     expect(humaniseReason('An artefact of kind “edge” does not belong to this stage'))
-      .toBe('Edges produced by a stage that does not write them');
+      .toBe('Edges produced by a step that does not write them');
   });
 
   it('leaves a reason it cannot improve exactly as it was', () => {
     // Never replace the contract's own words with a worse guess.
     expect(humaniseReason('Something entirely unexpected')).toBe('Something entirely unexpected');
+  });
+
+  it('swaps the pipeline\'s nouns for the report\'s, and nothing else', () => {
+    expect(humaniseReason('An artefact cites an unavailable source')).toBe('An item cites an unavailable source');
+    expect(humaniseReason('An exploitation play must depend on assumptions, not on other kinds of artefact'))
+      .toBe('A way to beat the policy must depend on assumptions, not on other kinds of item');
   });
 });
 
@@ -124,7 +130,7 @@ describe('a refusal that failed before it had a kind to name', () => {
   it('says what happened instead of printing the enum', () => {
     const reason = parseRefusal(RAW)!.reason;
     expect(humaniseReason(reason)).toBe(
-      'An artefact arrived with no id and no label, and a kind the contract does not define — not one of the 29 values it allows',
+      'An item arrived with no id and no label, and a kind the contract does not define — not one of the 29 values it allows',
     );
   });
 

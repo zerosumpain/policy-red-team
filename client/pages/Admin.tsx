@@ -292,7 +292,7 @@ export function Admin() {
             <p className="govuk-body">
               A run billed to a subscription costs nothing per call, so nothing stops it if it goes
               wrong. This does. A run that passes the ceiling is stopped where it stands and keeps
-              the stages it finished — you can raise this and resume.
+              the steps it finished — you can raise this and resume.
             </p>
             {/* ONE MEASUREMENT, NOT THREE. This sentence, the Standard depth
                 hint on `/assessments/new` and the landing table's "Ran for"

@@ -71,7 +71,7 @@ export function Limits({ stages, artefacts = NONE }: {
           {group.total > 1 ? (
             <span className="prt-meta">
               {' '}— {group.total} times, across {group.stages.length}{' '}
-              {group.stages.length === 1 ? 'stage' : 'stages'}
+              {group.stages.length === 1 ? 'step' : 'steps'}
             </span>
           ) : (
             <span className="prt-meta"> — {group.stages[0]?.name}</span>
@@ -145,7 +145,7 @@ export function Limits({ stages, artefacts = NONE }: {
       */}
       <p className="govuk-body-s prt-meta" role="status">
         Showing {groups.length.toLocaleString()} {groups.length === 1 ? 'limit' : 'limits'} from{' '}
-        {shown.length} {shown.length === 1 ? 'stage' : 'stages'}, recorded {recordings.toLocaleString()}{' '}
+        {shown.length} {shown.length === 1 ? 'step' : 'steps'}, recorded {recordings.toLocaleString()}{' '}
         {recordings === 1 ? 'time' : 'times'}.
       </p>
 
@@ -159,7 +159,7 @@ export function Limits({ stages, artefacts = NONE }: {
           ) : null}
         </>
       ) : (
-        <p className="govuk-body">Those stages recorded nothing.</p>
+        <p className="govuk-body">Those steps recorded nothing.</p>
       )}
     </>
   );

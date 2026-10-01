@@ -468,7 +468,7 @@ export function Assessment() {
             <ButtonGroup>
               {(analysis.status === 'failed' || analysis.status === 'cancelled') && !detail.readOnly ? (
                 <Button disabled={busy} onClick={() => void act('resume')}>
-                  {analysis.status === 'cancelled' ? 'Resume from where it stopped' : 'Resume the incomplete stages'}
+                  {analysis.status === 'cancelled' ? 'Resume from where it stopped' : 'Resume the steps it did not finish'}
                 </Button>
               ) : null}
               <Link className="govuk-link" to="/">Back to all assessments</Link>

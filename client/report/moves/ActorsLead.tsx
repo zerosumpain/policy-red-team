@@ -326,7 +326,7 @@ export function ActorsLead({ artefacts = [], plays = [], interplay, personas, se
 
             {onSelect ? (
               <p className="govuk-body">
-                Select a body to carry it into the other three moves. Selecting one leaves every row
+                Select a body to carry it into the other sections. Selecting one leaves every row
                 here — this table is how a body is chosen, so it never narrows itself.
               </p>
             ) : null}

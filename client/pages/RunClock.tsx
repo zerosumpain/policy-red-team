@@ -177,7 +177,7 @@ export function RunClock({ progress }: { progress: RunProgress | null }) {
       <div role="status" aria-live="polite">
         <p className="govuk-body">
           <strong>
-            {progress.stagesDone} of {progress.stagesTotal} stages done
+            {progress.stagesDone} of {progress.stagesTotal} steps done
             {progress.currentStage ? <> — {progress.currentStage}</> : null}
           </strong>
         </p>

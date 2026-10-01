@@ -32,10 +32,10 @@ import { STAGES } from '$lib/policy-analysis/contracts';
 
 /** The kinds worth surfacing mid-run, in the order a reader wants them. */
 const INTERESTING: { kind: string; label: string; why: string }[] = [
-  { kind: 'exploit', label: 'Exploitation playbook', why: 'How each actor can serve itself at the policy’s expense.' },
-  { kind: 'profile', label: 'Actor profiles', why: 'What each body wants, and what its position rewards.' },
-  { kind: 'finding', label: 'Findings', why: 'What the assurance stages have taken issue with.' },
-  { kind: 'mechanism', label: 'Mechanisms', why: 'The machinery the paper relies on to work.' },
+  { kind: 'exploit', label: 'Ways to beat it', why: 'How each actor can serve itself at the policy’s expense.' },
+  { kind: 'profile', label: 'Profiles of bodies', why: 'What each body wants, and what its position rewards.' },
+  { kind: 'finding', label: 'Findings', why: 'What the review steps have taken issue with.' },
+  { kind: 'mechanism', label: 'Parts of the policy', why: 'The machinery the paper relies on to work.' },
   { kind: 'assumption', label: 'Assumptions', why: 'What has to be true that the paper does not establish.' },
   { kind: 'scenario', label: 'Scenarios', why: 'How the policy behaves under each stress condition.' },
   { kind: 'model', label: 'Interaction models', why: 'Where the incentives point once bodies respond to each other.' },
@@ -79,9 +79,9 @@ export function RunFindings({ detail, id }: { detail: Detail; id: string }) {
       <h2 className="govuk-heading-m" id="run-findings">What it has found so far</h2>
 
       <WarningText>
-        This is a run in progress, and it is not the assessment. Later stages exist to challenge
-        what earlier ones concluded — an actor profile written at stage 4 can be contradicted by
-        evidence at stage 6, and a claim can be withdrawn at assurance. Read this to follow the
+        This is a run in progress, and it is not the assessment. Later steps exist to challenge
+        what earlier ones concluded — a body's profile written at step 4 can be contradicted by
+        evidence at step 6, and a claim can be withdrawn at the final review. Read this to follow the
         work, not to draw a conclusion from it.
       </WarningText>
 

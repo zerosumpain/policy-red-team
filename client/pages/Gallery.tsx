@@ -73,7 +73,7 @@ export function Gallery() {
 
       <h2 className="govuk-heading-l govuk-!-margin-top-8">Progress</h2>
       <p className="govuk-body">
-        The eighteen stages. A task list, because that is what this is: a sequence of things
+        The eighteen steps. A task list, because that is what this is: a sequence of things
         with a state, which a reader wants to scan rather than read.
       </p>
       <TaskList items={stageTasks()} idPrefix="stages" />
@@ -85,9 +85,9 @@ export function Gallery() {
             rows={[
               { key: 'Paper', value: 'Draft Schools (Accountability) Bill 2026' },
               { key: 'Assessed', value: '18 September 2026' },
-              { key: 'Stages', value: '18 of 18 completed' },
+              { key: 'Steps', value: '18 of 18 completed' },
               { key: 'Bodies profiled', value: '14' },
-              { key: 'Plays found', value: '31, of which 22 stay compliant' },
+              { key: 'Ways to beat it', value: '31, of which 22 stay inside the rules' },
               { key: 'Evidence', value: '9 claims backed, 4 contradicted, 11 unsettled' },
             ]}
           />
@@ -96,13 +96,13 @@ export function Gallery() {
 
       <h3 className="govuk-heading-m">Findings</h3>
       <Table className="prt-table"
-        caption="The exploitation playbook, ranked"
+        caption="Ways to beat it, ranked"
         captionSize="s"
         scroll
         columns={[
-          { header: 'Play' }, { header: 'Body' }, { header: 'Incentive', numeric: true },
-          { header: 'Ease', numeric: true }, { header: 'Impact', numeric: true },
-          { header: 'Concealment', numeric: true }, { header: 'Rank', numeric: true }, { header: 'Legality' },
+          { header: 'Way to beat it' }, { header: 'Body' }, { header: 'Motive', numeric: true },
+          { header: 'Ease', numeric: true }, { header: 'Damage', numeric: true },
+          { header: 'Hard to see', numeric: true }, { header: 'Score', numeric: true }, { header: 'Legality' },
         ]}
         rows={[
           ['Reclassify pupils before the census date', 'Multi-academy trusts', '0.82', '0.74', '0.66', '0.71', '0.73', <span className="prt-legality" key="a">Inside the rules</span>],
@@ -204,11 +204,11 @@ export function Gallery() {
         ]}
         corner="Part of the policy / body →"
         caption="Which body is aimed at which part"
-        note="87 further parts are under pressure from at least one play."
-        emptyText="No play"
+        note="87 further parts are under pressure from at least one way to beat it."
+        emptyText="None"
         cell={(row, col) => (row.id === 'align' && col.id === 'hep'
           ? null
-          : { text: '2', band: 'severe', sentence: `${row.label}, ${col.label}, 2 plays, worst band severe` })}
+          : { text: '2', band: 'severe', sentence: `${row.label}, ${col.label}, 2 ways to beat it, the worst severe` })}
       />
 
       <Diverge
@@ -228,7 +228,7 @@ export function Gallery() {
       <p className="govuk-body">
         Where a bar&rsquo;s length is a SUM of exposures rather than a count, the segments are
         sized by summed exposure too — a reader reads a segment&rsquo;s width as a contribution to
-        the length, so sizing by play count would draw six limited plays wider than two severe ones
+        the length, so sizing by count would draw six limited ways to beat it wider than two severe ones
         inside a bar saying the opposite. The exact figure stays beside the bar, the split is read
         out to anyone not looking at it, and the key below says what the shades are. The scale is
         the table&rsquo;s own top row, which is why the caption under such a figure has to say so.
@@ -293,7 +293,7 @@ export function Gallery() {
           { label: 'Moderate 1', from: 0.3, to: 0.5 },
           { label: 'Limited 1', from: 0, to: 0.3 },
         ]}
-        label="Six plays at their exposure on a scale of 0 to 1, with the three band cuts marked."
+        label="Six ways to beat it at their score on a scale of 0 to 1, with the three band cuts marked."
       />
 
       <h2 className="govuk-heading-l govuk-!-margin-top-8">Telling the reader something</h2>
@@ -305,7 +305,7 @@ export function Gallery() {
 
       <NotificationBanner>
         <p className="govuk-body">
-          Three stages recorded warnings. The report is complete, with gaps marked where they fall.
+          Three steps recorded warnings. The report is complete, with gaps marked where they fall.
         </p>
       </NotificationBanner>
 

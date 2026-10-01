@@ -208,7 +208,7 @@ export function ProvenanceLead({ stages, playsKept, artefacts = NONE, linkTo }: 
           {thrown.unexplained ? (
             <p className="govuk-body-s prt-meta">
               That is {thrown.explained} of the run&rsquo;s {thrown.total} discards. The other{' '}
-              {thrown.unexplained} were discarded in bulk by stages that recorded no reason:{' '}
+              {thrown.unexplained} were discarded in bulk by steps that recorded no reason:{' '}
               {thrown.byStage.map((row) => `${row.count} in ${row.name}`).join(', ')}.
             </p>
           ) : null}

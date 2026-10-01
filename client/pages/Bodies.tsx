@@ -42,8 +42,8 @@ export function Bodies() {
           <p className="govuk-body">
             Each row is a public body on the GOV.UK list. Each column is a paper you have assessed.
             A cell shows what that paper gives the body: how many things it asks the body to do, and
-            how many ways the assessment found for the body to work against the paper. We call those
-            plays. The worst play is shown too.
+            how many ways the assessment found for the body to beat it, and how bad the worst of
+            those is.
           </p>
           <p className="govuk-body">
             The counts come from each paper’s own map of who does what. Sealed papers are never
@@ -138,7 +138,7 @@ function Grid({ data }: { data: BodiesGrid }) {
           {cell.duties} {cell.duties === 1 ? 'ask' : 'asks'}
           {cell.powers ? <>, {cell.powers} {cell.powers === 1 ? 'power' : 'powers'}</> : null}
           <br />
-          {cell.plays} {cell.plays === 1 ? 'play' : 'plays'}
+          {cell.plays} {cell.plays === 1 ? 'way to beat it' : 'ways to beat it'}
           {cell.worstBand ? <> · <BandMark band={cell.worstBand.toLowerCase()} /></> : null}
         </span>
       );

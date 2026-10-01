@@ -149,7 +149,7 @@ export function Home() {
             ))}
           </ol>
           <p className="govuk-body prt-pipeline__joint">
-            {stages.length === 18 ? 'Eighteen' : stages.length} stages produce one report in{' '}
+            {stages.length === 18 ? 'Eighteen' : stages.length} steps produce one report in{' '}
             {MOVES.length - 1 === 5 ? 'five' : MOVES.length - 1} parts, opened by a one-page summary.
           </p>
           <ol className="prt-moves">

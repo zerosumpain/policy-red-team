@@ -186,8 +186,8 @@ function Library({ rows }: { rows: PersonaSummary[] }) {
     { header: 'Body' }, { header: 'Kind' },
     ...(showBody ? [{ header: 'On GOV.UK as' }] : []),
     ...(showPapers ? [{ header: 'Papers', numeric: true }] : []),
-    { header: 'Plays', numeric: true, className: 'prt-table__num' },
-    { header: 'Worst band' },
+    { header: 'Ways to beat it', numeric: true, className: 'prt-table__num' },
+    { header: 'Worst' },
     ...(showEnquiries ? [{ header: 'Enquiries', numeric: true }] : []),
     ...(showLastSeen ? [{ header: 'Last recorded' }] : []),
   ];
@@ -220,7 +220,7 @@ function Library({ rows }: { rows: PersonaSummary[] }) {
           row.entityType.replaceAll('_', ' ') || '—',
           ...(showBody ? [row.body?.name ?? <span key="g" className="prt-meta">Not matched</span>] : []),
           ...(showPapers ? [String(row.sightings)] : []),
-          <Bar key="p" value={row.plays} max={mostPlays} digits={0} scale={`plays, 0 to ${mostPlays} on this table`} />,
+          <Bar key="p" value={row.plays} max={mostPlays} digits={0} scale={`ways to beat it, 0 to ${mostPlays} on this table`} />,
           <BandMark key="b" band={row.worstBand} />,
           ...(showEnquiries ? [String(row.researchNotes)] : []),
           /* "LAST RECORDED", not "last seen in a paper". `listPersonas`

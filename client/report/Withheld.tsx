@@ -3,6 +3,7 @@ import { Table, Tag } from '../govuk';
 import { Bar } from './Metrics';
 import { Figure } from './Figure';
 import { truncations } from './warnings';
+import { kindNoun } from '$lib/refused';
 
 /**
  * WHERE THE MODEL COULD NOT SEE EVERYTHING.
@@ -87,7 +88,7 @@ export function Withheld({ stages }: {
               {row.kinds.length ? (
                 <>
                   {' · none of '}
-                  {row.kinds.slice(0, KINDS_SHOWN).join(', ')}
+                  {row.kinds.slice(0, KINDS_SHOWN).map((kind) => kindNoun(kind, 2)).join(', ')}
                   {row.kinds.length > KINDS_SHOWN ? ` and ${row.kinds.length - KINDS_SHOWN} more` : ''}
                 </>
               ) : null}
@@ -115,7 +116,7 @@ export function Withheld({ stages }: {
         `${row.ordinal + 1}. ${row.name}`,
         row.calls.toLocaleString(),
         denominator(row),
-        row.kinds.length ? row.kinds.join(', ') : 'none named',
+        row.kinds.length ? row.kinds.map((kind) => kindNoun(kind, 2)).join(', ') : 'none named',
         row.partial ? 'Yes — the run said so' : 'No',
       ])}
     />

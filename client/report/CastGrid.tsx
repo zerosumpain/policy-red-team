@@ -102,7 +102,7 @@ export function CastGrid({ board, personas, linkTo }: {
           <span className="prt-cast__rank">
             {row.band ? <span className={`prt-band prt-band--${row.band}`}>{BAND_LABEL[row.band as Band]}</span> : null}
             <span className="prt-denom">
-              {row.playCount} {row.playCount === 1 ? 'play' : 'plays'}
+              {row.playCount} {row.playCount === 1 ? 'way to beat it' : 'ways to beat it'}
               {row.band ? ` · worst ${(row.worst / 100).toFixed(2)}` : ''}
             </span>
           </span>

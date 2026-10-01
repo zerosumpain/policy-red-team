@@ -62,7 +62,7 @@ export function Accessibility() {
         </p>
         <p className="govuk-body">
           Where the two differ, it is usually the table that carries more: the exposure plot
-          draws twenty plays and the table beside it links into every one of them. The plots
+          draws twenty ways to beat it and the table beside it links into every one of them. The plots
           themselves carry no links, because a link inside an SVG is reachable but poorly
           announced.
         </p>

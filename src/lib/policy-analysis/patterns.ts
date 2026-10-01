@@ -53,7 +53,7 @@ export const PLAY_PATTERNS = [
 ] as const;
 
 export type PatternKey = (typeof PLAY_PATTERNS)[number]['key'] | 'other';
-export const OTHER_PATTERN = { key: 'other' as const, label: 'Other plays', what: 'Plays whose words name none of the patterns above.' };
+export const OTHER_PATTERN = { key: 'other' as const, label: 'Other ways to beat it', what: 'Ways to beat it whose words name none of the kinds above.' };
 
 const LABEL_WEIGHT = 3;
 

@@ -182,7 +182,7 @@ export function NetworkSection({ net, artefacts, linkTo, selection, onClearSelec
         {origin.withPage} of the {origin.total} name a page of the document; the rest cite none. Only
         relationships whose both ends resolve are counted — a dangling end is a reference, not a
         relationship — so a body the paper names but never connects to anything is not in this
-        count. The &ldquo;Who is involved&rdquo; tab counts those.
+        count. &ldquo;Who is involved&rdquo; counts those.
       </p>
 
       <h3 className="govuk-heading-m" id="net-depth">How deep the wiring goes</h3>

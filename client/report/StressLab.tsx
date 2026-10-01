@@ -265,7 +265,7 @@ export function StressLab({ artefacts, levers, linkTo, failed: given, onFailedCh
                     <LeverFigure value={preview.disarms} max={previews.most.disarms} tone="disarm" />
                     <LeverFigure value={preview.moves} max={previews.most.moves} tone="move" />
                     <span className="govuk-visually-hidden">
-                      {' — '}takes {preview.disarms} of {previews.population.plays} plays off the table;
+                      {' — '}takes {preview.disarms} of {previews.population.plays} ways to beat it off the table;
                       undercuts {preview.moves} of {previews.population.conclusions} conclusions.
                     </span>
                   </span>
@@ -334,7 +334,7 @@ export function StressLab({ artefacts, levers, linkTo, failed: given, onFailedCh
           columns={[
             { header: 'Suppose this is false' },
             { header: 'Things resting on it', numeric: true },
-            { header: 'Plays taken off the table', numeric: true },
+            { header: 'Ways to beat it taken off the table', numeric: true },
             { header: 'Conclusions undercut', numeric: true },
           ]}
           rows={ranked.map((lever) => {

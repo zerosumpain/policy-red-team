@@ -176,7 +176,7 @@ export function New() {
           <Details summary="Where these figures come from">
             <p className="govuk-body-s">
               They were read off one assessment: {MEASURED_RUN.passages} passages,{' '}
-              {MEASURED_RUN.stages} stages, {MEASURED_RUN.calls} model calls and about{' '}
+              {MEASURED_RUN.stages} steps, {MEASURED_RUN.calls} model calls and about{' '}
               {MEASURED_RUN.tokensAbout} tokens, run on {MEASURED_RUN.when}. The call and token
               totals are not on this page&rsquo;s response and are written down rather than
               computed here.

@@ -50,11 +50,11 @@ export const MEASURED_RUN = {
 export const MEASURED_STANDARD_HINT =
   `One pass over every passage. The last full run of a ${MEASURED_RUN.passages}-passage paper made `
   + `${MEASURED_RUN.calls} model calls, used about ${MEASURED_RUN.tokensAbout} tokens, and ran for `
-  + `${MEASURED_RUN.ran} — ${MEASURED_RUN.firstStages} of that across the first seventeen stages, `
+  + `${MEASURED_RUN.ran} — ${MEASURED_RUN.firstStages} of that across the first seventeen steps, `
   + `and ${MEASURED_RUN.finalStage} in the final synthesis.`;
 
 /** The same measurement where a ceiling is being set, which is the other place it is needed. */
 export const MEASURED_SCALE =
-  `For scale: a complete ${MEASURED_RUN.stages}-stage assessment of a ${MEASURED_RUN.passages}-passage `
+  `For scale: a complete ${MEASURED_RUN.stages}-step assessment of a ${MEASURED_RUN.passages}-passage `
   + `paper made ${MEASURED_RUN.calls} model calls and used about ${MEASURED_RUN.tokensAbout} tokens over `
   + `${MEASURED_RUN.ran}.`;

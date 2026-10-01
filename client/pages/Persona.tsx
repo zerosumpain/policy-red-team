@@ -312,7 +312,7 @@ export function Persona() {
             What it has been found able to run — {view.plays.length}
           </h2>
           <p className="govuk-body">
-            Across every paper, worst first. A play found in one policy is not a play available in
+            Across every paper, worst first. A way to beat one policy is not a way to beat
             another; this is a record of what has been attributed to this body, and the paper that
             attributed it.
           </p>
@@ -320,7 +320,7 @@ export function Persona() {
             caption="Ranked across every assessment that profiled it"
             captionSize="s"
             scroll
-            columns={[{ header: 'Play' }, { header: 'Band' }, { header: 'Exposure', numeric: true }, { header: 'Legality' }, { header: 'Found in' }]}
+            columns={[{ header: 'Way to beat it' }, { header: 'How exposed' }, { header: 'Score', numeric: true }, { header: 'Legality' }, { header: 'Found in' }]}
             rows={view.plays.slice(0, 20).map((play, i) => [
               play.label,
               <BandMark key={`b${i}`} band={play.band} />,
@@ -366,7 +366,7 @@ export function Persona() {
                     ? new Date(sighting.observedAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })
                     : 'Date not recorded'}
                   {sighting.traits.length ? ` · ${sighting.traits.length} ${sighting.traits.length === 1 ? 'trait' : 'traits'}` : ''}
-                  {sighting.plays.length ? ` · ${sighting.plays.length} ${sighting.plays.length === 1 ? 'play' : 'plays'}` : ''}
+                  {sighting.plays.length ? ` · ${sighting.plays.length} ${sighting.plays.length === 1 ? 'way to beat it' : 'ways to beat it'}` : ''}
                 </p>
                 {sighting.note ? <p className="govuk-body">{sighting.note}</p> : null}
                 {/* THE SPLIT, for a paper that meant a different body. Only where

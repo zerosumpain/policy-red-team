@@ -21,7 +21,7 @@ export const EXPOSURE_FACTORS = [
 
 export const BANDS = [
   { band: 'severe', floor: 0.7, note: 'Strong incentive, low effort, real damage, and hard to see. Redesign before publication.' },
-  { band: 'significant', floor: 0.5, note: 'A play a rational actor would consider. Needs a counter-measure or an explicit acceptance.' },
+  { band: 'significant', floor: 0.5, note: 'One a rational body would consider. Needs something that would stop it, or a recorded decision to accept it.' },
   { band: 'moderate', floor: 0.3, note: 'Plausible but constrained. Worth a monitoring commitment.' },
   { band: 'limited', floor: 0, note: 'Weak on at least one factor. Recorded for completeness.' },
 ] as const;

@@ -188,8 +188,8 @@ export function Composition({ artefacts, list, mechanismIds }: {
           <p className="govuk-body-s prt-meta">
             A citation, not a distinct assumption: two chains resting on the same thing are counted
             twice, because the figure is how much work the chains do. Every chain&rsquo;s own
-            assumptions are shown when you select the part of the policy it runs through, on the
-            Causes tab.
+            assumptions are shown when you select the part of the policy it runs through, under
+            Causes.
           </p>
         </>
       ) : null}

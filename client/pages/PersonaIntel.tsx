@@ -125,10 +125,10 @@ export function PersonaIntel({ personaId, name, readOnly }: { personaId: string;
               </p>
               {intel.papers.length > 1 ? (
                 <Table className="prt-table"
-                  caption="Asks and plays, paper by paper"
+                  caption="Asks and ways to beat it, paper by paper"
                   captionSize="s"
                   firstCellIsHeader
-                  columns={[{ header: 'Paper' }, { header: 'Asks', numeric: true }, { header: 'Plays', numeric: true }]}
+                  columns={[{ header: 'Paper' }, { header: 'Asks', numeric: true }, { header: 'Ways to beat it', numeric: true }]}
                   rows={intel.papers.map((p) => [p.paper.title, String(p.asks.filter((a) => a.kind === 'duty').length), String(p.plays.length)])}
                 />
               ) : null}
@@ -217,7 +217,7 @@ function PaperEntry({ entry }: { entry: BodyIntel['papers'][number] }) {
       </h3>
       <p className="govuk-body-s prt-meta">
         {entry.paper.completedAt ? `Assessed ${longDate(entry.paper.completedAt)}` : 'Date not recorded'}
-        {' · '}{entry.plays.length} {entry.plays.length === 1 ? 'play' : 'plays'} found
+        {' · '}{entry.plays.length} {entry.plays.length === 1 ? 'way to beat it' : 'ways to beat it'} found
         {worst ? <> · worst <BandMark band={worst.toLowerCase()} /></> : null}
       </p>
       {groups.length ? groups.map((g) => (
