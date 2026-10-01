@@ -280,7 +280,7 @@ export function CausalityLead({ artefacts, list, selection, onSelect, mechanismI
       ) : null}
 
       {tail.length ? (
-        <table className="govuk-table prt-mechtail">
+        <table className="govuk-table prt-table prt-mechtail">
           <caption className="govuk-table__caption govuk-table__caption--s">
             All {tail.length} parts of the policy a way to beat it rests on, most first
           </caption>

@@ -99,14 +99,14 @@ export function Resolution({ artefacts, linkTo }: {
           />
         }
         table={
-          <Table
+          <Table className="prt-table" firstCellIsHeader
             caption="Candidate records kept apart, by the name they were mentioned under"
             captionSize="s"
             scroll
             columns={[
               { header: 'Name as the paper writes it' },
               { header: 'Records kept apart', numeric: true, width: '10rem' },
-              { header: 'Why they were not merged' },
+              { header: 'Why they were not merged', className: 'prt-table__secondary' },
             ]}
             rows={rows.map((row) => [
               /* The first candidate is a real actor artefact, so the name has a

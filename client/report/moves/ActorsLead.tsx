@@ -198,7 +198,7 @@ export function ActorsLead({ artefacts = [], plays = [], interplay, personas, se
             scores of every way to beat it aimed at that part, added up.
           </p>
 
-          <Table
+          <Table className="prt-table" firstCellIsHeader
             caption={`What is aimed at — under the most pressure, the worst ${INTERPLAY_TARGETS} of ${allTargets}`}
             captionSize="s"
             scroll
@@ -235,7 +235,7 @@ export function ActorsLead({ artefacts = [], plays = [], interplay, personas, se
                 {kindLine(board.targets.map((t) => ({ kind: t.kind })))}. Every way to beat it aimed at
                 any of them is in the list under Threats.
               </p>
-              <Table
+              <Table className="prt-table" firstCellIsHeader
                 caption={`Under pressure, ranked ${INTERPLAY_TARGETS + 1} to ${allTargets}`}
                 captionSize="s"
                 scroll
@@ -272,7 +272,7 @@ export function ActorsLead({ artefacts = [], plays = [], interplay, personas, se
           {board.bodies.length ? (
             <>
               <div className="prt-actors__bodies">
-                <Table
+                <Table className="prt-table prt-table--zebra"
                   caption="Who could do it — every body with a way to beat the policy"
                   captionSize="s"
                   scroll
@@ -405,7 +405,7 @@ export function ActorsLead({ artefacts = [], plays = [], interplay, personas, se
             papers. A prior is context and never evidence — nothing in this report rests on one —
             but a body you have read about before is one you can read faster.
           </p>
-          <Table
+          <Table className="prt-table prt-table--zebra" firstCellIsHeader
             caption="Seen in other assessments"
             captionSize="s"
             scroll

@@ -158,7 +158,7 @@ export function ProvenanceLead({ stages, playsKept, artefacts = NONE, linkTo }: 
             of model output were refused with a reason recorded. These are those reasons, rolled up
             across the run.
           </p>
-          <Table
+          <Table className="prt-table"
             caption="Reasons output was refused, largest first"
             columns={[
               { header: 'Items', numeric: true },

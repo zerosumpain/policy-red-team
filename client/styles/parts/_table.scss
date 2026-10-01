@@ -29,8 +29,16 @@
 // `<th scope="row">`, which the framework already sets bold — the name of the
 // row is the thing a reader runs their eye down, and it should look like it.
 //
-// A later sweep applies this site-wide; the item page is where it was built,
-// because that is where John looked.
+// Built on the item page, because that is where John looked, and then put on
+// every data table in the client (phase 21, workstream D) — `npm run a11y`
+// would not notice one left behind, so `grep '<Table' client` without
+// `prt-table` beside it should come back empty. The one exception is the
+// pattern grid's own `<table>`, which IS the chart and is styled as one.
+//
+// `__num` is for a score column that carries a `<Bar>`. A plain count gets the
+// framework's `--numeric` alignment and the tabular figures below, and no
+// fixed width: forcing 10rem on every column of a twelve-by-twelve matrix
+// would make the matrix three screens wide.
 
 .prt-table {
   width: 100%;
@@ -72,6 +80,10 @@
     border-bottom: 1px solid govuk.govuk-colour("black", $variant: "tint-50");
   }
 
+  // Figures line up down a column only if every digit is the same width.
+  .govuk-table__cell--numeric,
+  .govuk-table__header--numeric { font-variant-numeric: tabular-nums; }
+
   // A link in a cell is the way into that row's own page; it reads at the
   // weight of the cell, not of a heading.
   th[scope="row"] .govuk-link { font-weight: inherit; }
@@ -81,7 +93,10 @@
   // which also lets the browser shrink a column below its longest word, and at
   // 420px it did: "Con / ceal / me / nt". `break-word` still breaks a token that
   // genuinely overflows, but sizes the column to whole words first.
-  th[scope="row"] { overflow-wrap: break-word; }
+  // And a column's heading is sized to whole words for the same reason: at
+  // 1280px the persona library's last column read "Last recorde / d".
+  th[scope="row"],
+  th[scope="col"] { overflow-wrap: break-word; }
 }
 
 // Banded, at `tint-95` — 1.12:1 against white, which is the point: a band is a

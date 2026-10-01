@@ -188,7 +188,7 @@ function Assessments({ rows }: { rows: AnalysisRow[] }) {
     day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit',
   });
   const table = (list: AnalysisRow[]) => (
-    <Table
+    <Table className="prt-table prt-table--zebra" firstCellIsHeader
       columns={[{ header: 'Paper' }, { header: 'What it found' }, { header: 'Started' }, { header: 'Ran for' }, { header: 'Status' }]}
       rows={list.map((row) => [
         <Fragment key="t">

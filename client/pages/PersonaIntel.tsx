@@ -124,7 +124,7 @@ export function PersonaIntel({ personaId, name, readOnly }: { personaId: string;
                 {totalAsks} {totalAsks === 1 ? 'thing' : 'things'}. No paper counts what the others ask.
               </p>
               {intel.papers.length > 1 ? (
-                <Table
+                <Table className="prt-table"
                   caption="Asks and plays, paper by paper"
                   captionSize="s"
                   firstCellIsHeader
@@ -290,7 +290,7 @@ function RecordTable({ records }: { records: BodyEvidenceRecord[] }) {
   const shown = records.slice(0, 30);
   return (
     <>
-      <Table
+      <Table className="prt-table"
         caption="Newest first"
         captionSize="s"
         scroll

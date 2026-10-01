@@ -316,7 +316,7 @@ export function Persona() {
             another; this is a record of what has been attributed to this body, and the paper that
             attributed it.
           </p>
-          <Table
+          <Table className="prt-table prt-table--zebra" firstCellIsHeader
             caption="Ranked across every assessment that profiled it"
             captionSize="s"
             scroll

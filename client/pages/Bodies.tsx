@@ -147,7 +147,7 @@ function Grid({ data }: { data: BodiesGrid }) {
   return (
     <div className="govuk-grid-row">
       <div className="govuk-grid-column-full prt-bodies">
-        <Table
+        <Table className="prt-table prt-table--zebra"
           caption="Named in the most papers first, then by how much is asked of them"
           captionSize="s"
           scroll

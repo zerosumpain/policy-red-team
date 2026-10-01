@@ -128,7 +128,7 @@ export function CheckLedger({ checks, net, linkTo }: {
       </p>
 
       <div className="prt-checkledger">
-        <Table
+        <Table className="prt-table prt-table--zebra"
           caption="What the policy's own wiring was tested against"
           captionSize="s"
           scroll

@@ -77,7 +77,7 @@ export function CastGrid({ board, personas, linkTo }: {
     const totals = castCoverage(subject);
     return (
     <div className="prt-cast">
-    <Table
+    <Table className="prt-table"
       caption={caption}
       captionSize="s"
       scroll

@@ -166,7 +166,7 @@ export function StageLadder({ rows, runMs, selected, onSelect }: {
   );
 
   const table = (
-    <Table
+    <Table className="prt-table prt-table--zebra"
       caption="Every step, in the order it ran"
       captionSize="s"
       scroll

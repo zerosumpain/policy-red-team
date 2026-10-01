@@ -77,7 +77,7 @@ export function WatchList({ list, recs, artefacts, filename, linkTo, offline = f
         </Button>
       ) : null}
       <div className="prt-scroll prt-watch">
-        <table className="govuk-table prt-watch__table">
+        <table className="govuk-table prt-table prt-table--zebra prt-watch__table">
           <caption className="govuk-table__caption govuk-table__caption--s">
             What to watch for, worst first{all || rows.length <= SHOWN ? '' : ` — the first ${SHOWN} of ${rows.length}`}
           </caption>

@@ -77,7 +77,7 @@ export function DownloadGrid({ analysisId, artefacts }: { analysisId: string; ar
         Two scopes and three formats.
         {leaves ? <> &ldquo;Without the paper&rdquo; leaves out {leaves}; everything else is identical.</> : null}
       </p>
-      <Table
+      <Table className="prt-table"
         caption="Every copy this assessment can produce"
         captionSize="s"
         firstCellIsHeader

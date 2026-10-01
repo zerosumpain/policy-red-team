@@ -121,7 +121,7 @@ export function DivergeTable({ rows, leftLabel, rightLabel, caption, tableLabel 
 }) {
   if (!rows.length) return null;
   return (
-    <Table
+    <Table className="prt-table"
       caption={caption}
       captionSize="s"
       scroll

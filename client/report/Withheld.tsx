@@ -99,7 +99,7 @@ export function Withheld({ stages }: {
   );
 
   const table = (
-    <Table
+    <Table className="prt-table"
       caption="Every step that worked from less than the whole assessment"
       captionSize="s"
       scroll

@@ -97,7 +97,7 @@ export function EvidenceCoverage({ artefacts, mix, linkTo }: {
       {shape.reading.map((line) => <p className="govuk-body" key={line}>{line}</p>)}
 
       <div className="prt-evidence">
-        <Table
+        <Table className="prt-table prt-table--zebra"
           caption="Every evidence link, and what it does not establish"
           captionSize="s"
           scroll

@@ -172,7 +172,7 @@ export function PatternGrid({ artefacts, selection, onSelect, linkTo }: {
   );
 
   const table = (
-    <Table
+    <Table className="prt-table"
       caption="Every filled square, worst first"
       captionSize="s"
       scroll

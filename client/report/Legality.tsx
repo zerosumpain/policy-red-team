@@ -97,7 +97,7 @@ export function Legality({ list }: { list: Play[] }) {
   );
 
   const table = (
-    <Table
+    <Table className="prt-table"
       caption="How exposed, against whether it breaks a rule"
       captionSize="s"
       scroll

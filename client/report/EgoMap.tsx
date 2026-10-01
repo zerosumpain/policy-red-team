@@ -198,7 +198,7 @@ export function EgoMap({ node, incoming, outgoing, kindOf, linkFor }: {
         </figure>
       )}
       table={(
-        <Table
+        <Table className="prt-table"
           caption="Every relationship the paper states about this"
           captionSize="s"
           scroll

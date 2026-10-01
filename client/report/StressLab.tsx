@@ -328,7 +328,7 @@ export function StressLab({ artefacts, levers, linkTo, failed: given, onFailedCh
         handed. All 29 rows cost 30ms and no server, so paper gets the answer.
       */}
       <div className="prt-lab__static">
-        <Table
+        <Table className="prt-table" firstCellIsHeader
           caption={`Every assumption offered here, and what failing it alone would cost — ${offered.length} of ${levers.length}`}
           captionSize="s"
           columns={[

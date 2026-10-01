@@ -618,7 +618,7 @@ export function SetupEgress() {
         </p>
       }
     >
-      <Table
+      <Table className="prt-table" firstCellIsHeader
         caption="Outbound hosts, HTTPS on 443"
         columns={[{ header: 'Host' }]}
         rows={state.egress.map((host) => [host])}

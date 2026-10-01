@@ -84,7 +84,7 @@ export function Composition({ artefacts, list, mechanismIds }: {
               />
             )}
             table={(
-              <Table
+              <Table className="prt-table" firstCellIsHeader
                 caption="Assertions by kind"
                 captionSize="s"
                 scroll

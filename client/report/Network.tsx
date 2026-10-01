@@ -222,7 +222,7 @@ export function NetworkSection({ net, artefacts, linkTo, selection, onClearSelec
           />
         }
         table={
-          <Table
+          <Table className="prt-table"
             caption="Relationships by the kind of thing at each end"
             captionSize="s"
             scroll
@@ -254,7 +254,7 @@ export function NetworkSection({ net, artefacts, linkTo, selection, onClearSelec
           />
         }
         table={
-          <Table
+          <Table className="prt-table prt-table--zebra"
             caption="Relationships by family, and the relation types under each"
             captionSize="s"
             scroll
@@ -677,7 +677,7 @@ function AdjacencyTable({ grid, name }: {
 }) {
   return (
     <>
-      <Table
+      <Table className="prt-table"
         caption="Each row is the body asserting the relationship; each column the body it is asserted about"
         captionSize="s"
         scroll
@@ -733,7 +733,7 @@ function BodyLinkTable({ links, name }: {
   const SHOWN_PAIRS = 12;
   return (
     <>
-      <Table
+      <Table className="prt-table prt-table--zebra"
         caption={`Body-to-body relationships, busiest pair first${links.length > SHOWN_PAIRS ? ` — the first ${SHOWN_PAIRS} of ${links.length} pairs` : ''}`}
         captionSize="s"
         scroll

@@ -95,7 +95,7 @@ export function Gallery() {
       </div>
 
       <h3 className="govuk-heading-m">Findings</h3>
-      <Table
+      <Table className="prt-table"
         caption="The exploitation playbook, ranked"
         captionSize="s"
         scroll
@@ -166,11 +166,11 @@ export function Gallery() {
           />
         }
         table={
-          <Table
+          <Table className="prt-table"
             caption="Relationships by family"
             captionSize="s"
             scroll
-            columns={[{ header: 'Family' }, { header: 'What it covers' }, { header: 'Relationships', numeric: true }]}
+            columns={[{ header: 'Family' }, { header: 'What it covers', className: 'prt-table__secondary' }, { header: 'Relationships', numeric: true }]}
             rows={[
               ['Money and burden', 'Who pays, who benefits, who carries the cost', '222'],
               ['Accountability', 'Who answers to whom, and who is measured on what', '93'],

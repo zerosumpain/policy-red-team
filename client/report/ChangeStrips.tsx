@@ -235,7 +235,7 @@ export function ChangeStrips({ strips, programme, linkTo }: {
           </div>
         )}
         table={(
-          <Table
+          <Table className="prt-table" firstCellIsHeader
             caption="How each part of the policy is meant to work, step by step"
             captionSize="s"
             scroll

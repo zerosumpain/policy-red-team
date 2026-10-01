@@ -87,7 +87,7 @@ export function ActorFunnel({ board, onNetwork }: {
             reading in itself where the body is a regulator or a department: nothing the paper sets
             up gives it something to do.
           </p>
-          <Table
+          <Table className="prt-table" firstCellIsHeader
             caption="Profiled, and running nothing"
             captionSize="s"
             scroll

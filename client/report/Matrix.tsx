@@ -120,7 +120,7 @@ export function Matrix({
 
   return (
     <div className="prt-matrix">
-      <Table
+      <Table className="prt-table"
         caption={caption}
         captionSize="s"
         scroll

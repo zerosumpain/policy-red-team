@@ -140,7 +140,7 @@ export function Personas() {
               The people a policy affects, such as children or parents. They are kept apart from the
               bodies above: a group has no plan of its own to profile.
             </p>
-            <Table
+            <Table className="prt-table prt-table--zebra" firstCellIsHeader
               caption="Named in the most papers first"
               captionSize="s"
               columns={[{ header: 'Group' }, { header: 'Papers', numeric: true }]}
@@ -186,7 +186,7 @@ function Library({ rows }: { rows: PersonaSummary[] }) {
     { header: 'Body' }, { header: 'Kind' },
     ...(showBody ? [{ header: 'On GOV.UK as' }] : []),
     ...(showPapers ? [{ header: 'Papers', numeric: true }] : []),
-    { header: 'Plays', numeric: true },
+    { header: 'Plays', numeric: true, className: 'prt-table__num' },
     { header: 'Worst band' },
     ...(showEnquiries ? [{ header: 'Enquiries', numeric: true }] : []),
     ...(showLastSeen ? [{ header: 'Last recorded' }] : []),
@@ -210,7 +210,7 @@ function Library({ rows }: { rows: PersonaSummary[] }) {
 
   return (
     <>
-      <Table
+      <Table className="prt-table prt-table--zebra" firstCellIsHeader
         caption="Most-seen first"
         captionSize="s"
         scroll

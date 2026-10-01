@@ -59,7 +59,7 @@ export function ExposureSpread({ list }: { list: Play[] }) {
         </figure>
       )}
       table={(
-        <Table
+        <Table className="prt-table"
           caption="Where each level starts and stops"
           captionSize="s"
           scroll

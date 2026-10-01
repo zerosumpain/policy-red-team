@@ -21,7 +21,7 @@ export function ScoresTable({ plays, linkTo }: { plays: Play[]; linkTo?: Artefac
   const factor = (play: Play, key: string) => play.factors.find((f) => f.key === key)?.value ?? 0;
   const value = (v: number) => v.toFixed(2);
   return (
-    <Table
+    <Table className="prt-table prt-table--zebra" firstCellIsHeader
       caption="Every way to beat it, by the four scores"
       captionSize="s"
       scroll
