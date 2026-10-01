@@ -405,7 +405,14 @@ export function validateOutput(raw: unknown, stage: number, prior: Artefact[], p
   return output;
 }
 
-export type Rejection = { id: string; kind: string; code: string; reason: string; hint?: string };
+/**
+ * `label` and `quote` are what the refused item SAID — its own title and the
+ * span of the paper it claimed to rest on. Neither is read by the repair
+ * prompt, which names the id it is asking the model to resend; they exist for
+ * the warning a READER sees, which used to keep only `s1_014_claim_002
+ * (claim)`: an identifier for something never stored, so nothing to open.
+ */
+export type Rejection = { id: string; kind: string; code: string; reason: string; hint?: string; label?: string; quote?: string };
 export type TriagedOutput = StageOutput & { rejected: Rejection[] };
 
 /**
@@ -603,15 +610,19 @@ export function triageOutput(raw: unknown, stage: number, prior: Artefact[], pas
     if (one.success) { artefacts.push(one.data as Artefact); continue; }
     const where = one.error.issues.slice(0, 3).map((i) => `${i.path.join('.') || 'artefact'}: ${i.message}`).join('; ');
     const named = candidate && typeof candidate === 'object' ? String((candidate as { id?: unknown }).id ?? `item ${index + 1}`) : `item ${index + 1}`;
-    malformed.push({ id: named, kind: String((candidate as { kind?: unknown })?.kind ?? 'unknown'), code: 'contract', reason: `An artefact did not match the contract (${where}).` });
+    const said = candidate && typeof candidate === 'object' ? (candidate as { label?: unknown; sourceQuote?: unknown }) : {};
+    malformed.push({
+      id: named, kind: String((candidate as { kind?: unknown })?.kind ?? 'unknown'), code: 'contract', reason: `An artefact did not match the contract (${where}).`,
+      ...(typeof said.label === 'string' ? { label: said.label } : {}),
+      ...(typeof said.sourceQuote === 'string' ? { quote: said.sourceQuote } : {}),
+    });
   }
   const warnings = (envelope.data.warnings ?? []).filter((w): w is string => typeof w === 'string').slice(0, 100);
   const triaged = triageArtefacts({ artefacts, warnings }, stage, prior, passKind);
   if (!malformed.length) return triaged;
-  const names = malformed.slice(0, 6).map((r) => `${r.id} (${r.kind})`).join(', ');
   return {
     artefacts: triaged.artefacts,
-    warnings: clampWarnings([...triaged.warnings, `${malformed.length} model output${malformed.length === 1 ? ' was' : 's were'} discarded and are not part of this assessment — ${malformed[0].reason} Affected: ${names}${malformed.length > 6 ? `, and ${malformed.length - 6} more` : ''}.`]),
+    warnings: clampWarnings([...triaged.warnings, discardWarning(malformed)]),
     rejected: [...malformed, ...triaged.rejected],
   };
 }
@@ -631,7 +642,13 @@ export function triageArtefacts(output: StageOutput, stage: number, prior: Artef
   const parsed = output;
   const priorIds = new Set(prior.map((a) => a.id));
   const rejected: Rejection[] = [];
-  const drop = (a: Artefact, f: Fault) => { rejected.push({ id: a.id, kind: a.kind, code: f.code, reason: f.message, ...(f.hint ? { hint: f.hint } : {}) }); };
+  const drop = (a: Artefact, f: Fault) => {
+    rejected.push({
+      id: a.id, kind: a.kind, code: f.code, reason: f.message, ...(f.hint ? { hint: f.hint } : {}),
+      ...(typeof a.label === 'string' && a.label ? { label: a.label } : {}),
+      ...(typeof a.sourceQuote === 'string' && a.sourceQuote ? { quote: a.sourceQuote } : {}),
+    });
+  };
   const pruned: string[] = [];
   const dropWarning = (a: Artefact) => (what: string) => pruned.push(`“${a.label}” lost ${what}.`);
   // DIVERGENCE: the same channel for a citation that resolved but was filed under
@@ -716,12 +733,85 @@ export function triageArtefacts(output: StageOutput, stage: number, prior: Artef
   if (rejected.length) {
     const byCode = new Map<string, Rejection[]>();
     for (const r of rejected) byCode.set(r.code, [...(byCode.get(r.code) ?? []), r]);
-    for (const [, group] of byCode) {
-      const names = group.slice(0, 6).map((r) => `${r.id} (${r.kind})`).join(', ');
-      warnings.push(`${group.length} model output${group.length === 1 ? ' was' : 's were'} discarded and are not part of this assessment — ${group[0].reason} Affected: ${names}${group.length > 6 ? `, and ${group.length - 6} more` : ''}.`.slice(0, 1000));
-    }
+    for (const [, group] of byCode) warnings.push(discardWarning(group));
   }
   return { artefacts: kept, warnings: clampWarnings(warnings), rejected };
+}
+
+/** The most a stored warning may hold; `stage-facts.ts` and the report read it whole. */
+const WARNING_LIMIT = 1000;
+/** How much of a refused item's label, or of its quote, the warning keeps. */
+const SAID_LIMIT = 100;
+/** How many refused items a warning names before it says "and N more". */
+const NAMED = 6;
+
+/**
+ * One refused item's words, made safe to sit inside the warning's own quotes.
+ *
+ * The CURLY QUOTES ARE THE DELIMITER, so they are what is taken out: a label
+ * that itself quoted something would otherwise close the field early and the
+ * parser in `src/lib/refused.ts` would read the rest as the next item. Line
+ * breaks go because a source quote is copied from a PDF with its line breaks
+ * in it, and a warning is one line. Cut at a word where there is one.
+ */
+export function saidText(text: string, limit = SAID_LIMIT): string {
+  const flat = text.replace(/[“”"]/g, '').replace(/\s+/g, ' ').trim();
+  if (flat.length <= limit) return flat;
+  const cut = flat.slice(0, limit - 1);
+  const space = cut.lastIndexOf(' ');
+  return `${(space > limit * 0.6 ? cut.slice(0, space) : cut).replace(/[\s,;:.]+$/, '')}…`;
+}
+
+/**
+ * THE DISCARD SENTENCE, NAMING WHAT EACH REFUSED ITEM SAID.
+ *
+ * It used to name an item as `s1_014_claim_002 (claim)` and nothing else. The
+ * item was refused, so it was never stored, so the id resolves against nothing
+ * — the reader of "Where this comes from" was shown a list of identifiers with
+ * the note that there was nothing behind them to open. Phase 21 records what
+ * the item said instead, in a shape `parseAffected` reads without guessing:
+ *
+ *   s1_014_claim_002 (claim: “Families can access hubs”; quoting “every family feels valued”)
+ *
+ * The id and kind stay first, so every reader of the OLD shape — which only
+ * ever looked for `id (kind)` — still finds them, and `parseRefusal` still
+ * splits on `Affected:`. The prefix up to the em dash is untouched: the
+ * pipeline counts discarded groups by the literal "discarded and are not part
+ * of this assessment", and `stage-facts.ts` counts the leading figure.
+ *
+ * THE 1,000-CHARACTER CLAMP decides the order things are given up in. A bare
+ * `.slice()` cut the last item in half. Here the quotes go first, then the
+ * labels, then items from the tail into "and N more" — so a long reason costs
+ * the detail before it costs the count, and the count is never wrong.
+ */
+export function discardWarning(group: Rejection[]): string {
+  const head = `${group.length} model output${group.length === 1 ? ' was' : 's were'} discarded and are not part of this assessment — ${group[0].reason} Affected: `;
+  // A malformed item's id is whatever the model sent; keep it one token so it
+  // cannot be mistaken for the separator or the brackets around its kind.
+  const token = (value: string) => value.replace(/[\s,()“”"]+/g, '_') || 'unnamed';
+  const entry = (r: Rejection, detail: 0 | 1 | 2) => {
+    const label = detail >= 1 && r.label ? saidText(r.label) : '';
+    const quote = detail >= 2 && r.quote ? saidText(r.quote) : '';
+    const said = [label && `“${label}”`, quote && `quoting “${quote}”`].filter(Boolean).join('; ');
+    return `${token(r.id)} (${token(r.kind)}${said ? `: ${said}` : ''})`;
+  };
+  const build = (named: number, detail: 0 | 1 | 2) => {
+    const names = group.slice(0, named).map((r) => entry(r, detail)).join(', ');
+    const rest = group.length - named;
+    return `${head}${names}${rest > 0 ? `, and ${rest} more` : ''}.`;
+  };
+  const most = Math.min(group.length, NAMED);
+  for (const detail of [2, 1, 0] as const) {
+    const text = build(most, detail);
+    if (text.length <= WARNING_LIMIT) return text;
+  }
+  for (let named = most - 1; named >= 1; named--) {
+    const text = build(named, 0);
+    if (text.length <= WARNING_LIMIT) return text;
+  }
+  // Only a reason longer than the whole budget reaches here, and then the old
+  // behaviour is the honest one: the sentence, cut.
+  return build(1, 0).slice(0, WARNING_LIMIT);
 }
 
 /**
