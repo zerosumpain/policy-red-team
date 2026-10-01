@@ -155,8 +155,24 @@ describe('the discard arithmetic, from one pass', () => {
   });
 
   it('is the same rows `byReason` returns, so the table and the total agree', () => {
-    expect(total.rows).toEqual(byReason(REAL.map(([, text]) => readable(text))));
+    expect(total.rows).toEqual(byReason(STAGES.flatMap((s) => s.warnings.map((text) => ({ text: readable(text), stage: s.name, ordinal: s.ordinal })))));
     expect(total.rows.reduce((n, row) => n + row.count, 0)).toBe(total.explained);
+    // Without a step the counts are the same; only the items lose where they came from.
+    expect(byReason(REAL.map(([, text]) => readable(text))).map((r) => r.count)).toEqual(total.rows.map((r) => r.count));
+  });
+
+  /**
+   * PHASE 21: the method page prints what a refusal named by page and step,
+   * never by id, so every item a warning named has to come out of the parse —
+   * named, or counted in "and N more". On this fixture all 80 do.
+   */
+  it('reads every refused item a warning named, each with the step that named it', () => {
+    const items = total.rows.flatMap((row) => row.items);
+    const unnamed = total.rows.flatMap((row) => row.unnamed).reduce((n, u) => n + u.count, 0);
+    expect(items.length + unnamed).toBe(total.explained);
+    expect(items.every((item) => item.id && item.ordinal !== null && item.stage)).toBe(true);
+    // The step that recorded the warning is the step the id's own namespace names.
+    expect(items.filter((item) => /^s\d+_/.test(item.id ?? '')).every((item) => item.id!.startsWith(`s${item.ordinal}_`))).toBe(true);
   });
 
   it('says where the residue was discarded, largest first', () => {

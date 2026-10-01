@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { isLegitimateSilence, malformedRetryDelayMs, transportRetryDelayMs, type Rejection } from './validation';
+import { artefact } from './contracts';
+import { discardWarning, isLegitimateSilence, malformedRetryDelayMs, saidText, transportRetryDelayMs, triageArtefacts, triageOutput, type Rejection } from './validation';
 
 describe('an empty reply is an answer, not a dead provider', () => {
   /**
@@ -86,5 +87,71 @@ describe('a reply that did not parse is asked for again', () => {
     // The identical request truncates identically — the timeout lesson again.
     expect(malformedRetryDelayMs(true, 0)).toBeNull();
     expect(malformedRetryDelayMs(true, 1)).toBeNull();
+  });
+});
+
+describe('a discard says what the refused item said', () => {
+  /**
+   * PHASE 21. The warning used to name a refused item as `s1_014_claim_002
+   * (claim)` — an id for something never stored. It records the item's label
+   * and the quote it gave now, and the 1,000-character clamp gives them up in a
+   * fixed order: quotes, then labels, then items into "and N more".
+   */
+  const reason = 'An extracted assertion could not be located in the policy text.';
+  const refused = (n: number, label?: string, quote?: string): Rejection => ({
+    id: `s1_014_claim_${String(n).padStart(3, '0')}`, kind: 'claim', code: 'quote', reason,
+    ...(label ? { label } : {}), ...(quote ? { quote } : {}),
+  });
+
+  it('writes the label and the quote after the id and kind every older reader looks for', () => {
+    expect(discardWarning([refused(2, 'Families can access hubs', 'every family feels valued')])).toBe(
+      `1 model output was discarded and are not part of this assessment — ${reason} Affected: s1_014_claim_002 (claim: “Families can access hubs”; quoting “every family feels valued”).`,
+    );
+  });
+
+  it('keeps the old shape exactly when there is nothing to say', () => {
+    expect(discardWarning([refused(2), refused(5)])).toBe(
+      `2 model outputs were discarded and are not part of this assessment — ${reason} Affected: s1_014_claim_002 (claim), s1_014_claim_005 (claim).`,
+    );
+  });
+
+  it('takes the delimiters and the line breaks out of what the model wrote, and cuts it at a word', () => {
+    expect(saidText('He said “no”\nand "yes"')).toBe('He said no and yes');
+    const long = saidText('word '.repeat(60));
+    expect(long.length).toBeLessThanOrEqual(100);
+    expect(long.endsWith('word…')).toBe(true);
+  });
+
+  it('gives up quotes, then labels, then items — and never miscounts', () => {
+    const long = 'x'.repeat(100);
+    const six = Array.from({ length: 6 }, (_, i) => refused(i, `label ${i} ${long}`, `quote ${i} ${long}`));
+    const noQuotes = discardWarning(six);
+    expect(noQuotes.length).toBeLessThanOrEqual(1000);
+    expect(noQuotes).toContain('“label 0');
+    expect(noQuotes).not.toContain('quoting');
+
+    const nine = Array.from({ length: 9 }, (_, i) => refused(i, 'L'.repeat(150), 'q'));
+    const noLabels = discardWarning(nine.map((r) => ({ ...r, reason: 'r'.repeat(500) })));
+    expect(noLabels.length).toBeLessThanOrEqual(1000);
+    expect(noLabels).not.toContain('“');
+    expect(noLabels).toMatch(/, and 3 more\.$/);
+
+    const fewer = discardWarning(nine.map((r) => ({ ...r, reason: 'r'.repeat(850) })));
+    expect(fewer.length).toBeLessThanOrEqual(1000);
+    const named = (fewer.match(/\(claim\)/g) ?? []).length;
+    expect(named).toBeGreaterThan(0);
+    expect(named).toBeLessThan(6);
+    expect(fewer).toContain(`, and ${9 - named} more.`);
+  });
+
+  it('is what triage writes, for a refused item and for one that did not parse', () => {
+    const passage = artefact('passage_0017', 'passage', 'Page 17', 'Every family feels valued.', {}, { origin: 'extracted_fact', page: 17 });
+    const repeat = artefact('passage_0017', 'passage', 'A repeated passage', 'x', {}, { sourceQuote: 'Every family\nfeels valued' });
+    const triaged = triageArtefacts({ artefacts: [repeat], warnings: [] }, 1, [passage]);
+    expect(triaged.rejected[0]).toMatchObject({ label: 'A repeated passage', quote: 'Every family\nfeels valued' });
+    expect(triaged.warnings.at(-1)).toContain('Affected: passage_0017 (passage: “A repeated passage”; quoting “Every family feels valued”).');
+
+    const malformed = triageOutput({ artefacts: [{ id: 's1_000_001', kind: 'claim', label: 'Councils run hubs' }], warnings: [] }, 1, [passage]);
+    expect(malformed.warnings.at(-1)).toContain('Affected: s1_000_001 (claim: “Councils run hubs”).');
   });
 });

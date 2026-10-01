@@ -2,7 +2,10 @@ import { useMemo } from 'react';
 import { factLabel, stageFacts, type StageFactKind } from '$lib/policy-analysis/stage-facts';
 import { Details, Table } from '../../govuk';
 import { Bar, Metrics } from '../Metrics';
-import { discards, readable } from '../warnings';
+import type { Artefact } from '$lib/policy-analysis/contracts';
+import { groupRefused, groupWords, pageWords, stageOnePlaces, type Place, type RefusedGroup } from '$lib/refused';
+import type { ArtefactLink } from '../Report';
+import { discards, readable, type ReasonRow } from '../warnings';
 
 /**
  * WHAT THE RUN THREW AWAY, AND WHY.
@@ -48,10 +51,20 @@ import { discards, readable } from '../warnings';
  * comparison the split exists to prevent. The refusal table below is where a bar
  * belongs, because eleven rows there count one thing.
  */
+/** A stable empty default, so `useMemo` does not re-place on every render. */
+const NONE: Artefact[] = [];
+
 const REFUSED: StageFactKind[] = ['discarded', 'reference_dropped', 'no_text', 'cut_short'];
 
-export function ProvenanceLead({ stages, playsKept }: {
-  stages: { name: string; warnings: string[] }[];
+export function ProvenanceLead({ stages, playsKept, artefacts = NONE, linkTo }: {
+  stages: { name: string; warnings: string[]; ordinal?: number }[];
+  /**
+   * The report's items, for placing a refused step-1 item on its page. Without
+   * them the refused items still read by step and kind.
+   */
+  artefacts?: Artefact[];
+  /** Absent in the pack, which has no router: pages then print as text. */
+  linkTo?: ArtefactLink;
   /**
    * How many exploitation plays survived, where the caller knows.
    *
@@ -66,6 +79,8 @@ export function ProvenanceLead({ stages, playsKept }: {
   const facts = useMemo(() => stageFacts(warnings), [warnings]);
   const thrown = useMemo(() => discards(stages), [stages]);
   const reasons = thrown.rows;
+  // ~2,500 items on a real run; placed once, not per reason row.
+  const places = useMemo(() => stageOnePlaces(artefacts), [artefacts]);
 
   if (!facts.length) return null;
 
@@ -171,12 +186,14 @@ export function ProvenanceLead({ stages, playsKept }: {
                     AND THE SUMMARY SAYS WHAT IT HOLDS. Eleven disclosures all
                     reading "The contract's own words" is eleven identical links
                     down the page for anyone tabbing the table. */}
-                <Details summary={`The rule’s wording, and the ${entry.count} ${entry.count === 1 ? 'item' : 'items'} it refused`}>
+                <Details summary={`The rule’s wording, and where the ${entry.count} ${entry.count === 1 ? 'item' : 'items'} it refused came from`}>
                   {/* `<pre>` rather than a paragraph: a zod union lists twenty-nine
                       quoted kinds and reflowing it as prose made a wall nobody
                       could read a value out of. It scrolls in its own box. */}
                   <pre className="prt-contract">{entry.reason}</pre>
-                  {entry.affected.length ? <Affected ids={entry.affected} /> : null}
+                  {entry.items.length || entry.unnamed.length
+                    ? <Affected items={entry.items} unnamed={entry.unnamed} places={places} linkTo={linkTo} />
+                    : null}
                 </Details>
               </>,
             ])}
@@ -215,32 +232,75 @@ export function ProvenanceLead({ stages, playsKept }: {
 }
 
 /**
- * THE IDS A DISCARD NAMED — AS TEXT, NEVER AS LINKS.
+ * WHAT A DISCARD REFUSED — BY WHERE IT CAME FROM, NEVER BY ID.
  *
- * All 89 of them resolve against `artefacts[]` zero times, correctly: they were
- * refused, so they were never persisted. Linking them would produce 89 dead
- * routes into the drill from the one panel whose subject is what the run could
- * not keep.
+ * This printed the ids the warnings named, `s1_014_claim_002`, under the note
+ * that they were never stored so there was nothing behind them to open. John,
+ * reading the Best Start run: they "mean nothing to the user". They mean
+ * something to the pipeline, though — a step-1 id names the passage its call was
+ * reading — so `src/lib/refused.ts` places each one on its page, and the page
+ * IS stored: it is the one link here that goes somewhere.
  *
- * A LIST RATHER THAN A SEMICOLON-JOINED RUN. The longest is 814 characters, and
- * each id carries its kind in brackets — which is the checkable part of a
- * discard and unreadable as a paragraph.
+ * Everything else says which step refused it and what kind of thing it was.
+ * Since phase 21 the warning also records what each item said; where it did,
+ * the item's own words are quoted beneath its page. NO IDS, not even behind a
+ * disclosure: there is nothing a reader can do with one, and anyone who can is
+ * reading the stored warning anyway.
  */
-function Affected({ ids }: { ids: string[] }) {
-  const items = ids
-    .flatMap((run) => run.split(','))
-    .map((id) => id.trim().replace(/[.\s]+$/, ''))
-    .filter(Boolean);
-  if (!items.length) return null;
+function Affected({ items, unnamed, places, linkTo }: {
+  items: ReasonRow['items'];
+  unnamed: ReasonRow['unnamed'];
+  places: Map<string, Place>;
+  linkTo?: ArtefactLink;
+}) {
+  const groups = groupRefused(items, unnamed, places);
+  if (!groups.length) return null;
+  const total = items.length + unnamed.reduce((n, u) => n + u.count, 0);
   return (
     <>
       <p className="govuk-body-s prt-meta">
-        {items.length === 1 ? 'The id it named' : `The ${items.length} ids it named`} — these were never
-        stored, so there is nothing behind them to open.
+        {total === 1 ? 'It was' : 'They were'} refused, so {total === 1 ? 'it is' : 'they are'} not in the
+        assessment. This is where {total === 1 ? 'it' : 'they'} came from.
       </p>
       <ul className="govuk-list govuk-body-s prt-affected">
-        {items.map((id) => <li key={id}>{id}</li>)}
+        {groups.map((group) => (
+          <li key={group.key}>
+            <RefusedLine group={group} linkTo={linkTo} />
+            <Said items={group.items} />
+          </li>
+        ))}
       </ul>
     </>
+  );
+}
+
+/** One line: a page, or a step. */
+function RefusedLine({ group, linkTo }: { group: RefusedGroup; linkTo?: ArtefactLink }) {
+  if (group.where !== 'page') return <>{groupWords(group)}</>;
+  const page = `page ${group.page}`;
+  return (
+    <>
+      {pageWords(group)}{' '}
+      {/* The passage is stored, so this link goes somewhere. A shared copy
+          withholds passages and the pack has no router; both print the page
+          as text. */}
+      {group.passage && linkTo ? linkTo(group.passage, page) : page}
+    </>
+  );
+}
+
+/** The items' own words, where the warning recorded them (phase 21 onward). */
+function Said({ items }: { items: RefusedGroup['items'] }) {
+  const said = items.filter((item) => item.label || item.quote);
+  if (!said.length) return null;
+  return (
+    <ul className="govuk-list govuk-body-s prt-affected__said">
+      {said.map((item, index) => (
+        <li key={`${item.id ?? ''}-${index}`}>
+          {item.label ? <>&ldquo;{item.label}&rdquo;</> : null}
+          {item.quote ? <span className="prt-meta">{item.label ? ', quoting ' : 'Quoting '}&ldquo;{item.quote}&rdquo;</span> : null}
+        </li>
+      ))}
+    </ul>
   );
 }

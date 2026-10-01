@@ -642,7 +642,8 @@ describe('one malformed artefact costs one artefact', () => {
     expect(triaged.rejected).toHaveLength(1);
     expect(triaged.rejected[0]).toMatchObject({ id: 's1_000_claim', kind: 'claim', code: 'contract' });
     expect(triaged.rejected[0].reason).toContain('page');
-    expect(triaged.warnings.join(' ')).toContain('s1_000_claim (claim)');
+    // Since phase 21 the warning names what the refused item said, too.
+    expect(triaged.warnings.join(' ')).toContain('s1_000_claim (claim: “Outcome focus”; quoting “what landlords achieve”)');
   });
 
   it('still refuses a response that is not an envelope at all', () => {
