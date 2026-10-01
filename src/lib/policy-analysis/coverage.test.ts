@@ -20,7 +20,10 @@
 // `docs/upstream.json` is this build's own and needs no such bookkeeping.
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
-import { artefact, ASSURANCE_CATEGORIES, ASSURANCE_STAGE, ASSURED_SYNTHESIS_STAGE, APPRAISAL_STAGE, type Artefact, type StageInput } from './contracts';
+import { artefact, ASSURANCE_CATEGORIES, assuranceCategories, ASSURANCE_STAGE, ASSURED_SYNTHESIS_STAGE, APPRAISAL_STAGE, type Artefact, type StageInput } from './contracts';
+// The remits a run with no reader-supplied source is asked: every one but
+// `supplied_balance`, which has nothing to check there (phase 22 part 2).
+const RUN_CATEGORIES = assuranceCategories([]);
 import { PolicyError, triageArtefacts } from './validation';
 import { executeStage } from './pipeline';
 import { ingest } from './server/ingest';
@@ -72,7 +75,7 @@ describe('a coverage gap is asked about before it is fatal', () => {
   it('asks again for the challenge responses the revised report left out', async () => {
     const all = await inventory();
     const challenges = all.filter((a) => a.kind === 'assurance_challenge');
-    expect(challenges.length).toBe(ASSURANCE_CATEGORIES.length);
+    expect(challenges.length).toBe(RUN_CATEGORIES.length);
 
     // The live failure: the first call answers all but one challenge. Before
     // this phase that threw, the cached reply made every retry deterministic,
@@ -103,7 +106,7 @@ describe('a coverage gap is asked about before it is fatal', () => {
 
   it('re-dispatches the units of a fan-out that produced nothing', async () => {
     const all = await inventory();
-    const skip = ASSURANCE_CATEGORIES[2];
+    const skip = RUN_CATEGORIES[2];
     const keys: string[] = [];
     let refused = true;
     const model = async (...args: Parameters<typeof fixtureModel>) => {
@@ -117,7 +120,7 @@ describe('a coverage gap is asked about before it is fatal', () => {
     const result = await executeStage(base(ASSURANCE_STAGE, all.filter((a) => a.kind !== 'assurance_challenge')), { model, research, signal, neighbours: none, personas: none });
     expect(keys.filter((k) => k === skip)).toHaveLength(2);
     const covered = new Set(result.artefacts.filter((a) => a.kind === 'assurance_challenge').map((a) => a.data.category));
-    expect(covered.size).toBe(ASSURANCE_CATEGORIES.length);
+    expect(covered.size).toBe(RUN_CATEGORIES.length);
   });
 
   it('takes only the missing rows when the second call restates the whole report', async () => {
@@ -139,7 +142,7 @@ describe('a coverage gap is asked about before it is fatal', () => {
     const result = await executeStage(base(ASSURED_SYNTHESIS_STAGE, all), { model, research, signal, neighbours: none, personas: none });
     expect(result.artefacts.filter((a) => a.kind === 'review_summary')).toHaveLength(1);
     const responses = result.artefacts.filter((a) => a.kind === 'assurance_response');
-    expect(responses).toHaveLength(ASSURANCE_CATEGORIES.length);
+    expect(responses).toHaveLength(RUN_CATEGORIES.length);
     expect(result.warnings.join(' ')).toContain('already holds');
   });
 
@@ -169,7 +172,7 @@ describe('a gate that is still short degrades instead of ending the run', () => 
     // Nineteen sections of work is nineteen sections of work.
     expect(result.artefacts.filter((a) => a.kind === 'finding').length).toBeGreaterThan(10);
     expect(result.artefacts.some((a) => a.kind === 'review_summary')).toBe(true);
-    expect(result.warnings.join(' ')).toContain(`1 of ${ASSURANCE_CATEGORIES.length} independent challenges were not assessed`);
+    expect(result.warnings.join(' ')).toContain(`1 of ${RUN_CATEGORIES.length} independent challenges were not assessed`);
   });
 
   it('still refuses a revised report that answered a minority of them', async () => {
@@ -296,7 +299,7 @@ describe('the report counts a degraded gate as a gap, not as an open question', 
     const challengeGap = stageFacts(revised.warnings).find((f) => f.kind === 'not_covered');
     expect(challengeGap).toBeDefined();
     expect(challengeGap!.count).toBe(1);
-    expect(challengeGap!.of).toBe(ASSURANCE_CATEGORIES.length);
+    expect(challengeGap!.of).toBe(RUN_CATEGORIES.length);
     expect(stageFacts(revised.warnings).some((f) => f.kind === 'open')).toBe(false);
 
     const appraisal = await executeStage(base(APPRAISAL_STAGE, without(all, APPRAISAL_STAGE)), {

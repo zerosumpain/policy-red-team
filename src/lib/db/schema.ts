@@ -306,9 +306,36 @@ export const policyPasses = pgTable('policy_passes', {
   metadata: jsonb('metadata'),
   status: text('status').notNull().default('queued'),
   error: text('error'),
+  /** Phase 22 part 2: the one item this was attached for, when it was. */
+  targetId: text('target_id'),
+  /** The page it was fetched from, when it arrived by address. */
+  sourceUrl: text('source_url'),
+  /** The look-up whose results it is, when it arrived that way. */
+  lookUp: text('look_up'),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   completedAt: timestamp('completed_at', { withTimezone: true }),
 }, (t) => [uniqueIndex('policy_passes_analysis_pass_idx').on(t.analysisId, t.pass)]);
+
+/**
+ * WHAT THE READER BROUGHT AT SUBMISSION (phase 22 part 2): a source as a file
+ * or an address, or a look-up. Read by stage 5 and nowhere else; see
+ * `migrations/0005-reader-inputs.sql`.
+ */
+export const policyReaderInputs = pgTable('policy_reader_inputs', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  analysisId: uuid('analysis_id').notNull().references(() => policyAnalyses.id, { onDelete: 'cascade' }),
+  position: integer('position').notNull(),
+  kind: text('kind').notNull(),
+  url: text('url'),
+  filename: text('filename'),
+  mimeType: text('mime_type'),
+  size: integer('size'),
+  content: text('content'),
+  about: text('about'),
+  note: text('note'),
+  wording: text('wording'),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [index('policy_reader_inputs_analysis_idx').on(t.analysisId, t.position)]);
 
 export const policyShares = pgTable('policy_share', {
   id: uuid('id').primaryKey().defaultRandom(),

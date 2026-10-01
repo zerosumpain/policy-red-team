@@ -2,12 +2,20 @@ import { createHash } from 'node:crypto';
 import { extractPdf } from '$lib/jkai/extract/pdf';
 import { extractDocx } from '$lib/jkai/extract/docx';
 import type { DocxBlock } from '$lib/jkai/extract/types';
-import { artefact, CONCURRENCY_OPTIONS, DEPTHS, EXTRACTIONS, MATERIAL_ROLES, MAX_BYTES, MAX_CHARACTERS, MAX_PAGES, type Artefact, type Concurrency, type Depth, type Extraction, type MaterialRole, type StageOutput } from '../contracts';
+import { lookUpQuery, MAX_ABOUT_CHARACTERS, MAX_LOOK_UPS, MAX_NOTE_CHARACTERS, MAX_READER_SOURCES, MAX_SOURCE_FILE_BYTES, MAX_SOURCE_FILES_BYTES } from '../reader-inputs';
+import { artefact, safeSourceUrl, CONCURRENCY_OPTIONS, DEPTHS, EXTRACTIONS, MATERIAL_ROLES, MAX_BYTES, MAX_CHARACTERS, MAX_PAGES, type Artefact, type Concurrency, type Depth, type Extraction, type MaterialRole, type StageOutput } from '../contracts';
 import { isOfferedModel } from '$lib/server/models/catalogue';
 import { isThinkingLevel, thinkingLevelsFor, type ThinkingLevel } from '$lib/models/thinking';
 import { PolicyError } from '../validation';
 
-export type Submission = { title: string; jurisdiction: string | null; policyArea: string | null; context: string | null; depth: Depth; model: string | null; thinkingLevel: ThinkingLevel | null; concurrency: Concurrency | null; extraction: Extraction | null; sharedContextFirst: boolean; sealed: boolean; sealedResearch: boolean; filename: string; mimeType: string; bytes: Buffer };
+export type Submission = { title: string; jurisdiction: string | null; policyArea: string | null; context: string | null; depth: Depth; model: string | null; thinkingLevel: ThinkingLevel | null; concurrency: Concurrency | null; extraction: Extraction | null; sharedContextFirst: boolean; sealed: boolean; sealedResearch: boolean; filename: string; mimeType: string; bytes: Buffer; readerSources?: ReaderSourceInput[]; lookUps?: string[] };
+/**
+ * A source the reader supplied at submission, as the form sent it (phase 22
+ * part 2): a file, or an address to be fetched when stage 5 runs.
+ */
+export type ReaderSourceInput =
+  | { kind: 'file'; filename: string; mimeType: string; bytes: Buffer; about: string | null; note: string | null }
+  | { kind: 'page'; url: string; about: string | null; note: string | null };
 const MIME: Record<string, string> = { txt: 'text/plain', pdf: 'application/pdf', docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' };
 export function validateBytes(bytes: Buffer, filename: string, mimeType: string): string {
   if (!bytes.length || bytes.length > MAX_BYTES) throw new PolicyError('size', 'Supply a nonempty document of at most 10 MB.');
@@ -33,7 +41,8 @@ export function validateBytes(bytes: Buffer, filename: string, mimeType: string)
   return expected;
 }
 export async function readSubmission(request: Request): Promise<Submission> {
-  const limit = MAX_BYTES + 700_000;
+  // The paper's own 10 MB, plus what the reader may supply beside it.
+  const limit = MAX_BYTES + MAX_SOURCE_FILES_BYTES + 700_000;
   if (Number(request.headers.get('content-length')) > limit) throw new PolicyError('size', 'The submission exceeds the upload limit.');
   const reader = request.body?.getReader();
   if (!reader) throw new PolicyError('input', 'No submission was received.');
@@ -113,7 +122,64 @@ export async function readSubmission(request: Request): Promise<Submission> {
   const askedExtraction = str('extraction', 20);
   const extraction = (EXTRACTIONS as readonly string[]).includes(askedExtraction) ? askedExtraction as Extraction : null;
   const sharedContextFirst = str('sharedContextFirst', 10) === 'true';
-  return { title, jurisdiction: str('jurisdiction', 200) || null, policyArea: str('policyArea', 200) || null, context: str('context', 5000) || null, depth, model, thinkingLevel, concurrency, extraction, sharedContextFirst, sealed, sealedResearch, filename, mimeType, bytes };
+  const { readerSources, lookUps } = await readerInputs(form, str);
+  return { title, jurisdiction: str('jurisdiction', 200) || null, policyArea: str('policyArea', 200) || null, context: str('context', 5000) || null, depth, model, thinkingLevel, concurrency, extraction, sharedContextFirst, sealed, sealedResearch, filename, mimeType, bytes, readerSources, lookUps };
+}
+
+/**
+ * "SOURCES IT SHOULD USE" AND "THINGS TO LOOK UP" (phase 22 part 2).
+ *
+ * Numbered fields — `sourceUrl.0`, `sourceFile.0`, `sourceAbout.0`,
+ * `sourceNote.0`, `lookUp.0` — because the form repeats a fieldset per entry
+ * and FormData has no arrays. A row left entirely blank is the form's spare
+ * and is skipped; a row with words but no file or address is refused, because
+ * the reader thinks they supplied something and did not.
+ *
+ * Refused, not narrowed, like `sealed`: a look-up carrying an email address
+ * that was silently dropped would be a reader told nothing about why their
+ * question was never asked. Said back with its number so they can fix it.
+ */
+async function readerInputs(form: FormData, str: (key: string, max: number) => string): Promise<{ readerSources: ReaderSourceInput[]; lookUps: string[] }> {
+  const readerSources: ReaderSourceInput[] = [];
+  let fileBytes = 0;
+  for (let i = 0; i < MAX_READER_SOURCES * 2; i++) {
+    const address = str(`sourceUrl.${i}`, 2000);
+    const about = str(`sourceAbout.${i}`, MAX_ABOUT_CHARACTERS) || null;
+    const note = str(`sourceNote.${i}`, MAX_NOTE_CHARACTERS) || null;
+    const file = form.get(`sourceFile.${i}`);
+    const uploaded = file && typeof file !== 'string' && file.size > 0;
+    if (!address && !uploaded) {
+      if (about || note) throw new PolicyError('input', `Source ${i + 1}: attach a file or give its web address, or clear the row.`);
+      continue;
+    }
+    if (readerSources.length >= MAX_READER_SOURCES) throw new PolicyError('input', `Supply at most ${MAX_READER_SOURCES} sources.`);
+    if (address && uploaded) throw new PolicyError('input', `Source ${i + 1}: give a file or a web address, not both.`);
+    if (uploaded) {
+      if (file.size > MAX_SOURCE_FILE_BYTES) throw new PolicyError('size', `Source ${i + 1}: a supplied file must be at most ${MAX_SOURCE_FILE_BYTES / 1024 / 1024} MB.`);
+      fileBytes += file.size;
+      if (fileBytes > MAX_SOURCE_FILES_BYTES) throw new PolicyError('size', `The supplied files come to more than ${MAX_SOURCE_FILES_BYTES / 1024 / 1024} MB together.`);
+      const filename = file.name.replace(/^.*[\\/]/, '').slice(0, 200);
+      const bytes = Buffer.from(await file.arrayBuffer());
+      let mimeType: string;
+      try { mimeType = validateBytes(bytes, filename, file.type); }
+      catch (err) { throw new PolicyError('type', `Source ${i + 1}: ${(err as Error).message}`); }
+      readerSources.push({ kind: 'file', filename, mimeType, bytes, about, note });
+    } else {
+      const url = safeSourceUrl(address);
+      if (!url) throw new PolicyError('input', `Source ${i + 1}: give a public web address starting https:// or http://.`);
+      readerSources.push({ kind: 'page', url, about, note });
+    }
+  }
+  const lookUps: string[] = [];
+  for (let i = 0; i < MAX_LOOK_UPS * 2; i++) {
+    const wording = str(`lookUp.${i}`, 1000);
+    if (!wording) continue;
+    if (lookUps.length >= MAX_LOOK_UPS) throw new PolicyError('input', `Ask for at most ${MAX_LOOK_UPS} things to be looked up.`);
+    const built = lookUpQuery(wording);
+    if ('refused' in built) throw new PolicyError('input', `Thing to look up ${i + 1}: ${built.refused}`);
+    lookUps.push(wording);
+  }
+  return { readerSources, lookUps };
 }
 /**
  * Material attached to an assessment that has already reported.
@@ -130,7 +196,17 @@ export async function readSubmission(request: Request): Promise<Submission> {
  * the policy as superseding itself. An unknown value is refused rather than
  * quietly becoming "other".
  */
-export type Material = { role: MaterialRole; note: string | null; filename: string; mimeType: string; bytes: Buffer };
+export type Material = {
+  role: MaterialRole; note: string | null; filename: string; mimeType: string; bytes: Buffer;
+  /**
+   * Phase 22 part 2. `targetId` is the item it was attached for; `url` an
+   * address to fetch INSTEAD of a file; `lookUp` a look-up whose results become
+   * the material. When either of the last two is set, `bytes` is empty here and
+   * the route fills it in before `addMaterial` — fetching and searching are the
+   * route's business, not a form reader's.
+   */
+  targetId?: string | null; url?: string | null; lookUp?: string | null;
+};
 export async function readMaterial(request: Request): Promise<Material> {
   const limit = MAX_BYTES + 700_000;
   if (Number(request.headers.get('content-length')) > limit) throw new PolicyError('size', 'The attachment exceeds the upload limit.');
@@ -154,8 +230,26 @@ export async function readMaterial(request: Request): Promise<Material> {
     if (value.length > max) throw new PolicyError('input', `${key} exceeds its length limit.`);
     return value;
   };
+  const targetId = str('targetId', 100) || null;
+  if (targetId && !/^[A-Za-z0-9_.:-]+$/.test(targetId)) throw new PolicyError('input', 'That is not an item of this assessment.');
+  // A LOOK-UP NEEDS NO ROLE: what comes back is search results, and the pass
+  // is told so (`arrived: 'look_up'`). Read as "something else", on its own terms.
+  const lookUp = str('lookUp', 1000) || null;
+  if (lookUp) {
+    const built = lookUpQuery(lookUp);
+    if ('refused' in built) throw new PolicyError('input', built.refused);
+    return { role: 'other', note: str('note', 2000) || null, filename: 'look-up.txt', mimeType: 'text/plain', bytes: Buffer.alloc(0), targetId, url: null, lookUp };
+  }
   const asked = str('role', 40);
   if (!MATERIAL_ROLES.some(([key]) => key === asked)) throw new PolicyError('input', 'Say what kind of material this is.');
+  const address = str('url', 2000);
+  if (address) {
+    const url = safeSourceUrl(address);
+    if (!url) throw new PolicyError('input', 'Give a public web address starting https:// or http://.');
+    const file = form.get('material');
+    if ((file && typeof file !== 'string' && file.size > 0) || str('text', MAX_CHARACTERS)) throw new PolicyError('input', 'Give a web address, a file or pasted text — one of them.');
+    return { role: asked as MaterialRole, note: str('note', 2000) || null, filename: 'page.txt', mimeType: 'text/plain', bytes: Buffer.alloc(0), targetId, url, lookUp: null };
+  }
   const pasted = str('text', MAX_CHARACTERS);
   const file = form.get('material');
   const uploaded = file && typeof file !== 'string' && file.size > 0;
@@ -164,7 +258,7 @@ export async function readMaterial(request: Request): Promise<Material> {
   const filename = uploaded ? file.name.replace(/^.*[\\/]/, '').slice(0, 200) : 'material.txt';
   const bytes = uploaded ? Buffer.from(await file.arrayBuffer()) : Buffer.from(pasted);
   const mimeType = validateBytes(bytes, filename, uploaded ? file.type : 'text/plain');
-  return { role: asked as MaterialRole, note: str('note', 2000) || null, filename, mimeType, bytes };
+  return { role: asked as MaterialRole, note: str('note', 2000) || null, filename, mimeType, bytes, targetId, url: null, lookUp: null };
 }
 
 /** Longest passage handed to a stage. A block bigger than this is split at a line. */

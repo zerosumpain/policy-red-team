@@ -69,6 +69,7 @@ async function rawDump(id: string): Promise<string> {
     sql`select to_jsonb(t) as j from policy_documents t where analysis_id = ${id}::uuid`,
     sql`select to_jsonb(t) as j from policy_stages t where analysis_id = ${id}::uuid`,
     sql`select to_jsonb(t) as j from policy_artefacts t where analysis_id = ${id}::uuid`,
+    sql`select to_jsonb(t) as j from policy_reader_inputs t where analysis_id = ${id}::uuid`,
     sql`select to_jsonb(t) as j from workflow_runs t where input_data ->> 'analysisId' = ${id}`,
   ]) {
     const r = (await db.execute(q)) as unknown as { rows: { j: unknown }[] };
@@ -94,6 +95,33 @@ describe.skipIf(!local)('a sealed run on isolated Postgres', () => {
       expect(shutDump, `raw rows must not contain ${secret.slice(0, 30)}`).not.toContain(secret);
     }
     expect(shutDump).toContain('sealed:v1:');
+  });
+
+  // Phase 22 part 2: what the reader supplied beside the paper is the reader's
+  // words about it, and a sealed run keeps none of them in the clear.
+  it('seals the sources and look-ups the reader supplied', async () => {
+    const owner = nextOwner();
+    const reader = {
+      readerSources: [
+        { kind: 'page' as const, url: 'https://www.example.org/secret-review', about: 'The confidential pilot', note: 'Leaked to us by the council.' },
+        { kind: 'file' as const, filename: 'internal-memo.txt', mimeType: 'text/plain', bytes: Buffer.from('An internal memo about the draft.'), about: null, note: null },
+      ],
+      lookUps: ['pilot outcome in the unnamed borough'],
+    };
+    const make = async (sealed: boolean) => {
+      const a = await createAnalysis(owner, {
+        title: TITLE, jurisdiction: null, policyArea: null, context: null,
+        depth: 'standard' as const, model: null, thinkingLevel: null, concurrency: null, extraction: null, sharedContextFirst: false, sealed, sealedResearch: false,
+        filename: 'policy.txt', mimeType: 'text/plain', bytes, ...reader,
+      });
+      created.push({ owner, id: a.id });
+      return rawDump(a.id);
+    };
+    const secrets = ['secret-review', 'The confidential pilot', 'Leaked to us', 'internal-memo.txt', Buffer.from('An internal memo').toString('base64').slice(0, 16), 'unnamed borough'];
+    const open = await make(false);
+    for (const secret of secrets) expect(open, `the control must hold ${secret}`).toContain(secret);
+    const shut = await make(true);
+    for (const secret of secrets) expect(shut, `raw rows must not contain ${secret}`).not.toContain(secret);
   });
 
   it('reads back exactly what went in', async () => {
@@ -133,7 +161,7 @@ describe.skipIf(!local)('a sealed run on isolated Postgres', () => {
     expect(neighbours.map((n) => n.id)).not.toContain(shut.id);
   });
 
-  it('purges to thirteen zeroes, with the key destroyed first', async () => {
+  it('purges to fourteen zeroes, with the key destroyed first', async () => {
     const owner = nextOwner();
     const a = await create(owner, true);
     expect(await readKey(a.id)).not.toBeNull();
@@ -154,7 +182,7 @@ describe.skipIf(!local)('a sealed run on isolated Postgres', () => {
     expect(await readKey(a.id)).toBeNull();
 
     const probes = await census(a.id);
-    expect(probes).toHaveLength(13);
+    expect(probes).toHaveLength(14);
     expect(probes.filter((p) => p.rows !== 0)).toEqual([]);
 
     // The queue envelope is gone too — `policy_stages.run_id` has no cascade, so

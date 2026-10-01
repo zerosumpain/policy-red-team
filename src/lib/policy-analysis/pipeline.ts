@@ -1,5 +1,6 @@
 import { capForRival } from './decision-use';
-import { APPRAISAL_STAGE, ASSURANCE_CATEGORIES, ASSURANCE_STAGE, ASSURED_SYNTHESIS_STAGE, CONCURRENCY_OPTIONS, DEEP_CHAINS, DEFAULT_CONCURRENCY, DEFAULT_EXTRACTION, DEPTH_LIMITS, FIT_LIMIT, FOLLOW_UP_STAGES, FULL_PROFILES, MAX_KEY_JUDGEMENTS, isPassStage, passOf, passOrdinal, passStep, PATTERNS, PERSONA_STAGE, REPORT_SECTIONS, RESULT_KINDS, REVISION_STATUSES, SCENARIOS, SHORT_PROFILE_BATCH, STAGE_CONTEXT, SYNTHESIS_STAGE, THEORY_STAGE, type Artefact, type Concurrency, type Extraction, type PassKind, type StageInput, type StageOutput } from './contracts';
+import { readerArtefacts, researchRank, type LookUp, type SuppliedSource } from './reader-inputs';
+import { APPRAISAL_STAGE, assuranceCategories, ASSURANCE_STAGE, ASSURED_SYNTHESIS_STAGE, CONCURRENCY_OPTIONS, DEEP_CHAINS, DEFAULT_CONCURRENCY, DEFAULT_EXTRACTION, DEPTH_LIMITS, FIT_LIMIT, FOLLOW_UP_STAGES, FULL_PROFILES, MAX_KEY_JUDGEMENTS, isPassStage, passOf, passOrdinal, passStep, PATTERNS, PERSONA_STAGE, REPORT_SECTIONS, RESULT_KINDS, REVISION_STATUSES, SCENARIOS, SHORT_PROFILE_BATCH, STAGE_CONTEXT, SYNTHESIS_STAGE, THEORY_STAGE, type Artefact, type Concurrency, type Extraction, type PassKind, type StageInput, type StageOutput } from './contracts';
 import { consumedSources, encodedSize, fitToBudget } from './budget';
 import { scoreExploits } from './exposure';
 import { isPlay } from './cleared';
@@ -44,7 +45,16 @@ export type RegisterBodies = (actors: Artefact[]) => Promise<Map<string, string>
  * How many agents a stage uses is how it is EXECUTED, never what the model is
  * asked, so it belongs beside `signal` with the other execution concerns.
  */
-export type PipelineDeps = { model: ModelCall; research: Research; signal: AbortSignal; neighbours?: Neighbours; personas?: Personas; bodyEvidence?: BodyEvidence; registerBodies?: RegisterBodies; concurrency?: Concurrency | null; passKind?: PassKind | null; material?: MaterialBrief | null; extraction?: Extraction | null; sharedContextFirst?: boolean | null; onProgress?: (phase: string) => void };
+export type PipelineDeps = { model: ModelCall; research: Research; signal: AbortSignal; neighbours?: Neighbours; personas?: Personas; bodyEvidence?: BodyEvidence; registerBodies?: RegisterBodies; concurrency?: Concurrency | null; passKind?: PassKind | null; material?: MaterialBrief | null; reader?: ReaderBrought | null; extraction?: Extraction | null; sharedContextFirst?: boolean | null; onProgress?: (phase: string) => void };
+
+/**
+ * What the reader brought to the research step at submission (phase 22 part
+ * 2): sources the worker has already fetched or extracted, and look-ups with
+ * the server's query built. Read by stage 5 alone. On `PipelineDeps`, not
+ * `StageInput`, because a stage's input is what its model call is shown and
+ * hashed on — the research planner has no business carrying ten documents.
+ */
+export type ReaderBrought = { supplied: SuppliedSource[]; lookUps: LookUp[] };
 
 /**
  * What the reader said the attached material IS, as the pass stages are told it.
@@ -54,7 +64,20 @@ export type PipelineDeps = { model: ModelCall; research: Research; signal: Abort
  * assessment with different roles are different calls with different hashes and
  * cannot replay each other's answers.
  */
-export type MaterialBrief = { pass: number; role: string; label: string; guidance: string; filename: string | null; note: string | null };
+export type MaterialBrief = {
+  pass: number; role: string; label: string; guidance: string; filename: string | null; note: string | null;
+  /**
+   * Phase 22 part 2: the ONE item the reader attached this for — "I have a
+   * source for this" on an item page or an open research gap — which the
+   * reconciliation and the verdict read it against first. Optional: material
+   * attached from the Use page is about the whole report, as before.
+   */
+  target?: { id: string; kind: string; label: string } | null;
+  /** How it arrived: a file or pasted text, a page fetched by address, or what a look-up found. */
+  arrived?: 'file' | 'page' | 'look_up';
+  url?: string | null;
+  lookUp?: string | null;
+};
 
 /**
  * Stages that fan out over a list — one call per passage, actor, pattern or
@@ -183,6 +206,10 @@ export async function executeStage(input: StageInput, deps: PipelineDeps): Promi
       result.artefacts = result.artefacts.filter((a) => a.kind !== 'research_source');
       result.warnings.push(`${authored.length} model-authored source${authored.length === 1 ? '' : 's'} were discarded: evidence comes from retrieval, never from the model.`);
     }
+    // A READER'S QUESTION IS THE SERVER'S TO MARK (phase 22 part 2). `asked`
+    // ranks a question above every model question, so a model that wrote it
+    // would be promoting its own question over the reader's.
+    for (const a of result.artefacts) if (a.kind === 'research_question') { delete a.data.asked; delete a.data.wording; }
     output.artefacts.push(...result.artefacts); output.warnings.push(...result.warnings);
     return result;
   };
@@ -665,6 +692,9 @@ export async function executeStage(input: StageInput, deps: PipelineDeps): Promi
       const protect = [
         ...materialPassages.map((a) => a.id),
         ...context.filter((a) => ['claim', 'mechanism', 'assumption', 'actor'].includes(a.kind)).map((a) => a.id),
+        // The item the reader aimed it at, whatever its kind, so it is never
+        // the thing shed to make room (phase 22 part 2).
+        ...(deps.material?.target && context.some((a) => a.id === deps.material!.target!.id) ? [deps.material.target.id] : []),
       ];
       await request('main', context, { ...material, protect });
     } else if (step === 3) {
@@ -674,7 +704,8 @@ export async function executeStage(input: StageInput, deps: PipelineDeps): Promi
       // for the reason the previous two branches give.
       const protect = context.filter((a) =>
         ['finding', 'recommendation', 'exploit', 'reconciliation'].includes(a.kind) ||
-        (a.kind === 'evidence' && a.id.startsWith(`s${passOrdinal(pass, 2)}_`)),
+        (a.kind === 'evidence' && a.id.startsWith(`s${passOrdinal(pass, 2)}_`)) ||
+        a.id === deps.material?.target?.id,
       ).map((a) => a.id);
       await request('main', context, { ...material, protect });
     }
@@ -1068,7 +1099,10 @@ export async function executeStage(input: StageInput, deps: PipelineDeps): Promi
       describe: `${category.replaceAll('_', ' ')} challenge`,
       extra: { targetCategory: category, protect: assured, ...patterns },
     });
-    await fanOut(ASSURANCE_CATEGORIES.map(remit));
+    // The remits THIS run has: `supplied_balance` only where the reader
+    // supplied a source (phase 22 part 2). See `assuranceCategories`.
+    const categories = assuranceCategories(input.artefacts);
+    await fanOut(categories.map(remit));
     /**
      * DIVERGENCE: THE FAN-OUT SHAPE OF THE SAME TOP-UP.
      *
@@ -1082,7 +1116,7 @@ export async function executeStage(input: StageInput, deps: PipelineDeps): Promi
      * 9 and 14 already tolerate a shortfall through `requireMajority` or a half
      * coverage floor, so they are left alone.
      */
-    const absent = () => ASSURANCE_CATEGORIES.filter((category) =>
+    const absent = () => categories.filter((category) =>
       !output.artefacts.some((a) => a.kind === 'assurance_challenge' && a.data.category === category));
     // No warning for the ask itself: a gap the second sweep closes is not a limit,
     // and `requireMajority` reports one that survives. See the note in the
@@ -1275,7 +1309,8 @@ export async function executeStage(input: StageInput, deps: PipelineDeps): Promi
 
   const pursue = async (questions: Artefact[], round: number) => {
     for (const question of questions) question.data.priority = Number(priority(question).toFixed(4));
-    questions.sort((a, b) => priority(b) - priority(a));
+    // The reader's look-ups first, then the model's by priority (`researchRank`).
+    questions.sort((a, b) => researchRank(b) - researchRank(a));
     // A query that reproduces the paper verbatim would put an unpublished policy
     // into a third party's query logs. The prompt asks for a bounded public
     // query; this is what enforces it.
@@ -1352,7 +1387,20 @@ export async function executeStage(input: StageInput, deps: PipelineDeps): Promi
   if (stage === 5) {
     const questions = output.artefacts.filter((a) => a.kind === 'research_question');
     if (!questions.length || questions.length > limits.questions || questions.length !== output.artefacts.length) throw new PolicyError('coverage', `Research planning must produce between one and ${limits.questions} targeted questions.`);
-    await pursue(questions, 1);
+    /*
+     * WHAT THE READER BROUGHT, BEFORE ANYTHING THE MODEL ASKED (phase 22 part 2).
+     *
+     * Counted AFTER the planning rule above, so a reader's ten look-ups never
+     * crowd the model's own questions out of its allowance. The sources they
+     * supplied go in first, as ordinary `research_source` rows under a reader
+     * question each — so the source ceiling below counts them — and the
+     * look-ups join the first round, ranked above every model question.
+     */
+    const brought = readerArtefacts(stage, deps.reader?.supplied ?? [], deps.reader?.lookUps ?? [], input.artefacts);
+    output.artefacts.push(...brought.questions, ...brought.sources);
+    output.warnings.push(...brought.warnings);
+    if (brought.searched.length && input.searches === false) output.warnings.push(`${brought.searched.length} look-up${brought.searched.length === 1 ? '' : 's'} you asked for ${brought.searched.length === 1 ? 'was' : 'were'} not searched, because this assessment may not search. ${brought.searched.length === 1 ? 'It is' : 'They are'} listed with nothing behind ${brought.searched.length === 1 ? 'it' : 'them'}.`);
+    await pursue([...brought.searched, ...questions], 1);
     // Rounds beyond the first are the line of enquiry: each one is planned from
     // what the last one actually found, not from the policy document again. A
     // round that raises no new question ends the enquiry rather than padding it.
@@ -1423,7 +1471,7 @@ export async function executeStage(input: StageInput, deps: PipelineDeps): Promi
     // codebase's existing statement of the judgement — a fixed library is only a
     // guarantee if most of it ran, and the absences are named either way — and it
     // is what stages 7 and 9 have always used for the same shape of rule.
-    requireMajority(output, ASSURANCE_CATEGORIES, (a) => String(a.data.category), 'challenge remit', fault.last);
+    requireMajority(output, assuranceCategories(input.artefacts), (a) => String(a.data.category), 'challenge remit', fault.last);
   }
   if (stage === SYNTHESIS_STAGE || stage === ASSURED_SYNTHESIS_STAGE) {
     // A missing chapter is a gap the reader should see named, not a reason to

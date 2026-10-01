@@ -230,7 +230,13 @@ export const SEALED_FIELDS = {
    * An addendum must not become the one readable copy of a run the reader asked
    * to be destroyed.
    */
-  pass: { text: ['filename', 'content', 'extractedText', 'note', 'error'], json: ['metadata'] },
+  pass: { text: ['filename', 'content', 'extractedText', 'note', 'error', 'sourceUrl', 'lookUp'], json: ['metadata'] },
+  /**
+   * What the reader brought at submission (phase 22 part 2). Every free-text
+   * column: a supplied file is a document, and an address, an "about", a note
+   * or a look-up is the reader's own words about an unpublished paper.
+   */
+  readerInput: { text: ['url', 'filename', 'content', 'about', 'note', 'wording'], json: [] },
   stage: { text: ['error'], json: ['warnings'] },
   execution: { text: ['error'], json: [] },
 } as const;

@@ -1,7 +1,10 @@
 // Phase 22 — the rival explanation, and the door's cap on a snippet's grade.
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
-import { ASSURANCE_CATEGORIES, ASSURANCE_STAGE, ASSURED_SYNTHESIS_STAGE, artefact } from './contracts';
+import { ASSURANCE_CATEGORIES, assuranceCategories, ASSURANCE_STAGE, ASSURED_SYNTHESIS_STAGE, artefact } from './contracts';
+// The remits a run with no reader-supplied source is asked: every one but
+// `supplied_balance`, which has nothing to check there (phase 22 part 2).
+const RUN_CATEGORIES = assuranceCategories([]);
 import { executeStage } from './pipeline';
 import { systemPrompt } from './prompts';
 import { ingest } from './server/ingest';
@@ -63,7 +66,7 @@ describe('the challenge stage asks for it and the synthesis answers it', () => {
       );
       all.push(...result.artefacts);
     }
-    expect(asked.sort()).toEqual([...ASSURANCE_CATEGORIES].sort());
+    expect(asked.sort()).toEqual([...RUN_CATEGORIES].sort());
     const [rival] = rivalExplanations(all);
     expect(rival.rival).toMatch(/^Councils already wanted to widen access/);
     expect(rival.discriminators).toHaveLength(2);

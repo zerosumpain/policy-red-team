@@ -103,8 +103,11 @@ export function passOrdinal(pass: number, step: number): number { return PASS_BA
  * 3.4 is phase 22: a rival-explanation challenge at 16 that 17 must weigh, a
  * cleared row at 10 for a body with no material way to beat the policy, and an
  * ordinal evidence grade with a written rubric at 6.
+ * 3.5 is phase 22 part 2: sources and look-ups the reader supplied, cited at 6
+ * like any other and never weighted for who supplied them; a `supplied_balance`
+ * remit at 16 on a run that has any; and material aimed at one item.
  */
-export const PROMPT_VERSION = 'policy-analysis/3.4';
+export const PROMPT_VERSION = 'policy-analysis/3.5';
 export const MAX_BYTES = 10 * 1024 * 1024;
 export const MAX_CHARACTERS = 600_000;
 export const MAX_PAGES = 400;
@@ -418,7 +421,21 @@ export const JUDGEMENTS = ['well_supported', 'supported_with_limits', 'contested
  * the shape because the shape is shared, and required by `validation.ts` for
  * this category alone.
  */
-export const ASSURANCE_CATEGORIES = ['omission', 'citation', 'causality', 'counterevidence', 'confidence', 'recommendation', 'completeness', 'generic', 'actionability', 'sharpest_play', 'unanswered_play', 'rival_explanation'] as const;
+export const ASSURANCE_CATEGORIES = ['omission', 'citation', 'causality', 'counterevidence', 'confidence', 'recommendation', 'completeness', 'generic', 'actionability', 'sharpest_play', 'unanswered_play', 'rival_explanation', 'supplied_balance'] as const;
+/**
+ * `supplied_balance` is phase 22 part 2's, and the one remit that only means
+ * something on SOME runs: whether material the reader supplied tilts the
+ * report. On a run with no reader-supplied source there is nothing for it to
+ * check, and asking anyway would spend a call to be told so — so the fan-out
+ * asks `assuranceCategories(artefacts)` rather than this list, and the
+ * coverage rule counts against the same answer.
+ */
+export const CONDITIONAL_CATEGORIES: Partial<Record<(typeof ASSURANCE_CATEGORIES)[number], (artefacts: Artefact[]) => boolean>> = {
+  supplied_balance: (artefacts) => artefacts.some((a) => a.kind === 'research_source' && a.data.supplied === 'reader'),
+};
+export function assuranceCategories(artefacts: Artefact[]): (typeof ASSURANCE_CATEGORIES)[number][] {
+  return ASSURANCE_CATEGORIES.filter((category) => CONDITIONAL_CATEGORIES[category]?.(artefacts) ?? true);
+}
 /**
  * HOW FAR A PIECE OF EVIDENCE CAN BEAR WEIGHT, in four steps (phase 22).
  *
@@ -495,12 +512,27 @@ export const dataSchemas = {
   // from sixteen of its fields by calling it short. Absent means full, which is
   // every profile written before short ones existed.
   profile: z.object({ actorId: text, coversActorIds: ids.optional(), form: z.enum(['full', 'short']).optional(), ...profileFields }),
-  research_question: z.object({ importance: unit, uncertainty: unit, consequence: unit, priority: unit.optional(), rationale: text, searchStrategy: text, gap: text }),
+  // `asked` and `wording` are phase 22 part 2's, written by the SERVER for a
+  // question the READER asked — a look-up from the submission form, or the
+  // question that carries a source they supplied. Never by a model: `asked`
+  // is what ranks a question above every model question (`researchRank`).
+  research_question: z.object({ importance: unit, uncertainty: unit, consequence: unit, priority: unit.optional(), rationale: text, searchStrategy: text, gap: text, asked: z.literal('reader').optional(), wording: z.string().max(500).optional() }),
   // The four optional fields are a PUBLIC RECORD's (phase 19, workstream X):
   // the register body it is about, what it answers, when it was published and
   // by whom — written by `body-evidence.ts`, never by a model, which may not
   // write this kind at all. Without them in the shape, triage strips them.
-  research_source: z.object({ questionId: text, retrievedAt: text, quality: text, qualityBasis: text, freshness: text, jurisdictionalRelevance: text, retrieval: z.enum(['full_text', 'search_excerpt']), gap: text, bodyId: z.string().max(200).optional(), question: z.string().max(40).optional(), publishedAt: z.string().max(40).nullable().optional(), publisher: z.string().max(300).nullable().optional() }),
+  research_source: z.object({ questionId: text, retrievedAt: text, quality: text, qualityBasis: text, freshness: text, jurisdictionalRelevance: text, retrieval: z.enum(['full_text', 'search_excerpt']), gap: text, bodyId: z.string().max(200).optional(), question: z.string().max(40).optional(), publishedAt: z.string().max(40).nullable().optional(), publisher: z.string().max(300).nullable().optional(),
+    // Phase 22 part 2: a source the READER named. `supplied` says who, never
+    // how much was read — that stays `retrieval`, which the grade rubric and
+    // `$lib/evidence-grade` already key on, so a supplied page read in full is
+    // `full_text` like any other and is graded like any other. `suppliedAs`
+    // is the form it arrived in, `about` the reader's own words for what it is
+    // about, `aboutIds` the items those words matched, `note` their note.
+    supplied: z.literal('reader').optional(), suppliedAs: z.enum(['file', 'page']).optional(),
+    about: z.string().max(300).optional(), aboutIds: ids.optional(), note: z.string().max(1000).optional(),
+    // Set when THIS server fetched the page because the search service could
+    // not read it in full (`research.ts`, phase 22 part 2).
+    readBy: z.literal('page_fetch').optional() }),
   // `grade` is phase 22's ordinal reading of `sourceQuality` (EVIDENCE_GRADES).
   // Optional so every row written before it still parses; the view derives one
   // for those from the prose, conservatively (`$lib/evidence-grade`).

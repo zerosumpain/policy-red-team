@@ -1,7 +1,7 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { and, asc, desc, eq, inArray, isNotNull, sql } from 'drizzle-orm';
 import { db, type DbExecutor } from '$lib/db';
-import { policyAnalyses, policyArtefacts, policyDocuments, policyExecutions, policyModelCalls, policyPasses, policyPersonaObservations, policyPersonas, policyProvenance, policyStages, workflowRuns, workflows } from '$lib/db/schema';
+import { policyAnalyses, policyArtefacts, policyDocuments, policyExecutions, policyModelCalls, policyPasses, policyPersonaObservations, policyPersonas, policyProvenance, policyReaderInputs, policyStages, workflowRuns, workflows } from '$lib/db/schema';
 import { ADDENDUM_STAGES, passOf, passOrdinal, RESTATEMENT_STAGES, STAGES, TRIGGER, WORKFLOW_ID, type Artefact } from '../contracts';
 import type { Neighbour } from '../pipeline';
 import { PolicyError } from '../validation';
@@ -58,6 +58,21 @@ export async function createAnalysis(owner: string, input: Submission) {
         sha256: createHash('sha256').update(input.bytes).digest('hex'),
         ...sealRow(seal, 'document', { filename: input.filename, content: input.bytes.toString('base64') }),
       });
+      // WHAT THE READER BROUGHT (phase 22 part 2), stored as given and read at
+      // stage 5. Sealed with everything else: a supplied file is a document,
+      // and an address or a look-up is the reader's words about the paper.
+      const brought = [
+        ...(input.readerSources ?? []).map((source) => source.kind === 'file'
+          ? { kind: 'file', mimeType: source.mimeType, size: source.bytes.length, text: { filename: source.filename, content: source.bytes.toString('base64'), about: source.about, note: source.note } }
+          : { kind: 'page', mimeType: null, size: null, text: { url: source.url, about: source.about, note: source.note } }),
+        ...(input.lookUps ?? []).map((wording) => ({ kind: 'look_up', mimeType: null, size: null, text: { wording } })),
+      ];
+      if (brought.length) {
+        await tx.insert(policyReaderInputs).values(brought.map((row, position) => ({
+          analysisId: analysis.id, position, kind: row.kind, mimeType: row.mimeType, size: row.size,
+          ...sealRow(seal, 'readerInput', row.text as Record<string, string | null>),
+        })));
+      }
       const stages = await tx.insert(policyStages).values(STAGES.map((name, ordinal) => ({ analysisId: analysis.id, ordinal, name }))).returning();
       await queueStage(tx, analysis.id, stages.find((s) => s.ordinal === 0)!.id);
       return unsealRow(seal, 'analysis', analysis);
@@ -96,7 +111,9 @@ export async function addMaterial(owner: string, id: string, input: Material) {
       // In the clear for the reason `policy_documents.sha256` is: it is the
       // pass's own integrity check and it never leaves the owner's session.
       sha256: createHash('sha256').update(input.bytes).digest('hex'),
-      ...sealRow(seal, 'pass', { filename: input.filename, content: input.bytes.toString('base64'), note: input.note }),
+      ...sealRow(seal, 'pass', { filename: input.filename, content: input.bytes.toString('base64'), note: input.note, sourceUrl: input.url ?? null, lookUp: input.lookUp ?? null }),
+      // An artefact id, in the clear like every other id (phase 22 part 2).
+      targetId: input.targetId ?? null,
     }).returning();
     const stages = await tx.insert(policyStages).values(ADDENDUM_STAGES.map((name, step) => ({ analysisId: id, ordinal: passOrdinal(pass, step), name }))).returning();
     await queueStage(tx, id, stages.find((stage) => stage.ordinal === passOrdinal(pass, 0))!.id);
@@ -153,6 +170,22 @@ async function nextPass(tx: DbExecutor, analysisId: string): Promise<number> {
   return Math.max(1, passOf(highest) + 1);
 }
 
+/**
+ * What the reader brought at submission, in the order they gave it, unsealed.
+ * Read by the worker at stage 5 (phase 22 part 2).
+ */
+export async function readerInputsFor(analysisId: string, tx: DbExecutor = db) {
+  const seal = await sealOf(analysisId, tx);
+  const rows = await tx.select().from(policyReaderInputs).where(eq(policyReaderInputs.analysisId, analysisId)).orderBy(asc(policyReaderInputs.position));
+  return rows.map((r) => unsealRow(seal, 'readerInput', r));
+}
+
+/** Whether an item with this id exists on this assessment: the target of material aimed at one. */
+export async function artefactExists(analysisId: string, id: string, tx: DbExecutor = db): Promise<boolean> {
+  const [row] = await tx.select({ id: policyArtefacts.id }).from(policyArtefacts).where(and(eq(policyArtefacts.analysisId, analysisId), eq(policyArtefacts.id, id))).limit(1);
+  return Boolean(row);
+}
+
 /** Every pass on an assessment, without the material's bytes. */
 export async function listPasses(analysisId: string, tx: DbExecutor = db) {
   const seal = await sealOf(analysisId, tx);
@@ -160,6 +193,7 @@ export async function listPasses(analysisId: string, tx: DbExecutor = db) {
     pass: policyPasses.pass, kind: policyPasses.kind, role: policyPasses.role, note: policyPasses.note,
     filename: policyPasses.filename, mimeType: policyPasses.mimeType, size: policyPasses.size, sha256: policyPasses.sha256,
     status: policyPasses.status, error: policyPasses.error, createdAt: policyPasses.createdAt, completedAt: policyPasses.completedAt,
+    targetId: policyPasses.targetId, sourceUrl: policyPasses.sourceUrl, lookUp: policyPasses.lookUp,
   }).from(policyPasses).where(eq(policyPasses.analysisId, analysisId)).orderBy(asc(policyPasses.pass));
   return rows.map((r) => unsealRow(seal, 'pass', r));
 }

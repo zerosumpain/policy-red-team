@@ -8,7 +8,10 @@
 // the pure views have their own files.
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
-import { artefact, ASSURANCE_CATEGORIES, ASSURANCE_STAGE, ASSURED_SYNTHESIS_STAGE, DEEP_CHAINS, MAX_KEY_JUDGEMENTS, SYNTHESIS_STAGE, THEORY_STAGE, type Artefact, type StageInput } from './contracts';
+import { artefact, ASSURANCE_CATEGORIES, assuranceCategories, ASSURANCE_STAGE, ASSURED_SYNTHESIS_STAGE, DEEP_CHAINS, MAX_KEY_JUDGEMENTS, SYNTHESIS_STAGE, THEORY_STAGE, type Artefact, type StageInput } from './contracts';
+// The remits a run with no reader-supplied source is asked: every one but
+// `supplied_balance`, which has nothing to check there (phase 22 part 2).
+const RUN_CATEGORIES = assuranceCategories([]);
 import { scoreExploits } from './exposure';
 import { systemPrompt } from './prompts';
 import { assessmentMarkdown } from './report-doc';
@@ -331,7 +334,7 @@ describe('the challenge looks for a useless report as hard as for a wrong one', 
     const all = await inventory();
     const { sent, model } = recording();
     const result = await executeStage(base(ASSURANCE_STAGE, without(all, ASSURANCE_STAGE)), { model, research, signal, neighbours: none, personas: none });
-    expect(sent.map((s) => s.targetCategory)).toEqual([...ASSURANCE_CATEGORIES]);
-    expect(new Set(result.artefacts.map((a) => a.data.category)).size).toBe(ASSURANCE_CATEGORIES.length);
+    expect(sent.map((s) => s.targetCategory)).toEqual([...RUN_CATEGORIES]);
+    expect(new Set(result.artefacts.map((a) => a.data.category)).size).toBe(RUN_CATEGORIES.length);
   });
 });

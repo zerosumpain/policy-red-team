@@ -112,6 +112,12 @@ export interface Multipart {
   fields: Record<string, string>;
   /** `field` is the name the form used, which decides where it goes back. */
   file?: { field: string; filename: string; mimeType: string; bytes: Buffer };
+  /**
+   * EVERY upload, in arrival order — `file` is the first of these. The
+   * submission form carries the paper AND up to ten sources the reader
+   * supplied beside it (phase 22 part 2), each under its own field name.
+   */
+  files?: { field: string; filename: string; mimeType: string; bytes: Buffer }[];
 }
 
 /**
@@ -125,7 +131,10 @@ export interface Multipart {
  */
 export function readMultipart(req: IncomingMessage): Promise<Multipart> {
   return new Promise((resolve, reject) => {
-    const parser = busboy({ headers: req.headers, limits: { fileSize: MAX_UPLOAD_BYTES, files: 1, fields: 20 } });
+    // Eleven files: the paper and ten supplied sources. Fields for the same
+    // reason — four per source and one per look-up, on top of the form's own.
+    // `readSubmission` holds each supplied file to its own, smaller cap.
+    const parser = busboy({ headers: req.headers, limits: { fileSize: MAX_UPLOAD_BYTES, files: 11, fields: 100 } });
     const result: Multipart = { fields: {} };
     let truncated = false;
 
@@ -143,7 +152,9 @@ export function readMultipart(req: IncomingMessage): Promise<Multipart> {
       stream.on('limit', () => { truncated = true; });
       stream.on('end', () => {
         if (!chunks.length) return;
-        result.file = { field: name, filename: info.filename, mimeType: info.mimeType, bytes: Buffer.concat(chunks) };
+        const file = { field: name, filename: info.filename, mimeType: info.mimeType, bytes: Buffer.concat(chunks) };
+        result.file ??= file;
+        (result.files ??= []).push(file);
       });
     });
 

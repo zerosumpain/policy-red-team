@@ -2,7 +2,10 @@ import { describe, expect, it, vi, beforeEach } from 'vitest';
 vi.mock('$lib/server/web-search', () => ({ search: vi.fn(), extract: vi.fn() }));
 vi.mock('$lib/deepdive/credibility', () => ({ classifyDomain: (host: string) => host.endsWith('.gov.uk') ? { type: 'government', score: .9 } : { type: 'other', score: .4 } }));
 vi.mock('$lib/server/ssrf-guard', () => ({ assertPublicUrl: vi.fn(async () => {}) }));
+// Never the real page reader: these tests reach no network (phase 22 part 2).
+vi.mock('$lib/server/fetch-page', () => ({ fetchPage: vi.fn(async () => { throw new Error('not stubbed'); }) }));
 import { search, extract } from '$lib/server/web-search';
+import { fetchPage } from '$lib/server/fetch-page';
 import { research } from './server/research';
 import { artefact, safeSourceUrl, type Artefact } from './contracts';
 const question = artefact('question', 'research_question', 'Capacity evidence', 'Does delivery capacity exist?', { importance: .9, uncertainty: .9, consequence: .9, rationale: 'Capacity could reverse this assessment.', searchStrategy: 'public implementation evaluation', gap: 'Capacity unknown.' }, { refs: ['assumption'] });
@@ -160,5 +163,67 @@ describe('research runs its questions at once, and reads the same sources whatev
     // The top question is still the one read in full.
     expect(wide.read.some((url) => url.includes('/high/'))).toBe(true);
     expect(wide.read.some((url) => url.includes('/lower/'))).toBe(false);
+  });
+});
+
+/**
+ * THE PAGE ITSELF WHEN THE SERVICE WILL NOT READ IT (phase 22 part 2). On the
+ * live box every one of 116 sources stayed a snippet, because grounded search
+ * has no extract. A full read that extract() cannot make is tried once more by
+ * fetching the page — inside the same budget, and only when allowed.
+ */
+describe('a full read falls back to fetching the page', () => {
+  beforeEach(() => { vi.mocked(search).mockReset(); vi.mocked(extract).mockReset(); vi.mocked(fetchPage).mockReset(); });
+  const failedExtract = (urls: string[]) => ({ results: [], failed_results: urls.map((url) => ({ url, error: 'No extraction service configured' })) });
+
+  it('reads it in full when allowed, and records that this server fetched it', async () => {
+    vi.mocked(search).mockResolvedValue({ results: [found('https://www.gov.uk/a', 'a snippet')] });
+    vi.mocked(extract).mockImplementation(async (urls: string[]) => failedExtract(urls));
+    vi.mocked(fetchPage).mockResolvedValue({ url: 'https://www.gov.uk/a', finalUrl: 'https://www.gov.uk/a', title: 'A', text: 'z'.repeat(3000), kind: 'html', truncated: false });
+    const result = await research([asking('q1', .6)], new AbortController().signal, 1, 1, { fetchPages: true });
+    expect(fetchPage).toHaveBeenCalledWith('https://www.gov.uk/a', expect.objectContaining({ maxCharacters: 10_000 }));
+    expect(result.artefacts[0].data).toMatchObject({ retrieval: 'full_text', readBy: 'page_fetch' });
+    expect(result.artefacts[0].statement).toBe('z'.repeat(3000));
+    expect(result.warnings.join(' ')).not.toMatch(/Full text unavailable/);
+  });
+
+  it('never fetches when not allowed — a sealed run, or an install off the open web', async () => {
+    vi.mocked(search).mockResolvedValue({ results: [found('https://www.gov.uk/a', 'a snippet')] });
+    vi.mocked(extract).mockImplementation(async (urls: string[]) => failedExtract(urls));
+    const result = await research([asking('q1', .6)], new AbortController().signal, 1);
+    expect(fetchPage).not.toHaveBeenCalled();
+    expect(result.artefacts[0].data.retrieval).toBe('search_excerpt');
+  });
+
+  it('keeps the excerpt and says so when the page will not load', async () => {
+    vi.mocked(search).mockResolvedValue({ results: [found('https://www.gov.uk/a', 'a snippet')] });
+    vi.mocked(extract).mockImplementation(async (urls: string[]) => failedExtract(urls));
+    vi.mocked(fetchPage).mockRejectedValue(new Error('The page answered 403.'));
+    const result = await research([asking('q1', .6)], new AbortController().signal, 1, 1, { fetchPages: true });
+    expect(result.artefacts[0].data.retrieval).toBe('search_excerpt');
+    expect(result.warnings.join(' ')).toMatch(/Full text unavailable for www.gov.uk/);
+  });
+
+  it('spends no second slot of the budget: only sources already chosen for a full read are fetched', async () => {
+    vi.mocked(search).mockResolvedValue({ results: [found('https://example.com/a', 'thin'), found('https://example.com/b', 'thin')] });
+    vi.mocked(extract).mockImplementation(async (urls: string[]) => failedExtract(urls));
+    vi.mocked(fetchPage).mockImplementation(async (url: string) => ({ url, finalUrl: url, title: 't', text: 'y'.repeat(500), kind: 'html' as const, truncated: false }));
+    await research([asking('low', .55), asking('high', .94), asking('mid', .7), asking('lower', .54)], new AbortController().signal, 2, 1, { fetchPages: true });
+    // Eight candidates, a budget of four: four extracts attempted, four fetches.
+    expect(vi.mocked(extract).mock.calls.length).toBe(4);
+    expect(vi.mocked(fetchPage).mock.calls.length).toBe(4);
+  });
+});
+
+describe('a reader’s look-up is asked before every model question', () => {
+  beforeEach(() => { vi.mocked(search).mockReset(); vi.mocked(extract).mockReset(); });
+
+  it('takes the full-read budget first, whatever the model scored its own', async () => {
+    vi.mocked(search).mockResolvedValue({ results: [found('https://example.com/a', 'thin'), found('https://example.com/b', 'thin')] });
+    vi.mocked(extract).mockImplementation(async (urls: string[]) => ({ results: [{ url: urls[0], raw_content: 'y'.repeat(5000) }], failed_results: [] }));
+    const reader = { ...asking('reader', 1), data: { ...asking('reader', 1).data, asked: 'reader' } };
+    const result = await research([asking('m1', .99), asking('m2', .98), asking('m3', .97), reader], new AbortController().signal, 2);
+    expect(result.artefacts[0].data.questionId).toBe('reader');
+    expect(result.artefacts.filter((a) => a.data.questionId === 'reader').every((a) => a.data.retrieval === 'full_text')).toBe(true);
   });
 });

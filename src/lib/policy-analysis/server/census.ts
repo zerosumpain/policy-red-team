@@ -1,5 +1,5 @@
 /**
- * THE THIRTEEN PROBES — the SQL half of the purge receipt.
+ * THE FOURTEEN PROBES — the SQL half of the purge receipt.
  *
  * The receipt's shape, wording and file rendering are pure and live in
  * `$lib/policy-analysis/receipt`, which the dashboard imports. This half holds
@@ -22,6 +22,8 @@ const PROBES: { table: string; what: string; query: (id: string) => ReturnType<t
   { table: 'policy_analyses', what: 'the assessment row itself', query: (id) => sql`select count(*)::int as n from policy_analyses where id = ${id}::uuid` },
   { table: 'policy_documents', what: 'the uploaded document and its extracted text', query: (id) => sql`select count(*)::int as n from policy_documents where analysis_id = ${id}::uuid` },
   { table: 'policy_passes', what: 'material attached after the report, and its extracted text', query: (id) => sql`select count(*)::int as n from policy_passes where analysis_id = ${id}::uuid` },
+  // Phase 22 part 2: sources and look-ups the reader supplied at submission.
+  { table: 'policy_reader_inputs', what: 'sources and look-ups you supplied with the paper', query: (id) => sql`select count(*)::int as n from policy_reader_inputs where analysis_id = ${id}::uuid` },
   { table: 'policy_stages', what: 'stage outputs, warnings and errors', query: (id) => sql`select count(*)::int as n from policy_stages where analysis_id = ${id}::uuid` },
   { table: 'policy_executions', what: 'execution attempts', query: (id) => sql`select count(*)::int as n from policy_executions e join policy_stages s on s.id = e.stage_id where s.analysis_id = ${id}::uuid` },
   { table: 'policy_model_calls', what: 'the model-call audit', query: (id) => sql`select count(*)::int as n from policy_model_calls c join policy_executions e on e.id = c.execution_id join policy_stages s on s.id = e.stage_id where s.analysis_id = ${id}::uuid` },

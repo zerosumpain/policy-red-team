@@ -7,7 +7,8 @@ import { ASSURANCE_CATEGORIES, ASSURANCE_STAGE, DEEP_CHAINS, isPassStage, MATERI
 import { executeStage, graphUncovered } from '../pipeline';
 import { PolicyError } from '../validation';
 import { ingest } from './ingest';
-import { loadArtefacts, neighbourSummaries, persistArtefacts, queueStage, sealOf } from './store';
+import { loadArtefacts, neighbourSummaries, persistArtefacts, queueStage, readerInputsFor, sealOf } from './store';
+import { resolveReaderInputs } from './reader-brought';
 import { sealRow, unsealRow } from './seal';
 import { applyPersonaLinks, priorsFor } from './personas';
 import { actorBodies, evidenceForActors } from './body-evidence';
@@ -290,10 +291,33 @@ export async function executePolicyRun(claimed: { id: string; input: Record<stri
     const mayFetchRecords = !sealedRun && searches && !inPass && chosenEngine() !== 'none';
     const bodyEvidence = inPass ? undefined : (actors: typeof all) => evidenceForActors(actors, { fetch: mayFetchRecords, corpus: documentShingles(all), signal });
     const registerBodies = inPass ? undefined : async (actors: typeof all) => new Map([...(await actorBodies(actors))].map(([actorId, body]) => [actorId, body.id]));
-    const material = pass && passKind === 'addendum'
-      ? { pass: passNumber, role: String(pass.role ?? 'other'), label: MATERIAL_ROLE_LABELS[String(pass.role ?? '')] ?? 'Something else', guidance: MATERIAL_ROLE_NOTES[String(pass.role ?? '')] ?? MATERIAL_ROLE_NOTES.other, filename: pass.filename ? String(pass.filename) : null, note: pass.note ? String(pass.note) : null }
+    /*
+     * PAGES, FETCHED BY THIS SERVER (phase 22 part 2) — research's full-text
+     * fallback and a page the reader named. The same three refusals as the
+     * public record above, for the same reasons: not on a sealed run, not on a
+     * run that may not search, not on an install set to `none`.
+     */
+    const mayFetchPages = !sealedRun && searches && !inPass && chosenEngine() !== 'none';
+    const researchWithPages: typeof research = (questions, s, maxResults, lanes) => research(questions, s, maxResults, lanes, { fetchPages: mayFetchPages });
+    const reader = started.stage.ordinal === 5
+      ? await resolveReaderInputs(await readerInputsFor(analysisId), {
+          mayFetch: mayFetchPages,
+          why: sealedRun ? 'this assessment is sealed, so no page is fetched for it' : 'this install is set not to reach the open web, so no page is fetched',
+          signal,
+        })
       : null;
-    const output = extracted ?? await executeStage({ stage: started.stage.ordinal, title: analysis.title, jurisdiction: analysis.jurisdiction, policyArea: analysis.policyArea, context: analysis.context, depth: analysis.depth as 'standard' | 'deep', sealed: sealedRun, searches: searches && !inPass, graphLoss, priorWarnings: boundWarnings(previousStages.flatMap((s) => s.warnings)), artefacts: all }, { model: modelCaller(started.execution.id, claimed.id, signal, all, { model: analysis.model, thinkingLevel: isThinkingLevel(analysis.thinkingLevel) ? analysis.thinkingLevel : null, sealed: sealedRun, passKind, extraction: analysis.extraction as Extraction | null }), research: searches && !inPass ? research : noResearch, signal, concurrency: analysis.concurrency as Concurrency | null, passKind, material, extraction: analysis.extraction as Extraction | null, sharedContextFirst: analysis.sharedContextFirst, onProgress: (phase) => beat?.(`${stagePhase} · ${phase}`), neighbours: sealedRun || inPass ? async () => [] : () => neighbourSummaries(analysis.owner, analysisId), personas: sealedRun || inPass ? async () => [] : (actors) => priorsFor(analysis.owner, actors, analysisId), bodyEvidence, registerBodies });
+    // The item a reader aimed material at, by the label they saw it under.
+    const targetArtefact = pass?.targetId ? all.find((a) => a.id === pass.targetId) : undefined;
+    const material = pass && passKind === 'addendum'
+      ? {
+          pass: passNumber, role: String(pass.role ?? 'other'), label: MATERIAL_ROLE_LABELS[String(pass.role ?? '')] ?? 'Something else', guidance: MATERIAL_ROLE_NOTES[String(pass.role ?? '')] ?? MATERIAL_ROLE_NOTES.other, filename: pass.filename ? String(pass.filename) : null, note: pass.note ? String(pass.note) : null,
+          ...(targetArtefact ? { target: { id: targetArtefact.id, kind: targetArtefact.kind, label: targetArtefact.label } } : {}),
+          arrived: (pass.lookUp ? 'look_up' : pass.sourceUrl ? 'page' : 'file') as 'file' | 'page' | 'look_up',
+          url: pass.sourceUrl ? String(pass.sourceUrl) : null,
+          lookUp: pass.lookUp ? String(pass.lookUp) : null,
+        }
+      : null;
+    const output = extracted ?? await executeStage({ stage: started.stage.ordinal, title: analysis.title, jurisdiction: analysis.jurisdiction, policyArea: analysis.policyArea, context: analysis.context, depth: analysis.depth as 'standard' | 'deep', sealed: sealedRun, searches: searches && !inPass, graphLoss, priorWarnings: boundWarnings(previousStages.flatMap((s) => s.warnings)), artefacts: all }, { model: modelCaller(started.execution.id, claimed.id, signal, all, { model: analysis.model, thinkingLevel: isThinkingLevel(analysis.thinkingLevel) ? analysis.thinkingLevel : null, sealed: sealedRun, passKind, extraction: analysis.extraction as Extraction | null }), research: searches && !inPass ? researchWithPages : noResearch, signal, concurrency: analysis.concurrency as Concurrency | null, passKind, material, reader, extraction: analysis.extraction as Extraction | null, sharedContextFirst: analysis.sharedContextFirst, onProgress: (phase) => beat?.(`${stagePhase} · ${phase}`), neighbours: sealedRun || inPass ? async () => [] : () => neighbourSummaries(analysis.owner, analysisId), personas: sealedRun || inPass ? async () => [] : (actors) => priorsFor(analysis.owner, actors, analysisId), bodyEvidence, registerBodies });
     signal.throwIfAborted();
     await db.transaction(async (tx) => {
       const locked = await lockLease(tx, analysisId, stageId, claimed.id, workerId);

@@ -37,7 +37,7 @@ import { commissionableModels, refreshModelMenu } from '$lib/server/models/offer
 import { runProgress } from '$lib/server/progress';
 import { readSubmission, readMaterial } from '$lib/policy-analysis/server/ingest';
 import {
-  addMaterial, control, detail, listAnalyses, loadArtefacts, ownedAnalysis, purge, restate,
+  addMaterial, artefactExists, control, detail, listAnalyses, loadArtefacts, ownedAnalysis, purge, restate,
 } from '$lib/policy-analysis/server/store';
 import { census } from '$lib/policy-analysis/server/census';
 import { buildReceipt } from '$lib/policy-analysis/receipt';
@@ -140,11 +140,13 @@ export function toHttpError(err: unknown): HttpError {
  * answered "attach a document or paste its text" to a reader who had attached
  * one. The route had existed since phase 4 with nothing driving it.
  */
-function asRequest(fields: Record<string, string>, file?: { field: string; filename: string; mimeType: string; bytes: Buffer }): Request {
+function asRequest(fields: Record<string, string>, file?: { field: string; filename: string; mimeType: string; bytes: Buffer } | { field: string; filename: string; mimeType: string; bytes: Buffer }[]): Request {
   const form = new FormData();
   for (const [key, value] of Object.entries(fields)) form.set(key, value);
-  if (file) {
-    form.set(file.field || 'document', new Blob([new Uint8Array(file.bytes)], { type: file.mimeType }), file.filename);
+  // Every file under its own name: the paper, and each source the reader
+  // supplied beside it (phase 22 part 2).
+  for (const one of Array.isArray(file) ? file : file ? [file] : []) {
+    form.set(one.field || 'document', new Blob([new Uint8Array(one.bytes)], { type: one.mimeType }), one.filename);
   }
   return new Request('http://localhost/api/policy-analysis', { method: 'POST', body: form });
 }
@@ -258,7 +260,7 @@ export async function handleApi(
      * always sends one; this is for everything else that posts here.
      */
     if (form.fields.concurrency === undefined) form.fields.concurrency = String(DEFAULT_CONCURRENCY);
-    const submission = await readSubmission(asRequest(form.fields, form.file));
+    const submission = await readSubmission(asRequest(form.fields, form.files ?? form.file));
     const { createAnalysis } = await import('$lib/policy-analysis/server/store');
     const analysis = await createAnalysis(owner(), submission);
     onStarted(analysis.id);
@@ -596,7 +598,26 @@ export async function handleApi(
     }
     if (action === 'material') {
       const form = await readMultipart(req);
-      await addMaterial(owner(), id, await readMaterial(asRequest(form.fields, form.file)));
+      let material = await readMaterial(asRequest(form.fields, form.file));
+      /*
+       * AN ADDRESS OR A LOOK-UP IS RESOLVED HERE, BEFORE THE PASS IS QUEUED
+       * (phase 22 part 2): the pass reads a document, so the page is fetched
+       * and the search run now, and a reader whose page will not load is told
+       * so on the form rather than by a failed pass. Both reach other people's
+       * services — a look-up spends a model call on a grounded install — so
+       * both share a brake, like the public-record check's.
+       */
+      if (material.url || material.lookUp) {
+        const limit = rateLimit(`material-fetch:${owner()}`, { capacity: 6, refillPerSecond: 1 / 60 });
+        if (!limit.allowed) throw new HttpError(429, `That is enough for now. Try again in ${Math.max(1, Math.ceil(limit.retryAfterMs / 60000))} minutes.`);
+        const analysis = await ownedAnalysis(owner(), id);
+        const controller = new AbortController();
+        res.on('close', () => { if (!res.writableFinished) controller.abort(); });
+        const { resolveMaterial } = await import('$lib/policy-analysis/server/material-sources');
+        material = await resolveMaterial(material, { sealed: !!analysis?.sealed, sealedResearch: !!analysis?.sealedResearch }, { signal: controller.signal });
+      }
+      if (material.targetId && !(await artefactExists(id, material.targetId))) throw new HttpError(400, 'That is not an item of this assessment.');
+      await addMaterial(owner(), id, material);
       onStarted(id);
       sendJson(res, 200, { status: await analysisStatus(id) });
       return true;

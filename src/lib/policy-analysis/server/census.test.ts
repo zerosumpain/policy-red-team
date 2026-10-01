@@ -36,12 +36,13 @@ describe('the census asks everywhere a reference can live', () => {
     expect(PROBE_TABLES.some((t) => t.startsWith('policy_artefacts (other'))).toBe(true);
   });
 
-  it('is the thirteen the receipt and the dashboard both promise', () => {
+  it('is the fourteen the receipt and the dashboard both promise', () => {
     // Eleven until `policy_passes` joined them, twelve until
-    // `policy_affected_groups` did in phase 19. The figure is written into the
+    // `policy_affected_groups` did in phase 19, thirteen until
+    // `policy_reader_inputs` did in phase 22. The figure is written into the
     // receipt's own wording and into the purge confirmation on the dashboard,
     // so it is pinned here: a probe added without the copy following it tells
     // the reader a smaller number than was actually checked.
-    expect(PROBE_TABLES).toHaveLength(13);
+    expect(PROBE_TABLES).toHaveLength(14);
   });
 });

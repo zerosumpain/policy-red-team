@@ -146,6 +146,11 @@ const CLEAR: Record<string, string[]> = {
     'mime_type',    // decides the extractor before any key is read
     'sha256',       // the pass's own integrity check, exactly as the document's is
     'status',       // lifecycle
+    'target_id',    // an artefact id this pipeline minted, never the reader's words
+  ],
+  policy_reader_inputs: [
+    'kind',         // 'file', 'page' or 'look_up' — the vocabulary the form offers
+    'mime_type',    // decides the extractor before any key is read
   ],
   policy_stages: [
     'run_id', 'name', 'status', // the queue and the progress rail
@@ -166,6 +171,7 @@ const TABLE_FOR: Record<keyof typeof SEALED_FIELDS, string> = {
   stage: 'policy_stages',
   execution: 'policy_executions',
   artefact: 'policy_artefacts',
+  readerInput: 'policy_reader_inputs',
 };
 
 /** A table's column declarations, without its indexes — the block ends at `}, (t) => [`. */

@@ -96,6 +96,14 @@ export function fixtureModel(stage: number, _key: string, raw: unknown, _options
   } else if (stage === 6) {
     const c = one('claim');
     items = [make('evidence', 'evidence', { claimId: c.id, mechanismId: one('mechanism').id, actorId: one('actor').id, assumptionId: one('assumption').id, sourceId: c.sourceId, evidenceType: 'paper claim', result: 'insufficient', sourceQuality: 'Unverified policy proposal.', relevance: 'Direct', freshness: 'Unknown', dispute: 'No independent evaluation.', grade: 'weak' }, [c.id, one('assumption').id])];
+    // A SOURCE THE READER SUPPLIED (phase 22 part 2), read like any other: it
+    // contradicts the paper's capacity claim and is graded on what it is — a
+    // review read in full — never up for who supplied it.
+    const supplied = input.artefacts.find((a) => a.kind === 'research_source' && a.data.supplied === 'reader');
+    if (supplied) {
+      const about = ((supplied.data.aboutIds as string[] | undefined) ?? []).map((id) => input.artefacts.find((a) => a.id === id)).find((a) => a?.kind === 'claim') ?? c;
+      items.push(make('supplied', 'evidence', { claimId: about.id, mechanismId: null, actorId: null, assumptionId: one('assumption').id, sourceId: supplied.id, evidenceType: 'review supplied by the reader', result: 'contradicts', sourceQuality: 'A review with a stated method, read in full.', relevance: 'Direct', freshness: 'Unknown', dispute: 'The review found vacancies the paper does not mention.', grade: 'moderate' }, [about.id, supplied.id, one('assumption').id]));
+    }
   } else if (stage === 7) {
     items = PATTERNS.filter((p) => !input.targetPattern || input.targetPattern === p).map((pattern) => make(pattern, 'model', { pattern, players: [one('actor').id], strategies: ['Cooperate', 'Minimum compliance'], decisionOrder: 'Department commissions; Council responds.', information: 'Capacity is uncertain.', costs: 'Implementation effort.', benefits: 'Access improvements.', rewards: 'Unspecified.', sanctions: 'Unspecified.', dependencies: [one('mechanism').id], assumptions: [one('assumption').id], responses: ['Minimum compliance under capacity pressure.'], equilibria: ['Conditional compliance; qualitative hypothesis.'], explanation: 'Cooperation depends on resources and reciprocal incentives.', applicability: 'Synthetic semi-formal example.' }, [one('evidence').id, one('assumption').id, one('mechanism').id]));
   } else if (stage === 9) {

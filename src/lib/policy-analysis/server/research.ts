@@ -1,6 +1,8 @@
 import { search, extract } from '$lib/server/web-search';
 import { classifyDomain } from '$lib/deepdive/credibility';
 import { assertPublicUrl } from '$lib/server/ssrf-guard';
+import { fetchPage } from '$lib/server/fetch-page';
+import { researchRank } from '../reader-inputs';
 import { artefact, safeSourceUrl, type Artefact, type StageOutput } from '../contracts';
 
 /**
@@ -63,10 +65,19 @@ const MAX_SOURCE_CHARACTERS = 10_000;
  * `lanes` is how many questions, and how many full reads, are in flight at once.
  * The run's own agent count is what `pipeline.ts` passes; absent, one at a time.
  */
-export type Research = (questions: Artefact[], signal: AbortSignal, maxResults?: number, lanes?: number) => Promise<StageOutput>;
+export type Research = (questions: Artefact[], signal: AbortSignal, maxResults?: number, lanes?: number, options?: ResearchOptions) => Promise<StageOutput>;
+
+/**
+ * `fetchPages` lets a full read fall back to fetching the page itself
+ * (`$lib/server/fetch-page`) when `extract()` gives nothing — which on a
+ * grounded or `none` install is every time (phase 22 part 2). OFF unless the
+ * caller says so: the worker turns it on for a run that may reach the open
+ * web, and never for a sealed one.
+ */
+export type ResearchOptions = { fetchPages?: boolean };
 
 /** A search result that survived the URL checks, before anyone decides whether to read it. */
-type Candidate = { url: string; title: string; excerpt: string; quality: ReturnType<typeof classifyDomain>; wantsFullText: boolean; read: boolean; body: string | null; failed: boolean };
+type Candidate = { url: string; title: string; excerpt: string; quality: ReturnType<typeof classifyDomain>; wantsFullText: boolean; read: boolean; body: string | null; failed: boolean; fetched?: boolean };
 /** What one question's search produced, in the order it produced it. */
 type Found = { question: Artefact; steps: ({ warning: string } | { candidate: Candidate })[] };
 
@@ -107,12 +118,16 @@ async function pooled<T, R>(items: T[], lanes: number, fn: (item: T) => Promise<
  * reads in full would depend on network timing. The artefacts, their ids and
  * the warnings are then assembled in question order, exactly as before.
  */
-export const research: Research = async (questions, signal, maxResults = 3, lanes = 1) => {
+export const research: Research = async (questions, signal, maxResults = 3, lanes = 1, options = {}) => {
   const artefacts: Artefact[] = []; const warnings: string[] = [];
   // Priority order, so the budget below is spent on the questions this stage
   // thought mattered most. `pursue` has already stamped `priority`; a question
   // that somehow arrives without one sorts last rather than throwing.
-  const ranked = [...questions].sort((a, b) => (Number(b.data.priority) || 0) - (Number(a.data.priority) || 0));
+  //
+  // A READER'S QUESTION GOES FIRST (phase 22 part 2): `researchRank` puts every
+  // look-up above every model question, so the full-read budget below is spent
+  // on what the reader asked before anything the model thought of.
+  const ranked = [...questions].sort((a, b) => researchRank(b) - researchRank(a));
 
   const found = await pooled(ranked, lanes, async (question): Promise<Found> => {
     const steps: Found['steps'] = [];
@@ -171,6 +186,18 @@ export const research: Research = async (questions, signal, maxResults = 3, lane
     }
   }
 
+  /*
+   * THE PAGE ITSELF, WHEN THE SERVICE WILL NOT READ IT (phase 22 part 2).
+   *
+   * On the live box `extract()` answers every URL with "no extraction service
+   * configured", because research runs on the model's grounded search — and
+   * so all 116 sources of the real run were snippets. The page is usually one
+   * plain GET away. So a full read that `extract()` could not make is tried
+   * once more by fetching the page, INSIDE the same budget slot: the attempt
+   * was already allocated above, in the same deterministic walk, and this
+   * spends no second slot. Free, SSRF-guarded on every redirect, and off on a
+   * run that may not reach the open web.
+   */
   await pooled(toRead, lanes, async (candidate) => {
     if (signal.aborted) { candidate.failed = true; return; }
     try {
@@ -178,6 +205,15 @@ export const research: Research = async (questions, signal, maxResults = 3, lane
       const body = retrieved.results.find((r) => r.url === candidate.url)?.raw_content;
       if (typeof body === 'string' && body.length > 100) candidate.body = body.slice(0, MAX_SOURCE_CHARACTERS);
     } catch { candidate.failed = true; }
+    if (candidate.body === null && options.fetchPages && !signal.aborted) {
+      try {
+        const page = await fetchPage(candidate.url, { signal, maxCharacters: MAX_SOURCE_CHARACTERS });
+        if (page.text.length > 100) { candidate.body = page.text; candidate.failed = false; candidate.fetched = true; }
+      } catch {
+        // The excerpt stands, and the warning below says the full text was not had.
+        candidate.failed = true;
+      }
+    }
   });
   signal.throwIfAborted();
 
@@ -196,6 +232,10 @@ export const research: Research = async (questions, signal, maxResults = 3, lane
         qualityBasis: 'Existing site domain classification is a heuristic, not verification of this source’s claims.',
         freshness: 'Publication date not verified; retrieval date is recorded.', jurisdictionalRelevance: 'Requires evidence-matrix review.', retrieval,
         gap: retrieval === 'search_excerpt' ? 'Full text unavailable; conclusions must remain provisional.' : 'Extracted text may be incomplete; applicability requires review.',
+        // Which route read it in full, when one did: the service's own extract,
+        // or this server fetching the page. Recorded so a reader of the record
+        // can tell, and so the doctor's egress line is checkable against a run.
+        ...(candidate.fetched ? { readBy: 'page_fetch' } : {}),
       }, { origin: 'external_evidence', confidence: null, refs: [question.id], url: candidate.url }));
     }
   }

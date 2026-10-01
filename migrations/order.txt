@@ -19,3 +19,4 @@
 0002-settings.sql
 0003-actor-identity.sql
 0004-body-evidence.sql
+0005-reader-inputs.sql
