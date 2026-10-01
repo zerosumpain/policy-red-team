@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react';
 import { CROSS_PATTERNS, LEGALITY, ORIGINS, PATTERNS, RELATIONS, SCENARIOS, type Artefact } from '$lib/policy-analysis/contracts';
+import { explain } from '$lib/policy-analysis/glossary';
 import { SummaryList } from '../govuk';
 
 /**
@@ -21,6 +22,8 @@ import { SummaryList } from '../govuk';
  * bespoke layer, and GOV.UK already has the two patterns it needs: a summary
  * list for an object and a bulleted list for an array, at any depth.
  */
+const ORIGIN_KEYS = new Set<string>(ORIGINS);
+
 const VOCABULARY = new Set<string>([
   ...ORIGINS, ...RELATIONS, ...PATTERNS, ...SCENARIOS, ...LEGALITY, ...CROSS_PATTERNS,
   'objective', 'problem', 'responsibility', 'decision_right', 'funding', 'dependency', 'data_flow', 'measure', 'constraint', 'risk', 'benefit', 'claim', 'cited_evidence',
@@ -91,6 +94,11 @@ export function ArtefactValue({ value, byId, linkTo, fieldKey = '' }: {
     if (!value) return <Nothing text="Not established" />;
     const ref = byId.get(value);
     if (ref) return linkTo ? linkTo(ref) : ref.label;
+    // WHERE A STATEMENT CAME FROM HAS A PLAIN NAME, and the glossary holds it.
+    // "Structural inference" is the pipeline's word; the reader's is "worked out
+    // from how the paper fits together" (phase 21). Read from the one place that
+    // defines it, so this list and the item page cannot word it two ways.
+    if (ORIGIN_KEYS.has(value)) return explain(value)?.plain ?? sentence(value);
     return VOCABULARY.has(value) ? sentence(value) : value;
   }
 
