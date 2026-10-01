@@ -164,6 +164,14 @@ if (REACH) {
   const targets = [
     ['openrouter.ai', 'https://openrouter.ai/api/v1/models'],
     ['api.tavily.com', 'https://api.tavily.com'],
+    /*
+     * ANY PUBLIC PAGE (phase 22 part 2). Research reads a source's page itself
+     * when the search service cannot, and a reader may name any page as a
+     * source — so a host list cannot cover it: the estate needs general HTTPS
+     * out, through its proxy, for full text. One well-known page stands for
+     * "the open web". Without it, sources stay search snippets.
+     */
+    ['a public page (www.gov.uk)', 'https://www.gov.uk/'],
   ];
   const endpoint = process.env.AZURE_FOUNDRY_ENDPOINT?.trim();
   if (endpoint) targets.push(['your Azure endpoint', endpoint.replace(/\/+$/, '')]);

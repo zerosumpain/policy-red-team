@@ -628,6 +628,12 @@ export function SetupEgress() {
         <li>No telemetry, no update check, no analytics.</li>
         <li>No content delivery network and no web font: everything the page needs ships with it.</li>
         <li>Nothing is sent anywhere except the model service you configure, and the search service if you configure one.</li>
+        <li>
+          One thing reaches beyond this list: to read a source in full, this service fetches the
+          page itself — a page the search found, or one you named. That needs ordinary HTTPS out to
+          the open web, through your proxy if you have one. Without it, sources stay search
+          snippets. Set looking things up to none and no page is fetched.
+        </li>
       </ul>
       <p className="govuk-body">
         <Link className="govuk-link" to="/setup">Back to the list</Link>

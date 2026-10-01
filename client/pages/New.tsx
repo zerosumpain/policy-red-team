@@ -6,6 +6,7 @@ import { MEASURED_RUN, MEASURED_STANDARD_HINT } from '../measured';
 import { isFinished, spent } from '../status';
 import { usePageTitle } from '../layout/Template';
 import { DEFAULT_CONCURRENCY, OFFERED_CONCURRENCY } from '$lib/policy-analysis/contracts';
+import { readerErrorHref, SourcesItShouldUse, ThingsToLookUp } from './NewReaderInputs';
 
 /** The three answers the lanes question offers, in the words the form uses. */
 const LANE_TEXT: Record<(typeof OFFERED_CONCURRENCY)[number], string> = {
@@ -81,7 +82,10 @@ export function New() {
       const { id } = await api.submit(form);
       void navigate(`/assessments/${id}`);
     } catch (err) {
-      setErrors([{ text: (err as Error).message, href: '#document' }]);
+      // A refusal about one source or look-up names it by number; the link
+      // goes to that entry rather than to the paper (phase 22 part 2).
+      const message = (err as Error).message;
+      setErrors([{ text: message, href: readerErrorHref(message) ?? '#document' }]);
       setSubmitting(false);
     }
   }
@@ -129,6 +133,15 @@ export function New() {
           <Input id="policyArea" name="policyArea" label="Policy area" labelSize="s" hint="Optional." />
           <Textarea id="context" label="Anything the paper does not say" labelSize="s" rows={4}
                     hint="Optional. What you already know that the assessment should take into account." />
+
+          {/*
+            WHAT YOU WANT IT TO READ AND TO ASK (phase 22 part 2). Beside the
+            context box, because it is the same kind of thing — what the reader
+            knows that the paper does not say — in a form the research step can
+            act on: a source it reads in full, a question it asks first.
+          */}
+          <SourcesItShouldUse sealed={sealed} />
+          <ThingsToLookUp />
 
           {/*
             WHAT IT COSTS, IN THE NUMBERS THE APP ALREADY KNOWS.

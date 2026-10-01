@@ -107,6 +107,20 @@ try {
   // 'Anything the paper does not say'.
   await page.getByLabel('The paper', { exact: true }).setInputFiles(path.join(ROOT, 'tests', 'fixtures', 'policy-analysis', 'policy.txt'));
   await page.getByLabel('Jurisdiction', { exact: true }).fill('England');
+  /*
+   * A SOURCE AND A LOOK-UP OF THE READER'S OWN (phase 22 part 2). The fixture
+   * server's page reader answers any public address with a capacity review,
+   * so the source travels through stage 5, the evidence matrix and the report;
+   * the look-up reaches the (stubbed) search, finds nothing and is still
+   * listed as the reader's question. Add another is exercised on the way.
+   */
+  await page.locator('#source-url-0').fill('https://www.example.org/capacity-review');
+  await page.locator('#source-about-0').fill('council capacity');
+  await page.locator('#source-note-0').fill('The 2025 review.');
+  await page.getByRole('button', { name: 'Add another thing to look up' }).click();
+  if (await page.evaluate(() => document.activeElement?.id) !== 'look-up-1') failures.push('/new: Add another did not move focus to the new entry');
+  await page.getByRole('button', { name: 'Remove thing to look up 2' }).click();
+  await page.locator('#look-up-0').fill('council delivery capacity evaluation');
   // The lanes question arrives answered. Every browser run before phase 19 went
   // one call at a time because the form had no field and the default was one.
   if (!(await page.getByLabel('Six at once', { exact: true }).isChecked())) failures.push('/new: the lanes question is not answered "Six at once" by default');
@@ -843,6 +857,31 @@ try {
    * likely to push a phone sideways. Each waits for a heading only that page
    * has, because `Template` paints an h1 before the detail request returns.
    */
+  /*
+   * WHAT THE READER BROUGHT, ON THE PAGE (phase 22 part 2): their look-up first
+   * and marked as theirs, their source tagged, read in full and used.
+   */
+  await page.goto(`${base}/findings/outside`, { waitUntil: 'networkidle' });
+  await page.getByRole('heading', { name: 'Checked outside the paper', exact: true }).first().waitFor({ timeout: 30000 });
+  {
+    const items = page.locator('.prt-checked__item');
+    const first = (await items.first().innerText().catch(() => '')).replace(/\s+/g, ' ');
+    if (!first.includes('council delivery capacity evaluation') || !first.includes('Asked by you')) failures.push(`checked outside: the reader's look-up is not first and marked as theirs (${first.slice(0, 120)})`);
+    const text = (await page.locator('.prt-checked').first().innerText()).replace(/\s+/g, ' ');
+    if (!text.includes('Supplied by you')) failures.push('checked outside: the supplied source carries no "Supplied by you" tag');
+    if (!text.includes('Council delivery capacity review')) failures.push('checked outside: the supplied page is not listed by its title');
+    if (!/Council delivery capacity review.*?In full/.test(text)) failures.push('checked outside: the supplied page does not say it was read in full');
+    if (!text.includes('Contradicts the paper')) failures.push('checked outside: the evidence drawn from the supplied source is not shown');
+    if (!(await page.getByText('I have a source for this').first().isVisible())) failures.push('checked outside: an open gap carries no "I have a source for this"');
+    // And its own item page says whose it is.
+    await page.locator('.prt-checked__source a', { hasText: 'Council delivery capacity review' }).first().click();
+    await page.getByRole('heading', { level: 1, name: 'Council delivery capacity review' }).waitFor({ timeout: 20000 });
+    if (!(await page.locator('.prt-item__where').getByText('Supplied by you').isVisible())) failures.push('item page: a supplied source is not tagged "Supplied by you"');
+    if (!(await page.getByRole('heading', { name: 'Checked outside the paper' }).isVisible())) failures.push('item page: no "Checked outside the paper" box');
+    await audit('checked outside the paper (item page of a supplied source)');
+  }
+  note('the reader’s source and look-up reached the report, tagged as theirs');
+
   const views = [
     ['report (summary)', base, 'The report at a glance'],
     ['report (findings)', `${base}/findings`, 'Main findings'],
@@ -854,6 +893,8 @@ try {
     // Phase 22: the fixture's challenge round writes a rival explanation and
     // its synthesis leaves it unresolved, so Findings has this page to draw.
     ['report (another explanation)', `${base}/findings/rival`, 'What would tell them apart'],
+    // Phase 22 part 2: what was checked outside the paper, the reader's own first.
+    ['report (checked outside the paper)', `${base}/findings/outside`, 'Checked outside the paper'],
     ['report (what you can do)', `${base}/use`, 'Take it away'],
     ['drill', drillUrl, null],
     ['drill (what it rests on)', restsOnUrl, 'What it rests on'],
