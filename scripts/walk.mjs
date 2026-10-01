@@ -892,7 +892,10 @@ try {
     if (await list.isVisible()) failures.push('nav at 320px: the list stays open over the page it opened');
   }
   await page.setViewportSize({ width: 1280, height: 900 });
-  if (!(await menu.isHidden())) failures.push('nav at 1280px: the Menu button is still drawn');
+  // WAITED FOR, NOT READ: the button is hidden by a `matchMedia` listener that
+  // re-renders, so reading it in the same tick as the resize races the render.
+  // Two seconds is ample; a button that never goes still fails.
+  await menu.waitFor({ state: 'hidden', timeout: 2000 }).catch(() => failures.push('nav at 1280px: the Menu button is still drawn'));
   if (!(await list.isVisible())) failures.push('nav at 1280px: the list is hidden');
   note('nothing overflows at 320px');
 
