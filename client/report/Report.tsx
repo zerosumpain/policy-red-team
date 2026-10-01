@@ -156,7 +156,7 @@ const MOVE_ORDER: Move[] = ['overview', 'verdict', 'causality', 'threats', 'acto
  */
 const SECTION_NOTES: Record<string, string> = {
   'exposure-profile': 'The three most dangerous, ranked.',
-  legality: 'How many break a rule, and how many do not.',
+  legality: 'Which break a rule, which do not, and each one by name.',
   suggests: 'What to change, what it costs, and who carries it.',
   howyoudknow: 'The measures that would show whether it is working.',
   rests: 'The assumptions the most conclusions depend on.',
@@ -744,8 +744,10 @@ export function Report({ detail, offline, linkTo, onChanged, route, onTitle }: {
    * every play and the report drew each of them alone — the bar at the top of
    * the page, the pill 1,400px below it on three cards.
    */
-  section('legality', 'Nothing here breaks a rule', 'verdict',
-    list.length ? <Legality list={list} /> : null);
+  // The title is a QUESTION since phase 21: "Nothing here breaks a rule" was a
+  // claim printed whatever the run found, and the answer is the section's job.
+  section('legality', 'Do they break a rule?', 'verdict',
+    list.length ? <Legality list={list} linkTo={link} /> : null);
   /*
    * TWO RANKINGS OF THE SAME 444 ASSUMPTIONS THAT DO NOT OVERLAP. `leverage()`
    * is already computed for the stress lab and is passed rather than re-run.
@@ -1630,6 +1632,40 @@ export function Report({ detail, offline, linkTo, onChanged, route, onTitle }: {
     <Pagination previous={previous} next={next} render={pageAnchor} label={`Previous and next in ${MOVE_LABEL[move]}`} />
   );
 
+  /*
+   * THE SIDE MENU IS ON EVERY PAGE OF A VIEW, THE FIRST ONE INCLUDED. It was
+   * drawn only once a reader had left the landing page, so on the page every
+   * reader arrives at nothing said there was more to a view than its lead —
+   * John, after phase 21 went live: "it's not obvious there's more information
+   * beyond the summary without it."
+   *
+   * COMPOSED, NOT A COMPONENT. GOV.UK Frontend ships no side navigation — the
+   * pattern lives in the GOV.UK publishing frontends, not the framework — so
+   * this is a `<nav>` and a `govuk-list` of `govuk-link`s, with the current page
+   * marked by `aria-current="page"`.
+   */
+  const sideNav = (
+    <nav className="prt-sidenav" aria-labelledby="prt-sidenav-title">
+      <h2 className="govuk-heading-s prt-sidenav__title" id="prt-sidenav-title">{MOVE_LABEL[move]}</h2>
+      <ul className="govuk-list prt-sidenav__list">
+        {pages.map((entry, index) => {
+          const current = here ? entry === here : index === 0;
+          return (
+            <li key={entry.id} className={`prt-sidenav__item${current ? ' prt-sidenav__item--current' : ''}`}>
+              <a
+                className="govuk-link prt-sidenav__link"
+                aria-current={current ? 'page' : undefined}
+                {...follow(hrefOf(move, index === 0 ? undefined : entry.id))}
+              >
+                {entry.title}
+              </a>
+            </li>
+          );
+        })}
+      </ul>
+    </nav>
+  );
+
   if (!here) {
     /*
      * A VIEW'S LANDING PAGE: what it leads with, and a card for each of its
@@ -1641,7 +1677,9 @@ export function Report({ detail, offline, linkTo, onChanged, route, onTitle }: {
       <>
         {move === 'verdict' ? leadBlock : notice}
         {banner}
-        <div className="prt-view">
+        <div className="prt-sectionpage">
+        {sideNav}
+        <div className="prt-view prt-sectionpage__main">
           <p className="govuk-caption-m prt-viewhead">
             {MOVE_LABEL[move]}
             {counts[move] ? <> <span className="prt-viewhead__count">· {counts[move]}</span></> : null}
@@ -1655,6 +1693,7 @@ export function Report({ detail, offline, linkTo, onChanged, route, onTitle }: {
             place={(id, inner) => follow(hrefOf(move, id, inner))}
           />
           {pagination}
+        </div>
         </div>
       </>
     );
@@ -1676,25 +1715,7 @@ export function Report({ detail, offline, linkTo, onChanged, route, onTitle }: {
       {notice}
       {banner}
       <div className="prt-sectionpage">
-        <nav className="prt-sidenav" aria-labelledby="prt-sidenav-title">
-          <h2 className="govuk-heading-s prt-sidenav__title" id="prt-sidenav-title">{MOVE_LABEL[move]}</h2>
-          <ul className="govuk-list prt-sidenav__list">
-            {pages.map((entry, index) => {
-              const current = entry === here;
-              return (
-                <li key={entry.id} className={`prt-sidenav__item${current ? ' prt-sidenav__item--current' : ''}`}>
-                  <a
-                    className="govuk-link prt-sidenav__link"
-                    aria-current={current ? 'page' : undefined}
-                    {...follow(hrefOf(move, index === 0 ? undefined : entry.id))}
-                  >
-                    {entry.title}
-                  </a>
-                </li>
-              );
-            })}
-          </ul>
-        </nav>
+        {sideNav}
         <div className="prt-view prt-sectionpage__main">
           {renderEntry(here)}
           {pagination}

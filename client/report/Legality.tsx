@@ -1,6 +1,9 @@
+import type { ReactNode } from 'react';
 import type { Play } from '$lib/policy-analysis/view';
-import { bandLegality, legalityReading, type LegalityPlay } from '$lib/verdict-view';
-import { Table } from '../govuk';
+import { BandMark } from '../BandMark';
+import { bandLegality, legalityReading, LEGALITY_LABEL, LEGALITY_ORDER, type LegalityPlay } from '$lib/verdict-view';
+import { Details, Table } from '../govuk';
+import type { ArtefactLink } from './Report';
 import { BandKey } from './Metrics';
 import { Figure } from './Figure';
 
@@ -38,7 +41,7 @@ const rowsOf = (plays: Play[]): LegalityPlay[] =>
  * a band, and it carries that selection into all five moves. A second band
  * control in this section would be two controls for one state.
  */
-export function Legality({ list }: { list: Play[] }) {
+export function Legality({ list, linkTo }: { list: Play[]; linkTo?: ArtefactLink }) {
   if (!list.length) return null;
   const tab = bandLegality(rowsOf(list));
   if (!tab.rows.length) return null;
@@ -129,6 +132,55 @@ export function Legality({ list }: { list: Play[] }) {
         anyway, and the table below 641px carries every count in words.
       */}
       <Figure label="how exposed, against whether it breaks a rule" diagram={diagram} table={table} />
+      <Cases list={list} linkTo={linkTo} />
+    </>
+  );
+}
+
+/**
+ * THE CASES THEMSELVES, NOT ONLY THEIR COUNT.
+ *
+ * The figure said "36 are inside the rules" and offered no way to see which
+ * thirty-six — John, after phase 21 went live: "we need to be able to either
+ * see there, or link to the cases that don't break a rule or that page is
+ * pointless." So each legality group lists its ways to beat it, worst first,
+ * each a link to its own page.
+ *
+ * A DISCLOSURE PER GROUP, the first (inside the rules — the decision-relevant
+ * one) open. Forty-six links in three open lists would put the figure two
+ * screens above the end of its own section. In the pack, where `linkTo` is
+ * absent, the names are plain text and Ctrl-F still finds them.
+ */
+function Cases({ list, linkTo }: { list: Play[]; linkTo?: ArtefactLink }) {
+  const groups = LEGALITY_ORDER
+    .map((legality) => ({
+      legality,
+      plays: list
+        .filter((play) => String(play.artefact.data.legality ?? 'unknown') === legality)
+        .sort((a, b) => b.exposure - a.exposure),
+    }))
+    .filter((group) => group.plays.length);
+  if (!groups.length) return null;
+  const name = (play: Play): ReactNode => (linkTo ? linkTo(play.artefact) : play.artefact.label);
+  return (
+    <>
+      <h3 className="govuk-heading-s govuk-!-margin-top-6">Which ones</h3>
+      {groups.map((group, index) => (
+        <Details
+          key={group.legality}
+          open={index === 0}
+          summary={`${LEGALITY_LABEL[group.legality]} — ${group.plays.length} ${group.plays.length === 1 ? 'way' : 'ways'} to beat it`}
+        >
+          <ul className="govuk-list prt-legalitycases">
+            {group.plays.map((play) => (
+              <li key={play.artefact.id} className="prt-legalitycases__item">
+                <BandMark band={play.band} />{' '}{name(play)}
+                {play.actor ? <span className="prt-meta"> · {play.actor.label}</span> : null}
+              </li>
+            ))}
+          </ul>
+        </Details>
+      ))}
     </>
   );
 }

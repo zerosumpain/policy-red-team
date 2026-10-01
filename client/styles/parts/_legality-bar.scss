@@ -85,3 +85,9 @@
     &__n { display: none; }
   }
 }
+
+// The cases under the figure (phase 21): one per line, band first so the
+// eye runs down a column of severities before it reads a name.
+.prt-legalitycases__item {
+  margin-bottom: govuk.govuk-spacing(2);
+}
