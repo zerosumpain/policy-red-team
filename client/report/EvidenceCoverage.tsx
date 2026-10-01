@@ -1,8 +1,9 @@
 import { useMemo, type ReactNode } from 'react';
 import type { Artefact } from '$lib/policy-analysis/contracts';
 import { evidenceShape } from '$lib/evidence-view';
+import { isSupplied } from '$lib/research-view';
 import { GRADE_LABEL, GRADE_RUBRIC, evidenceReadLine, gradeOf, gradeTally } from '$lib/evidence-grade';
-import { Details, InsetText, Table } from '../govuk';
+import { Details, InsetText, Table, Tag } from '../govuk';
 import { Metrics } from './Metrics';
 
 /**
@@ -172,7 +173,12 @@ export function EvidenceCoverage({ artefacts, mix, linkTo }: {
               {row.backs ? (linkTo ? linkTo(row.backs) : row.backs.label) : row.label}
             </span>,
             row.page === null ? <span className="prt-meta">—</span> : String(row.page),
-            <span className="prt-evidence__kind">{row.evidenceType || '—'}</span>,
+            <span className="prt-evidence__kind">
+              {row.evidenceType || '—'}
+              {/* A SOURCE THE READER NAMED says so wherever it is shown (phase 22
+                  part 2) — and is graded in the next column like any other. */}
+              {(() => { const own = byId.get(row.id); const source = own ? byId.get(String(own.data.sourceId ?? '')) : undefined; return isSupplied(source) ? <> <Tag colour="purple">Supplied by you</Tag></> : null; })()}
+            </span>,
             (() => { const own = byId.get(row.id); return own ? GRADE_LABEL[gradeOf(own, byId).grade] : '—'; })(),
             <span className="prt-evidence__dispute">{row.dispute || '—'}</span>,
           ])}

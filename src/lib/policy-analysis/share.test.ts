@@ -86,3 +86,18 @@ describe('a shared copy carries the report and nothing around it', () => {
     expect(out.error).toBeNull();
   });
 });
+
+// Phase 22 part 2: what the owner supplied beside the paper.
+describe('a shared copy and what the reader supplied', () => {
+  it('keeps a supplied page, drops a supplied file’s text, and drops their own words', () => {
+    const page = artefact('source_page', 'research_source', 'A public review', 'Public text.', { questionId: 'q', supplied: 'reader', suppliedAs: 'page', note: 'Sent by a friend.' }, { url: 'https://www.gov.uk/r' });
+    const file = artefact('source_file', 'research_source', 'internal-memo.txt', 'An internal memo.', { questionId: 'q', supplied: 'reader', suppliedAs: 'file' });
+    const question = artefact('q', 'research_question', 'Look-up', '', { asked: 'reader', wording: 'the unnamed borough' });
+    const shared = shareableReport({ artefacts: [page, file, question], stages: [] }).artefacts;
+    const by = new Map(shared.map((a) => [a.id, a]));
+    expect(by.get('source_page')).toMatchObject({ statement: 'Public text.', url: 'https://www.gov.uk/r' });
+    expect(by.get('source_page')!.data.note).toBeUndefined();
+    expect(by.get('source_file')).toMatchObject({ label: 'A file the owner supplied', statement: '' });
+    expect(by.get('q')!.data.wording).toBeUndefined();
+  });
+});

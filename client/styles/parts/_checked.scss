@@ -1,0 +1,105 @@
+@use "../govuk" as govuk;
+@use "../tokens" as *;
+
+// ── Checked outside the paper (phase 22 part 2) ────────────────────────────
+//
+// One block per research question: its heading, who asked and why, a small
+// table of what came back, what it did, and what is still open. The same left
+// rule `.prt-assurance__item` uses for "one piece of the argument", for the
+// reason it gives — forty-three bordered cards would be forty-three frames to
+// look past. The list is an `<ol>` because the order is the order the
+// questions were asked in; the numbers are left off because they are not a
+// ranking a reader should read across.
+.prt-checked {
+  &__list {
+    list-style: none;
+    margin: govuk.govuk-spacing(4) 0 govuk.govuk-spacing(6);
+    padding: 0;
+  }
+
+  &__item {
+    border-left: 4px solid govuk.govuk-colour("black", $variant: "tint-50");
+    padding-left: govuk.govuk-spacing(4);
+    margin-bottom: govuk.govuk-spacing(7);
+
+    &:last-child { margin-bottom: 0; }
+
+    // The source table sits tight under its question rather than with a
+    // section's worth of air around it.
+    .govuk-table { margin-bottom: govuk.govuk-spacing(3); }
+  }
+
+  &__head {
+    margin-bottom: govuk.govuk-spacing(1);
+
+    .govuk-tag { margin-left: govuk.govuk-spacing(1); vertical-align: middle; }
+  }
+
+  // A source's name, its tag and its publisher and date, stacked in one cell.
+  // A measure on the block, not the cell, for the reason `.prt-evidence__backs`
+  // gives: auto table layout honours it everywhere.
+  &__source {
+    display: block;
+    max-width: 40ch;
+
+    .govuk-tag { margin-top: govuk.govuk-spacing(1); }
+  }
+
+  // The outcome tag says a short phrase; GOV.UK's tag caps its width and folds
+  // "Nothing came back" onto two lines, which read as two tags.
+  &__outcome {
+    max-width: none;
+  }
+
+  &__when {
+    display: block;
+    @include govuk.govuk-font($size: 16);
+  }
+
+  // On an item page the box is one section among several, not a page.
+  &--item {
+    margin-bottom: govuk.govuk-spacing(6);
+  }
+}
+
+// The two actions under an open gap or on an item page: two shut disclosures,
+// spaced as one group.
+.prt-reader-actions {
+  margin-top: govuk.govuk-spacing(3);
+
+  .govuk-details { margin-bottom: govuk.govuk-spacing(2); }
+  .govuk-details__text form > :last-child { margin-bottom: 0; }
+}
+
+// ── Add another, on the submission form ────────────────────────────────────
+//
+// Each entry is a fieldset with its own legend ("Source 2"), separated by the
+// light rule GOV.UK's add-another pattern uses, with Remove under the fields it
+// removes. A look-up is one field, so its Remove sits beside it on a wide
+// screen rather than under it.
+.prt-add-another {
+  &__item {
+    border-bottom: 1px solid govuk.govuk-colour("black", $variant: "tint-80");
+    padding-bottom: govuk.govuk-spacing(2);
+    margin-bottom: govuk.govuk-spacing(4);
+
+    &--inline {
+      @include govuk.govuk-media-query($from: tablet) {
+        display: flex;
+        align-items: flex-end;
+        gap: govuk.govuk-spacing(3);
+
+        .govuk-form-group { flex: 1 1 auto; margin-bottom: govuk.govuk-spacing(2); }
+        .prt-add-another__remove { margin-bottom: govuk.govuk-spacing(2); }
+      }
+    }
+  }
+
+  &__remove { margin-bottom: govuk.govuk-spacing(2); }
+}
+
+// A web address said back to the reader. `#main-content` already breaks any
+// unbreakable token (AGENTS.md); this only sets it in the secondary colour.
+.prt-url {
+  color: govuk.govuk-colour("black", $variant: "tint-25");
+}

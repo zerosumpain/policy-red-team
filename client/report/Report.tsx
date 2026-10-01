@@ -54,6 +54,8 @@ import { EvidenceCoverage } from './EvidenceCoverage';
 import { CheckLedger } from './CheckLedger';
 import { Assurance } from './Assurance';
 import { Rival } from './Rival';
+import { CheckedOutside } from './CheckedOutside';
+import { ReaderActions } from './ReaderActions';
 import { Cleared } from './Cleared';
 import { rivalExplanations } from '$lib/assurance-view';
 import { clearanceNotes, clearedBodies } from '$lib/policy-analysis/cleared';
@@ -165,6 +167,7 @@ const SECTION_NOTES: Record<string, string> = {
   suggests: 'What to change, what it costs, and who carries it.',
   howyoudknow: 'The measures that would show whether it is working.',
   rests: 'The assumptions the most conclusions depend on.',
+  outside: 'What was looked up, what came back, and what is still open.',
   writeup: 'Every finding, grouped by what it is about.',
   checks: 'Twelve fixed tests of how the policy is wired.',
   patterns: 'Which kinds of idea, aimed at which parts.',
@@ -202,7 +205,7 @@ const SECTION_NOTES: Record<string, string> = {
 const READING_ORDER: Partial<Record<Move, string[]>> = {
   verdict: [
     'main-findings', 'exposure-profile', 'rival', 'legality',
-    'suggests', 'howyoudknow', 'rests',
+    'suggests', 'howyoudknow', 'rests', 'outside',
     'writeup', 'checks',
   ],
   threats: [
@@ -759,6 +762,23 @@ export function Report({ detail, offline, linkTo, onChanged, route, onTitle }: {
    */
   const rivals = rivalExplanations(artefacts);
   section('rival', 'Another explanation', 'verdict', rivals.length ? <Rival rivals={rivals} linkTo={link} /> : null);
+  /*
+   * CHECKED OUTSIDE THE PAPER (phase 22 part 2): every research question, what
+   * came back, what it did and what is still open — the work the research step
+   * did, which no page showed. Gated on there being a question at all. The
+   * two actions ride on each open gap in the service only: the pack has no
+   * server, and a read-only copy would answer 403.
+   */
+  section('outside', 'Checked outside the paper', 'verdict', artefacts.some((a) => a.kind === 'research_question') ? (
+    <CheckedOutside
+      artefacts={artefacts}
+      stages={stages}
+      linkTo={link}
+      actions={offline || detail.readOnly ? undefined : (question) => (
+        <ReaderActions analysisId={analysis.id} target={question} onStarted={onChanged} />
+      )}
+    />
+  ) : null);
   /*
    * EVERY SECTION BELOW IS GATED ON ITS OWN INPUT, and six of tonight's were
    * handed over ungated. `section()` keeps any TRUTHY body and a JSX element is

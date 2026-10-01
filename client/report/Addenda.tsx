@@ -105,6 +105,11 @@ export function Addenda({ analysisId, status, artefacts, passes, readOnly, linkT
                   {view.passages ? ` · ${view.passages} ${view.passages === 1 ? 'passage' : 'passages'} read` : ''}
                   {view.status === 'completed' ? ` · ${view.moved} ${view.moved === 1 ? 'conclusion moved' : 'conclusions moved'}` : ''}
                 </p>
+                {/* WHERE IT CAME FROM AND WHAT IT WAS FOR (phase 22 part 2): an
+                    item a reader aimed it at, the page fetched, the look-up run. */}
+                {view.target ? <p className="govuk-body-s">For: {name(view.target)}</p> : null}
+                {view.lookUp ? <p className="govuk-body-s">You asked for “{view.lookUp}” to be looked up; what the search returned was read as search snippets.</p> : null}
+                {view.sourceUrl ? <p className="govuk-body-s">Fetched from <span className="prt-url">{view.sourceUrl}</span></p> : null}
                 {view.note ? <p className="govuk-body-s">Your note: {view.note}</p> : null}
 
                 {view.status === 'failed' || view.error ? (

@@ -71,8 +71,20 @@ export function shareableReport(input: { artefacts: Artefact[]; stages: { ordina
     for (const field of ID_SCALARS) {
       if (typeof data[field] === 'string' && !alive.has(data[field] as string)) data[field] = null;
     }
+    /*
+     * WHAT THE OWNER SUPPLIED STAYS THEIRS (phase 22 part 2), on the rule the
+     * attachments above follow. Their note and their own wording of a look-up
+     * were written for nobody else; a FILE they uploaded is a document the
+     * recipient was never given, so its text and its filename stay behind
+     * too (a filename is content) — what the evidence drew from it still
+     * travels. A web page is public and travels as any other source does.
+     */
+    delete data.note;
+    delete data.wording;
+    const withheldText = a.kind === 'research_source' && a.data.suppliedAs === 'file';
     return {
       ...a,
+      ...(withheldText ? { statement: '', label: 'A file the owner supplied' } : {}),
       data,
       refs: a.refs.filter((id) => alive.has(id)),
       sourceId: a.sourceId && alive.has(a.sourceId) ? a.sourceId : null,

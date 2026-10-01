@@ -529,13 +529,21 @@ export function scenarioBeats(scenario: Artefact, artefacts: Artefact[]): Beat[]
  * ids carry their own provenance, which is what made appending a pass possible
  * at all.
  */
-export type PassRow = { pass: number; kind: string; role: string | null; note: string | null; filename: string | null; size: number | null; status: string; error: string | null; createdAt: string | Date; completedAt: string | Date | null };
+export type PassRow = {
+  pass: number; kind: string; role: string | null; note: string | null; filename: string | null; size: number | null; status: string; error: string | null; createdAt: string | Date; completedAt: string | Date | null;
+  /** Phase 22 part 2: the one item it was aimed at, the page it came from, the look-up it answers. Optional: older rows and older servers carry none. */
+  targetId?: string | null; sourceUrl?: string | null; lookUp?: string | null;
+};
 export type AddendumView = {
   pass: number;
   role: string | null;
   roleLabel: string;
   filename: string | null;
   note: string | null;
+  /** The item it was aimed at, when it was (phase 22 part 2). */
+  target: Artefact | null;
+  sourceUrl: string | null;
+  lookUp: string | null;
   status: string;
   error: string | null;
   createdAt: string | Date;
@@ -571,9 +579,12 @@ export function addenda(artefacts: Artefact[], passes: PassRow[]): AddendumView[
       return {
         pass: p.pass,
         role: p.role,
-        roleLabel: MATERIAL_ROLE_LABELS[p.role ?? ''] ?? 'Material',
+        roleLabel: p.lookUp ? 'What a look-up found' : MATERIAL_ROLE_LABELS[p.role ?? ''] ?? 'Material',
         filename: p.filename,
         note: p.note,
+        target: p.targetId ? byId.get(p.targetId) ?? null : null,
+        sourceUrl: p.sourceUrl ?? null,
+        lookUp: p.lookUp ?? null,
         status: p.status,
         error: p.error,
         createdAt: p.createdAt,

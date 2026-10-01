@@ -75,6 +75,16 @@ export function stubForReport(artefact: Artefact): Artefact {
       if (artefact.data?.[key] !== undefined) data[key] = artefact.data[key];
     }
   }
+  /*
+   * A RESEARCH QUESTION IS RENDERED (phase 22 part 2), on "Checked outside the
+   * paper": why it was asked, how it ranked, who asked it and what is still
+   * open. Five short fields; the search query and the three scores stay out.
+   */
+  if (artefact.kind === 'research_question') {
+    for (const key of ['rationale', 'gap', 'priority', 'asked', 'wording']) {
+      if (artefact.data?.[key] !== undefined) data[key] = artefact.data[key];
+    }
+  }
   if (artefact.kind === 'causal_chain') {
     if (typeof artefact.data?.mechanismId === 'string') data.mechanismId = artefact.data.mechanismId;
     // The chain's own reading of where it breaks (stage 14 since prompt 3.2),

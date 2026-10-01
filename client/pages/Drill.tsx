@@ -1,3 +1,6 @@
+import { ItemChecks } from '../report/ItemChecks';
+import { ReaderActions } from '../report/ReaderActions';
+import { isSupplied } from '$lib/research-view';
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { Link, useParams, useSearchParams } from 'react-router';
 import type { Artefact } from '$lib/policy-analysis/contracts';
@@ -392,6 +395,7 @@ export function Drill() {
       <h1 className="govuk-heading-l govuk-!-margin-bottom-3">{artefact.label}</h1>
       <p className="prt-item__where">
         <Tag colour="grey">{isCleared(artefact) ? 'Checked and cleared' : noun}</Tag>
+        {isSupplied(artefact) ? <Tag colour="purple">Supplied by you</Tag> : null}
         {whereFrom(stage, marksOnScale.sources)}
       </p>
 
@@ -419,6 +423,17 @@ export function Drill() {
           origin={origin}
           producedAt={producedAt}
           wording={wording}
+          checks={
+            /* WHAT WAS CHECKED OUTSIDE THE PAPER ABOUT THIS ITEM, and the two
+               ways to add to it (phase 22 part 2). No actions in a read-only
+               copy: a form that can only answer 403 is not drawn. */
+            <ItemChecks
+              artefacts={all}
+              item={artefact}
+              link={link}
+              actions={detail.readOnly ? null : <ReaderActions analysisId={id} target={artefact} />}
+            />
+          }
         />
       ) : null}
 
@@ -568,8 +583,10 @@ function ItemParts({ parts, current, hrefOf, of }: {
  * three parts.
  */
 function ItemPart({
-  artefact, all, play, profile, couldRun, rankOf, list, ego, kindOf, linkById, link, byId, origin, producedAt, wording,
+  artefact, all, play, profile, couldRun, rankOf, list, ego, kindOf, linkById, link, byId, origin, producedAt, wording, checks,
 }: {
+  /** The "Checked outside the paper" box, built by the page that knows the assessment. */
+  checks: ReactNode;
   artefact: Artefact;
   all: Artefact[];
   play: ReturnType<typeof plays>[number] | null;
@@ -757,6 +774,8 @@ function ItemPart({
           </a>
         </p>
       ) : null}
+
+      {checks}
 
       <section aria-labelledby="standing">
         <h2 className="govuk-heading-m" id="standing">Where this stands</h2>
