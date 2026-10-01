@@ -16,9 +16,15 @@ import { Accordion as GovukAccordion } from 'govuk-frontend';
  * WCAG 2.2 outright, because content that appears on hover and cannot be reached
  * by keyboard is not available to everyone.
  */
-export function Details({ summary, children, open }: { summary: ReactNode; children: ReactNode; open?: boolean }) {
+export function Details({ summary, children, open, id }: {
+  summary: ReactNode;
+  children: ReactNode;
+  open?: boolean;
+  /** A link target. A link to a shut disclosure is opened by whatever follows it — see `Report`'s hash effect. */
+  id?: string;
+}) {
   return (
-    <details className="govuk-details" open={open}>
+    <details className="govuk-details" open={open} id={id}>
       <summary className="govuk-details__summary">
         <span className="govuk-details__summary-text">{summary}</span>
       </summary>

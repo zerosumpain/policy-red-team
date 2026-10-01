@@ -100,7 +100,7 @@ export function RunFindings({ detail, id }: { detail: Detail; id: string }) {
               const stage = stageOf.get(a.id);
               return (
                 <li key={a.id}>
-                  <Link className="govuk-link" to={`/assessments/${id}/artefacts/${encodeURIComponent(a.id)}`}>
+                  <Link className="govuk-link" to={`/assessments/${id}/items/${encodeURIComponent(a.id)}`}>
                     {a.label}
                   </Link>
                   {stage !== undefined ? (

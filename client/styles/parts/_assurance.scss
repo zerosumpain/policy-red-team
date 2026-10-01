@@ -76,9 +76,9 @@
 // a paragraph in the same section set to 68. That is the width the base's own
 // comment says the eye stops reliably finding the start of the next line at.
 //
-// Paired with `.govuk-tabs__panel` and `.prt-pack` because the rule it has to
+// Paired with `.prt-view` and `.prt-pack` because the rule it has to
 // beat is, and because these render in both.
-.govuk-tabs__panel,
+.prt-view,
 .prt-pack {
   .prt-plan__list { max-width: $prt-measure; }
 }

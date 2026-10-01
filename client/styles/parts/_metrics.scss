@@ -7,7 +7,7 @@
 // refines three things measured on the live report. Unscoped, like the rules it
 // refines: `.prt-bar` is drawn in the report, in the pack and on the drill
 // pages, and a contrast floor is not a property of which container a figure
-// happens to be in. The `.govuk-tabs__panel` / `.prt-pack` pair exists to beat
+// happens to be in. The `.prt-view` / `.prt-pack` pair exists to beat
 // the framework's own selectors inside two containers, which is not what any of
 // this is doing.
 

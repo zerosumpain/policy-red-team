@@ -97,10 +97,6 @@
   gap: 2px;
 }
 
-.prt-moves__step {
-  @include govuk.govuk-font($size: 16);
-  color: govuk.govuk-colour("black", $variant: "tint-25");
-}
 
 .prt-moves__label {
   @include govuk.govuk-font($size: 24, $weight: bold);

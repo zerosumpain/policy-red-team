@@ -49,7 +49,7 @@
 //
 // The pair is the base's own: a report section is a child of the tab panel in
 // the service and of `.prt-pack` in the offline copy.
-.govuk-tabs__panel,
+.prt-view,
 .prt-pack {
   .prt-actors__legality {
     display: flex;

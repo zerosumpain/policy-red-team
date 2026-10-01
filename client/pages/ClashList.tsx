@@ -40,7 +40,7 @@ function Side({ side }: { side: ClashSide }) {
       <p className="govuk-body govuk-!-font-weight-bold govuk-!-margin-bottom-1">{side.words}</p>
       <blockquote className="govuk-inset-text govuk-!-margin-top-1">{side.quote}</blockquote>
       <p className="govuk-body-s">
-        <Link className="govuk-link" to={`/assessments/${side.paper.id}/artefacts/${encodeURIComponent(side.artefactId)}`}>
+        <Link className="govuk-link" to={`/assessments/${side.paper.id}/items/${encodeURIComponent(side.artefactId)}`}>
           See where this comes from<span className="govuk-visually-hidden"> in {side.paper.title}</span>
         </Link>
       </p>

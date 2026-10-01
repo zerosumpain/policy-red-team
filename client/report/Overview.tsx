@@ -1,10 +1,11 @@
-import type { MouseEvent, ReactNode } from 'react';
+import type { ReactNode } from 'react';
 import type { Artefact } from '$lib/policy-analysis/contracts';
 import { BAND_LABEL, type Band } from '$lib/policy-analysis/view';
 import type { Brief } from '$lib/brief';
 import { BAND_ORDER, type BandTally, type Overview as OverviewView } from '$lib/overview';
 import { LEGALITY_LABEL } from '$lib/verdict-view';
-import { MOVES, type MoveId } from '../moves';
+import type { MoveId } from '../moves';
+import type { Place } from './Contents';
 import { StackedBar } from './Metrics';
 import { ScopeNote } from './moves/NoneUnder';
 import type { Selection } from './selection';
@@ -18,7 +19,7 @@ import type { Selection } from './selection';
  * who has never seen this tool should start. This page answers the five
  * questions such a reader actually brings — how bad, where, who, what to do, and
  * how far to trust it — each in one box, and every box ends in ONE link to the
- * tab that explains it.
+ * page that explains it.
  *
  * NOTHING HERE IS COUNTED A SECOND WAY. The figures come from `overviewOf()`,
  * which calls the same view functions the tabs render from, so a box saying "33
@@ -28,9 +29,16 @@ import type { Selection } from './selection';
  * stage warnings.
  *
  * IT RENDERS IN THE OFFLINE PACK TOO, at the head of the cascade, which is why
- * every way out of it is `Go` and never a router link: in the service `onGo`
- * switches tab and scrolls; in a pack there is no `onGo` and the same element is
- * a plain `#anchor` into the one long document.
+ * every way out of it is `Go` and never a router link: in the service `place`
+ * turns a destination into the page that holds it (phase 21); in a pack there
+ * is no `place` and the same element is a plain `#anchor` into the one long
+ * document.
+ *
+ * "READ THE REPORT IN FULL" IS GONE, from both (phase 21). It was five links to
+ * the five views, set at the foot of a page that now sits under a service
+ * navigation naming the same five — and in the pack, directly under a contents
+ * list that already names every section of them. A second index of the same
+ * thing is the duplication John named.
  *
  * GOV.UK HAS NO CARD COMPONENT, so a box here is composed from framework parts:
  * the metric card's top rule, a `govuk-heading-m`, one sentence of
@@ -38,21 +46,14 @@ import type { Selection } from './selection';
  * deliberately NOT one link — a screen reader should hear a heading, what it
  * means, and then where to go, not one forty-word link name.
  */
-export type GoTo = (move: MoveId, anchor: string) => void;
+export type GoTo = (move: MoveId, anchor: string) => Place;
 
 export function Overview({
-  view, brief, stages, counts, starts, selection, onGo, onSelectBand, linkTo, byId,
+  view, brief, stages, selection, onGo, onSelectBand, linkTo, byId,
 }: {
   view: OverviewView;
   brief: Brief;
   stages: { status: string }[];
-  /** The phrase each tab carries — "18 findings · 4 recommendations" — for the way-on list. */
-  counts: Partial<Record<MoveId, string>>;
-  /**
-   * The pack only: the first section of each move. A pack has no tab panels,
-   * so "Read the report in full" points at where each move's cascade begins.
-   */
-  starts?: Partial<Record<MoveId, string>>;
   selection: Selection;
   /** Absent in the offline pack: every `Go` is then a plain anchor. */
   onGo?: GoTo;
@@ -252,7 +253,7 @@ export function Overview({
         ) : null}
 
         <Card id="overview-trust" title="How far to trust this"
-              more={<Go to="provenance" anchor="machine" onGo={onGo}>See how it was made, and what it threw away</Go>}>
+              more={<Go to="provenance" anchor="discarded" onGo={onGo}>See how it was made, and what it threw away</Go>}>
           <p className="govuk-body">
             A red-team read finds weak points. It does not predict that anyone will use them, and a
             clean report would not mean the policy is safe.
@@ -272,29 +273,14 @@ export function Overview({
         </Card>
       </div>
 
-      {/* ── Where to go next ──────────────────────────────────────────── */}
-      <nav className="prt-wayon" aria-labelledby="overview-wayon">
-        <h3 className="govuk-heading-m" id="overview-wayon">Read the report in full</h3>
-        <ol className="prt-wayon__list">
-          {MOVES.filter((entry) => entry.id !== 'overview').map((entry) => (
-            <li key={entry.id} className="prt-wayon__item">
-              <Go to={entry.id} anchor={starts?.[entry.id] ?? `report-panel-${entry.id}`} onGo={onGo} className="prt-wayon__link">
-                <span className="prt-wayon__step">{entry.step}</span>
-                <span className="prt-wayon__label">{entry.label}</span>
-              </Go>
-              <span className="prt-wayon__hint">{entry.hint}{counts[entry.id] ? ` — ${counts[entry.id]}` : ''}</span>
-            </li>
-          ))}
-        </ol>
-      </nav>
     </section>
   );
 }
 
 /**
  * A way out of the summary. A link in both renderers, so it is always keyboard
- * reachable and always announced as one; the service intercepts it to switch
- * tab without a navigation.
+ * reachable and always announced as one; in the service `onGo` says which page
+ * it opens and routes a plain click there rather than reloading the app.
  */
 function Go({ to, anchor, onGo, className, children }: {
   to: MoveId;
@@ -303,18 +289,9 @@ function Go({ to, anchor, onGo, className, children }: {
   className?: string;
   children: ReactNode;
 }) {
-  const href = onGo ? `?move=${to}#${anchor}` : `#${anchor}`;
-  const click = onGo
-    ? (event: MouseEvent<HTMLAnchorElement>) => {
-      // A modified click is a request for a new tab, and the href above opens
-      // the right tab there — so only a plain click is intercepted.
-      if (event.metaKey || event.ctrlKey || event.shiftKey || event.button !== 0) return;
-      event.preventDefault();
-      onGo(to, anchor);
-    }
-    : undefined;
+  const place = onGo ? onGo(to, anchor) : { href: `#${anchor}` };
   return (
-    <a className={`govuk-link${className ? ` ${className}` : ''}`} href={href} onClick={click}>
+    <a className={`govuk-link${className ? ` ${className}` : ''}`} {...place}>
       {children}
     </a>
   );

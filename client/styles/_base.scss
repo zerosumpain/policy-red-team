@@ -85,7 +85,7 @@
 // AND THE COLOUR AND THE UNDERLINE HAVE TO BE HERE, because the framework
 // cannot give them to a button. `.govuk-link`'s colour declarations are all
 // `:link` and `:visited` — neither pseudo-class matches a `<button>` — which is
-// the same trap `.prt-tab` below documents. Adding `govuk-link` alongside this
+// the trap the old tab strip's buttons documented before phase 21. Adding `govuk-link` alongside this
 // reset, which is what the two callers did, buys the underline and the yellow
 // focus state and leaves the control at the user agent's `buttontext` black.
 //
@@ -194,134 +194,10 @@
   &--limited { background: var(--band-limited); color: var(--band-ink-light); }
 }
 
-// A BUTTON WEARING MARKUP STYLED FOR AN ANCHOR, so it needs what an anchor gets
-// for free.
-//
-// `.govuk-tabs__tab` sets no `font-size` — an anchor inherits 19px from
-// `.govuk-tabs`, a button keeps the user agent's 13.333px Arial, which made the
-// step number render LARGER than the label it sits above. Its colour rules are
-// `:link` and `:visited`, neither of which matches a button, so the tab took no
-// colour from the design system at all. And without a chrome reset the UA's
-// button background paints over `--selected`'s white, which at tablet and up is
-// the only cue for which move you are on.
-//
-// `:focus` and `:hover` are not link-gated, so the yellow focus state survives
-// untouched — which is why this resets the chrome and not those.
-.prt-tab {
-  -webkit-appearance: none;
-  appearance: none;
-  background: none;
-  border: 0;
-  cursor: pointer;
-  font-family: inherit;
-  @include govuk.govuk-font($size: 19);
-  // The control carries no underline; `&__label` does. See `Tabs.tsx`.
-  text-decoration: none;
-  // THE LINK TOKEN, NOT THE PALETTE ENTRY. `govuk-colour("blue")` is #1d70b8;
-  // every real anchor on the same page resolves to the framework's link colour,
-  // blue shade-10, #1a65a6. Measured on the live report: 26 elements at
-  // rgb(29,112,184) sitting beside 255 at rgb(26,101,166) — two blues a shade
-  // apart, both meaning "you can click this". A control's colour is a role, and
-  // the role has a token that tracks the palette.
-  color: govuk.govuk-functional-colour("link");
+// ── The selection, carried between pages ──────────────────────────────────
 
-  // The framework's own selected treatment, which only lands on an anchor.
-  .govuk-tabs__list-item--selected & {
-    color: govuk.govuk-colour("black");
-    text-decoration: none;
-  }
-
-  // The move's name, and the only part of the tab that is dressed as a link —
-  // the step above it and the question below it are what it is, not where it
-  // goes. The current tab drops the underline the way the framework's does.
-  &__label {
-    text-decoration: underline;
-    text-underline-offset: 0.1em;
-
-    .govuk-tabs__list-item--selected & { text-decoration: none; }
-  }
-
-  &:hover &__label { text-decoration-thickness: 3px; }
-
-  // The step number above the label. The framework has no slot for it, and it is
-  // the one addition to its Tabs: it says the first four are an order worth
-  // reading in without making them a journey a reader cannot leave.
-  &__step {
-    display: block;
-    @include govuk.govuk-font($size: 16);
-    color: govuk.govuk-colour("black", $variant: "tint-25");
-    text-decoration: none;
-  }
-
-  // The question the move answers, under its name. "Causality" is what the
-  // section is called; "why is any of it possible" is what a reader arrived
-  // with, and until now it existed only in a code comment.
-  //
-  // DESKTOP ONLY. Between tablet and desktop the five columns are about 120px
-  // each, where "Why is any of it possible" wraps to four lines and the spine
-  // grows taller than the panel heading under it. The step and the label carry
-  // the navigation on their own at that width.
-  &__hint {
-    display: none;
-    @include govuk.govuk-font($size: 16);
-    color: govuk.govuk-colour("black", $variant: "tint-25");
-    text-decoration: none;
-    font-weight: 400;
-
-    // 1260px is where the WIDE width container stops growing and settles at its
-    // full 1200px — five columns of 235px, which is the first width at which
-    // these questions set on one or two lines rather than three. The number was
-    // 1020 when the report was 960 wide, which it never actually was: the
-    // modifier that was supposed to widen it had no rule (see `parts/_width`),
-    // so the hint appeared 240px before the columns it was measured against.
-    // `desktop` (769px) gives 143px columns and a 153px-tall sticky spine.
-    @media (min-width: 1260px) {
-      display: block;
-    }
-  }
-}
-
-/*
- * THE SPINE IS ONE ROW OF FIVE, WHATEVER THE LABELS SAY.
- *
- * govuk-frontend floats the tabs and lets them wrap, which is right for a strip
- * whose items are one word each. These carry a step, a name and the question the
- * move answers, so the five wanted 1,028px inside a 960px list and "Last /
- * Provenance" dropped onto a second row — reading as an afterthought below the
- * four rather than as the fifth of five.
- *
- * `flex: 1 1 0` gives every tab the same width from a zero basis, so the row is
- * a function of how many moves there are and not of how long their questions
- * are. The framework's own selected treatment is untouched: its `margin-top:
- * -5px` still lifts the current tab, and `align-items: stretch` keeps every
- * bottom edge on the rule that joins the strip to the panel.
- *
- * FROM TABLET, because below it the component tears itself down into an index
- * and the framework draws it as a list of em-dash bullets.
- */
-@include govuk.govuk-media-query($from: tablet) {
-  .govuk-frontend-supported .govuk-tabs__list {
-    display: flex;
-    align-items: stretch;
-
-    // The framework's float clearfix, which a flex row would otherwise carry as
-    // a sixth, empty item.
-    &::after { display: none; }
-  }
-
-  .govuk-frontend-supported .govuk-tabs__list-item {
-    float: none;
-    flex: 1 1 0;
-    // Without this a long unbroken word sets the column's floor and the five
-    // stop being equal.
-    min-width: 0;
-  }
-}
-
-// ── The four moves ─────────────────────────────────────────────────────────
-
-// What is selected, stated above every view. A filter that survives a tab
-// change breaks silently — nothing throws, the view is simply narrower — so it
+// What is selected, stated above every page it narrows. A filter that survives
+// a page change breaks silently — nothing throws, the view is simply narrower — so it
 // is never only a highlighted control inside one view.
 .prt-selection {
   display: flex;
@@ -353,41 +229,6 @@
   }
 }
 
-// THE MOVE, NAMED INSIDE ITS OWN PANEL — see `Tabs.tsx`. Hidden while the tab
-// strip is drawn, because there the selected tab is already the heading; shown
-// on a phone and on paper, where the strip is gone and five panels run together.
-//
-// `govuk-visually-hidden` is not used because this has to come BACK, and undoing
-// that mixin means restating every one of its declarations anyway.
-.prt-movehead {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  margin: 0;
-  padding: 0;
-  overflow: hidden;
-  clip-path: inset(50%);
-  white-space: nowrap;
-}
-
-@mixin prt-movehead-shown {
-  position: static;
-  width: auto;
-  height: auto;
-  overflow: visible;
-  clip-path: none;
-  white-space: normal;
-  @include govuk.govuk-font($size: 24, $weight: bold);
-  margin: 0 0 govuk.govuk-spacing(4);
-  padding-bottom: govuk.govuk-spacing(1);
-  border-bottom: 2px solid govuk.govuk-colour("black");
-}
-
-@include govuk.govuk-media-query($until: tablet) {
-  .prt-movehead { @include prt-movehead-shown; }
-}
-
-
 // Mechanisms by the plays they generate. The bar is a COUNT, with the bands
 // stacked inside it rather than averaged into a colour — six limited plays and
 // two severe ones are different objects.
@@ -409,7 +250,7 @@
     gap: govuk.govuk-spacing(1);
   }
 
-  // THE SAME BUTTON TRAP `.prt-tab` DOCUMENTS, in a second place. `font-family:
+  // THE SAME BUTTON TRAP THE OLD TAB STRIP DOCUMENTED, in a second place. `font-family:
   // inherit` took the family and left the SIZE, so all 22 mechanism names
   // rendered at the user agent's 13.333px inside a 19px panel — 30% smaller than
   // the prose around them, and below every step on the GDS scale. The mixin sets
@@ -692,8 +533,9 @@
 // two units of margin, so a reader scrolled past more rule than prose. These
 // pull the rhythm in without touching type sizes, which carry the hierarchy.
 // THE REPORT HAS TWO CONTAINERS, NOT ONE, and every rule below was written for
-// only the first of them. In the service a section is a direct child of a tab
-// panel; in the offline pack there are no tabs at all — the pack keeps the
+// only the first of them. In the service a section is a direct child of the
+// page's `.prt-view` (a tab panel until phase 21); in the offline pack there is
+// no page at all — the pack keeps the
 // cascade on purpose, because it is one file opened from `file://` where Ctrl-F
 // is the real interface. So the pack inherited none of this: its body copy sat
 // at the framework's 30em, its tables sized to their content, and its summary
@@ -701,9 +543,9 @@
 // disagree about how wide a table is are two reports.
 //
 // Named as a pair rather than folded into one class because that is what they
-// are: the tab panel is the framework's element and `.prt-pack` is ours, and
+// are: `.prt-view` is one page of the report and `.prt-pack` the whole of it, and
 // neither can be given the other's name.
-.govuk-tabs__panel > section,
+.prt-view > section,
 .prt-pack > section {
   margin-bottom: govuk.govuk-spacing(7);
 
@@ -730,7 +572,7 @@
 // to the same number of CHARACTERS rather than the same number of pixels, which
 // is the thing that actually governs whether a line is readable.
 
-.govuk-tabs__panel,
+.prt-view,
 .prt-pack {
   .govuk-list { max-width: none; }
 
@@ -742,7 +584,7 @@
 
 // Every table fills its section. Several were sizing to their content and
 // sitting in the left two thirds with white space beside them.
-.govuk-tabs__panel table,
+.prt-view table,
 .prt-pack table { width: 100%; }
 
 // ── The write-up ───────────────────────────────────────────────────────────
@@ -852,6 +694,12 @@
 
   @include govuk.govuk-media-query($until: tablet) {
     grid-template-columns: auto minmax(0, 1fr);
+
+    // THE FIGURES TAKE A ROW OF THEIR OWN. Two columns and three children put
+    // the figures in the rank's `auto` column, which then grew to their width
+    // and set every play's name one word to a line at 420px — seen the first
+    // time a section of Threats was its own page on a phone.
+    .prt-play__figures { grid-column: 1 / -1; }
   }
 }
 
@@ -946,33 +794,10 @@
   .govuk-details { margin: govuk.govuk-spacing(1) 0 0; }
 }
 
-// ── The spine stays reachable ─────────────────────────────────────────────
-//
-// MEASURED on the Post-16 run: the Verdict panel is 8,668px and Threats is
-// 10,137px — ten screens. The four moves exist so a reader can go straight to
-// the question they arrived with, and a reader who scrolls is the one most
-// likely to want a different one; a control that leaves the viewport on the
-// first screen is a control that was only ever used from the top of the page.
-//
-// Only where the strip exists. Below `tablet` the framework tears the tabs down
-// into an index and every panel is simply present, so there is nothing to stick.
-@include govuk.govuk-media-query($from: tablet) {
-  .govuk-tabs__list {
-    position: sticky;
-    top: 0;
-    z-index: 20;
-    // Its own ground, or the report scrolls up through it.
-    background: govuk.govuk-colour("white");
-    // The framework draws the panel's top border; sticking the list over it
-    // leaves a 1px seam as the panel passes beneath.
-    box-shadow: 0 1px 0 govuk.govuk-colour("black", $variant: "tint-80");
-  }
-}
-
 // A summary list in the report has no actions column, so the framework's 50%
 // value cell left a fifth of every row empty. "How this was produced" is six
 // facts about the run and read as a narrow strip beside white space.
-.govuk-tabs__panel .govuk-summary-list,
+.prt-view .govuk-summary-list,
 .prt-pack .govuk-summary-list {
   &__key { width: 14rem; }
   &__value { width: auto; }
@@ -981,13 +806,16 @@
 // ── Print ─────────────────────────────────────────────────────────────────
 //
 // The likeliest thing a policy reader does with an assessment is print it or
-// save it as a PDF, and a tabbed page prints ONE of its five panels — the
-// other four carry `hidden`, which no stylesheet can override. So print shows
-// every panel, headed by the move it belongs to, and drops the controls that
-// mean nothing on paper.
+// save it as a PDF. Since phase 21 a page prints ITSELF — one question per page
+// on screen is one question per page on paper, and the whole report on paper
+// is the Word file or the pack, both a click away on `/use`. What print drops
+// is everything that only means something on a screen: the navigation between
+// pages, the previous/next, the actions bar and the controls.
 @media print {
-  .govuk-tabs__panel[hidden] { display: block !important; }
-  .govuk-tabs__list,
+  .govuk-service-navigation,
+  .prt-sidenav,
+  .govuk-pagination,
+  .prt-usebar,
   .prt-selection,
   .prt-weights,
   .govuk-button,
@@ -1014,9 +842,6 @@
   // A passage scrolls inside 28rem on screen; on paper there is nothing to
   // scroll, so the box simply clipped the rest of the white paper's wording.
   .prt-quoted { max-height: none; overflow: visible; }
-
-  // Five panels print as one document, so each says which move it is.
-  .prt-movehead { @include prt-movehead-shown; }
 
   .prt-metric,
   .prt-play,
@@ -1100,36 +925,18 @@
   }
 }
 
-// The banner sits above the tabs, so the panel's full-width rule never reached
+// The banner sits above the page, so the page's full-width rule never reached
 // it and its sentence was set to the framework's 30em measure — a filter notice
 // two thirds the width of the thing it is filtering.
 .prt-selection p { max-width: none; flex: 1 1 auto; }
-
-// ── What you can do with this ─────────────────────────────────────────────
-//
-// Downloading a copy, attaching what came later and making a link to send are
-// not part of the report; they are things done with it. Below the spine they
-// apply to whichever move is open, and the Verdict panel stops ending in a file
-// picker.
-.prt-actions {
-  margin-top: govuk.govuk-spacing(7);
-  border-top: 5px solid govuk.govuk-colour("black");
-  padding-top: govuk.govuk-spacing(4);
-
-  &__head { margin-bottom: govuk.govuk-spacing(4); }
-
-  > section { margin-bottom: govuk.govuk-spacing(6); }
-  > section:last-child { margin-bottom: 0; }
-}
 
 // TEXT RUNS TO THE PAGE. Three components below the report were built as
 // standalone GOV.UK pages and kept their `two-thirds` column, so inside a
 // 960px report their prose set to 602px with a third of the row empty beside
 // it. The report decides its own measure; the framework's page grid does not
 // apply inside one of its panels.
-.govuk-tabs__panel,
-.prt-pack,
-.prt-actions {
+.prt-view,
+.prt-pack {
   .govuk-grid-column-two-thirds,
   .govuk-grid-column-one-half,
   .govuk-grid-column-one-third { width: 100%; float: none; }

@@ -1,4 +1,17 @@
-import type { ReactNode } from 'react';
+import type { MouseEvent, ReactNode } from 'react';
+
+/**
+ * WHERE A LINK TO ANOTHER PAGE OF THE REPORT GOES, AND HOW IT GETS THERE.
+ *
+ * Phase 21 made every section a page, so an entry that was `#weights` is now
+ * `/assessments/:id/threats/weights?sel=…`. The report tree still cannot import
+ * a router — it renders into the offline pack, which has none — so the caller
+ * hands down a function that turns a destination into an `href` and, in the
+ * service, an `onClick` that routes a plain click instead of reloading the
+ * application. Absent, every link is the plain `#anchor` the pack has always
+ * used.
+ */
+export type Place = { href: string; onClick?: (event: MouseEvent<HTMLAnchorElement>) => void };
 
 /**
  * WHAT IS IN THIS PANEL, AND HOW MUCH OF IT THERE IS.
@@ -58,12 +71,13 @@ export type ContentsEntry = {
  * "Contents of Move 2, Causality" is a name, "Contents of causality" is an
  * internal id read aloud.
  */
-export function Contents({ sections, id = 'contents', of, cards }: {
+export function Contents({ sections, id = 'contents', of, cards, place }: {
   sections: ContentsEntry[];
   id?: string;
   of?: string;
   /**
-   * DRAWN AS A GRID OF LINK CARDS, the service's "in this tab" (phase 20).
+   * DRAWN AS A GRID OF LINK CARDS, the service's "in this section" (phase 20;
+   * each card opens its own page since phase 21).
    *
    * A numbered list of eight links reads as a table of contents, and a reader
    * new to the tool reads a table of contents as homework. The same entries as
@@ -72,6 +86,11 @@ export function Contents({ sections, id = 'contents', of, cards }: {
    * document's contents is a list.
    */
   cards?: boolean;
+  /**
+   * Where each card goes, in the service: the section's own page, or an anchor
+   * on it. Absent in the pack, where every entry is a fragment of one document.
+   */
+  place?: (section: string, anchor?: string) => Place;
 }) {
   /*
    * ENTRIES, NOT SECTIONS — the guard counted the wrong things and skipped the
@@ -94,15 +113,17 @@ export function Contents({ sections, id = 'contents', of, cards }: {
     count ? <> <span className="prt-denom">{count.n.toLocaleString()} {count.noun}</span></> : null
   );
 
+  const to = (section: string, anchor?: string): Place => place?.(section, anchor) ?? { href: `#${anchor ?? section}` };
+
   if (cards) {
     return (
-      <nav className="prt-tiles" aria-label={of ? `In ${of}` : 'In this tab'}>
-        <h2 className="govuk-heading-s prt-tiles__title" id={id}>In this tab</h2>
+      <nav className="prt-tiles" aria-label={of ? `In ${of}` : 'In this section'}>
+        <h2 className="govuk-heading-s prt-tiles__title" id={id}>In this section</h2>
         <ol className="prt-tiles__list">
           {sections.map((section, index) => (
             <li key={section.id} className="prt-tile">
               <span className="prt-tile__n" aria-hidden="true">{index + 1}</span>
-              <a className="govuk-link prt-tile__link" href={`#${section.id}`}>{section.title}</a>
+              <a className="govuk-link prt-tile__link" {...to(section.id)}>{section.title}</a>
               {section.note ? <span className="prt-tile__note">{section.note}</span> : null}
               {section.count ? (
                 <span className="prt-tile__count">{section.count.n.toLocaleString()} {section.count.noun}</span>
@@ -110,7 +131,7 @@ export function Contents({ sections, id = 'contents', of, cards }: {
               {section.anchors?.length ? (
                 <ul className="prt-tile__sub">
                   {section.anchors.map((anchor) => (
-                    <li key={anchor.id}><a className="govuk-link" href={`#${anchor.id}`}>{anchor.title}</a></li>
+                    <li key={anchor.id}><a className="govuk-link" {...to(section.id, anchor.id)}>{anchor.title}</a></li>
                   ))}
                 </ul>
               ) : null}

@@ -6,7 +6,7 @@
 // THE TWO-COLUMN LAYOUT THE COMPONENT'S OWN COMMENT DESCRIBED DID NOT EXIST.
 // `StressLab` built a `govuk-grid-row` with the lever rail in a
 // `govuk-grid-column-one-half` and the answer in the other half. `_base.scss`
-// then forces every `govuk-grid-column-*` inside `.govuk-tabs__panel`,
+// then forces every `govuk-grid-column-*` inside `.prt-view`,
 // `.prt-pack` and `.prt-actions` to `width: 100%; float: none` — a rule written
 // to stop three standalone GDS pages setting their prose at two-thirds inside a
 // report panel, and correct for those three. So the lab stacked, in the service

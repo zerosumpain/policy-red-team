@@ -209,7 +209,7 @@ export function Addenda({ analysisId, status, artefacts, passes, readOnly, linkT
               The error summary stays OUTSIDE it: a validation failure inside a
               shut disclosure is a page that reports nothing went wrong.
             */}
-            <Details summary="Add something to it" open={errors.length > 0}>
+            <Details summary="Add something to it" open={errors.length > 0} id="add">
             <form onSubmit={(e) => void attach(e)} noValidate>
               {/*
                 THE ROLE IS NOT A LABEL, IT IS AN INSTRUCTION TO THE READING.
@@ -263,7 +263,7 @@ export function Addenda({ analysisId, status, artefacts, passes, readOnly, linkT
             </form>
             </Details>
 
-            <Details summary="Write the report again">
+            <Details summary="Write the report again" id="again">
             <p className="govuk-body">
               Writing it again redoes the final review over everything, including what has been
               added since. The superseded report is kept — it is still stored, still cited by its

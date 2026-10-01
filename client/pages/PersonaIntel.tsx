@@ -242,7 +242,7 @@ function PaperEntry({ entry }: { entry: BodyIntel['papers'][number] }) {
 function AskItem({ paperId, ask }: { paperId: string; ask: Ask }) {
   return (
     <li>
-      <Link className="govuk-link" to={`/assessments/${paperId}/artefacts/${encodeURIComponent(ask.artefactId)}`}>{ask.words}</Link>
+      <Link className="govuk-link" to={`/assessments/${paperId}/items/${encodeURIComponent(ask.artefactId)}`}>{ask.words}</Link>
     </li>
   );
 }
