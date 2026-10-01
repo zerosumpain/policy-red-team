@@ -116,7 +116,7 @@ export function ProvenanceLead({ stages, playsKept }: {
             ? <>The run wrote <strong>{(playsKept + refused).toLocaleString()}</strong> ways to beat the policy and kept{' '}
               <strong>{playsKept.toLocaleString()}</strong>. The {refused} it refused are row one below.</>
             : <>The run refused <strong>{refused}</strong> ways to beat the policy for resting on something other than an
-              assumption — row one below. The list on the Threats tab is what was left.</>}
+              assumption — row one below. The list under Threats is what was left.</>}
         </p>
       ) : null}
 

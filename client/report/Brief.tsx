@@ -82,7 +82,7 @@ export function Brief({ brief, linkTo, downloadHref }: {
       ) : null}
 
       <p className="govuk-body-s prt-meta prt-brief__foot">
-        Everything behind the brief is further down this tab and in the other four. A red-team
+        Everything behind the brief is in the sections of Findings and the four views after it. A red-team
         read finds weak points; it does not predict that anyone will use them.
       </p>
     </div>

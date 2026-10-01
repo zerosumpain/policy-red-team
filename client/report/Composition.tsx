@@ -102,7 +102,7 @@ export function Composition({ artefacts, list, mechanismIds }: {
               {fieldLabel(largest.key)} is the largest kind at {largest.count};{' '}
               {fieldLabel(smallest.key).toLowerCase()} the smallest at {smallest.count}. A paper
               that states what it wants far more often than who decides is the same reading the
-              checks on how the policy is set up reach from the other direction, on the Verdict tab.
+              checks on how the policy is set up reach from the other direction, under Findings.
             </p>
           ) : null}
         </>
