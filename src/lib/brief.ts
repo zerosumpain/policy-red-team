@@ -1,5 +1,6 @@
 import type { Artefact } from '$lib/policy-analysis/contracts';
 import { keyJudgements } from '$lib/policy-analysis/judgements';
+import { isPlay } from '$lib/policy-analysis/cleared';
 import { patternOf, PLAY_PATTERNS, OTHER_PATTERN } from '$lib/policy-analysis/patterns';
 import { stageFacts, truncations } from '$lib/policy-analysis/stage-facts';
 import { BAND_LABEL, findingsBySection, headlineSentence, recommendations, type Band } from '$lib/policy-analysis/view';
@@ -201,7 +202,7 @@ function chainOf(finding: Artefact, artefacts: Artefact[], exploits: Artefact[],
   const reached = walk.hops.flatMap((hop) => hop.items);
   const mechanisms = reached.filter((a) => a.kind === 'mechanism');
   const reachedIds = new Set(mechanisms.map((a) => a.id));
-  const cited = reached.filter((a) => a.kind === 'exploit');
+  const cited = reached.filter(isPlay);
   const aimed = exploits.filter((p) => [...idList(p.data.targets), ...p.refs].some((id) => reachedIds.has(id)));
   const pool = [...(cited.length ? cited : aimed)].sort((a, b) => exposure(b) - exposure(a));
   // Five items that all name the same play say one thing five times; take the
@@ -219,7 +220,7 @@ function chainOf(finding: Artefact, artefacts: Artefact[], exploits: Artefact[],
 function fromFindings(artefacts: Artefact[]): BriefItem[] {
   const chapters = findingsBySection(artefacts);
   const { top } = rankFindings(chapters, artefacts, BRIEF_ITEMS);
-  const exploits = artefacts.filter((a) => a.kind === 'exploit');
+  const exploits = artefacts.filter(isPlay);
   const recs = recommendations(artefacts);
   const used = new Set<string>();
   return top.map((view, i) => {

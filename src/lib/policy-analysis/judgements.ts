@@ -1,5 +1,6 @@
 import { MAX_KEY_JUDGEMENTS, type Artefact } from './contracts';
 import { patternOf, playPatterns, type PatternKey } from './patterns';
+import { isPlay } from './cleared';
 
 /**
  * KEY JUDGEMENTS — the "so what" a report leads with.
@@ -83,7 +84,7 @@ export function keyJudgements(artefacts: Artefact[]): KeyJudgementView[] {
     .filter((a) => stageOf(a.id) === newest)
     .sort((a, b) => Number(a.data.rank) - Number(b.data.rank))
     .map((a) => {
-      const plays = ids(a.data.playIds).map((id) => byId.get(id)).filter((p): p is Artefact => !!p);
+      const plays = ids(a.data.playIds).map((id) => byId.get(id)).filter((p): p is Artefact => !!p && isPlay(p));
       const keys = [...new Set(plays.map((p) => patternOf(p)))];
       return {
         artefact: a,

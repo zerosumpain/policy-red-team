@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { artefactSchema, dataSchemas, looseOutputSchema, PROFILE_FIELDS, RESULT_KINDS, SHORT_PROFILE_FIELDS, stageKinds, stageOutputSchema, type Artefact, type PassKind, type StageOutput } from './contracts';
 import { locateQuote } from './quotes';
+import { clearedByWording, isPlay } from './cleared';
 
 export class PolicyError extends Error {
   constructor(public code: string, message: string) { super(message); }
@@ -199,7 +200,9 @@ function semanticFault(a: Artefact, all: Map<string, Artefact>, stage: number, n
   if (a.kind === 'key_judgement') {
     if (all.get(String(a.data.mechanismId))?.kind !== 'mechanism') return fault('traceability', 'A key judgement must name the mechanism it concerns in mechanismId.');
     const named = (a.data.playIds as string[]) ?? [];
-    const plays = named.filter((id) => all.get(id)?.kind === 'exploit');
+    // A CLEARANCE IS NOT A PLAY (phase 22): "no material way to beat it" shows
+    // nothing a judgement could be about, so it is narrowed out like a misfiled id.
+    const plays = named.filter((id) => { const p = all.get(id); return !!p && isPlay(p); });
     if (!plays.length) return fault('traceability', 'A key judgement must name at least one exploitation play in playIds.');
     if (plays.length !== named.length) a.data.playIds = plays;
     /**
@@ -722,7 +725,25 @@ export function triageArtefacts(output: StageOutput, stage: number, prior: Artef
     kept = survivors;
   }
 
+  /*
+   * A NORMALISATION OF WHAT SURVIVED, after the settle so they read the final
+   * set (phase 22). It refuses nothing.
+   *
+   * A CLEARANCE IN WORDS IS A CLEARANCE. Prompt 10 asks for `cleared: true`;
+   * a model that writes "No material way to beat it" and forgets the flag has
+   * still written a clearance, and stamping it here keeps the stored row
+   * honest instead of leaving the view's wording test to catch it forever.
+   */
+  const stamped: string[] = [];
+  for (const a of kept) {
+    if (a.kind === 'exploit' && a.data.cleared === undefined && clearedByWording(a.label, a.data.play)) {
+      a.data.cleared = true;
+      stamped.push(`“${a.label}”`);
+    }
+  }
+
   const warnings = [...parsed.warnings];
+  if (stamped.length) warnings.push(`${stamped.length} row${stamped.length === 1 ? '' : 's'} said a body had no material way to beat the policy; ${stamped.length === 1 ? 'it is' : 'they are'} recorded as a cleared check, not counted as a way to beat it. ${stamped.slice(0, 4).join(', ')}${stamped.length > 4 ? `, and ${stamped.length - 4} more` : ''}.`.slice(0, 1000));
   if (pruned.length) warnings.push(`${pruned.length} item${pruned.length === 1 ? '' : 's'} referred to something that is not in this assessment; the reference was dropped and the item kept. ${pruned.slice(0, 4).join(' ')}${pruned.length > 4 ? ` And ${pruned.length - 4} more.` : ''}`.slice(0, 1000));
   // Worded for `stage-facts.ts`'s "the reference was dropped" rule, because that
   // is what happened: the play is kept, and the one thing it could not back up

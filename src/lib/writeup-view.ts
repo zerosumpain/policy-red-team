@@ -25,6 +25,7 @@
  */
 import { JUDGEMENT_LABELS, REPORT_ACTS, confidenceJudgement } from '$lib/policy-analysis/view';
 import type { Artefact } from '$lib/policy-analysis/contracts';
+import { isCleared } from '$lib/policy-analysis/cleared';
 
 /** One section of the write-up: the shape `findingsBySection` and `reportActs` both deal in. */
 export type Chapter = { section: string; label: string; items: Artefact[] };
@@ -226,7 +227,7 @@ function resultLevel(result: Artefact | undefined): Severity['level'] {
     const outcome = String(result.data.result ?? '');
     return outcome === 'high_risk' ? 3 : outcome === 'moderate_risk' ? 2 : 0;
   }
-  if (result.kind === 'exploit') {
+  if (result.kind === 'exploit' && !isCleared(result)) {
     const band = String(result.data.band ?? '');
     return band === 'severe' ? 3 : band === 'significant' ? 2 : band === 'moderate' ? 1 : 0;
   }

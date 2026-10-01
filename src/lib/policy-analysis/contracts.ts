@@ -492,6 +492,20 @@ export const dataSchemas = {
     // Where `precedent` came from. Optional so a play written before it existed
     // still parses; see PRECEDENT_BASES.
     precedentBasis: z.enum(PRECEDENT_BASES).optional(),
+    /*
+     * A CHECKED BODY WITH NO MATERIAL WAY TO BEAT THE POLICY (phase 22).
+     *
+     * The playbook runs once per body, and a body with no room was told to say
+     * so "in one play with low factors" — so 8 of the 46 rows on the real Best
+     * Start run were "No material exploit available to children and babies",
+     * "Limited room for Jobcentre Plus exploitation" and the like, counted in
+     * every total, band and pattern as ways to beat it. They are the opposite:
+     * a check that came back clear. `true` marks one; the view leaves it out of
+     * every count and lists it once, on Threats, as a cleared body. Absent on
+     * every older row — `$lib/policy-analysis/cleared` recognises those by
+     * their wording.
+     */
+    cleared: z.boolean().optional(),
   }).strict(),
   cross_policy: z.object({
     pattern: z.enum(CROSS_PATTERNS), otherAnalysisId: z.string().max(100), otherAnalysisTitle: text,

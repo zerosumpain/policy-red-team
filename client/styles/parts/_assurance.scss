@@ -74,3 +74,22 @@
   @include govuk.govuk-font($size: 16, $weight: bold);
   margin: 0 0 govuk.govuk-spacing(1);
 }
+
+// ── Checked and cleared (phase 22) ─────────────────────────────────────────
+//
+// One line per cleared body: its name, then the reason in the run's words. A
+// list, not a table — two columns of which one is a sentence is a list.
+.prt-cleared {
+  &__item {
+    display: flex;
+    flex-direction: column;
+    padding: govuk.govuk-spacing(2) 0;
+    border-top: 1px solid govuk.govuk-colour("black", $variant: "tint-80");
+
+    &:last-child { border-bottom: 1px solid govuk.govuk-colour("black", $variant: "tint-80"); }
+  }
+
+  &__name { @include govuk.govuk-font($size: 19, $weight: bold); }
+
+  &__reason { @include govuk.govuk-font($size: 16); }
+}

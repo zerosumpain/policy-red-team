@@ -1,6 +1,7 @@
 import { APPRAISAL_STAGE, ASSURANCE_CATEGORIES, ASSURANCE_STAGE, ASSURED_SYNTHESIS_STAGE, CONCURRENCY_OPTIONS, DEEP_CHAINS, DEFAULT_CONCURRENCY, DEFAULT_EXTRACTION, DEPTH_LIMITS, FIT_LIMIT, FOLLOW_UP_STAGES, FULL_PROFILES, MAX_KEY_JUDGEMENTS, isPassStage, passOf, passOrdinal, passStep, PATTERNS, PERSONA_STAGE, REPORT_SECTIONS, RESULT_KINDS, REVISION_STATUSES, SCENARIOS, SHORT_PROFILE_BATCH, STAGE_CONTEXT, SYNTHESIS_STAGE, THEORY_STAGE, type Artefact, type Concurrency, type Extraction, type PassKind, type StageInput, type StageOutput } from './contracts';
 import { consumedSources, encodedSize, fitToBudget } from './budget';
 import { scoreExploits } from './exposure';
+import { isPlay } from './cleared';
 import { clampWarnings, PolicyError, stampProfileForm, triageArtefacts, triageOutput } from './validation';
 import { modelApplicability } from './models';
 import { crossIdentityHints, preserveAmbiguity } from './entities';
@@ -1029,7 +1030,7 @@ export async function executeStage(input: StageInput, deps: PipelineDeps): Promi
      */
     const { selected } = deepChainMechanisms(input.artefacts);
     const context = input.artefacts.filter((a) => !['passage', 'alias', 'node', 'persona_link'].includes(a.kind) && (a.kind !== 'actor' || a.id.startsWith('s2_')));
-    const aimedAt = (mechanism: Artefact) => input.artefacts.filter((a) => a.kind === 'exploit' && Array.isArray(a.data.targets) && (a.data.targets as unknown[]).includes(mechanism.id));
+    const aimedAt = (mechanism: Artefact) => input.artefacts.filter((a) => isPlay(a) && Array.isArray(a.data.targets) && (a.data.targets as unknown[]).includes(mechanism.id));
     // The mechanism being written about is appended as this call's own, so the
     // one artefact the call exists for is never shed. It stays in the shared
     // block as well: that block is fitted ONCE and reused, and pulling the first
@@ -1774,7 +1775,9 @@ export function orderActors(all: Artefact[], actors: Artefact[]): { actors: Arte
 export function deepChainMechanisms(all: Artefact[], limit = DEEP_CHAINS): { selected: Artefact[]; ranked: Artefact[] } {
   const plays = new Map<string, number>();
   for (const play of all) {
-    if (play.kind !== 'exploit' || !Array.isArray(play.data.targets)) continue;
+    // A clearance names the parts it was checked against in `targets`; nobody
+    // is trying to break those through it, so it ranks nothing (phase 22).
+    if (!isPlay(play) || !Array.isArray(play.data.targets)) continue;
     for (const id of new Set(play.data.targets as unknown[])) if (typeof id === 'string') plays.set(id, (plays.get(id) ?? 0) + 1);
   }
   const degree = new Map<string, number>();
@@ -1817,7 +1820,7 @@ export function quotableForJudgements(all: Artefact[]): string[] {
       if (chosen.has(a.fromId)) linked.add(a.toId);
       if (chosen.has(a.toId)) linked.add(a.fromId);
     }
-    if (a.kind === 'exploit' && Array.isArray(a.data.targets) && (a.data.targets as unknown[]).some((t) => chosen.has(String(t)))) {
+    if (isPlay(a) && Array.isArray(a.data.targets) && (a.data.targets as unknown[]).some((t) => chosen.has(String(t)))) {
       for (const t of a.data.targets as unknown[]) linked.add(String(t));
     }
   }

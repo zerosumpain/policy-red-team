@@ -31,6 +31,7 @@
  * to what it cites. That bound is the reason the counts mean anything.
  */
 import type { Artefact } from '$lib/policy-analysis/contracts';
+import { isPlay } from '$lib/policy-analysis/cleared';
 
 export type Tier = 'named' | 'assumption' | 'mechanism';
 
@@ -83,7 +84,7 @@ export function linkRecommendation(
 
   const plays: LinkedPlay[] = [];
   for (const play of artefacts) {
-    if (play.kind !== 'exploit') continue;
+    if (!isPlay(play)) continue;
     if (named.has(play.id)) {
       plays.push({ id: play.id, tier: 'named', via: [] });
       continue;

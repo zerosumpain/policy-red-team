@@ -1,4 +1,5 @@
 import type { Artefact } from './contracts';
+import { isPlay } from './cleared';
 
 /**
  * The stress test: fail an assumption and see what the assessment loses.
@@ -62,7 +63,7 @@ export function stress(artefacts: Artefact[], failed: Iterable<string>): StressR
   const reason = (ids: string[], verb: string) => ids.map((id) => `${verb} ${name(byId.get(id), 'an assumption no longer in the assessment')}`);
 
   /** An exploitation play needs its preconditions to hold; failing one takes it off the table. */
-  const plays: StressRow[] = of('exploit').map((artefact) => {
+  const plays: StressRow[] = artefacts.filter(isPlay).map((artefact) => {
     const hit = broken(strings(artefact.data.preconditions));
     return { artefact, standing: hit.length ? 'disarmed' : 'holds', because: reason(hit, 'needs') };
   });

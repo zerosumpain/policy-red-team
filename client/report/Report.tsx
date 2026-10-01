@@ -52,6 +52,8 @@ import { Legality } from './Legality';
 import { EvidenceCoverage } from './EvidenceCoverage';
 import { CheckLedger } from './CheckLedger';
 import { Assurance } from './Assurance';
+import { Cleared } from './Cleared';
+import { clearanceNotes, clearedBodies } from '$lib/policy-analysis/cleared';
 import { Options } from './Options';
 import { Fragile } from './Fragile';
 import { Recommendations } from './Recommendations';
@@ -201,7 +203,7 @@ const READING_ORDER: Partial<Record<Move, string[]>> = {
     'writeup', 'checks',
   ],
   threats: [
-    'patterns', 'bands', 'weights', 'watch', 'spread', 'factors', 'scores', 'scenarios', 'stress',
+    'patterns', 'bands', 'weights', 'watch', 'spread', 'factors', 'scores', 'cleared', 'scenarios', 'stress',
   ],
   causality: ['mechanisms', 'change', 'network'],
   provenance: [
@@ -723,6 +725,17 @@ export function Report({ detail, offline, linkTo, onChanged, route, onTitle }: {
   section('bands', 'How exposed the policy is', 'threats',
     list.length ? <ExposureRail bands={bands} total={list.length} selection={selection} onSelect={setSelection} /> : null);
   section('spread', 'How the scores are spread', 'threats', <ExposureSpread list={list} />);
+  /*
+   * CHECKED AND CLEARED (phase 22). The rows that said a body had no material
+   * way to beat the policy are out of `list` and so out of every figure above;
+   * this is the one place they are shown. Gated on there being any, so a run
+   * whose every row is a real play has no empty section.
+   */
+  const cleared = clearedBodies(artefacts);
+  const clearedNotes = clearanceNotes(artefacts);
+  section('cleared', 'Checked and cleared', 'threats', cleared.length || clearedNotes.length ? (
+    <Cleared bodies={cleared} notes={clearedNotes} actors={byId} linkTo={link} />
+  ) : null, cleared.length ? { count: { n: cleared.length, noun: cleared.length === 1 ? 'body' : 'bodies' } } : undefined);
   /*
    * EVERY SECTION BELOW IS GATED ON ITS OWN INPUT, and six of tonight's were
    * handed over ungated. `section()` keeps any TRUTHY body and a JSX element is

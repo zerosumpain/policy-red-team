@@ -1,5 +1,6 @@
 import type { Artefact } from './contracts';
 import { bandOf, byExposure, type Band } from './exposure';
+import { isPlay } from './cleared';
 
 /**
  * PLAYS GROUPED INTO PATTERNS, AND RANKED AGAINST EACH OTHER.
@@ -151,7 +152,7 @@ function tierOf(rank: number, of: number): Tier {
  */
 export function playPatterns(artefacts: Artefact[]): PlayPattern[] {
   const byId = new Map(artefacts.map((a) => [a.id, a]));
-  const exploits = artefacts.filter((a) => a.kind === 'exploit').sort(byExposure);
+  const exploits = artefacts.filter(isPlay).sort(byExposure);
   if (!exploits.length) return [];
   const groups = new Map<PatternKey, Artefact[]>();
   for (const play of exploits) {
@@ -217,7 +218,7 @@ export function playPatterns(artefacts: Artefact[]): PlayPattern[] {
  * told apart by the order the model happened to write them in.
  */
 export function playStanding(artefacts: Artefact[]): Map<string, { rank: number; of: number; standing: number; tier: Tier }> {
-  const plays = artefacts.filter((a) => a.kind === 'exploit').sort(byExposure);
+  const plays = artefacts.filter(isPlay).sort(byExposure);
   const values = plays.map((a) => num(a.data.exposure));
   const pct = percentiles(values);
   const result = new Map<string, { rank: number; of: number; standing: number; tier: Tier }>();
@@ -252,7 +253,7 @@ export function unansweredPlays(artefacts: Artefact[], recommendations = artefac
     }
   }
   return artefacts
-    .filter((a) => a.kind === 'exploit' && (bands as readonly string[]).includes(String(a.data.band)) && !answered.has(a.id))
+    .filter((a) => isPlay(a) && (bands as readonly string[]).includes(String(a.data.band)) && !answered.has(a.id))
     .sort(byExposure);
 }
 

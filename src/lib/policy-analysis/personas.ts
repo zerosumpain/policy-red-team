@@ -2,6 +2,7 @@ import { assessIdentity, type IdentityDecision } from '$lib/jkai/intel/resolve/p
 import { isAcronymPair, normaliseName } from '$lib/jkai/intel/resolve/match';
 import { PERSONA_TRAITS, TRAIT_LABELS, type Artefact, type TraitKey } from './contracts';
 import { quotesDocument } from './query-guard';
+import { isPlay } from './cleared';
 import { travellingValue, travelsOf } from './travels';
 
 export { PERSONA_TRAITS, TRAIT_LABELS, type TraitKey };
@@ -367,7 +368,7 @@ export function observationFromProfile(profile: Artefact | null): PersonaTrait[]
 /** The plays an assessment found for one actor, in the shape a persona keeps them. */
 export function playsFor(actorId: string, artefacts: Artefact[]) {
   return artefacts
-    .filter((a) => a.kind === 'exploit' && a.data.actorId === actorId)
+    .filter((a) => isPlay(a) && a.data.actorId === actorId)
     .map((a) => ({ label: clean(a.label, 200), band: clean(a.data.band, 40) || 'limited', exposure: Number(a.data.exposure) || 0, legality: clean(a.data.legality, 40) }))
     .sort((a, b) => b.exposure - a.exposure)
     .slice(0, 12);

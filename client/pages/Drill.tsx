@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { Link, useParams, useSearchParams } from 'react-router';
 import type { Artefact } from '$lib/policy-analysis/contracts';
 import { explain } from '$lib/policy-analysis/glossary';
+import { isCleared } from '$lib/policy-analysis/cleared';
 import { BAND_LABEL, confidenceJudgement, plays, precedentOf, stageOfId } from '$lib/policy-analysis/view';
 import { STAGES, isPassStage } from '$lib/policy-analysis/contracts';
 import { edgesOf, nodesOf } from '$lib/policy-analysis/network';
@@ -382,7 +383,7 @@ export function Drill() {
       ) : null}
       <h1 className="govuk-heading-l govuk-!-margin-bottom-3">{artefact.label}</h1>
       <p className="prt-item__where">
-        <Tag colour="grey">{noun}</Tag>
+        <Tag colour="grey">{isCleared(artefact) ? 'Checked and cleared' : noun}</Tag>
         {whereFrom(stage, marksOnScale.sources)}
       </p>
 
@@ -608,6 +609,17 @@ function ItemPart({
               {standing}
               <br />
               <span className="prt-meta">A qualitative judgement, not a probability.</span>
+            </>
+          ),
+        }]
+      : []),
+    ...(isCleared(artefact)
+      ? [{
+          key: 'What this is',
+          value: (
+            <>
+              A check that came back clear: {byId.get(String(artefact.data.actorId)) ? link(byId.get(String(artefact.data.actorId))!) : 'this body'} was
+              found to have no material way to beat the policy. It is not counted as a way to beat it.
             </>
           ),
         }]

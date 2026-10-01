@@ -2,6 +2,7 @@ import { MATERIAL_ROLE_LABELS, PRECEDENT_BASES, REPORT_SECTIONS, type Artefact, 
 type PrecedentBasis = (typeof PRECEDENT_BASES)[number];
 import { ANNEX, JOURNEY, REDIRECTS, STEP_VIEWS, type AnnexGroupName, type StepId } from './journey';
 import { BANDS, byExposure, type Band } from './exposure';
+import { isPlay } from './cleared';
 export type { Band };
 
 // Everything the dashboard shows, derived once from the artefact list.
@@ -60,10 +61,18 @@ export function of(artefacts: Artefact[], kind: Kind): Artefact[] {
   return artefacts.filter((a) => a.kind === kind);
 }
 
-/** Exploitation plays, worst first, joined to the actor that would run them. */
+/**
+ * Exploitation plays, worst first, joined to the actor that would run them.
+ *
+ * A CLEARANCE IS NOT A PLAY (phase 22). "No material way to beat it" is a body
+ * checked and found clear, and every figure the report prints — the total, the
+ * bands, legality, the board, the summary — is read off this list, so leaving
+ * the clearances out HERE is what makes 46 read 38 everywhere at once. They are
+ * listed on Threats from `clearedBodies()`, and still have item pages.
+ */
 export function plays(artefacts: Artefact[]): Play[] {
   const actors = new Map(of(artefacts, 'actor').map((a) => [a.id, a]));
-  return [...of(artefacts, 'exploit')].sort(byExposure).map((artefact) => ({
+  return artefacts.filter(isPlay).sort(byExposure).map((artefact) => ({
     artefact,
     actor: actors.get(String(artefact.data.actorId)) ?? null,
     band: (String(artefact.data.band) as Band) || 'limited',
