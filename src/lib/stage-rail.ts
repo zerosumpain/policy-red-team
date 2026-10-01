@@ -4,7 +4,10 @@
  *
  * The drill cites a stage number 33 times on one page — once in the meta line
  * under the h1 and once beside every item in the provenance ladder — on a scale
- * it never drew. `StageRail` draws it; this is the arithmetic behind the marks.
+ * it never drew. `StageRail` drew it until phase 21, when John read the strip
+ * of eighteen numbers as noise and it went; the item page now says the same
+ * facts in one sentence ("Found at step 11 of 18 … Built from what steps 1 to
+ * 5 found"), and this is still the arithmetic behind that sentence.
  *
  * PURE, AND IN `$lib` RATHER THAN IN THE PAGE, for the same reason
  * `provenance.ts` is: three of the four rules below are wrong in a way no

@@ -34,6 +34,7 @@
 @use "./parts/figtoggle";
 @use "./parts/figure-print";
 @use "./parts/funnel";
+@use "./parts/item";
 @use "./parts/lab";
 @use "./parts/legality";
 @use "./parts/legality-bar";
@@ -56,10 +57,10 @@
 @use "./parts/selection-pack";
 @use "./parts/sortbutton";
 @use "./parts/stageladder";
-@use "./parts/stagerail";
 @use "./parts/stress";
 @use "./parts/strip";
 @use "./parts/suggests";
+@use "./parts/table";
 @use "./parts/typeroles";
 @use "./parts/verdict";
 @use "./parts/verdictband";

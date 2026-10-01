@@ -1,0 +1,144 @@
+@use "../govuk" as govuk;
+@use "../tokens" as *;
+
+// ── One table style ───────────────────────────────────────────────────────
+//
+// "Tabled data which could be better formatted and look more professional"
+// (John, phase 21, on the item page). Every table in this service was styled
+// where it stood — a width here, a numeric column there — so the four on one
+// item page were four slightly different tables, and the framework's own table
+// is markup and very little else: bold headers, a hairline under every row, and
+// a column of scores that sits wherever the browser puts it.
+//
+// SO THIS IS A MODIFIER SET ON `govuk-table`, NOT A NEW TABLE. Everything the
+// framework does — the caption sizes, the numeric alignment, the header weight,
+// print — still holds; these classes refine it. `<Table className="prt-table">`
+// in `client/govuk/Table.tsx` adds the class, and a column says what it is with
+// `className` on its `Column`:
+//
+//   .prt-table             the base: full width, one padding, light row rules,
+//                          a firmer rule under the header, top-aligned cells
+//   .prt-table--zebra      banded rows, for a table read ACROSS (four or more rows
+//                          whose cells are long enough to lose your line)
+//   .prt-table__num        a score: right-aligned, tabular figures, and a
+//                          `<Bar>` inside drawn slim and of one fixed length
+//   .prt-table__secondary  a gloss beside the thing it explains, in the secondary
+//                          text colour — read after, never instead of, the name
+//
+// A ROW HEADER IS BOLD BY ITSELF. `firstCellIsHeader` makes the first cell a
+// `<th scope="row">`, which the framework already sets bold — the name of the
+// row is the thing a reader runs their eye down, and it should look like it.
+//
+// A later sweep applies this site-wide; the item page is where it was built,
+// because that is where John looked.
+
+.prt-table {
+  width: 100%;
+  margin-bottom: govuk.govuk-spacing(4);
+
+  // The caption is the table's title. At `--s` it sat tight on the header row
+  // with nothing to say it was not the first row of the table.
+  .govuk-table__caption {
+    padding-bottom: govuk.govuk-spacing(2);
+  }
+
+  // A FIRMER RULE UNDER THE HEADER than between rows, so the eye finds where the
+  // data starts without the header needing a fill.
+  .govuk-table__head .govuk-table__header {
+    border-bottom: 2px solid govuk.govuk-colour("black");
+    padding-top: 0;
+  }
+
+  // ONE PADDING FOR EVERY CELL. The framework pads right only (`10px 20px 10px
+  // 0`), which leaves a banded row's first word against the band's edge.
+  .govuk-table__header,
+  .govuk-table__cell {
+    padding: govuk.govuk-spacing(2) govuk.govuk-spacing(3);
+    vertical-align: top;
+    // `tint-80` rather than the framework's mid-grey: a rule BETWEEN rows is a
+    // separator, not a figure, and the darker one turned a four-row table into
+    // a stack of boxes.
+    border-bottom-color: govuk.govuk-colour("black", $variant: "tint-80");
+  }
+
+  .govuk-table__header:first-child,
+  .govuk-table__cell:first-child { padding-left: govuk.govuk-spacing(2); }
+
+  .govuk-table__header:last-child,
+  .govuk-table__cell:last-child { padding-right: govuk.govuk-spacing(2); }
+
+  // The last row closes the table on the same firm rule the header opens it on.
+  .govuk-table__body .govuk-table__row:last-child > * {
+    border-bottom: 1px solid govuk.govuk-colour("black", $variant: "tint-50");
+  }
+
+  // A link in a cell is the way into that row's own page; it reads at the
+  // weight of the cell, not of a heading.
+  th[scope="row"] .govuk-link { font-weight: inherit; }
+
+  // A ROW'S NAME IS NOT BROKEN MID-WORD. `#main-content` sets `overflow-wrap:
+  // anywhere` so a document's unbroken tokens cannot push a phone sideways —
+  // which also lets the browser shrink a column below its longest word, and at
+  // 420px it did: "Con / ceal / me / nt". `break-word` still breaks a token that
+  // genuinely overflows, but sizes the column to whole words first.
+  th[scope="row"] { overflow-wrap: break-word; }
+}
+
+// Banded, at `tint-95` — 1.12:1 against white, which is the point: a band is a
+// guide for the eye across a long row and must never compete with the data.
+.prt-table--zebra .govuk-table__body .govuk-table__row:nth-child(even) {
+  background: govuk.govuk-colour("black", $variant: "tint-95");
+}
+
+// A SCORE COLUMN. Right-aligned like any figure, with the bar beside it slim and
+// one fixed length, so four bars in four rows are four comparable lengths rather
+// than four lengths each decided by how much text the next cell wrapped to.
+.prt-table__num {
+  text-align: right;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+  width: 10rem;
+
+  .prt-bar { justify-content: flex-end; }
+
+  .prt-bar__track {
+    flex: 0 0 6rem;
+    height: 4px;
+  }
+
+  .prt-bar__value {
+    min-width: 2.5ch;
+    font-weight: bold;
+  }
+}
+
+// The explanation beside the name. Secondary colour, same size: the size is for
+// reading it, the colour is for the order it is read in.
+.prt-table__secondary {
+  color: govuk.govuk-colour("black", $variant: "tint-25");
+}
+
+// Its heading is a heading like the others.
+.govuk-table__head .prt-table__secondary { color: inherit; }
+
+// A PHONE GETS THE FIGURES AND THE WORDS, NOT THE FURNITURE.
+//
+// At 420px a three-column table with a 12rem name column and a 10rem score
+// column left the gloss about thirty pixels and set "What a high score means"
+// one syllable to a line. Column widths come in as inline styles from
+// `Column.width`, which is why the release needs `!important`; the bar goes and
+// the number it draws stays, which is the same reading in less room.
+@include govuk.govuk-media-query($until: tablet) {
+  .prt-table .govuk-table__header,
+  .prt-table .govuk-table__cell {
+    width: auto !important;
+    padding-left: govuk.govuk-spacing(1);
+    padding-right: govuk.govuk-spacing(1);
+  }
+
+  .prt-table__num {
+    width: auto;
+
+    .prt-bar__track { display: none; }
+  }
+}

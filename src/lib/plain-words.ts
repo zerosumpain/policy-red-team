@@ -54,6 +54,10 @@ export const VOCABULARY: readonly Word[] = [
   { was: 'wouldChangeIf / falsifier', now: 'what would change our mind' },
   { was: 'owner + action', now: 'who should act' },
   { was: 'limits / gaps (in the brief)', now: 'what we could not check' },
+  // Phase 21, workstream B: the item page.
+  { was: 'stage N of 18 (on an item)', now: 'step N of 18, and what that step was doing' },
+  { was: 'structural inference', now: 'worked out from how the paper fits together' },
+  { was: 'Unknown (as a value)', now: 'nothing — a row whose value is unknown is not printed' },
 ];
 
 export type GlossaryEntry = { term: string; meaning: string };

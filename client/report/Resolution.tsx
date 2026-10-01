@@ -135,7 +135,7 @@ export function Resolution({ artefacts, linkTo }: {
 
       <p className="govuk-body">
         These count every record the assessment kept apart. The count under &ldquo;How they
-        connect&rdquo; on the Causes tab is smaller for some of the same names because it counts
+        connect&rdquo; under Causes is smaller for some of the same names because it counts
         only the bodies the paper places in a stated link.
       </p>
     </>

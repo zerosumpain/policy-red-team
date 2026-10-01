@@ -131,7 +131,7 @@ export function Composition({ artefacts, list, mechanismIds }: {
               {
                 label: 'open up at least one way to beat it',
                 value: census.generating,
-                note: 'the chart on the Causes tab',
+                note: 'the chart under Causes',
               },
               {
                 label: 'have a named operator',
