@@ -612,7 +612,8 @@ try {
   const firstPlay = page.locator('#report-panel-threats .prt-play__title a').first();
   const playName = (await firstPlay.innerText()).trim();
   await firstPlay.click();
-  await page.waitForURL('**/artefacts/**', { timeout: 10000 });
+  // `/items/` since phase 21; `/artefacts/` is the old address, which redirects.
+  await page.waitForURL(/\/(items|artefacts)\//, { timeout: 10000 });
   const drillUrl = page.url();
   // WAIT FOR THE HEADING, don't just look for it. The drill fetches the
   // assessment on mount, so the URL changes a beat before the page has anything
@@ -635,31 +636,76 @@ try {
   if (landing.focused !== 'main-content') failures.push(`drill: focus went to "${landing.focused}", not the main landmark`);
   if (!landing.title.startsWith(playName)) failures.push(`drill: the tab still says "${landing.title}"`);
 
+  /*
+   * THE ITEM IS FOUR PAGES (phase 21): what it is, what it rests on, what rests
+   * on it, and everything recorded. The default part is the item itself, and
+   * the chain is one click away on a strip of parts under the title — so the
+   * assertion that the chain reaches the paper moved with it.
+   */
   const drill = await page.locator('#main-content').innerText();
-  for (const expected of ['How this would be run', 'Where this stands', 'What it rests on']) {
+  for (const expected of ['How this would be run', 'Where this stands']) {
     if (!drill.includes(expected)) failures.push(`drill: missing section "${expected}"`);
   }
+  for (const gone of ['Contents', 'Followed back']) {
+    if (drill.includes(gone)) failures.push(`drill: the item's own part still carries "${gone}" — it belongs on a part of its own`);
+  }
+  const parts = page.getByRole('navigation', { name: /^Parts of / });
+  if (!(await parts.count())) failures.push('drill: no strip of parts under the title');
+  const current = await parts.locator('[aria-current="page"]').innerText().catch(() => '');
+  if (!/Overview/.test(current)) failures.push(`drill: the current part is "${current}", not the overview`);
+  await audit('/assessments/:id/items/:itemId (a way to beat it)');
+
+  // `__spa` is stamped on the window here and checked after the back link: if
+  // any navigation below reloaded the document the stamp is gone, which is how
+  // a plain <a href> in a single-page app announces itself.
+  await page.evaluate(() => { window.__spa = true; });
+  const fromBefore = new URL(page.url()).searchParams.get('from');
+  await parts.getByRole('link', { name: /What it rests on/ }).click();
+  await page.waitForURL(/\/items\/[^/]+\/rests-on/, { timeout: 10000 });
+  const restsOnUrl = page.url();
+  // THE READING POSITION SURVIVES THE PART CHANGE, or the back link at the top
+  // quietly starts returning to the report's first page.
+  if (new URL(page.url()).searchParams.get('from') !== fromBefore) {
+    failures.push(`drill: moving to "What it rests on" dropped ?from= (${page.url()})`);
+  }
+  await page.getByRole('heading', { level: 2, name: 'What it rests on' }).waitFor({ timeout: 10000 }).catch(() => {
+    failures.push('drill: the "rests on" part never rendered its heading');
+  });
+  const restsOn = await page.locator('#main-content').innerText();
   // The chain is the whole point of the page. Stopping at the assessment's own
   // middle layers would leave a reader unable to argue with a finding, which is
   // the thing the drill is FOR.
-  if (!/Followed back \d+ steps?/.test(drill)) failures.push('drill: the chain does not say how far back it went');
-  if (!/Back at the paper/.test(drill)) failures.push('drill: the chain never reaches the paper');
-  await audit('/assessments/:id/artefacts/:artefactId (a play)');
-  note(`drill opens on "${playName}", with its chain`);
+  if (!/Followed back \d+ citations?/.test(restsOn)) failures.push('drill: the chain does not say how far back it went');
+  if (!/Back at the paper/.test(restsOn)) failures.push('drill: the chain never reaches the paper');
+  // THE TRAIL'S BOXES ALL CARRY WORDS — the chart it replaced printed a label
+  // only where a band was tall enough, and that was the complaint.
+  const trailBoxes = await page.locator('.prt-trail__box').allInnerTexts();
+  if (trailBoxes.length < 2) failures.push('drill: the trail back to the paper has fewer than two boxes');
+  if (trailBoxes.some((text) => !/[a-z]/i.test(text))) failures.push(`drill: a box on the trail has no words: ${JSON.stringify(trailBoxes)}`);
+  if (await page.locator('.prt-rail, .prt-chainwalk').count()) failures.push('drill: the old stage strip or chain chart is back');
+  await audit('/assessments/:id/items/:itemId/rests-on');
+  note(`drill opens on "${playName}", and its chain is a part of its own`);
+
+  for (const [slug, heading] of [['used-by', /^What rests on this/], ['record', /^Everything recorded about it/]]) {
+    await parts.getByRole('link', { name: slug === 'used-by' ? /What rests on this/ : /Everything recorded/ }).click();
+    await page.waitForURL(new RegExp(`/items/[^/]+/${slug}`), { timeout: 10000 });
+    await page.getByRole('heading', { level: 2, name: heading }).waitFor({ timeout: 10000 }).catch(() => {
+      failures.push(`drill: the "${slug}" part never rendered its heading`);
+    });
+    await audit(`/assessments/:id/items/:itemId/${slug}`);
+  }
+  await parts.getByRole('link', { name: /What it rests on/ }).click();
+  await page.waitForURL(/\/rests-on/, { timeout: 10000 });
+  await page.getByRole('heading', { level: 2, name: 'What it rests on' }).waitFor({ timeout: 10000 });
 
   // 7 — follow the chain one hop, then reverse out of it two ways.
-  //
-  // `__spa` is stamped on the window here and checked after the back link: if
-  // either navigation reloaded the document the stamp is gone, which is how a
-  // plain <a href> in a single-page app announces itself.
   const here = page.url();
-  await page.evaluate(() => { window.__spa = true; });
-  await page.locator('#main-content a[href*="/artefacts/"]').first().click();
+  await page.locator('.prt-rung a[href*="/items/"]').first().click();
   await page.waitForFunction((was) => location.href !== was, here, { timeout: 10000 });
   await page.getByRole('heading', { level: 1 }).waitFor({ timeout: 10000 }).catch(() => {
     failures.push('drill: following the chain landed on a page that never rendered a heading');
   });
-  await audit('/assessments/:id/artefacts/:artefactId (followed)');
+  await audit('/assessments/:id/items/:itemId (followed)');
 
   await page.goBack();
   await page.waitForURL(here, { timeout: 10000 });
@@ -732,6 +778,7 @@ try {
     ['report (who is involved)', `http://127.0.0.1:${PORT}/assessments/${id}?move=actors`, 'Who is involved'],
     ['report (where this comes from)', `http://127.0.0.1:${PORT}/assessments/${id}?move=provenance`, 'How this was produced'],
     ['drill', drillUrl, null],
+    ['drill (what it rests on)', restsOnUrl, 'What it rests on'],
   ];
   for (const [label, url, ready] of views) {
     await page.goto(url, { waitUntil: 'networkidle' });

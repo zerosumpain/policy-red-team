@@ -1,0 +1,203 @@
+@use "../govuk" as govuk;
+@use "../tokens" as *;
+
+// ── One item, as four pages ───────────────────────────────────────────────
+//
+// `client/pages/Drill.tsx`. The item page was one 8,016px record with a
+// numbered contents list over it; it is now four parts with their own URLs —
+// the item, what it rests on, what rests on it, everything recorded — and this
+// is the furniture that holds them together: where the item came from in one
+// line, the strip of parts, and the trail back to the paper.
+
+// Where it came from, in one sentence, with the kind of thing it is in front.
+// It replaced an eighteen-cell strip of numbers nobody could read.
+.prt-item__where {
+  @include govuk.govuk-font($size: 19);
+  color: govuk.govuk-colour("black", $variant: "tint-25");
+  margin: 0 0 govuk.govuk-spacing(4);
+
+  // The framework caps a tag at 160px, which broke "Passage of the paper"
+  // over two lines and pushed the sentence beside it down by half a line.
+  .govuk-tag {
+    margin-right: govuk.govuk-spacing(2);
+    max-width: none;
+  }
+}
+
+// ── The parts, as a strip of links ────────────────────────────────────────
+//
+// GOV.UK HAS NO SUB-NAVIGATION, so this is the shape of the one that the
+// Ministry of Justice's design system and the framework's own service
+// navigation share: a row of plain links on a rule, the current one marked by a
+// thick underline in the link's colour and by `aria-current="page"`. It is a
+// list of links rather than tabs because each part is a page with its own URL —
+// a tab would promise that the other three were on this page, hidden.
+.prt-subnav {
+  margin: 0 0 govuk.govuk-spacing(6);
+  border-bottom: 1px solid govuk.govuk-colour("black", $variant: "tint-80");
+}
+
+.prt-subnav__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  column-gap: govuk.govuk-spacing(6);
+
+  // ONE PER LINE ON A PHONE. Four links wrapping two-and-two put the current
+  // marker under a link in the middle of a ragged row.
+  @include govuk.govuk-media-query($until: tablet) {
+    flex-direction: column;
+  }
+}
+
+.prt-subnav__item {
+  @include govuk.govuk-font($size: 19);
+  // The marker sits ON the strip's rule, so it is drawn on the item and the
+  // item is pulled down over the rule by its own width.
+  margin-bottom: -1px;
+  padding: govuk.govuk-spacing(2) 0;
+  border-bottom: 4px solid transparent;
+
+  @include govuk.govuk-media-query($until: tablet) {
+    margin-bottom: 0;
+    padding: govuk.govuk-spacing(1) 0 govuk.govuk-spacing(1) govuk.govuk-spacing(3);
+    border-bottom: 0;
+    border-left: 4px solid transparent;
+  }
+}
+
+.prt-subnav__item--current {
+  border-color: govuk.govuk-colour("blue");
+
+  // The page you are on is named, not offered: bold, and without the
+  // underline that says "go here".
+  .prt-subnav__link {
+    font-weight: bold;
+    text-decoration: none;
+  }
+}
+
+.prt-subnav__count {
+  @include govuk.govuk-font($size: 16, $tabular: true);
+  color: govuk.govuk-colour("black", $variant: "tint-25");
+  margin-left: govuk.govuk-spacing(1);
+}
+
+// ── The trail back to the paper ───────────────────────────────────────────
+//
+// It replaced `ChainRail`, a plot of dark bands on an eighteen-stage axis whose
+// labels printed only when a band was 55% of its row and were clipped sideways
+// inside it — "21 items, stages" — with no legend, restating the four lists
+// printed under it. These are boxes, and every box carries its words: the item,
+// what it cites, what is behind those, the paper. A row on a screen that holds
+// it and a column on one that does not, with the arrows turning down with it.
+.prt-trail {
+  list-style: none;
+  margin: 0 0 govuk.govuk-spacing(6);
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: stretch;
+  gap: govuk.govuk-spacing(2) govuk.govuk-spacing(6);
+
+  @include govuk.govuk-media-query($until: tablet) {
+    flex-direction: column;
+    gap: govuk.govuk-spacing(5);
+  }
+}
+
+.prt-trail__step {
+  position: relative;
+  flex: 1 1 9rem;
+  display: flex;
+
+  // THE ARROW IS DRAWN, NOT TYPED. A "→" in `content` is read aloud by some
+  // screen readers on every box; the list is ordered, which says the same thing
+  // once, properly. A border chevron is silent.
+  &:not(:last-child)::after {
+    content: "";
+    position: absolute;
+    top: 50%;
+    right: govuk.govuk-spacing(-3);
+    width: 10px;
+    height: 10px;
+    border-top: 3px solid govuk.govuk-colour("black", $variant: "tint-25");
+    border-right: 3px solid govuk.govuk-colour("black", $variant: "tint-25");
+    transform: translate(50%, -50%) rotate(45deg);
+  }
+
+  @include govuk.govuk-media-query($until: tablet) {
+    flex-basis: auto;
+
+    &:not(:last-child)::after {
+      top: auto;
+      right: auto;
+      left: govuk.govuk-spacing(4);
+      bottom: govuk.govuk-spacing(-3);
+      transform: translate(-50%, 50%) rotate(135deg);
+    }
+  }
+}
+
+// A box is the whole link, so the target is the box and not the number in it.
+.prt-trail__box {
+  flex: 1 1 auto;
+  display: block;
+  border: 1px solid govuk.govuk-colour("black", $variant: "tint-50");
+  border-left-width: 4px;
+  padding: govuk.govuk-spacing(2) govuk.govuk-spacing(3);
+  background: govuk.govuk-colour("white");
+  text-decoration: none;
+
+  &:link,
+  &:visited { color: govuk.govuk-colour("black"); }
+
+  &:hover { background: govuk.govuk-colour("black", $variant: "tint-95"); }
+
+  &:hover .prt-trail__words { text-decoration: underline; }
+
+  &:focus {
+    outline: 3px solid transparent;
+    background: govuk.govuk-colour("yellow");
+    box-shadow: 0 -2px govuk.govuk-colour("yellow"), 0 4px govuk.govuk-colour("black");
+  }
+}
+
+// The item itself: not a link, because it is this page, and filled so the eye
+// starts there.
+.prt-trail__box--self {
+  background: govuk.govuk-colour("black", $variant: "tint-95");
+  border-left-color: govuk.govuk-colour("black");
+}
+
+// The paper: the far end, ruled in the colour the quoted passages are marked in.
+.prt-trail__box--paper { border-left-color: govuk.govuk-colour("yellow"); }
+
+.prt-trail__n {
+  @include govuk.govuk-font($size: 27, $weight: bold, $tabular: true);
+  display: block;
+}
+
+.prt-trail__words {
+  @include govuk.govuk-font($size: 16);
+  display: block;
+}
+
+// ── The lists the trail points at ─────────────────────────────────────────
+.prt-rung {
+  border-left: 4px solid govuk.govuk-colour("black", $variant: "tint-80");
+  padding-left: govuk.govuk-spacing(3);
+  margin-bottom: govuk.govuk-spacing(6);
+
+  &__head { margin-bottom: 2px; }
+  &__gloss { margin: 0 0 govuk.govuk-spacing(2); }
+}
+
+// PRINT: the boxes are links to places on this page, which mean nothing on
+// paper; the lists below them say the same counts in their headings.
+@media print {
+  .prt-trail,
+  .prt-subnav { display: none; }
+}

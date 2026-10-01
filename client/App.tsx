@@ -79,6 +79,8 @@ export function App() {
           own back button — see client/pages/Drill.tsx for why a drawer was not
           the answer here. */}
       <Route path="/assessments/:id/artefacts/:artefactId" element={<DrillRoute />} />
+      <Route path="/assessments/:id/items/:artefactId" element={<DrillRoute />} />
+      <Route path="/assessments/:id/items/:artefactId/:part" element={<DrillRoute />} />
       {/* The only page behind a password. It gates itself: the route is always
           here, and what it shows depends on the cookie. */}
       <Route path="/admin" element={<Template backLink={{ href: '/' }}><Admin /></Template>} />
