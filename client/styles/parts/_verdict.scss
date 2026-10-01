@@ -10,7 +10,6 @@
 // meaning by colour alone.
 
 // ── Main findings ─────────────────────────────────────────────────────────
-.prt-verdict__standfirst { max-width: $prt-measure; }
 
 .prt-verdict__list {
   list-style: none;
@@ -29,7 +28,6 @@
   &--2 { border-left-color: var(--band-significant); }
   &--1 { border-left-color: var(--band-moderate); }
 
-  p { max-width: $prt-measure; }
 }
 
 .prt-verdict__title {
@@ -230,7 +228,6 @@
 
 .prt-rests-tree__item {
   margin-bottom: govuk.govuk-spacing(4);
-  max-width: $prt-measure * 1.3;
 }
 
 .prt-rests-tree__head { margin-bottom: govuk.govuk-spacing(1); }
@@ -265,11 +262,7 @@
 .prt-glossary__meaning {
   @include govuk.govuk-font($size: 16);
   margin: 0;
-  max-width: $prt-measure;
 }
-
-// ── The page head's one line about gaps ───────────────────────────────────
-.prt-gapsline { max-width: $prt-measure; }
 
 // ── The mechanism chart's tail ────────────────────────────────────────────
 .prt-mechtail td, .prt-mechtail th { @include govuk.govuk-font($size: 16); }
@@ -277,7 +270,6 @@
 // The assessment's own weakest link, quoted under its strip. Its words, in the
 // body's ink — it is the chain's judgement, not a caption.
 .prt-toc__stated {
-  max-width: $prt-measure;
   margin: govuk.govuk-spacing(2) 0 govuk.govuk-spacing(1);
 }
 

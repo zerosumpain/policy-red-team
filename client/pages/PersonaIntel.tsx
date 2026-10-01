@@ -72,7 +72,7 @@ export function PersonaIntel({ personaId, name, readOnly }: { personaId: string;
         <section aria-labelledby="persona-sits">
           <h2 className="govuk-heading-m" id="persona-sits">Where it sits</h2>
           <div className="govuk-grid-row">
-            <div className="govuk-grid-column-two-thirds">
+            <div className="govuk-grid-column-full">
               <p className="govuk-body">
                 From the GOV.UK list. Papers rarely say who a body answers to, or which bodies do the
                 work under it.
@@ -95,7 +95,7 @@ export function PersonaIntel({ personaId, name, readOnly }: { personaId: string;
       <section aria-labelledby="persona-asks">
         <h2 className="govuk-heading-m" id="persona-asks">What each paper asks of it — {intel.papers.length}</h2>
         <div className="govuk-grid-row">
-          <div className="govuk-grid-column-two-thirds">
+          <div className="govuk-grid-column-full">
             {!intel.body ? (
               <p className="govuk-body">
                 This needs the body to be matched to the GOV.UK list, so papers can be compared by who
@@ -118,7 +118,7 @@ export function PersonaIntel({ personaId, name, readOnly }: { personaId: string;
         <section aria-labelledby="persona-load">
           <h2 className="govuk-heading-m" id="persona-load">What it is asked to do, and what it has</h2>
           <div className="govuk-grid-row">
-            <div className="govuk-grid-column-two-thirds">
+            <div className="govuk-grid-column-full">
               <p className="govuk-body">
                 Across {intel.papers.length} {intel.papers.length === 1 ? 'paper' : 'papers'}, it is asked to do{' '}
                 {totalAsks} {totalAsks === 1 ? 'thing' : 'things'}. No paper counts what the others ask.
@@ -149,7 +149,7 @@ export function PersonaIntel({ personaId, name, readOnly }: { personaId: string;
         <div className="govuk-grid-row">
           <div className="govuk-grid-column-full">
             <div className="govuk-grid-row">
-              <div className="govuk-grid-column-two-thirds">
+              <div className="govuk-grid-column-full">
                 <p className="govuk-body">
                   Public documents about {name} from GOV.UK and Parliament, newest first. Unlike the rest
                   of this page, these are evidence: each is a published document with a date. They are

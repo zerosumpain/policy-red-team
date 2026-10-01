@@ -11,13 +11,6 @@
   margin-bottom: govuk.govuk-spacing(6);
 }
 
-.prt-brief__standfirst,
-.prt-brief__intro,
-.prt-brief__limits,
-.prt-brief__foot {
-  max-width: $prt-measure;
-}
-
 .prt-brief__tools {
   align-items: center;
   margin-bottom: govuk.govuk-spacing(4);
@@ -64,7 +57,6 @@
 // in it after the title.
 .prt-brief__judgement {
   @include govuk.govuk-font($size: 19, $weight: bold);
-  max-width: $prt-measure;
   margin-bottom: govuk.govuk-spacing(3);
 }
 
@@ -73,7 +65,6 @@
 // never take the paper's sentence for the assessment's.
 .prt-brief__quote {
   margin: 0 0 govuk.govuk-spacing(3);
-  max-width: $prt-measure;
 
   blockquote {
     margin: 0;

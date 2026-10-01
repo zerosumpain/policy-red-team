@@ -91,7 +91,7 @@ export function ModelMenu({ config, busy, onSave }: {
     <section aria-labelledby="admin-models">
       <h2 className="govuk-heading-m" id="admin-models">Which models an assessment can use</h2>
       <div className="govuk-grid-row">
-        <div className="govuk-grid-column-two-thirds">
+        <div className="govuk-grid-column-full">
           <p className="govuk-body">
             This is the list the submit form offers. An eighteen-stage assessment makes one model
             call per passage in decomposition alone, so the difference between a cheap model and a

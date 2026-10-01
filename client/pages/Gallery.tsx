@@ -58,7 +58,7 @@ export function Gallery() {
   return (
     <>
       <div className="govuk-grid-row">
-        <div className="govuk-grid-column-two-thirds">
+        <div className="govuk-grid-column-full">
           <h1 className="govuk-heading-xl">Design system</h1>
           <p className="govuk-body-l">
             Every component this service uses, carrying the content it will actually carry.
@@ -80,7 +80,7 @@ export function Gallery() {
 
       <h2 className="govuk-heading-l govuk-!-margin-top-8">The report</h2>
       <div className="govuk-grid-row">
-        <div className="govuk-grid-column-two-thirds">
+        <div className="govuk-grid-column-full">
           <SummaryList
             rows={[
               { key: 'Paper', value: 'Draft Schools (Accountability) Bill 2026' },
@@ -325,7 +325,7 @@ export function Gallery() {
 
       <h2 className="govuk-heading-l govuk-!-margin-top-8">Asking the reader something</h2>
       <div className="govuk-grid-row">
-        <div className="govuk-grid-column-two-thirds">
+        <div className="govuk-grid-column-full">
           {showErrors ? (
             <ErrorSummary
               errors={[

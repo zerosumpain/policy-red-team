@@ -45,11 +45,6 @@
       padding-top: govuk.govuk-spacing(1);
       padding-bottom: govuk.govuk-spacing(1);
     }
-
-    // A value here is prose — "Pilots may delay universal benefits, generate
-    // spillovers and impose evaluation costs" — and the value cell takes
-    // whatever is left of a full-width panel, which is about 110 characters.
-    .govuk-summary-list__value { max-width: $prt-measure; }
   }
 }
 

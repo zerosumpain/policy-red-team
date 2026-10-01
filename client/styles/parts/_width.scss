@@ -17,10 +17,9 @@
 // four numeric columns and a name. 1200 gives those room and is still short of
 // the point where a line of anything becomes hard to track back.
 //
-// IT DOES NOT WIDEN THE PROSE. `$prt-measure` (68ch) holds every body of text
-// independently of the container, so what actually widens is the furniture:
-// tables, the ego map, the play flow, the band bars, the tab strip. A reader
-// gets more report on the screen and the same line length to read.
+// AND THE TEXT GOES WITH IT. This used to say the prose kept a 68ch measure
+// whatever the container did; since phase 21 it does not — see
+// `parts/_fullwidth.scss`.
 .govuk-width-container--wide {
   @include govuk.govuk-width-container(1200px);
 }

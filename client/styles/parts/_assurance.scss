@@ -32,11 +32,9 @@
     &:last-child { margin-bottom: 0; }
   }
 
-  // The challenge itself. It is a full sentence — the challenges are stubbed
-  // and the label is all there is — so it has to be allowed a measure rather
-  // than run the width of the panel.
+  // The challenge itself: a full sentence, since the challenges are stubbed
+  // and the label is all there is.
   &__head {
-    max-width: $prt-measure;
     margin-bottom: govuk.govuk-spacing(2);
   }
 
@@ -65,24 +63,8 @@
 
 // ── How you would know ─────────────────────────────────────────────────────
 //
-// Three stacked lists whose items are 105 to 275 characters each.
-//
-// THE BASE RELEASES EVERY LIST FROM THE MEASURE ON PURPOSE, and its reason is
-// right for the lists it had: "a list runs to the page; a paragraph runs to a
-// measure … the release is kept for the things that are NOT prose — lists of
-// links, rows, captions under a full-width table". These are none of those.
-// They are nine sentences of policy prose that happen to be bulleted, and
-// released they set to about 130 characters a line — measured at 960px — under
-// a paragraph in the same section set to 68. That is the width the base's own
-// comment says the eye stops reliably finding the start of the next line at.
-//
-// Paired with `.prt-view` and `.prt-pack` because the rule it has to
-// beat is, and because these render in both.
-.prt-view,
-.prt-pack {
-  .prt-plan__list { max-width: $prt-measure; }
-}
-
+// Three stacked lists whose items are 105 to 275 characters each — sentences
+// that happen to be bulleted, so each gets the gap a paragraph would.
 .prt-plan__list li { margin-bottom: govuk.govuk-spacing(2); }
 
 // The group heading inside the questions disclosure. Three groups of five, and

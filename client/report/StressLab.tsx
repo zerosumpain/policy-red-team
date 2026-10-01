@@ -191,7 +191,7 @@ export function StressLab({ artefacts, levers, linkTo, failed: given, onFailedCh
   return (
     <>
       <div className="govuk-grid-row">
-        <div className="govuk-grid-column-two-thirds">
+        <div className="govuk-grid-column-full">
           <p className="govuk-body">
             Suppose an assumption turns out to be false. This follows the links the assessment
             already made — a way to beat the policy names what has to be true for it to work, a

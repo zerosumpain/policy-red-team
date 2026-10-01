@@ -21,7 +21,6 @@
   // bottom margin: without the gap the two ran as one four-line paragraph in
   // which the count of undrawn groups looked like part of the caption.
   &__tail {
-    max-width: $prt-measure;
     margin: govuk.govuk-spacing(2) 0;
   }
 }
@@ -77,15 +76,5 @@
 // one — it is the frame the numbered list below is read inside, not a caption
 // under something.
 .prt-suggests__standfirst {
-  max-width: $prt-measure;
   margin: 0 0 govuk.govuk-spacing(4);
 }
-
-// THE MEASURE, AND WHY IT NEEDS TWO CLASSES TO WIN. The base measures every
-// `p.govuk-body-s` in a panel at 68ch and deliberately un-measures every
-// `.govuk-list` — right for a list of names, wrong for three one-sentence
-// rules, which are prose and set to 115 characters a line without this. The
-// rule it has to beat is `.prt-view .govuk-list`, so a single class
-// loses on specificity however late it loads; the child combinator is the
-// cheapest way to match it and win on order.
-.prt-coverage > .prt-coverage__rules { max-width: $prt-measure; }

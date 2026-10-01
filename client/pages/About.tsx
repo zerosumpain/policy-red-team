@@ -4,7 +4,7 @@ export function About() {
   usePageTitle('About this tool');
   return (
     <div className="govuk-grid-row">
-      <div className="govuk-grid-column-two-thirds">
+      <div className="govuk-grid-column-full">
         <h1 className="govuk-heading-xl">About this tool</h1>
         <p className="govuk-body-l">
           It reads a policy paper as an adversary would, across eighteen stages, and tells you

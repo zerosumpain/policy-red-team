@@ -63,7 +63,7 @@ function ReaderSignIn({ onSignedIn }: { onSignedIn: () => void }) {
 
   return (
     <div className="govuk-grid-row">
-      <div className="govuk-grid-column-two-thirds">
+      <div className="govuk-grid-column-full">
         {error ? <ErrorSummary errors={[{ text: error, href: '#reader-password' }]} /> : null}
         <h1 className="govuk-heading-xl">Sign in to read the assessments</h1>
         <p className="govuk-body">This service needs a password before it shows any assessment.</p>

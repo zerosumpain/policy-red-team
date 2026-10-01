@@ -56,5 +56,4 @@
   display: block;
   @include govuk.govuk-font($size: 16);
   color: govuk.govuk-colour("black", $variant: "tint-25");
-  max-width: $prt-measure;
 }

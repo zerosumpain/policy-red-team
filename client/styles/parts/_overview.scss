@@ -13,11 +13,6 @@
 // `a:link` at (0,1,1); a bare `.prt-*` class is (0,1,0) and loses without a
 // sound — the defect that once put link blue on dark grey at 1.48:1.
 
-.prt-overview {
-  &__intro {
-    max-width: $prt-measure;
-  }
-}
 
 // ── The four figures ───────────────────────────────────────────────────────
 .prt-kpis {

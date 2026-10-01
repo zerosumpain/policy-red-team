@@ -36,7 +36,7 @@ export function Bodies() {
   return (
     <>
       <div className="govuk-grid-row">
-        <div className="govuk-grid-column-two-thirds">
+        <div className="govuk-grid-column-full">
           <h1 className="govuk-heading-xl">Bodies across papers</h1>
           <p className="govuk-body-l">Which public bodies your papers ask things of, and which ask the most.</p>
           <p className="govuk-body">
@@ -82,7 +82,7 @@ export function Bodies() {
 
       {several.length ? (
         <section aria-labelledby="bodies-several" className="govuk-grid-row">
-          <div className="govuk-grid-column-two-thirds">
+          <div className="govuk-grid-column-full">
             <h2 className="govuk-heading-m" id="bodies-several">Same body, different asks — {several.length}</h2>
             <p className="govuk-body">
               These bodies are named in more than one paper. Open one to see what each paper asks of

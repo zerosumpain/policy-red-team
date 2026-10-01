@@ -12,11 +12,6 @@
 // before anything runs. A native `<details>` needs neither. Opening it for
 // print takes the block at the foot of this file, for the reason stated there.
 
-.prt-scenarios {
-  // Its own prose keeps the page measure, like everything else in the report.
-  > p { max-width: $prt-measure; }
-}
-
 .prt-scenarios__list {
   list-style: none;
   margin: govuk.govuk-spacing(4) 0 0;
@@ -88,7 +83,6 @@ details[open] > .prt-scenario__summary .prt-scenario__gist { display: none; }
 .prt-scenario__gist {
   display: block;
   @include govuk.govuk-font($size: 16);
-  max-width: $prt-measure;
   margin-top: govuk.govuk-spacing(1);
 }
 
@@ -146,7 +140,6 @@ details[open] > .prt-scenario__summary .prt-scenario__gist { display: none; }
 .prt-beat__body {
   @include govuk.govuk-font($size: 16);
   margin: 0;
-  max-width: $prt-measure;
 }
 
 // The effect chain — numbered, because it is the one beat that is a sequence
@@ -157,7 +150,6 @@ details[open] > .prt-scenario__summary .prt-scenario__gist { display: none; }
   @include govuk.govuk-font($size: 16);
   margin: 0;
   padding-left: govuk.govuk-spacing(4);
-  max-width: $prt-measure;
 
   li { margin-bottom: govuk.govuk-spacing(1); }
 }
@@ -187,7 +179,6 @@ details[open] > .prt-scenario__summary .prt-scenario__gist { display: none; }
 .prt-beat__more {
   @include govuk.govuk-font($size: 16);
   margin: govuk.govuk-spacing(1) 0 0;
-  max-width: $prt-measure;
 }
 
 @media print {

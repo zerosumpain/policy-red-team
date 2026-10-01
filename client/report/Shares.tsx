@@ -47,7 +47,7 @@ import { InsetText, WarningText } from '../govuk';
 export function Shares(_props: { analysisId?: string } = {}) {
   return (
     <div className="govuk-grid-row">
-      <div className="govuk-grid-column-two-thirds">
+      <div className="govuk-grid-column-full">
         <InsetText>
           Send the file. There is no link to send: this service has no sign-in, so a URL that
           worked for your recipient would also let them read everything it withholds. A file

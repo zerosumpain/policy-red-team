@@ -105,9 +105,6 @@
 
 .prt-meter {
   margin: 0 0 govuk.govuk-spacing(3);
-  // The track is a length being read against a sentence; at the full width of
-  // a wide page the eye cannot hold the two ends of it at once.
-  max-width: $prt-measure;
 }
 
 .prt-meter__track {
@@ -144,7 +141,6 @@
 
 .prt-meter__key {
   margin: govuk.govuk-spacing(1) 0 0;
-  max-width: $prt-measure;
 }
 
 // PRINT: a run in flight is not a thing anybody prints, but the inset can be

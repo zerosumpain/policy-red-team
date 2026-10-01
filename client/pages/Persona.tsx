@@ -72,7 +72,7 @@ export function Persona() {
   if (error) {
     return (
       <div className="govuk-grid-row">
-        <div className="govuk-grid-column-two-thirds" role="alert">
+        <div className="govuk-grid-column-full" role="alert">
           <h1 className="govuk-heading-l">There is a problem</h1>
           <p className="govuk-body">{error}</p>
           <p className="govuk-body">
@@ -85,7 +85,7 @@ export function Persona() {
   if (!detail) {
     return (
       <div className="govuk-grid-row">
-        <div className="govuk-grid-column-two-thirds">
+        <div className="govuk-grid-column-full">
           <h1 className="govuk-heading-l">Loading this body's record</h1>
           <p className="govuk-body">Gathering every paper that named it.</p>
         </div>
@@ -166,7 +166,7 @@ export function Persona() {
   return (
     <>
       <div className="govuk-grid-row">
-        <div className="govuk-grid-column-two-thirds">
+        <div className="govuk-grid-column-full">
           <span className="govuk-caption-l">Persona</span>
           <h1 className="govuk-heading-l">{persona.name}</h1>
           <p className="govuk-body-s prt-meta">
@@ -189,7 +189,7 @@ export function Persona() {
       <section aria-labelledby="persona-register">
         <h2 className="govuk-heading-m" id="persona-register">On the GOV.UK list of public bodies</h2>
         <div className="govuk-grid-row">
-          <div className="govuk-grid-column-two-thirds">
+          <div className="govuk-grid-column-full">
             {detail.body ? <RegisterFacts body={detail.body} /> : (
               <p className="govuk-body">
                 The library has not matched this to a body on GOV.UK’s list. Not every body is on
@@ -224,7 +224,7 @@ export function Persona() {
             Where the papers disagree — {view.contested.length}
           </h2>
           <div className="govuk-grid-row">
-            <div className="govuk-grid-column-two-thirds">
+            <div className="govuk-grid-column-full">
               <p className="govuk-body">
                 The same thing, described differently in different papers. Compared on the wording,
                 so two ways of saying one thing will show up here — this is an invitation to look,
@@ -258,7 +258,7 @@ export function Persona() {
             Where the papers agree — {view.agreed.length}
           </h2>
           <div className="govuk-grid-row">
-            <div className="govuk-grid-column-two-thirds">
+            <div className="govuk-grid-column-full">
               <p className="govuk-body">
                 Recorded by more than one paper, described the same way in each. The case where a
                 dossier adds confidence rather than a question.
@@ -283,7 +283,7 @@ export function Persona() {
       <section aria-labelledby="persona-dossier">
         <h2 className="govuk-heading-m" id="persona-dossier">What the library holds</h2>
         <div className="govuk-grid-row">
-          <div className="govuk-grid-column-two-thirds">
+          <div className="govuk-grid-column-full">
             {persona.dossier.length ? (
               <SummaryList
                 rows={persona.dossier.map((trait) => ({
@@ -349,7 +349,7 @@ export function Persona() {
           Where it has been seen — {view.sightings.length}
         </h2>
         <div className="govuk-grid-row">
-          <div className="govuk-grid-column-two-thirds">
+          <div className="govuk-grid-column-full">
             {view.sightings.map((sighting) => (
               <div key={sighting.id} className="govuk-!-margin-bottom-4">
                 <h3 className="govuk-heading-s">
@@ -396,7 +396,7 @@ export function Persona() {
       <section aria-labelledby="persona-research">
         <h2 className="govuk-heading-m" id="persona-research">Enquiries you commissioned — {view.research.length}</h2>
         <div className="govuk-grid-row">
-          <div className="govuk-grid-column-two-thirds">
+          <div className="govuk-grid-column-full">
             <p className="govuk-body">
               Public sources, read on your instruction and kept apart from what the assessments
               said. Not part of any run: researching every body of every paper would spend on
@@ -467,7 +467,7 @@ export function Persona() {
       <section aria-labelledby="persona-same">
         <h2 className="govuk-heading-m" id="persona-same">Is another record the same body?</h2>
         <div className="govuk-grid-row">
-          <div className="govuk-grid-column-two-thirds">
+          <div className="govuk-grid-column-full">
             {detail.suggestions.length ? (
               <>
                 <p className="govuk-body">These may be {persona.name} recorded twice:</p>
@@ -503,7 +503,7 @@ export function Persona() {
         <section aria-labelledby="persona-forget">
           <h2 className="govuk-heading-m" id="persona-forget">Forget this body</h2>
           <div className="govuk-grid-row">
-            <div className="govuk-grid-column-two-thirds">
+            <div className="govuk-grid-column-full">
               <p className="govuk-body" id="persona-forget-what">
                 Removes the dossier and everything the library has recorded about it. The
                 assessments themselves are untouched — it will be recognised again the next time a

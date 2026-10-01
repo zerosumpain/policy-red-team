@@ -1,0 +1,53 @@
+@use "../govuk" as govuk;
+
+// ── Text runs to the page ──────────────────────────────────────────────────
+//
+// "EVERY PAGE should make sure text is full width. In many cases text only runs
+// to 66% of the page width, which makes it look compressed and messy." (John,
+// phase 21.)
+//
+// It did, and from two sources. Forty-odd pages and panels sat in
+// `govuk-grid-column-two-thirds` — the framework's column for a standalone form
+// page — which those components kept when they moved inside a 1200px report.
+// And `$prt-measure`, 68ch, was set on every paragraph in the report and on
+// thirty-odd named blocks besides: a lead, a caveat, a gloss, a key. Each was a
+// sound typographic argument on its own; together they drew a ragged right
+// margin two thirds of the way across a page whose tables, figures and headings
+// ran the whole width, which is the "compressed and messy" John read.
+//
+// SO THERE IS NO MEASURE NOW, AND THIS IS THE ONE PLACE THAT SAYS SO. The token
+// is gone, every column is `govuk-grid-column-full`, and the framework's own
+// widths on prose are lifted here, once, rather than component by component —
+// a component that wants a narrower line has to argue it in this file.
+//
+// WHAT STAYS SIZED, deliberately: a text INPUT (`govuk-input--width-*`, a
+// select) — a postcode box need not be 1,200px — and the radio and checkbox
+// labels' `calc(100% - 74px)`, which is the room for the control, not a measure.
+// Cells inside a table keep their caps (`parts/_evidence`): those decide how a
+// table shares its width between columns, not how long a line is.
+//
+// Loaded LAST in `app.scss`, so it wins every tie with a part that came before.
+#main-content {
+  .govuk-body,
+  .govuk-body-l,
+  .govuk-body-m,
+  .govuk-body-s,
+  .govuk-body-xs,
+  .govuk-list,
+  .govuk-hint,
+  .govuk-label,
+  .govuk-fieldset__legend,
+  .govuk-inset-text,
+  .govuk-warning-text,
+  .govuk-details,
+  .govuk-error-summary,
+  .govuk-notification-banner,
+  .govuk-notification-banner__content > *,
+  .govuk-summary-list,
+  .govuk-panel,
+  .govuk-caption-m,
+  .govuk-caption-l,
+  .govuk-caption-xl {
+    max-width: none;
+  }
+}

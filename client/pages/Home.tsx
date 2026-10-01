@@ -41,7 +41,7 @@ export function Home() {
 
   return (
     <div className="govuk-grid-row">
-      <div className="govuk-grid-column-two-thirds">
+      <div className="govuk-grid-column-full">
         <h1 className="govuk-heading-xl">Policy Red Team</h1>
         <p className="govuk-body-l">
           It reads a policy paper as an adversary would: who gains if it fails, and what they can
@@ -95,10 +95,6 @@ export function Home() {
         they get back looks like. Both halves were already in hand: the stage
         names arrive in the landing response, and the five moves are the report's
         own tab strip.
-
-        FULL WIDTH, not the two-thirds column the lead sits in. This is a rail of
-        eighteen short labels and a row of five blocks; at the measure that suits
-        a paragraph the rail is three columns of wrapped text.
 
         UNGROUPED, AND THAT IS DELIBERATE. The obvious drawing is eighteen stages
         bracketed into the five moves they feed, and the stage-to-move mapping is

@@ -43,7 +43,7 @@ export function Personas() {
   return (
     <>
       <div className="govuk-grid-row">
-        <div className="govuk-grid-column-two-thirds">
+        <div className="govuk-grid-column-full">
           <h1 className="govuk-heading-xl">Persona library</h1>
           <p className="govuk-body-l">
             Bodies this install has profiled, and how often each has turned up.
@@ -106,7 +106,7 @@ export function Personas() {
           very alike, the weak one. A pair the reader rules different goes. */}
       {duplicates.length ? (
         <section aria-labelledby="library-duplicates" className="govuk-grid-row">
-          <div className="govuk-grid-column-two-thirds">
+          <div className="govuk-grid-column-full">
             <h2 className="govuk-heading-m" id="library-duplicates">These may be the same body — {duplicates.length}</h2>
             <p className="govuk-body">
               Each pair may be one body the library has recorded twice. Check them side by side
@@ -134,7 +134,7 @@ export function Personas() {
           say a policy affects. */}
       {groups.length ? (
         <section aria-labelledby="library-groups" className="govuk-grid-row">
-          <div className="govuk-grid-column-two-thirds">
+          <div className="govuk-grid-column-full">
             <h2 className="govuk-heading-m" id="library-groups">Groups of people the papers name — {groups.length}</h2>
             <p className="govuk-body">
               The people a policy affects, such as children or parents. They are kept apart from the

@@ -20,9 +20,4 @@
   border-left: 5px solid govuk.govuk-colour("black");
   padding-left: govuk.govuk-spacing(3);
   margin-bottom: govuk.govuk-spacing(5);
-
-  // Its prose is prose. Without this the intervention and implementation
-  // sentences run the full width of a wide report, which the measure exists to
-  // stop everywhere else on the page.
-  p { max-width: $prt-measure; }
 }

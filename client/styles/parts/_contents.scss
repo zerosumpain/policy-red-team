@@ -9,12 +9,6 @@
 // is itself several screens long.
 
 .prt-contents {
-  // A CONTENTS LIST IS A LIST OF NAMES, NOT PROSE. Left unmeasured its rows run
-  // the full width of a wide report, so "The write-up 19 findings" puts its
-  // figure 900px from the title it belongs to and the eye has to travel the
-  // whole line to pair them.
-  max-width: $prt-measure;
-
   // The figure sits on the link's own line and must not be pulled onto a line of
   // its own by a long title; `.prt-denom` is already tabular and quiet, so all
   // this owes it is the gap.

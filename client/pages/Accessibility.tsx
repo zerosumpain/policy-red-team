@@ -15,7 +15,7 @@ export function Accessibility() {
   usePageTitle('Accessibility statement');
   return (
     <div className="govuk-grid-row">
-      <div className="govuk-grid-column-two-thirds">
+      <div className="govuk-grid-column-full">
         <h1 className="govuk-heading-xl">Accessibility statement</h1>
 
         <p className="govuk-body-l">

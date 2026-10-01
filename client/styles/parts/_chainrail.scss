@@ -11,9 +11,6 @@
 // with no media query to keep in step with the markup.
 .prt-chain {
   margin-bottom: govuk.govuk-spacing(4);
-
-  // Its own prose keeps the page measure, like everything else in the block.
-  p { max-width: $prt-measure; }
 }
 
 .prt-chain__rail {

@@ -42,7 +42,7 @@ function Step({ caption, title, children, intro }: {
   usePageTitle(title);
   return (
     <div className="govuk-grid-row">
-      <div className="govuk-grid-column-two-thirds">
+      <div className="govuk-grid-column-full">
         <span className="govuk-caption-l">{caption}</span>
         <h1 className="govuk-heading-l">{title}</h1>
         {intro}
@@ -106,7 +106,7 @@ function SignInFirst() {
   usePageTitle('Set up this service');
   return (
     <div className="govuk-grid-row">
-      <div className="govuk-grid-column-two-thirds">
+      <div className="govuk-grid-column-full">
         <span className="govuk-caption-l">Set up</span>
         <h1 className="govuk-heading-l">Sign in to set this up</h1>
         <p className="govuk-body">
@@ -136,7 +136,7 @@ export function SetupIndex() {
 
   return (
     <div className="govuk-grid-row">
-      <div className="govuk-grid-column-two-thirds">
+      <div className="govuk-grid-column-full">
         <span className="govuk-caption-l">Set up</span>
         <h1 className="govuk-heading-l">Get this service working</h1>
         {errors.length ? <ErrorSummary errors={errors.map((text) => ({ text, href: '/setup' }))} /> : null}

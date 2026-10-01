@@ -356,14 +356,10 @@
   &__headline {
     @include govuk.govuk-font($size: 24);
     margin: 0 0 govuk.govuk-spacing(2);
-    // A MEASURE, and `pretty` rather than `balance`. This was `max-width: none`,
-    // argued from "about 700px of a 960px column" — a column the page only
-    // appeared to have while `govuk-width-container--wide` had no rule. At the
-    // real 1200px the same sentence set 100 characters to the line. `balance`
-    // is still refused: on a four-line standfirst it pulls every line in and
-    // leaves the block visibly short of a full-width page header, where
-    // `pretty` keeps the lines full and only stops the last being an orphan.
-    max-width: $prt-measure;
+    // `pretty`, not `balance`: on a four-line standfirst `balance` pulls every
+    // line in and leaves the block visibly short of the page, where `pretty`
+    // keeps the lines full and only stops the last being an orphan. It runs to
+    // the page — see `parts/_fullwidth.scss`.
     text-wrap: pretty;
   }
 
@@ -375,7 +371,6 @@
     border-left: 4px solid govuk.govuk-colour("black", $variant: "tint-80");
     padding-left: govuk.govuk-spacing(3);
     margin: 0;
-    max-width: $prt-measure;
   }
 }
 
@@ -554,32 +549,6 @@
     padding-bottom: govuk.govuk-spacing(2);
     border-bottom: 1px solid govuk.govuk-colour("black", $variant: "tint-80");
   }
-}
-
-// A LIST RUNS TO THE PAGE; A PARAGRAPH RUNS TO A MEASURE.
-//
-// This rule used to lift the measure off both, and its reason was "body copy in
-// the report runs to the page, not to two thirds of it" — which was sound while
-// the page WAS two thirds. It was: `govuk-width-container--wide` had no rule
-// anywhere, so every panel sat at the framework's 960px default and a released
-// paragraph ran to about 100 characters. Giving `--wide` its 1200px took the
-// same paragraph to 126, which is past the width at which the eye reliably
-// finds the start of the next line.
-//
-// So the release is kept for the things that are NOT prose — lists of links,
-// rows, captions under a full-width table — and paragraphs go back to a measure.
-// `$prt-measure` is in `ch`, so one value holds 19px body copy and a 24px lead
-// to the same number of CHARACTERS rather than the same number of pixels, which
-// is the thing that actually governs whether a line is readable.
-
-.prt-view,
-.prt-pack {
-  .govuk-list { max-width: none; }
-
-  p.govuk-body,
-  p.govuk-body-l,
-  p.govuk-body-s { max-width: $prt-measure; }
-
 }
 
 // Every table fills its section. Several were sizing to their content and
@@ -782,13 +751,10 @@
   }
 
   // The instruction. Regular weight under a bold title: four lines of bold is a
-  // block of ink, not an emphasis. Measured, like every other paragraph in the
-  // report — the card's grid gives it the full 1,158px otherwise, which is 122
-  // characters to the line.
+  // block of ink, not an emphasis.
   &__lead {
     @include govuk.govuk-font($size: 19);
     margin: 0;
-    max-width: $prt-measure;
   }
 
   .govuk-details { margin: govuk.govuk-spacing(1) 0 0; }

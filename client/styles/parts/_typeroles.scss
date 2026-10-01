@@ -36,15 +36,6 @@
   text-wrap: pretty;
 }
 
-// The base measures every `p.govuk-body-s` in the report at 68ch — right for a
-// sentence, wrong for the rule above one, which would stop two thirds of the way
-// across the figure it is closing. Both arms, because the rule it beats has
-// both.
-.prt-view,
-.prt-pack {
-  p.prt-caption { max-width: none; }
-}
-
 // A DENOMINATOR IS A FIGURE, SO IT LINES UP LIKE ONE. "20 of 47 · 43%" under
 // four band swatches is four numbers a reader compares down the row, and
 // proportional digits put each of them in a different place.

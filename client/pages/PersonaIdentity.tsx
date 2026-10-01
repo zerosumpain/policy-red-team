@@ -44,7 +44,7 @@ function useDossier(id: string) {
 function Problem({ message }: { message: string }) {
   return (
     <div className="govuk-grid-row">
-      <div className="govuk-grid-column-two-thirds" role="alert">
+      <div className="govuk-grid-column-full" role="alert">
         <h1 className="govuk-heading-l">There is a problem</h1>
         <p className="govuk-body">{message}</p>
         <p className="govuk-body"><Link className="govuk-link" to="/personas">Go back to the library</Link></p>
@@ -56,7 +56,7 @@ function Problem({ message }: { message: string }) {
 function Loading() {
   return (
     <div className="govuk-grid-row">
-      <div className="govuk-grid-column-two-thirds">
+      <div className="govuk-grid-column-full">
         <h1 className="govuk-heading-l">Loading</h1>
         <p className="govuk-body" aria-live="polite">Getting this record.</p>
       </div>
@@ -131,7 +131,7 @@ export function PersonaRegister() {
 
   return (
     <div className="govuk-grid-row">
-      <div className="govuk-grid-column-two-thirds">
+      <div className="govuk-grid-column-full">
         {errors.length ? <ErrorSummary errors={errors} /> : null}
         <span className="govuk-caption-l">{persona.name}</span>
         <h1 className="govuk-heading-l">Which public body is this?</h1>
@@ -238,7 +238,7 @@ export function PersonaMerge() {
 
   return (
     <div className="govuk-grid-row">
-      <div className="govuk-grid-column-two-thirds">
+      <div className="govuk-grid-column-full">
         {choiceError ? <ErrorSummary errors={[{ text: choiceError, href: '#merge-other' }]} /> : null}
         <span className="govuk-caption-l">{persona.name}</span>
         {readOnly ? (
@@ -329,7 +329,7 @@ export function PersonaMergeConfirm() {
 
   return (
     <div className="govuk-grid-row">
-      <div className="govuk-grid-column-two-thirds">
+      <div className="govuk-grid-column-full">
         {errors.length ? <ErrorSummary errors={errors} /> : null}
         <span className="govuk-caption-l">Combine two records</span>
         <h1 className="govuk-heading-l">Are these the same body?</h1>
@@ -403,7 +403,7 @@ export function PersonaSplit() {
 
   return (
     <div className="govuk-grid-row">
-      <div className="govuk-grid-column-two-thirds">
+      <div className="govuk-grid-column-full">
         {problem ? <ErrorSummary errors={[{ text: problem, href: '#split-confirm' }]} /> : null}
         <span className="govuk-caption-l">{detail.persona.name}</span>
         <h1 className="govuk-heading-l">Did this paper mean a different body?</h1>

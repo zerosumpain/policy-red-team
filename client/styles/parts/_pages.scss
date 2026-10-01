@@ -4,14 +4,13 @@
 // ── One question per page (phase 21) ──────────────────────────────────────
 //
 // The report's views were tab panels and are pages now: a landing page per
-// view, a page per section, and a page of actions. The section rhythm, the
-// table widths and the measure all stay where they were — the base's
+// view, a page per section, and a page of actions. The section rhythm and the
+// table widths stay where they were — the base's
 // `.prt-view` / `.prt-pack` pair, renamed from the tab panel — and this is only
 // the furniture a page has that a panel did not: the caption that sizes a
 // view, the side menu, and the bar above the footer.
 //
-// FULL WIDTH, ALL OF IT. No grid column: the framework's `two-thirds` is the
-// measure of a standalone form page, and the report decides its own.
+// FULL WIDTH, ALL OF IT. No grid column and no measure — `parts/_fullwidth.scss`.
 
 // ── The view's name and size, over its lead ───────────────────────────────
 //

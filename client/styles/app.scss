@@ -39,7 +39,6 @@
 @use "./parts/legality";
 @use "./parts/legality-bar";
 @use "./parts/matrix";
-@use "./parts/measure";
 @use "./parts/metrics";
 @use "./parts/models";
 @use "./parts/movement";
@@ -71,3 +70,6 @@
 @use "./parts/overview";
 @use "./parts/pages";
 @use "./parts/home";
+
+// LAST, because it lifts every width the parts above set on text.
+@use "./parts/fullwidth";

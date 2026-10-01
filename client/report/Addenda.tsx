@@ -92,7 +92,7 @@ export function Addenda({ analysisId, status, artefacts, passes, readOnly, linkT
     <>
       {views.length ? (
         <div className="govuk-grid-row">
-          <div className="govuk-grid-column-two-thirds">
+          <div className="govuk-grid-column-full">
             {views.map((view) => (
               <div key={view.pass} className="govuk-!-margin-bottom-6">
                 <h3 className="govuk-heading-s">
@@ -163,7 +163,7 @@ export function Addenda({ analysisId, status, artefacts, passes, readOnly, linkT
         </div>
       ) : (
         <div className="govuk-grid-row">
-          <div className="govuk-grid-column-two-thirds">
+          <div className="govuk-grid-column-full">
             <p className="govuk-body">
               Nothing has been added since this was written. An assessment is a reading of a paper
               at a moment — when a later draft, a consultation response or a rebuttal arrives, the
@@ -175,7 +175,7 @@ export function Addenda({ analysisId, status, artefacts, passes, readOnly, linkT
 
       {state.running ? (
         <div className="govuk-grid-row">
-          <div className="govuk-grid-column-two-thirds">
+          <div className="govuk-grid-column-full">
             <InsetText>
               <span role="status">
                 {state.running.kind === 'restatement' ? 'Writing the report again' : 'Reading what you attached'} —
@@ -186,13 +186,13 @@ export function Addenda({ analysisId, status, artefacts, passes, readOnly, linkT
         </div>
       ) : readOnly ? (
         <div className="govuk-grid-row">
-          <div className="govuk-grid-column-two-thirds">
+          <div className="govuk-grid-column-full">
             <InsetText>This copy is read-only, so nothing can be added to it.</InsetText>
           </div>
         </div>
       ) : (
         <div className="govuk-grid-row">
-          <div className="govuk-grid-column-two-thirds">
+          <div className="govuk-grid-column-full">
             {errors.length ? (
               <ErrorSummary errors={errors.map((text) => ({ text, href: '#material-role' }))} />
             ) : null}

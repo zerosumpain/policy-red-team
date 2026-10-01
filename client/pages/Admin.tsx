@@ -88,7 +88,7 @@ export function Admin() {
   if (!status.available) {
     return (
       <div className="govuk-grid-row">
-        <div className="govuk-grid-column-two-thirds">
+        <div className="govuk-grid-column-full">
           <h1 className="govuk-heading-xl">Configuration</h1>
           {/* NO PASSWORD MEANS NO PANEL — not an open one. A service that
               published its credential editor because a deployment variable was
@@ -115,7 +115,7 @@ export function Admin() {
   if (status.claimable) {
     return (
       <div className="govuk-grid-row">
-        <div className="govuk-grid-column-two-thirds">
+        <div className="govuk-grid-column-full">
           <span className="govuk-caption-l">Set up</span>
           <h1 className="govuk-heading-l">Choose an admin password</h1>
           {errors.length ? <ErrorSummary errors={errors.map((text) => ({ text, href: '#claim-new' }))} /> : null}
@@ -165,7 +165,7 @@ export function Admin() {
   if (!status.signedIn) {
     return (
       <div className="govuk-grid-row">
-        <div className="govuk-grid-column-two-thirds">
+        <div className="govuk-grid-column-full">
           <h1 className="govuk-heading-xl">Configuration</h1>
           {errors.length ? <ErrorSummary errors={errors.map((text) => ({ text, href: '#admin-password' }))} /> : null}
           <p className="govuk-body">
@@ -201,7 +201,7 @@ export function Admin() {
   return (
     <>
       <div className="govuk-grid-row">
-        <div className="govuk-grid-column-two-thirds">
+        <div className="govuk-grid-column-full">
           <span className="govuk-caption-l">Admin</span>
           <h1 className="govuk-heading-l">Configuration</h1>
           {errors.length ? <ErrorSummary errors={errors.map((text) => ({ text, href: '#admin-active' }))} /> : null}
@@ -262,7 +262,7 @@ export function Admin() {
         <section aria-labelledby="admin-active">
           <h2 className="govuk-heading-m" id="admin-active">Which service answers</h2>
           <div className="govuk-grid-row">
-            <div className="govuk-grid-column-two-thirds">
+            <div className="govuk-grid-column-full">
               <Radios
                 id="admin-provider"
                 legend="Use this one"
@@ -280,7 +280,7 @@ export function Admin() {
       <section aria-labelledby="admin-ceiling">
         <h2 className="govuk-heading-m" id="admin-ceiling">What one run may spend</h2>
         <div className="govuk-grid-row">
-          <div className="govuk-grid-column-two-thirds">
+          <div className="govuk-grid-column-full">
             {/*
               A SUBSCRIPTION COSTS NO MONEY PER CALL, which is what makes it
               dangerous. Every run on 2026-09-19 reported "$0.00 spent" —
@@ -453,7 +453,7 @@ function ProviderForm({ provider, active, fromEnvironment, busy, version, onSave
         {provider.label} {active ? <Tag colour="blue">In use</Tag> : null}
       </h2>
       <div className="govuk-grid-row">
-        <div className="govuk-grid-column-two-thirds">
+        <div className="govuk-grid-column-full">
           <p className="govuk-body">{provider.blurb}</p>
           <form key={version} onSubmit={submit} noValidate>
             {provider.fields.map((field) => {

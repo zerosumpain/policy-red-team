@@ -89,7 +89,7 @@ export function New() {
   if (readOnly) {
     return (
       <div className="govuk-grid-row">
-        <div className="govuk-grid-column-two-thirds">
+        <div className="govuk-grid-column-full">
           <h1 className="govuk-heading-xl">Assess a paper</h1>
           <p className="govuk-body-l">
             Not from this copy. It is read-only: you can open, drill into and download every
@@ -114,7 +114,7 @@ export function New() {
 
   return (
     <div className="govuk-grid-row">
-      <div className="govuk-grid-column-two-thirds">
+      <div className="govuk-grid-column-full">
         <ErrorSummary errors={errors} />
         <h1 className="govuk-heading-xl">Assess a paper</h1>
 

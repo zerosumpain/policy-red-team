@@ -138,7 +138,6 @@
 }
 
 .prt-pgrid__key { margin: govuk.govuk-spacing(3) 0 govuk.govuk-spacing(3); max-width: 60rem; }
-.prt-pgrid__lede { max-width: $prt-measure; }
 
 @media print {
   .prt-pgrid__rowhead { position: static; }
