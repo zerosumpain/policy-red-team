@@ -254,7 +254,7 @@ export function Assessment() {
             honestly was unreachable. It takes `stages` and nothing else, and
             renders nothing at all until there is something parseable in them.
           */}
-          <ProvenanceLead stages={stages} />
+          <ProvenanceLead stages={stages} artefacts={detail.artefacts} />
           {/* A control that would only 403 is not drawn. The landing page has
               made this argument since phase 4; the flag needed to make it here
               only arrived with the share panel. */}

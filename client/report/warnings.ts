@@ -31,6 +31,8 @@
  * reasons from the stage writer as structured output.
  */
 
+import { parseAffected, type Named } from '$lib/refused';
+
 /** One discarded group: the count, the reason, and the ids it names. */
 export type Refusal = { count: number; reason: string; affected: string };
 
@@ -130,22 +132,44 @@ function list(items: string[]): string {
  * something other than an assumption" changes what the report claims about
  * itself; forty-one separate warnings saying the same thing do not.
  */
-export function byReason(warnings: string[]): { reason: string; human: string; count: number; affected: string[] }[] {
-  const seen = new Map<string, { reason: string; human: string; count: number; affected: string[] }>();
-  for (const text of warnings) {
+export type ReasonRow = {
+  reason: string;
+  human: string;
+  count: number;
+  /** The raw "Affected:" tails, one per warning — kept for anything that wants the text. */
+  affected: string[];
+  /**
+   * The same tails READ: each item the warnings named, with the step whose
+   * warning named it. `src/lib/refused.ts` places these on the paper; the
+   * method page never prints the id itself.
+   */
+  items: Named[];
+  /** "and N more", per step: refused, counted, and named by nothing. */
+  unnamed: { ordinal: number | null; stage: string | null; count: number }[];
+};
+
+/** A warning and, where the caller knows it, the step that recorded it. */
+export type Recorded = string | { text: string; stage?: string | null; ordinal?: number | null };
+
+export function byReason(warnings: Recorded[]): ReasonRow[] {
+  const seen = new Map<string, ReasonRow>();
+  for (const entry of warnings) {
+    const { text, stage = null, ordinal = null } = typeof entry === 'string' ? { text: entry } : entry;
     const refusal = parseRefusal(text);
     if (!refusal) continue;
-    const existing = seen.get(refusal.reason);
-    if (existing) {
-      existing.count += refusal.count;
-      if (refusal.affected) existing.affected.push(refusal.affected);
-    } else {
-      seen.set(refusal.reason, {
-        reason: refusal.reason,
-        human: humaniseReason(refusal.reason),
-        count: refusal.count,
-        affected: refusal.affected ? [refusal.affected] : [],
-      });
+    let row = seen.get(refusal.reason);
+    if (!row) {
+      row = { reason: refusal.reason, human: humaniseReason(refusal.reason), count: 0, affected: [], items: [], unnamed: [] };
+      seen.set(refusal.reason, row);
+    }
+    row.count += refusal.count;
+    if (!refusal.affected) continue;
+    row.affected.push(refusal.affected);
+    const { items, more } = parseAffected(refusal.affected);
+    for (const item of items) row.items.push({ ...item, ordinal, stage });
+    if (more) {
+      const into = row.unnamed.find((u) => u.ordinal === ordinal && u.stage === stage);
+      if (into) into.count += more; else row.unnamed.push({ ordinal, stage, count: more });
     }
   }
   return [...seen.values()].sort((a, b) => b.count - a.count);
@@ -227,7 +251,7 @@ export function limitLead(text: string): { lead: string; rest: string } {
 }
 
 /** Whatever a caller has of a stage: enough to say which one recorded what. */
-export type StageWarnings = { name: string; warnings: string[] };
+export type StageWarnings = { name: string; warnings: string[]; ordinal?: number };
 
 /** One fact the run recorded, the stages that recorded it, and what each withheld. */
 export type LimitGroup = {
@@ -320,7 +344,10 @@ const BULK = /^(\d+) groups? of model output (?:was|were) discarded/;
  * disagreement between two parsers rather than between a card and a table.
  */
 export function discards(stages: StageWarnings[]): Discards {
-  const rows = byReason(stages.flatMap((s) => (s.warnings ?? []).map(readable)));
+  // Each warning keeps its step, so a refused item can be said to come FROM
+  // somewhere: the id's own `s<n>_` agrees for everything a model writes, but
+  // the step that recorded the warning is the fact rather than an inference.
+  const rows = byReason(stages.flatMap((s) => (s.warnings ?? []).map((w) => ({ text: readable(w), stage: s.name, ordinal: s.ordinal ?? null }))));
   const explained = rows.reduce((n, row) => n + row.count, 0);
   const byStage = new Map<string, number>();
   let unexplained = 0;

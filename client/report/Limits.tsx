@@ -1,5 +1,7 @@
 import { useMemo, useState } from 'react';
 import { Checkboxes, Details } from '../govuk';
+import type { Artefact } from '$lib/policy-analysis/contracts';
+import { affectedInWords, stageOnePlaces } from '$lib/refused';
 import { groupLimits } from './warnings';
 
 /**
@@ -28,9 +30,23 @@ import { groupLimits } from './warnings';
  * nothing to say to a record of how the report was made.
  */
 const LIMITS_SHOWN = 8;
+const NONE: Artefact[] = [];
 
-export function Limits({ stages }: { stages: { ordinal: number; name: string; warnings: string[] }[] }) {
+export function Limits({ stages, artefacts = NONE }: {
+  stages: { ordinal: number; name: string; warnings: string[] }[];
+  /** For saying where a refused item came from; see `affectedInWords`. */
+  artefacts?: Artefact[];
+}) {
   const [only, setOnly] = useState<string[]>([]);
+  /*
+   * A DISCARD'S INVENTORY IS IDS. "What it withheld" printed the warning's tail
+   * as stored — "Affected: s1_000_009 (claim), s1_000_010 (claim)." — the same
+   * column of identifiers for things never kept that the discard panel used to
+   * print. Said in words here exactly as there: by page for step 2, by step and
+   * kind otherwise. The stage is in bold beside it, so it is not said twice.
+   */
+  const places = useMemo(() => stageOnePlaces(artefacts), [artefacts]);
+  const ordinalOf = useMemo(() => new Map(stages.map((stage) => [stage.name, stage.ordinal])), [stages]);
 
   /** Every stage that recorded anything, in pipeline order, with its count. */
   const recorded = useMemo(() => stages
@@ -73,7 +89,7 @@ export function Limits({ stages }: { stages: { ordinal: number; name: string; wa
           <Details summary={`What it withheld — ${tails.length} ${tails.length === 1 ? 'inventory' : 'inventories'}`}>
             <ul className="govuk-list govuk-list--bullet govuk-body-s">
               {tails.map(({ stage, tail }) => (
-                <li key={`${stage}-${tail}`}><strong>{stage}</strong> — {tail}</li>
+                <li key={`${stage}-${tail}`}><strong>{stage}</strong> — {affectedInWords(tail, ordinalOf.get(stage) ?? null, null, places)}</li>
               ))}
             </ul>
           </Details>

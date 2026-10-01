@@ -747,7 +747,7 @@ export function Report({ detail, offline, linkTo, onChanged }: {
           that says the whole report is narrowed. It wraps rather than edits
           because `ProvenanceLead` belongs to another change tonight. */}
       <ScopeNote selection={selection} subject="the run, not the paper" />
-      <ProvenanceLead stages={stages} playsKept={list.length} />
+      <ProvenanceLead stages={stages} playsKept={list.length} artefacts={artefacts} linkTo={link} />
     </>);
 
   /*
@@ -1036,7 +1036,7 @@ export function Report({ detail, offline, linkTo, onChanged }: {
    */
   const limitGroups = useMemo(() => groupLimits(stages), [stages]);
   section('gaps', 'What it could not establish', 'provenance',
-    limitGroups.length ? <Limits stages={stages} /> : null,
+    limitGroups.length ? <Limits stages={stages} artefacts={artefacts} /> : null,
     { count: { n: limitGroups.length, noun: 'different gaps' } });
 
   /*
