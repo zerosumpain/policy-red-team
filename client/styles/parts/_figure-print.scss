@@ -17,13 +17,13 @@
 // Both children are rendered now, one of them `[hidden]`. This is the half that
 // brings the other one back for paper.
 //
-// NOT SCOPED TO `.govuk-tabs__panel` AND `.prt-pack`, which is the pairing most
+// NOT SCOPED TO `.prt-view` AND `.prt-pack`, which is the pairing most
 // report rules use. `EgoMap` mounts a `Figure` on the drill page, which is
 // neither a tab panel nor a pack, and a scoped rule would have printed the
 // drill's ego map without its table while fixing the three figures in the
-// report. There is no `[hidden]` rule in the base for this to fight — the only
-// one is `.govuk-tabs__panel[hidden]` — so `!important` here is beating the
-// user agent sheet and nothing else.
+// report. There is no `[hidden]` rule in the base for this to fight — the last
+// one went with the tab panels in phase 21 — so `!important` here is beating
+// the user agent sheet and nothing else.
 
 // The name of a view. Clipped on screen rather than marked
 // `.govuk-visually-hidden`, because the framework writes that class with

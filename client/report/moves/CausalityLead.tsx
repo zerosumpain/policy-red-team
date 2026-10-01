@@ -172,7 +172,7 @@ export function CausalityLead({ artefacts, list, selection, onSelect, mechanismI
       <h2 className="govuk-heading-l" id="mechanisms">The parts of the policy most ways to beat it rest on</h2>
       <p className="govuk-body">
         One part of the policy can open up several ways to beat it, so fixing that part does more
-        than answering any one of them. Select a part to carry it into the other tabs.
+        than answering any one of them. Select a part to narrow the whole report to it.
       </p>
       {/* THE DENOMINATOR, GENERATED FROM THE ROWS THEMSELVES, so the sentence
           and the chart cannot disagree. Every other capped or partial list in
@@ -265,7 +265,7 @@ export function CausalityLead({ artefacts, list, selection, onSelect, mechanismI
           <Details open={offline} summary={`The ${orphans.length} ${orphans.length === 1 ? 'way to beat it that names' : 'ways to beat it that name'} no part of the policy`}>
             <p className="govuk-body-s">
               These name no part of the policy, so no bar can carry them and selecting a part never
-              reaches them. They are in the list on the Threats tab.
+              reaches them. They are in the list under Threats.
             </p>
             <ul className="govuk-list govuk-list--spaced govuk-!-margin-bottom-0">
               {orphans.map((play) => (

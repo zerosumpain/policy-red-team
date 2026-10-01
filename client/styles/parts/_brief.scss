@@ -132,11 +132,9 @@
 //
 // `Brief` puts `prt-print-brief` on `<html>` for the length of one print. Under
 // it, everything that is not the page title, the headline and the brief is
-// taken out, in BOTH renderers: the service's tabs and the pack's cascade.
-//
-// The base print block un-hides every tab panel with `display: block
-// !important`, so the rules that hide them again name an id inside `:not()`
-// to win on specificity, not on source order.
+// taken out, in BOTH renderers: the service's Findings page and the pack's
+// cascade. The button is on the Findings landing page since phase 21, which
+// draws the headline block and the brief and nothing of the other views.
 @media print {
   .prt-print-brief {
     .govuk-skip-link,
@@ -144,17 +142,14 @@
     .govuk-footer,
     .govuk-back-link,
     .prt-lead details,
-    .govuk-tabs__title,
-    .prt-spine,
     .prt-brief__foot { display: none !important; }
 
-    // The page: its title, the headline block, and the report (service tabs or
-    // pack). Banners, the gaps line, the actions and the back link go.
-    #main-content > :not(.prt-pagehead):not(.prt-lead):not(.govuk-tabs):not(.prt-pack) { display: none !important; }
+    // The page: its title, the headline block, and the report (the service's
+    // page or the pack). Banners, the gaps line, the actions and the back link go.
+    #main-content > :not(.prt-pagehead):not(.prt-lead):not(.prt-view):not(.prt-pack) { display: none !important; }
 
-    // The service: the Verdict panel only, and in it the lead only.
-    .govuk-tabs__panel:not(#report-panel-verdict) { display: none !important; }
-    #report-panel-verdict > :not(.prt-verdict) { display: none !important; }
+    // The service: the Findings lead only — not its caption, cards or pagination.
+    .prt-view > :not(.prt-verdict) { display: none !important; }
 
     // The pack: its lead block and the Verdict lead, nothing after them.
     .prt-pack > :not(.prt-lead):not(.prt-verdict) { display: none !important; }
@@ -164,7 +159,6 @@
 
     // DENSER THAN THE SCREEN, so five judgements fit on two sides of A4. The
     // sizes are GOV.UK's print scale one step down, not a new vocabulary.
-    .govuk-tabs__panel { border: 0; padding: 0; }
     .prt-verdict > h2 { font-size: 15pt; margin: 6pt 0 4pt; padding: 0; border: 0; }
     .prt-brief__facts .prt-meta { font-size: inherit; }
     .prt-pagehead .govuk-heading-xl { font-size: 20pt; margin-bottom: 4pt; }

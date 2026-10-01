@@ -233,7 +233,7 @@ export function ActorsLead({ artefacts = [], plays = [], interplay, personas, se
               <p className="govuk-body-s">
                 The {allTargets} parts under pressure are{' '}
                 {kindLine(board.targets.map((t) => ({ kind: t.kind })))}. Every way to beat it aimed at
-                any of them is in the list on the Threats tab.
+                any of them is in the list under Threats.
               </p>
               <Table
                 caption={`Under pressure, ranked ${INTERPLAY_TARGETS + 1} to ${allTargets}`}

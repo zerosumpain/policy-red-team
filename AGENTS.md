@@ -228,7 +228,10 @@ holds the credentials this service spends money with.
 
 `client/report/Report.tsx` is a spine, not a cascade. Every section it builds
 carries a `move` — `verdict`, `causality`, `threats`, `actors` or `provenance` —
-and the tabs group them. A reader arrives with one of four questions and a single
+and since phase 21 each move is a PAGE: `/assessments/:id/{findings,causes,
+threats,who,method}[/:section]`, with the slug ↔ move table in `client/moves.ts`.
+The move ids did not change; only the URLs and the labels did. `Report` still
+builds one flat section list and draws one page of it from its `route` prop. A reader arrives with one of four questions and a single
 scroll answers whichever is uppermost by making them pass the other three.
 
 - **The Verdict leads with what it FOUND.** Since phase 19 the move opens with
@@ -259,13 +262,17 @@ scroll answers whichever is uppermost by making them pass the other three.
   with every request blocked, and `Ctrl-F` across a whole document is its real
   interface; a tabbed spine would hide five sixths of it behind JavaScript.
   `Report` branches on `offline` for exactly this.
-- **`client/govuk/Tabs.tsx` does not instantiate `govuk-frontend`'s Tabs class.**
-  That component owns its selected state in the DOM, which makes the carried
-  selection impossible — choosing a mechanism in Causality has to move the reader
-  to Threats with the filter intact.
+- **`client/govuk/ServiceNavigation.tsx` does not instantiate `govuk-frontend`'s
+  class**, for the reason the old Tabs did not: the class owns its state in the
+  DOM. Its Menu toggle below tablet is restated in React. The views are routes
+  under ONE splat route, so moving between them never refetches the assessment.
+- **The selection rides in `?sel=` on every link between pages**, and `Report`
+  writes it through the router (`route.navigate(…, { replace: true })`), never
+  `history.replaceState` — the service navigation is drawn from the router's
+  location and would not see it.
 - **The selection is carried, and stated in words.** `client/report/selection.ts`.
   A filter that survives a tab change breaks silently: nothing throws, the view is
-  simply narrower. The walk asserts it survives and is clearable from another move.
+  simply narrower. The walk asserts it survives and is clearable from another view.
 - **Opening a play is not selecting it.** Opening navigates to the drill page —
   `Drill.tsx` argues the page case in writing — and changes no filter.
 - **A failed or cancelled run still renders a report.** Seventeen completed

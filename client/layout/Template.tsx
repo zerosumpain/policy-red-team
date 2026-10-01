@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import { useEffect } from 'react';
+import { createContext, useContext, useEffect, useState } from 'react';
 import { Link, useLocation } from 'react-router';
 import { cx } from '../govuk/cx';
 import { PhaseBanner } from '../govuk/Feedback';
@@ -87,10 +87,34 @@ export function usePageTitle(title?: string) {
  *   skipping to the main content skips the "this is not a government service"
  *   notice rather than having to hear it on every page.
  */
-export function Template({ children, backLink, wide, transient }: {
+/**
+ * WHERE A PAGE PUTS ITS SERVICE NAVIGATION, which is not where the page is.
+ *
+ * GOV.UK's service navigation sits directly under the header, full bleed, above
+ * the back link — outside the width container the page's content renders into.
+ * The assessment is the only page that has one, and only it knows whether to
+ * draw it: a run still in progress has no views to navigate between. So the
+ * Template leaves an empty element in the right place and hands it down, and
+ * the page PORTALS its navigation into it.
+ *
+ * A portal rather than state lifted into the Template: a page that set a node
+ * into its parent's state on every render would re-render the parent, which
+ * re-renders the page, which sets a new node — a loop with an element identity
+ * at the heart of it. The element here is set once, by a ref.
+ */
+const NavSlot = createContext<HTMLElement | null>(null);
+
+/** The element a page's service navigation is portalled into, or null where the route has none. */
+export function useNavSlot(): HTMLElement | null {
+  return useContext(NavSlot);
+}
+
+export function Template({ children, backLink, wide, transient, navSlot }: {
   children: ReactNode;
   backLink?: { href: string; text?: string };
   wide?: boolean;
+  /** Leave room under the header for the page's own service navigation. See `useNavSlot`. */
+  navSlot?: boolean;
   /**
    * This render is a placeholder for a page still loading, not the page.
    *
@@ -100,6 +124,7 @@ export function Template({ children, backLink, wide, transient }: {
   transient?: boolean;
 }) {
   useRouteChange(!!transient);
+  const [slot, setSlot] = useState<HTMLElement | null>(null);
   return (
     <>
       <a href="#main-content" className="govuk-skip-link" data-module="govuk-skip-link">
@@ -121,6 +146,10 @@ export function Template({ children, backLink, wide, transient }: {
             </div>
           </div>
         </div>
+        {/* THE SERVICE NAVIGATION'S PLACE, under the header and above the phase
+            banner, which is the order GOV.UK's own template gives them. Empty
+            until a page portals into it — see `useNavSlot`. */}
+        {navSlot ? <div ref={setSlot} /> : null}
         {/* Inside the banner landmark, not loose between it and <main>. axe's
             "region" rule wants every piece of content inside a landmark, and a
             phase banner floating between two of them is content nobody owns. */}
@@ -147,7 +176,7 @@ export function Template({ children, backLink, wide, transient }: {
         ) : null}
 
         <main className="govuk-main-wrapper" id="main-content" tabIndex={-1}>
-          {children}
+          <NavSlot.Provider value={slot}>{children}</NavSlot.Provider>
         </main>
       </div>
 

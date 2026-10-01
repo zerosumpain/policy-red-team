@@ -40,7 +40,7 @@
 // sentence, wrong for the rule above one, which would stop two thirds of the way
 // across the figure it is closing. Both arms, because the rule it beats has
 // both.
-.govuk-tabs__panel,
+.prt-view,
 .prt-pack {
   p.prt-caption { max-width: none; }
 }
@@ -60,7 +60,7 @@
 // re-states the three declarations that were wrong about rank. The pair is the
 // base's own, because a section is a child of the tab panel in the service and
 // of `.prt-pack` in the offline copy.
-.govuk-tabs__panel > section,
+.prt-view > section,
 .prt-pack > section {
   // 40px was exactly twice a paragraph's bottom margin, which is not enough for
   // the eye to read a boundary rather than a gap.
@@ -88,13 +88,7 @@
 // five moves in it — it matches the first section of the whole pack and no
 // other, which is the pack's own opening, so it reads as a document rule rather
 // than as four missing ones.
-.govuk-tabs__panel > section:first-of-type,
+.prt-view > section:first-of-type,
 .prt-pack > section:first-of-type {
   border-top: 4px solid govuk.govuk-colour("black");
-}
-
-// AND NOTHING OUTRANKS A MOVE'S OPENING. The download footer was 5px, the
-// heaviest rule in the report, for the part of the page that is not the report.
-.prt-actions {
-  border-top-width: 4px;
 }

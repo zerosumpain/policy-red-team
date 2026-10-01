@@ -1,0 +1,125 @@
+@use "../govuk" as govuk;
+@use "../tokens" as *;
+
+// ── One question per page (phase 21) ──────────────────────────────────────
+//
+// The report's views were tab panels and are pages now: a landing page per
+// view, a page per section, and a page of actions. The section rhythm, the
+// table widths and the measure all stay where they were — the base's
+// `.prt-view` / `.prt-pack` pair, renamed from the tab panel — and this is only
+// the furniture a page has that a panel did not: the caption that sizes a
+// view, the side menu, and the bar above the footer.
+//
+// FULL WIDTH, ALL OF IT. No grid column: the framework's `two-thirds` is the
+// measure of a standalone form page, and the report decides its own.
+
+// ── The view's name and size, over its lead ───────────────────────────────
+//
+// "Threats · 47 ways to beat it · 20 severe". It was the fourth line of a tab
+// that only drew it from 1260px; on a landing page it is the caption over the
+// lead's heading, which is where a reader deciding whether to read on looks.
+.prt-viewhead {
+  margin-bottom: govuk.govuk-spacing(2);
+
+  &__count {
+    @include govuk.govuk-font($size: 19, $tabular: true);
+  }
+}
+
+// ── A section page: the view's other pages beside the one on screen ───────
+//
+// A column of links and the section, from `desktop`; stacked below it, the
+// menu first, because that is the order of the markup and a reader tabbing
+// through should meet what they see in the order they see it.
+.prt-sectionpage {
+  @include govuk.govuk-media-query($from: desktop) {
+    display: grid;
+    grid-template-columns: minmax(12rem, 15rem) minmax(0, 1fr);
+    gap: govuk.govuk-spacing(6);
+    align-items: start;
+  }
+
+  // The grid's own track is `minmax(0, …)`, which is what lets a wide table
+  // inside it scroll rather than push the page sideways at 320px.
+  &__main { min-width: 0; }
+}
+
+// GOV.UK FRONTEND HAS NO SIDE NAVIGATION. This is the shape the service
+// navigation itself uses for "you are here" — a rule in the link colour on the
+// current item, and no underline on it — turned on its side.
+.prt-sidenav {
+  margin-bottom: govuk.govuk-spacing(6);
+
+  // NOT STICKY. The selection banner is, from tablet, and two things pinned to
+  // the top of one viewport are the overlap `_base.scss` measured once already.
+  @include govuk.govuk-media-query($from: desktop) {
+    margin-bottom: 0;
+  }
+
+  &__title {
+    margin-bottom: govuk.govuk-spacing(2);
+  }
+
+  &__list {
+    @include govuk.govuk-font($size: 16);
+    margin: 0;
+    border-left: 1px solid govuk.govuk-colour("black", $variant: "tint-80");
+  }
+
+  &__item {
+    margin: 0;
+    padding: govuk.govuk-spacing(1) 0 govuk.govuk-spacing(1) govuk.govuk-spacing(3);
+    // The rule is drawn by the item, over the list's own 1px line, so the
+    // current one reads as a mark on the line rather than a second line.
+    margin-left: -1px;
+    border-left: 4px solid transparent;
+  }
+
+  &__item--current {
+    border-left-color: govuk.govuk-functional-colour("link");
+  }
+
+  // A 24px target, which WCAG 2.2's target-size asks of a link this close to
+  // its neighbours.
+  &__link {
+    display: inline-block;
+    min-height: 24px;
+  }
+
+  &__link[aria-current="page"] {
+    &:link, &:visited { color: govuk.govuk-colour("black"); }
+    font-weight: 700;
+    text-decoration: none;
+  }
+}
+
+// ── The page of actions ───────────────────────────────────────────────────
+.prt-use > section {
+  padding-top: govuk.govuk-spacing(2);
+}
+
+// ── What you can do with this, as one line ────────────────────────────────
+//
+// It was a block — a 5px black rule, a heading and two sections of forms —
+// under every view. Three actions are a line of small links over a thin rule:
+// present on every page, and the last thing on none of them.
+.prt-usebar {
+  margin-top: govuk.govuk-spacing(8);
+  padding-top: govuk.govuk-spacing(2);
+  border-top: 1px solid govuk.govuk-colour("black", $variant: "tint-80");
+
+  &__list {
+    @include govuk.govuk-font($size: 16);
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-wrap: wrap;
+    gap: govuk.govuk-spacing(1) govuk.govuk-spacing(5);
+  }
+
+  a {
+    display: inline-block;
+    min-height: 24px;
+  }
+}

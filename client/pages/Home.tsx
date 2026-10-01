@@ -154,12 +154,11 @@ export function Home() {
           </ol>
           <p className="govuk-body prt-pipeline__joint">
             {stages.length === 18 ? 'Eighteen' : stages.length} stages produce one report in{' '}
-            {MOVES.length - 1 === 5 ? 'five' : MOVES.length - 1} moves, opened by a one-page summary.
+            {MOVES.length - 1 === 5 ? 'five' : MOVES.length - 1} parts, opened by a one-page summary.
           </p>
           <ol className="prt-moves">
             {MOVES.filter((move) => move.id !== 'overview').map((move) => (
               <li key={move.id} className="prt-moves__move">
-                <span className="prt-moves__step">{move.step}</span>
                 <span className="prt-moves__label">{move.label}</span>
                 <span className="prt-moves__hint">{move.hint}</span>
               </li>

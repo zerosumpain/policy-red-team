@@ -80,7 +80,7 @@ export function WorstPlays({ list, selection, onSelect, mechanismIds, linkTo }: 
       <h2 className="govuk-heading-l" id="exposure-profile">The worst ways to beat it</h2>
       <p className="govuk-body">
         The assessment found {list.length} ways someone could beat this policy. These are the worst.
-        All of them are in the Threats tab.
+        All of them are listed under Threats.
       </p>
       {/*
         THE SECOND HEADING IS GONE WITH THE BAR IT SEPARATED. With the stacked

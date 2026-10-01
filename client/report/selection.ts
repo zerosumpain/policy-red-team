@@ -37,7 +37,7 @@ export type Selection =
 
 /** What the banner above the views says, in words rather than a chip. */
 export function describeSelection(selection: Selection): string {
-  if (!selection) return 'Showing everything. Select a level of exposure, a kind of way to beat it, a part of the policy or a body to narrow every tab.';
+  if (!selection) return 'Showing everything. Select a level of exposure, a kind of way to beat it, a part of the policy or a body to narrow the whole report.';
   if (selection.kind === 'band') return `Showing ${BAND_LABEL[selection.id].toLowerCase()} ways to beat it only.`;
   if (selection.kind === 'mechanism') return `Showing what follows from “${selection.label}”.`;
   if (selection.kind === 'pattern') {

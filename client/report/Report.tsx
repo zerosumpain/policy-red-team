@@ -3,14 +3,14 @@ import {
   headlineSentence, interplay, personaBoard, plays, recommendations,
 } from '$lib/policy-analysis/view';
 import type { Artefact } from '$lib/policy-analysis/contracts';
-import { Fragment, useEffect, useMemo, useState, type ReactNode } from 'react';
+import { Fragment, useEffect, useMemo, useState, type MouseEvent, type ReactNode } from 'react';
 import { network } from '$lib/policy-analysis/network';
 import { leverage } from '$lib/policy-analysis/stress';
 import { mechanismChart } from '$lib/mechanisms';
 import { scenarioViews } from '$lib/scenario-view';
 import type { Detail } from '../api';
-import { Details, InsetText, Tabs } from '../govuk';
-import { MOVES } from '../moves';
+import { Details, InsetText, Pagination } from '../govuk';
+import { MOVES, viewPath } from '../moves';
 import {
   filterPlays, mechanismIdsOf, mechanismsOf, narrowExcept, parseSelection, selectionParam, type Selection,
 } from './selection';
@@ -43,7 +43,7 @@ import { Addenda, AddendumNotice } from './Addenda';
 import { ExposureRail } from './ExposureRail';
 import { ExposureSpread } from './ExposureSpread';
 import { NoneUnder, ScopeNote } from './moves/NoneUnder';
-import { Contents, type ContentsEntry } from './Contents';
+import { Contents, type ContentsEntry, type Place } from './Contents';
 import { moveCounts } from './tabcounts';
 /* Move 1: the four figures, the legality shape, the challenge round and the
    evaluation plan — every one of them already in the payload and drawn nowhere. */
@@ -97,17 +97,19 @@ import { DownloadGrid } from './DownloadGrid';
 type Move = 'overview' | 'verdict' | 'causality' | 'threats' | 'actors' | 'provenance' | 'do';
 
 /**
- * `do` IS NOT A TAB, and that is the point.
+ * `do` IS NOT A VIEW, and that is the point.
  *
  * Downloading a copy, attaching what came after, and making a link to send are
  * not answers to "what did it conclude" — they are things you do with the
  * answer. They sat at the foot of the Verdict panel, where between them they
  * added about three thousand pixels of forms and radio buttons to the one view
  * every reader lands on, so the last thing a reader saw of the assessment's
- * conclusion was a file picker. They belong after the report, once, for all
- * five views.
+ * conclusion was a file picker. Phase 20 moved them after the report, once, as
+ * a big block under every view; phase 21 gives them a page of their own,
+ * `/assessments/:id/use`, reached from a one-line bar above the footer — a set
+ * of actions is not content, and was being laid out as if it were.
  */
-const ACTIONS: Move = 'do';
+const ACTIONS = 'do' satisfies Move;
 
 interface Section extends ContentsEntry {
   body: React.ReactNode;
@@ -146,21 +148,7 @@ interface Section extends ContentsEntry {
 const MOVE_ORDER: Move[] = ['overview', 'verdict', 'causality', 'threats', 'actors', 'provenance', 'do'];
 
 /**
- * The moves that are tabs, which is not all of them.
- *
- * `?move=do` was a live URL that rendered nothing: `do` is in `MOVE_ORDER`, both
- * URL readers accepted it, and `Tabs` was handed a `current` no tab matches.
- * Measured on the deployed report: 5 panels, 0 visible, 5 tabs, 0 holding the
- * tab stop, and `?move=do` still in the address bar afterwards, so a reload did
- * not recover it either. `Tabs` is now structurally unable to render nothing,
- * and this stops the URL producing the state in the first place — between them
- * the address bar heals itself, because `move` stays `verdict` and the writing
- * effect drops the parameter.
- */
-const TABS: Move[] = MOVE_ORDER.filter((move) => move !== ACTIONS);
-
-/**
- * WHAT EACH SECTION ANSWERS, in a line, for the "In this tab" cards (phase 20).
+ * WHAT EACH SECTION ANSWERS, in a line, for the "In this section" cards (phase 20).
  *
  * A title like "What makes them work" is a good heading once you are reading
  * the section and a riddle on a card you are choosing from. A section with no
@@ -199,22 +187,53 @@ const SECTION_NOTES: Record<string, string> = {
   assurance: 'The challenge round that attacked the findings.',
 };
 
-/** Where a reader lands, and the one move the URL leaves unsaid. */
-const DEFAULT_MOVE: Move = 'overview';
+/**
+ * The order a view is READ in — and, since phase 21, the order its pages run
+ * in: the first bare section is the landing page, and previous/next walks the
+ * rest in this order. Module scope since phase 21, because it is a constant
+ * and three closures declared before the sections now need it. The argument for
+ * each position is the long note above the pack's `return`.
+ */
+const READING_ORDER: Partial<Record<Move, string[]>> = {
+  verdict: [
+    'main-findings', 'exposure-profile', 'legality',
+    'suggests', 'howyoudknow', 'rests',
+    'writeup', 'checks',
+  ],
+  threats: [
+    'patterns', 'bands', 'weights', 'watch', 'spread', 'factors', 'scores', 'scenarios', 'stress',
+  ],
+  causality: ['mechanisms', 'change', 'network'],
+  provenance: [
+    'machine', 'discarded', 'provenance', 'withheld', 'gaps', 'composition', 'evidence', 'assurance', 'paper',
+  ],
+};
 
 /**
  * What a move is called, for anything that has to say its name rather than use
  * its key. `Contents of causality` is an internal id read aloud to a screen
- * reader; `Contents of Move 2, Causality` is the name on the tab that opens it.
+ * reader; `In Causes` is the name on the navigation that opens it. Read off
+ * `MOVES`, so the page and the service navigation cannot name a view twice.
  */
 const MOVE_LABEL: Record<Move, string> = {
-  overview: 'Summary',
-  verdict: 'Move 1, Verdict',
-  causality: 'Move 2, Causes',
-  threats: 'Move 3, Threats',
-  actors: 'Move 4, Who is involved',
-  provenance: 'Where this comes from',
+  ...(Object.fromEntries(MOVES.map((entry) => [entry.id, entry.label])) as Record<Exclude<Move, 'do'>, string>),
   do: 'What you can do with this',
+};
+
+/**
+ * WHICH PAGE OF THE REPORT IS ON SCREEN (phase 21), handed down by the route.
+ *
+ * `view` is a move — or `do`, for the page of actions — and `section` one of its
+ * sections; absent, the page is the view's landing page. `anchor` is the
+ * location's hash, so a link to a heading inside a section lands on it.
+ * `navigate` is the router's, passed in rather than imported for the reason
+ * `ArtefactLink` gives: this tree renders into a pack with no router at all.
+ */
+export type ReportRoute = {
+  view: Move;
+  section?: string;
+  anchor?: string;
+  navigate: (href: string, options?: { replace?: boolean }) => void;
 };
 
 /**
@@ -254,10 +273,14 @@ export type ArtefactLink = (artefact: Artefact, label?: string, at?: string) => 
  * reader the very file they are already reading. Found by looking at a real pack
  * rather than by any test, which is the argument for looking at real output.
  */
-export function Report({ detail, offline, linkTo, onChanged }: {
+export function Report({ detail, offline, linkTo, onChanged, route, onTitle }: {
   detail: Detail;
   offline?: boolean;
   linkTo?: ArtefactLink;
+  /** The service only. Absent, the report is the pack's one cascading document. */
+  route?: ReportRoute;
+  /** What this page is, for the document title — "Ways to beat it — Threats". Null on the Summary. */
+  onTitle?: (title: string | null) => void;
   /**
    * Called when something started a pass, so the page that owns the fetch can
    * refetch. A pass changes the assessment's own status, so the report is no
@@ -273,47 +296,96 @@ export function Report({ detail, offline, linkTo, onChanged }: {
    * cascade that honoured no selection at all.
    */
   /*
-   * THE SUMMARY IS WHERE A READER LANDS (phase 20). It was the Verdict, which
-   * is a finding at full length followed by 13,000px of what supports it; the
-   * summary is one screen that points into all five moves.
+   * THE PAGE COMES FROM THE ROUTE NOW (phase 21). It was state — the tab that
+   * was open — written into `?move=`; the view and the section are the path,
+   * so there is nothing to hold. The pack has no route and reads everything.
    */
-  const [move, setMove] = useState<Move>('overview');
-  const [selection, setSelection] = useState<Selection>(null);
+  const move: Move = route?.view ?? 'overview';
+  /*
+   * READ FROM THE URL BEFORE THE FIRST RENDER, not in an effect after it. The
+   * writing effect below runs in the same commit as the reading one, with the
+   * state as it was — so a reader effect let the writer strip `sel` from the
+   * address on the first commit and the reader put it back on the second, and
+   * with the router now doing the writing that was two navigations and a
+   * service navigation drawn, for one frame, without the selection in its
+   * links. The pack has no URL worth reading and starts empty.
+   */
+  const fromUrl = (name: string) => (offline ? null : new URLSearchParams(window.location.search).get(name));
+  const [selection, setSelection] = useState<Selection>(() => parseSelection(fromUrl('sel'), artefacts));
   /*
    * THE SCENARIO, HELD HERE SO IT CAN GO IN THE URL. It was plain state inside
    * `StressLab` — the only thing on the page you RUN, and the only state a
    * drill-and-back destroyed. `StressLab` keeps its own copy when this is not
    * passed, which is what the offline pack wants.
    */
-  const [failed, setFailed] = useState<string[]>([]);
+  const [failed, setFailed] = useState<string[]>(() => (fromUrl('fail') ?? '').split(',').filter(Boolean));
 
   /**
-   * WHERE THE READER IS, HANDED TO EVERY LINK OUT OF THE REPORT.
+   * WHAT TRAVELS WITH EVERY LINK BETWEEN THE REPORT'S PAGES.
    *
-   * The drill is a separate route and its back link reset the move and cleared
-   * the selection, so following a play out of Threats under a mechanism and
-   * pressing the one visible way back landed on Move 1 showing everything —
-   * while the browser's own Back, which nobody is looking at, preserved the
-   * position perfectly.
+   * The selection and the scenario. A filter that survives a page change only
+   * if the reader arrived by Back is a filter that breaks silently — nothing
+   * throws, the next page is simply wider than the banner says — so every link
+   * this tree builds carries both, and the router's own location keeps them
+   * once it is there.
    *
-   * IT COMES FROM STATE, NEVER FROM THE URL, for the reason `ArtefactLink` now
-   * records: the effect that writes the URL has not run yet when this renders.
-   *
-   * THE SCENARIO TRAVELS WITH IT. `fail` is carried for the same reason `sel`
-   * is and was added here at integration: the lab's own result lists are drill
-   * links, so a three-lever scenario followed out of the report and back would
-   * otherwise be the one piece of reading position the fix left behind. The
-   * drill treats `from` as opaque and hands the whole string back, so this needs
-   * nothing on the other side.
+   * FROM STATE, NEVER FROM THE URL, for the reason `ArtefactLink` records: the
+   * effect that writes the URL has not run yet when a link renders.
    */
-  const at = useMemo(() => {
+  const carried = useMemo(() => {
     const params = new URLSearchParams();
-    if (move !== DEFAULT_MOVE) params.set('move', move);
     const sel = selectionParam(selection);
     if (sel) params.set('sel', sel);
     if (failed.length) params.set('fail', failed.join(','));
     return params.toString();
-  }, [move, selection, failed]);
+  }, [selection, failed]);
+
+  /** A page of this report, as a URL. `sel` overrides the carried selection for a link that sets one. */
+  const hrefOf = (view: Move, section?: string, anchor?: string, sel?: Selection): string => {
+    let query = carried;
+    if (sel !== undefined) {
+      const params = new URLSearchParams(carried);
+      const param = selectionParam(sel);
+      if (param) params.set('sel', param); else params.delete('sel');
+      query = params.toString();
+    }
+    return `${viewPath(analysis.id, view === ACTIONS ? 'use' : view, section, query)}${anchor ? `#${anchor}` : ''}`;
+  };
+
+  /**
+   * A link to another page that routes rather than reloads.
+   *
+   * A plain `<a>` with the router's navigation on a plain click, which is the
+   * `Overview`'s old `Go` generalised: a modified click is a request for a new
+   * tab and the `href` is right for one, so only the plain case is taken.
+   * Router-free, because this is the report tree — see `ReportRoute`.
+   */
+  const follow = (href: string): Place => ({
+    href,
+    onClick: route ? (event: MouseEvent<HTMLAnchorElement>) => {
+      if (event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+      event.preventDefault();
+      route.navigate(href);
+    } : undefined,
+  });
+
+  /**
+   * WHERE THE READER IS, HANDED TO EVERY LINK OUT TO AN ITEM.
+   *
+   * The item page is a separate route and its back link used to reset the view
+   * and clear the selection, so following a play out of Threats under a
+   * mechanism and pressing the one visible way back landed on the summary
+   * showing everything — while the browser's own Back, which nobody is looking
+   * at, preserved the position perfectly.
+   *
+   * SINCE PHASE 21 IT IS A PATH AND QUERY — the page, its section and what is
+   * carried — because where a reader is has become a page. `returnTo` in
+   * `client/moves.ts` reads it, and still reads the old `move=` shape.
+   */
+  const at = useMemo(
+    () => (offline ? '' : viewPath(analysis.id, move === ACTIONS ? 'use' : move, route?.section, carried)),
+    [offline, analysis.id, move, route?.section, carried],
+  );
 
   /*
    * UNDEFINED STAYS UNDEFINED. The pack passes no `linkTo` at all and a dozen
@@ -326,83 +398,55 @@ export function Report({ detail, offline, linkTo, onChanged }: {
     [linkTo, at],
   );
 
-
   /*
-   * THE URL IS WHERE YOU ARE IN THE REPORT.
+   * BACK AND FORWARD RESTORE WHAT WAS CARRIED.
    *
-   * `move` and `selection` were plain component state, and the drill is a
-   * separate route — so reading Threats under a mechanism, following a play, and
-   * pressing Back returned the reader to Move 1 with the banner reset to
-   * "Showing everything". The URL was identical in every state, so a reload lost
-   * the same thing and nobody could send anyone "look at Threats under this
-   * mechanism".
-   *
-   * THE HISTORY API DIRECTLY, NOT `useSearchParams`. This component also renders
-   * inside the offline pack, which is one `file://` document with no router in
-   * its bundle at all — that is why `linkTo` is a prop rather than an import.
-   * `history.replaceState` degrades to nothing there, and is guarded anyway.
-   *
-   * REPLACE, NOT PUSH. Four tab changes must not become four presses of Back
-   * between the reader and the page they came from; what Back is for here is
-   * leaving the report, and the entry it returns to carries whatever was last
-   * written into it.
-   *
-   * The hash is still honoured, and wins, because it is the more explicit
-   * gesture: `#report-tab-provenance` is what the failed-run banner points at and
-   * what the tab strip becomes on a phone.
+   * A routed link carries the selection, so the state is already right when it
+   * lands; the browser's own Back is the one move that changes the address
+   * underneath a mounted report, so that is what is listened for. Re-read on a
+   * fresh payload too, so a selection naming an item the new payload no longer
+   * holds resolves to nothing rather than to a label that lies.
    */
   useEffect(() => {
     if (offline) return;
     const apply = () => {
       const params = new URLSearchParams(window.location.search);
-      const named = params.get('move') as Move | null;
-      if (named && TABS.includes(named)) setMove(named);
       setSelection(parseSelection(params.get('sel'), artefacts));
       // Validated on the way in by `StressLab`'s existing prune-to-offerable
       // effect, so a pasted id that is no longer a lever is dropped rather
       // than producing a results panel with nothing ticked.
       setFailed((params.get('fail') ?? '').split(',').filter(Boolean));
-
-      const hash = /^#report-(?:tab|panel)-([a-z]+)$/.exec(window.location.hash);
-      const fromHash = hash?.[1] as Move | undefined;
-      if (fromHash && TABS.includes(fromHash)) setMove(fromHash);
     };
     apply();
     window.addEventListener('popstate', apply);
-    window.addEventListener('hashchange', apply);
-    return () => {
-      window.removeEventListener('popstate', apply);
-      window.removeEventListener('hashchange', apply);
-    };
+    return () => window.removeEventListener('popstate', apply);
   }, [offline, artefacts]);
 
+  /*
+   * THE URL IS WHAT IS SELECTED, as well as where you are.
+   *
+   * THROUGH THE ROUTER, NOT `history.replaceState` (phase 21). The service
+   * navigation is drawn from the router's location, and an address the router
+   * did not write is one it never sees — so a selection made on a page left
+   * every link in the navigation without it. REPLACE, NOT PUSH: ten presses on a
+   * band are not ten presses of Back between the reader and the page before.
+   */
   useEffect(() => {
-    if (offline) return;
+    if (offline || !route) return;
     const params = new URLSearchParams(window.location.search);
-    // The summary is the default, so it is left out — a reader who has not
-    // chosen anything gets the URL they arrived on.
-    if (move === DEFAULT_MOVE) params.delete('move'); else params.set('move', move);
     const sel = selectionParam(selection);
     if (sel) params.set('sel', sel); else params.delete('sel');
     // Ids are ~28 characters, so a three-lever scenario costs about 90 of
-    // query string. Under the same `offline` guard as `move` and `sel`: a
-    // `file://` document has no URL worth keeping.
+    // query string.
     if (failed.length) params.set('fail', failed.join(',')); else params.delete('fail');
     const query = params.toString();
-    /*
-     * A HASH NAMING ANOTHER VIEW IS DROPPED. On a phone the list of views is
-     * made of `#report-panel-*` anchors, and moving on any other way — a summary
-     * box, a band — left the old one in the address bar, where `apply()` lets it
-     * win on the next Back or reload. Hidden panels made that visible: Back
-     * from a drill landed on the Summary rather than Threats.
-     */
-    const named = /^#report-(?:tab|panel)-([a-z]+)$/.exec(window.location.hash)?.[1];
-    const hash = named && named !== move ? '' : window.location.hash;
-    const next = `${window.location.pathname}${query ? `?${query}` : ''}${hash}`;
+    const next = `${window.location.pathname}${query ? `?${query}` : ''}${window.location.hash}`;
     if (next !== `${window.location.pathname}${window.location.search}${window.location.hash}`) {
-      window.history.replaceState(window.history.state, '', next);
+      route.navigate(next, { replace: true });
     }
-  }, [move, selection, failed, offline]);
+    // `route` changes identity on every render of the page that owns it; the
+    // writer answers the selection, not the page.
+  }, [selection, failed, offline]);
   const mechanismIds = useMemo(() => mechanismIdsOf(artefacts), [artefacts]);
 
   /*
@@ -520,12 +564,48 @@ export function Report({ detail, offline, linkTo, onChanged }: {
   const watchPlays = useMemo(() => filterPlays(list, selection, mechanismIds), [list, selection, mechanismIds]);
 
 
+  const sections: Section[] = [];
+  /* Above `goTo`, which calls it — the rule `goTo`'s own note states. */
+  const inMove = (move: Move) => {
+    const rows = sections.filter((entry) => entry.move === move);
+    const order = READING_ORDER[move];
+    if (!order) return rows;
+    const rank = (id: string) => (order.indexOf(id) === -1 ? order.length : order.indexOf(id));
+    return rows
+      .map((row, pushed) => ({ row, pushed }))
+      .sort((a, b) => rank(a.row.id) - rank(b.row.id) || a.pushed - b.pushed)
+      .map((entry) => entry.row);
+  };
   /**
-   * Open another move and land on a section inside it.
+   * THE VIEW'S LANDING PAGE IS ITS LEAD (phase 21): the section that draws its
+   * own heading because it was written as the head of a view. Where a view has
+   * two — Findings opens with the brief and also leads its worst three — the
+   * one first in reading order is the landing page and the other is a section.
+   */
+  const leadOf = (move: Move): Section | undefined => {
+    const rows = inMove(move);
+    return rows.find((entry) => entry.bare) ?? rows[0];
+  };
+  /** Where an anchor lives: the landing page, a section's own page, or a heading on one. */
+  const placeOf = (next: Move, anchor: string, sel?: Selection): string => {
+    const rows = inMove(next);
+    if (anchor === leadOf(next)?.id) return hrefOf(next, undefined, undefined, sel);
+    if (rows.some((entry) => entry.id === anchor)) return hrefOf(next, anchor, undefined, sel);
+    const holder = rows.find((entry) => entry.anchors?.some((inner) => inner.id === anchor));
+    return holder ? hrefOf(next, holder.id, anchor, sel) : hrefOf(next, undefined, anchor, sel);
+  };
+
+  /**
+   * Open another view and land on a section inside it.
    *
-   * The scroll waits two frames for the same reason `Tabs` does: the panel it is
-   * scrolling into has only just been rendered, and the browser clamps the scroll
-   * position after the document's height changes.
+   * IN THE SERVICE IT IS A NAVIGATION (phase 21): the section is a page, so
+   * "land on it" means route to it — with the selection, or with `sel` when the
+   * press that sent the reader also chose something, since the state that
+   * carries it has not settled yet when the link is built.
+   *
+   * IN THE PACK IT IS A SCROLL, as it always was: one document, every section
+   * on it. Two frames, because a details opened on the way has only just
+   * changed the document's height and the browser clamps the scroll after.
    *
    * DECLARED HERE, ABOVE ITS ONLY CALLER, and that is a fix rather than a tidy-up.
    * It used to sit 460 lines below the `section('actors', …)` body that closes
@@ -540,14 +620,16 @@ export function Report({ detail, offline, linkTo, onChanged }: {
    * The rule this now follows needs no knowledge of any minifier: a function a
    * closure calls is declared before the closure is built.
    */
-  const goTo = (next: Move, anchor: string) => {
-    setMove(next);
+  const goTo = (next: Move, anchor: string, sel?: Selection) => {
+    if (route) {
+      route.navigate(placeOf(next, anchor, sel));
+      return;
+    }
     requestAnimationFrame(() => requestAnimationFrame(() => {
       document.getElementById(anchor)?.scrollIntoView({ block: 'start' });
     }));
   };
 
-  const sections: Section[] = [];
   /**
    * The last argument is what the CONTENTS says about the section, and it is
    * optional because most sections have nothing to add to their own title.
@@ -1140,34 +1222,11 @@ export function Report({ detail, offline, linkTo, onChanged }: {
     }
   }
 
-  /* Hoisted above the summary (phase 20), which needs to know where each move starts. */
-  const READING_ORDER: Partial<Record<Move, string[]>> = {
-    verdict: [
-      'main-findings', 'exposure-profile', 'legality',
-      'suggests', 'howyoudknow', 'rests',
-      'writeup', 'checks',
-    ],
-    threats: [
-      'patterns', 'bands', 'weights', 'watch', 'spread', 'factors', 'scores', 'scenarios', 'stress',
-    ],
-    causality: ['mechanisms', 'change', 'network'],
-    provenance: [
-      'machine', 'discarded', 'provenance', 'withheld', 'gaps', 'composition', 'evidence', 'assurance', 'paper',
-    ],
-  };
-  const inMove = (move: Move) => {
-    const rows = sections.filter((entry) => entry.move === move);
-    const order = READING_ORDER[move];
-    if (!order) return rows;
-    const rank = (id: string) => (order.indexOf(id) === -1 ? order.length : order.indexOf(id));
-    return rows
-      .map((row, pushed) => ({ row, pushed }))
-      .sort((a, b) => rank(a.row.id) - rank(b.row.id) || a.pushed - b.pushed)
-      .map((entry) => entry.row);
-  };
 
   /*
-   * HOW BIG EACH MOVE IS, SAID IN THE TAB THAT OPENS IT.
+   * HOW BIG EACH VIEW IS, SAID UNDER ITS NAME ON ITS LANDING PAGE.
+   * (It was said in the tab that opened it; the service navigation names the
+   * views and nothing else, so the figure moved onto the page — phase 21.)
    *
    * Every figure here is one a panel already prints: the findings the write-up
    * renders, the recommendations the assured filter keeps, the rows the
@@ -1183,9 +1242,7 @@ export function Report({ detail, offline, linkTo, onChanged }: {
    * the chart cannot disagree unless the shared function changes under both.
    * Plain, not memoised: it walks 47 plays.
    *
-   * BEFORE THE PACK'S `return` since phase 20, because the summary's way-on
-   * list prints these same phrases and the pack renders the summary. Still
-   * plain `const`s, not hooks: the walk is 47 plays.
+   * Plain `const`s, not hooks: the walk is 47 plays.
    */
   const mechanismRows = mechanismChart(
     narrowExcept(list, selection, mechanismIds, 'mechanism'),
@@ -1203,8 +1260,8 @@ export function Report({ detail, offline, linkTo, onChanged }: {
     limits: warnings.length,
   });
   /*
-   * THE "IN THIS TAB" CARDS COUNT WHAT THE TAB COUNTS. The parts and bodies
-   * leads narrow under a selection, and so does the tab label beside them, so
+   * THE "IN THIS SECTION" CARDS COUNT WHAT THE VIEW COUNTS. The parts and bodies
+   * leads narrow under a selection, and so does the figure beside the view, so
    * their cards take the same narrowed figures — set here because `namedActive`
    * and `mechanismRows` are settled only now. The Summary alone reads the whole
    * assessment, and says so under a selection.
@@ -1213,32 +1270,26 @@ export function Report({ detail, offline, linkTo, onChanged }: {
     if (entry.id === 'mechanisms' && mechanismRows) entry.count = { n: mechanismRows, noun: mechanismRows === 1 ? 'part' : 'parts' };
     if (entry.id === 'interplay' && namedActive) entry.count = { n: namedActive, noun: namedActive === 1 ? 'body' : 'bodies' };
   }
-  /** Where each move starts, for the pack's copy of the summary, which has no tab panels to point at. */
-  const moveStarts: Partial<Record<Move, string>> = Object.fromEntries(
-    MOVE_ORDER.map((m) => [m, inMove(m)[0]?.id]).filter(([, id]) => id),
-  );
 
   /*
    * THE SUMMARY (phase 20), registered LAST because it reads the figures every
    * other move has already settled — `counts` above, the brief, the body count
    * by name — and first in reading order because `MOVE_ORDER` puts `overview`
    * first. The pack gets it too, at the head of its cascade, with every way out
-   * of it an anchor rather than a tab switch.
+   * of it an anchor rather than a page.
    */
   lead('overview', 'The report at a glance', 'overview', (
     <Overview
       view={overview}
       brief={brief}
       stages={stages}
-      counts={counts}
-      starts={offline ? moveStarts : undefined}
       selection={selection}
       byId={byId}
       linkTo={link}
-      onGo={offline ? undefined : (next, anchor) => goTo(next, anchor)}
+      onGo={route ? (next, anchor) => follow(placeOf(next, anchor)) : undefined}
       onSelectBand={(band) => {
         setSelection({ kind: 'band', id: band });
-        if (!offline) goTo('threats', 'weights');
+        if (route) goTo('threats', 'weights', { kind: 'band', id: band });
       }}
     />
   ));
@@ -1314,6 +1365,57 @@ export function Report({ detail, offline, linkTo, onChanged }: {
    * away, then how it ran.
    */
 
+  /*
+   * THE PAGE THIS ROUTE IS (phase 21), settled before the pack's `return`
+   * because the two effects below must run on every render of either.
+   *
+   * `pages` is the view in the order its pages run: the lead, which is the
+   * landing page, then every other section in reading order. `here` is the
+   * section on screen, or nothing on the landing page — and a section id this
+   * run does not have, or the lead's own id, is the landing page too, rather
+   * than an empty page under a heading.
+   */
+  const landing = move === ACTIONS ? undefined : leadOf(move);
+  const pages = landing ? [landing, ...inMove(move).filter((entry) => entry !== landing)] : [];
+  const here = route?.section ? pages.slice(1).find((entry) => entry.id === route.section) : undefined;
+  const pageTitle = move === 'overview' ? null
+    : move === ACTIONS ? MOVE_LABEL[ACTIONS]
+    : here ? `${here.title} — ${MOVE_LABEL[move]}`
+    : MOVE_LABEL[move];
+  useEffect(() => { onTitle?.(pageTitle); }, [onTitle, pageTitle]);
+
+  /*
+   * A HASH ON A PAGE IS A PLACE ON IT — and, on a landing page, possibly a
+   * whole other page.
+   *
+   * `?move=verdict#suggests` was how the summary pointed at the
+   * recommendations, and it is in browsers' histories; the route turns the
+   * `move` into `/findings` and keeps the hash, and this turns a hash naming a
+   * section of the view into that section's page. Any other hash is scrolled
+   * to after the page has drawn — the router does not, and a `<details>` it
+   * names is opened, because "Add something to it" is a link target that would
+   * otherwise land on a shut disclosure.
+   */
+  const anchor = route?.anchor || '';
+  const anchorIsPage = Boolean(route && !route.section && anchor && pages.slice(1).some((entry) => entry.id === anchor));
+  useEffect(() => {
+    if (!route || !anchor) return;
+    if (anchorIsPage) {
+      route.navigate(hrefOf(move, anchor), { replace: true });
+      return;
+    }
+    let inner = 0;
+    const outer = requestAnimationFrame(() => {
+      inner = requestAnimationFrame(() => {
+        const target = document.getElementById(anchor);
+        if (target instanceof HTMLDetailsElement) target.open = true;
+        target?.scrollIntoView({ block: 'start' });
+      });
+    });
+    return () => { cancelAnimationFrame(outer); cancelAnimationFrame(inner); };
+    // The page and the hash decide; `route` and `hrefOf` are new every render.
+  }, [move, route?.section, anchor, anchorIsPage]);
+
   const ordered = offline
     ? MOVE_ORDER.flatMap((move) => inMove(move))
     : sections;
@@ -1323,7 +1425,7 @@ export function Report({ detail, offline, linkTo, onChanged }: {
       /*
         `prt-pack` IS THE PACK'S HALF OF THE REPORT'S STYLING.
         Every density and full-width rule the service gained was scoped to
-        `.govuk-tabs__panel`, which a pack has none of — so the pack kept the
+        `.govuk-tabs__panel` (`.prt-view` since phase 21), which a pack has none of — so the pack kept the
         framework's 30em measure, tables that sized to their content, and
         summary lists with a 50% value column. Two artefacts of one assessment
         that disagree about how wide a table is are two reports.
@@ -1376,7 +1478,7 @@ export function Report({ detail, offline, linkTo, onChanged }: {
                  is how a reader gets out of the middle of it.
 
                  FRAGMENTS, NOT DIVS, all the way down — every density rule is
-                 written as a pair, `.govuk-tabs__panel > section` and
+                 written as a pair, `.prt-view > section` and
                  `.prt-pack > section`, and a wrapping div breaks the child
                  combinator on the pack's half. A Fragment emits no element, so
                  each `<section>` below is still a direct child of `.prt-pack`. */
@@ -1401,8 +1503,24 @@ export function Report({ detail, offline, linkTo, onChanged }: {
     );
   }
 
-  /* Declared before `panel`, which calls them: the pack's rule, kept here too. */
-  const leadsFirst = (move: Move) => move === 'verdict' && inMove(move)[0]?.id === 'main-findings';
+  /*
+   * ── THE SERVICE: ONE PAGE AT A TIME (phase 21) ──────────────────────────
+   *
+   * The section list above is the same list the pack renders; what changed is
+   * how much of it one URL draws. A view used to be a tab panel holding every
+   * section of it — Threats measured 10,137px, "Where this comes from" 33,493px
+   * on the real run — and a tab that long is a document, not a panel. Now:
+   *
+   *   the Summary         the summary and nothing else
+   *   a landing page      the view's lead, then a card per section
+   *   a section page      that section, its siblings in a side menu, and
+   *                       previous/next through the view and on to the next
+   *   /use                the downloads, adding to it, writing it again
+   *
+   * Every body is still built on every render — they are JSX elements, which
+   * cost nothing until mounted — and only the page's own are mounted, which is
+   * the whole of the saving and why no section body changed to get it.
+   */
   const renderEntry = (entry: Section) => (entry.bare ? (
     <Fragment key={entry.id}>{entry.body}</Fragment>
   ) : (
@@ -1412,114 +1530,176 @@ export function Report({ detail, offline, linkTo, onChanged }: {
     </section>
   ));
 
-  const panel = (move: Move) => (
-    <>
-      {/*
-        WHAT IS IN THIS PANEL, AT THE TOP OF IT. The Verdict panel is 4,481px with
-        six headings, and "What it suggests" — the recommendations, the most
-        actionable thing in the report — sits 3,441px down the first view every
-        reader lands on, with nothing naming it. The component and every anchor
-        already existed; only the pack was getting them.
-      */}
-      {/*
-        THE VERDICT'S FINDINGS COME BEFORE ITS INDEX. Phase 19: the first thing
-        in the move a reader lands on is what the assessment found, not a list
-        of eight links to it. Every other move keeps its contents first.
-      */}
-      {leadsFirst(move) ? renderEntry(inMove(move)[0]) : null}
-      <Contents cards sections={(leadsFirst(move) ? inMove(move).slice(1) : inMove(move)).map((entry) => ({ ...entry, note: SECTION_NOTES[entry.id] }))} id={`contents-${move}`} of={MOVE_LABEL[move]} />
-      {(leadsFirst(move) ? inMove(move).slice(1) : inMove(move)).map((entry) => (entry.bare ? (
-        <Fragment key={entry.id}>{entry.body}</Fragment>
-      ) : (
-        <section key={entry.id} aria-labelledby={entry.id}>
-          <h2 className="govuk-heading-l" id={entry.id}>{entry.title}</h2>
-          {entry.body}
-        </section>
-      )))}
-    </>
+  /*
+   * THE SELECTION IS STATED ABOVE THE PAGE, ONLY WHILE THERE IS ONE.
+   *
+   * "Showing everything. Select a band…" sat above every view as an
+   * instruction; on a page with a service navigation over it, it was one more
+   * band of furniture between the reader and the first word. A live selection
+   * still gets the full banner on every page it narrows.
+   *
+   * CLEARING MOVES FOCUS TO THE PAGE, because the button that took it goes with
+   * the banner — and a keyboard user whose focus was on a removed element is
+   * dropped back at the top of the document with nothing announced.
+   */
+  const banner = selection ? (
+    <SelectionBanner
+      selection={selection}
+      onClear={() => {
+        setSelection(null);
+        document.getElementById('main-content')?.focus({ preventScroll: true });
+      }}
+    />
+  ) : null;
+
+  /*
+   * THE HEADLINE AND THE STANDING CAVEAT, on the two pages that are about the
+   * conclusion: the Summary, and the landing page of Findings, which the brief
+   * leads and "Print the brief" prints with this headline above it. On every
+   * other page they are the same three lines again between the navigation and
+   * the thing the reader asked for. The addendum notice is NOT optional
+   * anywhere: a report overtaken in part says so on every page of it.
+   */
+  const leadBlock = (
+    <div className="prt-lead">
+      <AddendumNotice artefacts={artefacts} passes={detail.passes} />
+      {headline ? <p className="prt-lead__headline">{headline}</p> : null}
+      <p className="prt-lead__caveat">
+        A red-team read, not an assurance review. Every profile is a hypothesis about a
+        body&rsquo;s incentives — never a finding about a named person.
+      </p>
+      <Glossary />
+    </div>
+  );
+  const notice = <AddendumNotice artefacts={artefacts} passes={detail.passes} />;
+
+  /** Pagination's anchors, routed like every other link on the page. */
+  const pageAnchor = ({ href, className, rel, children }: { href: string; className: string; rel: string; children: ReactNode }) => (
+    <a className={className} rel={rel} {...follow(href)}>{children}</a>
   );
 
-  return (
-    <>
-      {/*
-        FULL WIDTH, AND THE STANDING CAVEAT DEMOTED.
-        The headline is the one sentence the whole assessment exists to produce
-        and it was wrapping at 630px inside a 960px column. The red-team caveat
-        is permanent, true of every report, and was taking a full warning box
-        above the conclusion every time — it is a standing note, not news, so it
-        reads as one.
-      */}
-      <div className="prt-lead">
-        <AddendumNotice artefacts={artefacts} passes={detail.passes} />
-        {headline ? <p className="prt-lead__headline">{headline}</p> : null}
-        <p className="prt-lead__caveat">
-          A red-team read, not an assurance review. Every profile is a hypothesis about a
-          body&rsquo;s incentives — never a finding about a named person.
-        </p>
-        <Glossary />
-      </div>
+  if (move === 'overview') {
+    const summary = leadOf('overview');
+    return (
+      <>
+        {leadBlock}
+        {banner}
+        <div className="prt-view">{summary ? renderEntry(summary) : null}</div>
+      </>
+    );
+  }
 
-      {/*
-        THE EXPOSURE BAR WAS HERE, above the spine, from phase 16 to 19. It made
-        the bar the second thing every reader met, before a single finding. It
-        is the first section of Threats now; a band picked there still narrows
-        every move, and the banner on the tab strip says so wherever you are.
-      */}
-
-      <Tabs
-        id="report"
-        label="Report sections"
-        current={move}
-        onSelect={(id) => setMove(id as Move)}
-        /*
-         * THE BANNER TRAVELS WITH THE STRIP, because it could not be seen
-         * otherwise. Both were `position: sticky; top: 0` as siblings, so they
-         * pinned to the same line: measured at 1280×900 scrolled to y=3000 under
-         * `?sel=band:severe`, `elementFromPoint` at the banner's own centre
-         * returned a tab. See `Tabs`' `above` prop and `parts/_spine.scss`.
-         */
-        above={<SelectionBanner selection={selection} onClear={() => setSelection(null)} />}
-        /*
-         * THE QUESTION EACH MOVE ANSWERS, AND HOW MUCH OF IT THERE IS.
-         *
-         * The four questions are what the whole structure is for and they were
-         * written down twice — in the comment at the head of this file and in
-         * each lead's own prose — and rendered nowhere: scanning the live page
-         * for "what did it conclude", "why does it happen", "what could be done"
-         * and "who would do it" found none of them. So the spine read
-         * "Verdict / Causality / Threats / Actors", which are an analyst's words
-         * for four things a reader has not been told the shape of yet.
-         *
-         * The five triples live in `client/moves.ts` now, because the landing
-         * page shows the same five and a second hand-typed copy is two surfaces
-         * that drift the first time a move is renamed. A LEAF MODULE rather than
-         * an export from here: `Home` is the one route `App.tsx` imports
-         * eagerly, and importing anything from this file into it would pull the
-         * whole report tree, and zod behind it, into the entry chunk.
-         *
-         * The size comes from `counts` and not from `moves.ts`, because it is
-         * this assessment's and the landing page has no assessment.
-         */
-        tabs={MOVES.map((entry) => ({ ...entry, count: counts[entry.id], panel: panel(entry.id) }))}
-      />
-
-      {/*
-        AFTER THE REPORT, ONCE. A reader on Threats can still download the Word
-        file without going back to Verdict to find it, and a reader on Verdict
-        reaches the end of the assessment's conclusions at the end of the
-        assessment's conclusions.
-      */}
-      {inMove(ACTIONS).length ? (
-        <div className="prt-actions">
-          <h2 className="govuk-heading-m prt-actions__head">What you can do with this</h2>
+  if (move === ACTIONS) {
+    return (
+      <>
+        {notice}
+        {/*
+          THE THINGS YOU DO WITH A REPORT, ON A PAGE OF THEIR OWN. They were a
+          block of forms under every view; they are what the bar at the foot
+          of every page links to now, by anchor — `#take`, `#add`, `#again`.
+        */}
+        <div className="prt-view prt-use">
+          <h2 className="govuk-heading-l">What you can do with this</h2>
           {inMove(ACTIONS).map((entry) => (
             <section key={entry.id} aria-labelledby={entry.id}>
-              <h3 className="govuk-heading-s" id={entry.id}>{entry.title}</h3>
+              <h3 className="govuk-heading-m" id={entry.id}>{entry.title}</h3>
               {entry.body}
             </section>
           ))}
         </div>
-      ) : null}
+      </>
+    );
+  }
+
+  /*
+   * PREVIOUS AND NEXT RUN THROUGH THE VIEW AND ON INTO THE NEXT ONE. A reader
+   * who has read every page of Threats is at the start of Who is involved, not
+   * at a dead end; the first page of a view steps back to the one before it.
+   */
+  const views = MOVES.map((entry) => entry.id);
+  const at_ = here ? pages.indexOf(here) : 0;
+  const before = views[views.indexOf(move) - 1];
+  const after = views[views.indexOf(move) + 1];
+  const previous = at_ > 0
+    ? { href: hrefOf(move, at_ > 1 ? pages[at_ - 1].id : undefined), title: 'Previous', label: pages[at_ - 1].title }
+    : before ? { href: hrefOf(before), title: 'Previous', label: MOVE_LABEL[before] } : null;
+  const next = at_ < pages.length - 1
+    ? { href: hrefOf(move, pages[at_ + 1].id), title: 'Next', label: pages[at_ + 1].title }
+    : after ? { href: hrefOf(after), title: 'Next', label: MOVE_LABEL[after] } : null;
+  const pagination = (
+    <Pagination previous={previous} next={next} render={pageAnchor} label={`Previous and next in ${MOVE_LABEL[move]}`} />
+  );
+
+  if (!here) {
+    /*
+     * A VIEW'S LANDING PAGE: what it leads with, and a card for each of its
+     * other pages. The view's size — "47 ways to beat it · 20 severe" — is the
+     * caption over the lead, which is where a reader deciding whether to read
+     * on is looking; the service navigation names the views and nothing more.
+     */
+    return (
+      <>
+        {move === 'verdict' ? leadBlock : notice}
+        {banner}
+        <div className="prt-view">
+          <p className="govuk-caption-m prt-viewhead">
+            {MOVE_LABEL[move]}
+            {counts[move] ? <> <span className="prt-viewhead__count">· {counts[move]}</span></> : null}
+          </p>
+          {landing ? renderEntry(landing) : null}
+          <Contents
+            cards
+            sections={pages.slice(1).map((entry) => ({ ...entry, note: SECTION_NOTES[entry.id] }))}
+            id={`contents-${move}`}
+            of={MOVE_LABEL[move]}
+            place={(id, inner) => follow(hrefOf(move, id, inner))}
+          />
+          {pagination}
+        </div>
+      </>
+    );
+  }
+
+  /*
+   * A SECTION'S OWN PAGE: the section, the view's other pages beside it, and
+   * previous/next under it.
+   *
+   * THE SIDE MENU IS COMPOSED, NOT A COMPONENT. GOV.UK Frontend ships no side
+   * navigation — the pattern lives in the GOV.UK publishing frontends, not the
+   * framework — so this is a `<nav>` and a `govuk-list` of `govuk-link`s, with
+   * the current page marked by `aria-current="page"` and drawn the way the
+   * service navigation draws its own current item: a rule in the link colour
+   * and no underline.
+   */
+  return (
+    <>
+      {notice}
+      {banner}
+      <div className="prt-sectionpage">
+        <nav className="prt-sidenav" aria-labelledby="prt-sidenav-title">
+          <h2 className="govuk-heading-s prt-sidenav__title" id="prt-sidenav-title">{MOVE_LABEL[move]}</h2>
+          <ul className="govuk-list prt-sidenav__list">
+            {pages.map((entry, index) => {
+              const current = entry === here;
+              return (
+                <li key={entry.id} className={`prt-sidenav__item${current ? ' prt-sidenav__item--current' : ''}`}>
+                  <a
+                    className="govuk-link prt-sidenav__link"
+                    aria-current={current ? 'page' : undefined}
+                    {...follow(hrefOf(move, index === 0 ? undefined : entry.id))}
+                  >
+                    {entry.title}
+                  </a>
+                </li>
+              );
+            })}
+          </ul>
+        </nav>
+        <div className="prt-view prt-sectionpage__main">
+          {renderEntry(here)}
+          {pagination}
+        </div>
+      </div>
     </>
   );
 }

@@ -1,6 +1,6 @@
 import { Suspense, lazy } from 'react';
-import { Route, Routes, useParams, useSearchParams } from 'react-router';
-import { MOVES } from './moves';
+import { Navigate, Route, Routes, useLocation, useParams, useSearchParams } from 'react-router';
+import { returnLabel, returnTo } from './moves';
 import { Template } from './layout/Template';
 import { Home } from './pages/Home';
 import { ReaderGate } from './pages/ReaderGate';
@@ -73,12 +73,30 @@ export function App() {
     <Routes>
       <Route path="/" element={<Template wide><Home /></Template>} />
       <Route path="/new" element={<Template backLink={{ href: '/' }}><New /></Template>} />
-      <Route path="/assessments/:id" element={<Template wide backLink={{ href: '/' }}><Assessment /></Template>} />
+      {/*
+        ONE QUESTION PER PAGE (phase 21). The six views and every section of
+        them are routes under one splat, and that is a decision about MOUNTING
+        rather than about URLs: a route element per view would unmount the
+        assessment on every page change and refetch a payload measured in
+        megabytes to draw the next page of it. Under one element, moving from
+        Threats to Causes is a re-render of a component that already holds the
+        assessment. `Assessment` reads the splat — see `client/moves.ts` for
+        the table and why the slugs are not the move ids.
+
+        THE ITEM ROUTES RANK ABOVE IT because a static segment outranks a
+        splat, so `/items/…` never reaches the view parser.
+      */}
+      <Route path="/assessments/:id/*" element={<Template wide navSlot backLink={{ href: '/' }}><Assessment /></Template>} />
       {/* The drill is its own URL, not a layer over the one above. That is what
           makes it shareable, openable in a tab, and reversible with the browser's
           own back button — see client/pages/Drill.tsx for why a drawer was not
-          the answer here. */}
-      <Route path="/assessments/:id/artefacts/:artefactId" element={<DrillRoute />} />
+          the answer here. An item, in the reader's word, since phase 21; the
+          optional part is one of its pages. */}
+      <Route path="/assessments/:id/items/:artefactId" element={<DrillRoute />} />
+      <Route path="/assessments/:id/items/:artefactId/:part" element={<DrillRoute />} />
+      {/* The pre-phase-21 address of an item. It is in bookmarks, browser
+          history and anything pasted elsewhere, so it answers rather than 404s. */}
+      <Route path="/assessments/:id/artefacts/:artefactId" element={<ItemRedirect />} />
       {/* The only page behind a password. It gates itself: the route is always
           here, and what it shows depends on the cookie. */}
       <Route path="/admin" element={<Template backLink={{ href: '/' }}><Admin /></Template>} />
@@ -125,37 +143,40 @@ function DrillRoute() {
   const { id = '' } = useParams();
   const [params] = useSearchParams();
   /*
-   * THE BACK LINK GOES BACK TO WHERE THE READER WAS, NOT TO MOVE 1.
+   * THE BACK LINK GOES BACK TO WHERE THE READER WAS, NOT TO THE SUMMARY.
    *
-   * `Report` keeps the reading position in `?move=…&sel=…`, and the link INTO
-   * the drill now carries it as an opaque `?from=`. Without this the browser's
-   * own Back preserved the position — the `replaceState` entry is still in the
-   * history — while the one visible affordance on the page silently reset the
-   * move and cleared the selection banner.
+   * The link INTO the item carries the reader's position as an opaque
+   * `?from=`. Without it the browser's own Back preserved the position while
+   * the one visible affordance on the page silently reset it and cleared the
+   * selection banner.
    *
-   * IT IS PUT BACK UNPARSED. Whatever `Report` wrote is what `Report` reads: it
-   * validates the move against `MOVE_ORDER` and resolves the selection id
-   * against the assessment's own artefacts, returning null rather than a label
-   * that lies. So a stale or hand-edited `from` degrades to the plain report,
-   * and this route needs to understand none of it.
-   */
-  const from = params.get('from') ?? '';
-  const back = from ? `/assessments/${id}?${from}` : `/assessments/${id}`;
-  /*
-   * The link NAMES the move it returns to, which is the half a generic "Back
-   * to the assessment" could not say. Only the move: naming the selection as
+   * SINCE PHASE 21 THE POSITION IS A PAGE: `from` is the path and query the
+   * reader left — `/assessments/:id/threats/weights?sel=band:severe` — rather
+   * than the `move=…&sel=…` query of a tabbed report. `returnTo` reads both
+   * shapes and follows nothing outside this assessment; the view it lands on
+   * resolves the selection against its own artefacts, so a stale `sel`
+   * degrades to the plain page rather than a label that lies.
+   *
+   * The link NAMES the view it returns to, which is the half a generic "Back
+   * to the assessment" could not say. Only the view: naming the selection as
    * well would mean resolving an artefact id, and this wrapper holds no
    * artefacts — the drill does, and says the whole sentence at the foot of the
    * page where the reader actually finishes reading.
    */
-  const move = MOVES.find((entry) => entry.id === new URLSearchParams(from).get('move'));
-  const text = move ? `Back to ${move.step} · ${move.label}` : 'Back to the assessment';
+  const from = params.get('from') ?? '';
   return (
     /* WIDE, like the report it is reached from. Following a play out of a
        1200px page into a 960px one is a 240px jolt on a route whose whole job
        is to be the same record at more depth. */
-    <Template wide backLink={{ href: back, text }}>
+    <Template wide backLink={{ href: returnTo(id, from), text: returnLabel(id, from) }}>
       <Drill />
     </Template>
   );
+}
+
+/** `/artefacts/:id` → `/items/:id`, keeping `?from=` and anything else it carried. */
+function ItemRedirect() {
+  const { id = '', artefactId = '' } = useParams();
+  const { search, hash } = useLocation();
+  return <Navigate replace to={`/assessments/${id}/items/${encodeURIComponent(artefactId)}${search}${hash}`} />;
 }

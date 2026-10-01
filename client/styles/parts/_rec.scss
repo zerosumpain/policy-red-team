@@ -30,7 +30,7 @@
   }
 
   // THE THREE FIELDS AS A SUMMARY LIST, WITH THE REPORT'S OWN KEY COLUMN.
-  // `.govuk-tabs__panel .govuk-summary-list__key` is already 14rem for the
+  // `.prt-view .govuk-summary-list__key` is already 14rem for the
   // panel and for the pack, so nothing here sets a width. What it does set is
   // the size: the instruction above is 19px and the working under it is
   // supporting detail, which at 19px would be four more paragraphs of the same

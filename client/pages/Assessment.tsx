@@ -1,14 +1,59 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Link, useParams } from 'react-router';
+import { createPortal } from 'react-dom';
+import { Link, Navigate, useLocation, useNavigate, useParams } from 'react-router';
 import type { Artefact } from '$lib/policy-analysis/contracts';
 import { api, watchRun, type Detail, type DetailView, type RunProgress } from '../api';
 import { RunClock } from './RunClock';
 import { RunFindings } from './RunFindings';
-import { Button, ButtonGroup, NotificationBanner, Tag, TaskList, WarningText, type Task, type TagColour } from '../govuk';
+import { Button, ButtonGroup, NotificationBanner, ServiceNavigation, Tag, TaskList, type Task, type TagColour } from '../govuk';
 import { isFinished, isTerminal, statusColour, statusLabel } from '../status';
-import { Report } from '../report/Report';
+import { Report, type ReportRoute } from '../report/Report';
 import { ProvenanceLead } from '../report/moves/ProvenanceLead';
-import { usePageTitle } from '../layout/Template';
+import { useNavSlot, usePageTitle } from '../layout/Template';
+import { MOVES, USE_SLUG, moveOfId, moveOfSlug, returnTo, viewPath, type MoveId } from '../moves';
+
+/**
+ * WHICH PAGE OF THE ASSESSMENT A PATH IS (phase 21), read off the route's splat.
+ *
+ * `''` is the Summary, `threats` a view's landing page, `threats/weights` one
+ * section of it, `use` the page of actions. Anything else is not a page, and
+ * says so by returning null — the caller sends it to the Summary rather than
+ * drawing an empty one.
+ */
+function pageOf(splat: string): { view: MoveId | 'do'; section?: string } | null {
+  const [slug = '', section, ...rest] = splat.split('/').filter(Boolean);
+  if (rest.length) return null;
+  if (!slug) return { view: 'overview' };
+  if (slug === USE_SLUG) return section ? null : { view: 'do' };
+  const view = moveOfSlug(slug);
+  return view ? { view, section: section ? decodeURIComponent(section) : undefined } : null;
+}
+
+/**
+ * WHERE AN OLD ADDRESS MEANT TO GO, or null for one that is already a page.
+ *
+ * Three shapes reach the bare `/assessments/:id` from before phase 21:
+ *
+ *   ?move=threats&sel=…           a tab, with whatever it carried
+ *   #report-tab-provenance        the failed-run banner's link to a tab
+ *   ?/assessments/:id/threats…    a `from=` in the new shape, put back by a
+ *                                 drill that still appends it as a query —
+ *                                 the item page is being rebuilt alongside
+ *                                 this, and the two must not depend on
+ *                                 landing in the same commit
+ *
+ * Each is turned into the page it named, with its query intact and the hash
+ * kept where it names a place on that page.
+ */
+function legacyPage(id: string, search: string, hash: string): string | null {
+  if (search.startsWith(`?/assessments/${id}`)) return returnTo(id, search.slice(1));
+  const params = new URLSearchParams(search);
+  const named = /^#report-(?:tab|panel)-([a-z]+)$/.exec(hash)?.[1];
+  const move = moveOfId(params.get('move')) ?? moveOfId(named);
+  if (!params.has('move') && !move) return null;
+  params.delete('move');
+  return `${viewPath(id, move ?? 'overview', undefined, params.toString())}${named ? '' : hash}`;
+}
 
 /**
  * One assessment: its progress while it runs, its report when it is done.
@@ -20,12 +65,23 @@ import { usePageTitle } from '../layout/Template';
  * minutes, which is why it names every stage rather than showing a spinner.
  */
 export function Assessment() {
-  const { id = '' } = useParams();
+  const { id = '', '*': splat = '' } = useParams();
+  const location = useLocation();
+  const navigate = useNavigate();
+  const slot = useNavSlot();
+  const page = pageOf(splat);
   const [detail, setDetail] = useState<Detail | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [progress, setProgress] = useState<RunProgress | null>(null);
-  usePageTitle(detail?.analysis.title);
+  /*
+   * THE DOCUMENT TITLE NAMES THE PAGE, then the assessment. Six views and forty
+   * sections under one title were forty browser tabs a reader could not tell
+   * apart; the report says which page it drew, because only it knows a
+   * section's name.
+   */
+  const [pageTitle, setPageTitle] = useState<string | null>(null);
+  usePageTitle(detail ? [pageTitle, detail.analysis.title].filter(Boolean).join(' — ') : undefined);
 
   /*
    * `view=report` — the narrow answer, which is what this page renders.
@@ -129,6 +185,10 @@ export function Assessment() {
     }
   }
 
+  const legacy = legacyPage(id, location.search, location.hash);
+  if (legacy) return <Navigate replace to={legacy} />;
+  if (!page) return <Navigate replace to={`/assessments/${id}${location.search}`} />;
+
   if (error) return <p className="govuk-body govuk-error-message">{error}</p>;
   if (!detail) return <p className="govuk-body">Loading…</p>;
 
@@ -138,6 +198,28 @@ export function Assessment() {
   const failed = stages.find((s) => s.status === 'failed');
   /** A run that stopped short still has a report; a run still going does not. */
   const showReport = isFinished(analysis.status) || analysis.status === 'failed' || analysis.status === 'cancelled';
+  /** The front page of a report, or the only page of a run that has none yet. */
+  const front = !showReport || page.view === 'overview';
+  /*
+   * WHAT TRAVELS BETWEEN PAGES: the selection and the scenario, as `Report`
+   * last wrote them. Read off the router's location — which `Report` writes
+   * through, for exactly this — so every item below carries what is narrowed.
+   */
+  const carried = (() => {
+    const params = new URLSearchParams(location.search);
+    const kept = new URLSearchParams();
+    for (const name of ['sel', 'fail']) {
+      const value = params.get(name);
+      if (value) kept.set(name, value);
+    }
+    return kept.toString();
+  })();
+  const route: ReportRoute = {
+    view: page.view,
+    section: page.section,
+    anchor: decodeURIComponent(location.hash.slice(1)),
+    navigate: (href, options) => void navigate(href, options),
+  };
 
   /*
    * THE TAG COUNTS THE GAPS, AND THE HINT SAYS IT IS A SAMPLE.
@@ -172,9 +254,39 @@ export function Assessment() {
         where it qualifies it; the failure's DETAIL belongs in Provenance, which
         is the move that exists for what the run did to itself.
       */}
+      {/*
+        THE SIX VIEWS, ACROSS THE TOP OF EVERY PAGE OF THE REPORT (phase 21).
+        Portalled into the slot `Template` keeps under the header, because
+        GOV.UK puts the service navigation there, full bleed, and only this page
+        knows whether there is a report to navigate. A run still going has one
+        page and no views, so it draws none.
+
+        THE CURRENT VIEW IS `page` ON ITS LANDING PAGE AND `true` UNDER IT —
+        the framework's own distinction between "this is the page" and "you are
+        inside this", which a screen reader announces differently.
+      */}
+      {showReport && slot ? createPortal(
+        <ServiceNavigation
+          wide
+          label="This assessment"
+          items={MOVES.map((entry) => ({
+            href: viewPath(id, entry.id, undefined, carried),
+            text: entry.label,
+            current: entry.id === page.view && !page.section,
+            active: entry.id === page.view && Boolean(page.section),
+          }))}
+          render={({ href, className, current, children }) => (
+            <Link to={href} className={className} aria-current={current}>{children}</Link>
+          )}
+        />,
+        slot,
+      ) : null}
+
       <header className="prt-pagehead">
         <span className="govuk-caption-l">Assessment</span>
-        <h1 className="govuk-heading-xl">{analysis.title}</h1>
+        {/* The full-size title on the front page; one size down on every page
+            under it, where the title is context and the section is the news. */}
+        <h1 className={front ? 'govuk-heading-xl' : 'govuk-heading-l'}>{analysis.title}</h1>
         <p className="prt-pagehead__status">
           <Tag colour={statusColour(analysis.status) as TagColour}>{statusLabel(analysis.status)}</Tag>
           {/* The step count and the model are about the run. While it runs they
@@ -200,7 +312,7 @@ export function Assessment() {
         breakpoint the click scrolled to the strip, focused a button and left
         Verdict open. `Report` reads the hash now; see the note there.
       */}
-      {analysis.status === 'failed' ? (
+      {analysis.status === 'failed' && front ? (
         <NotificationBanner title="Stopped before the end">
           <p className="govuk-body">{analysis.error ?? 'It recorded no reason.'}</p>
           <p className="govuk-body">
@@ -209,9 +321,9 @@ export function Assessment() {
               : ''}
             {done} {done === 1 ? 'step' : 'steps'} finished and{' '}
             {detail.artefacts.length.toLocaleString()} items were kept.{' '}
-            <a className="govuk-link" href="#report-tab-provenance">
+            <Link className="govuk-link" to={viewPath(id, 'provenance', undefined, carried)}>
               What it kept and what it lost
-            </a>
+            </Link>
           </p>
         </NotificationBanner>
       ) : null}
@@ -223,11 +335,11 @@ export function Assessment() {
         prominent box on the page. The tag beside the title already says "With
         gaps"; this says what that means, in one sentence, and where to look.
       */}
-      {analysis.status === 'completed_with_gaps' ? (
+      {analysis.status === 'completed_with_gaps' && front ? (
         <p className="govuk-body prt-gapsline">
           It finished, but some steps could not do everything they tried.{' '}
-          <a className="govuk-link" href="#report-tab-provenance">What it could not do</a> is under
-          &ldquo;Where this comes from&rdquo;.
+          <Link className="govuk-link" to={viewPath(id, 'provenance', 'gaps', carried)}>What it could not do</Link> is under
+          &ldquo;How it was made&rdquo;.
         </p>
       ) : null}
 
@@ -305,6 +417,8 @@ export function Assessment() {
             <Report
               detail={detail}
               onChanged={() => void load()}
+              route={route}
+              onTitle={setPageTitle}
               /*
                 THE READING POSITION TRAVELS WITH THE LINK, AND IT COMES FROM
                 `Report` RATHER THAN FROM THE URL.
@@ -332,7 +446,7 @@ export function Assessment() {
               linkTo={(artefact: Artefact, label?: string, at?: string) => (
                 <Link
                   className="govuk-link"
-                  to={`/assessments/${id}/artefacts/${encodeURIComponent(artefact.id)}${at ? `?from=${encodeURIComponent(at)}` : ''}`}
+                  to={`/assessments/${id}/items/${encodeURIComponent(artefact.id)}${at ? `?from=${encodeURIComponent(at)}` : ''}`}
                 >
                   {label ?? artefact.label}
                 </Link>
@@ -347,14 +461,39 @@ export function Assessment() {
             Provenance, which is what that move is for.
           */}
           {showReport ? null : <TaskList items={tasks} idPrefix="stages" />}
-          <ButtonGroup>
-            {(analysis.status === 'failed' || analysis.status === 'cancelled') && !detail.readOnly ? (
-              <Button disabled={busy} onClick={() => void act('resume')}>
-                {analysis.status === 'cancelled' ? 'Resume from where it stopped' : 'Resume the incomplete stages'}
-              </Button>
-            ) : null}
-            <Link className="govuk-link" to="/">Back to all assessments</Link>
-          </ButtonGroup>
+          {/* On the front page only: resuming is about the run, and the run's
+              state is stated there. Every other page has the views and the
+              back link to leave by. */}
+          {front ? (
+            <ButtonGroup>
+              {(analysis.status === 'failed' || analysis.status === 'cancelled') && !detail.readOnly ? (
+                <Button disabled={busy} onClick={() => void act('resume')}>
+                  {analysis.status === 'cancelled' ? 'Resume from where it stopped' : 'Resume the incomplete stages'}
+                </Button>
+              ) : null}
+              <Link className="govuk-link" to="/">Back to all assessments</Link>
+            </ButtonGroup>
+          ) : null}
+          {/*
+            WHAT YOU CAN DO WITH THIS, AS ONE LINE (phase 21). It was a block —
+            a black rule, a heading and two sections of forms — under every
+            view, so every page of the report ended in a file picker. Three
+            actions are a line of links; the forms are on their own page.
+            Inside `<main>` and a `<nav>`, so it is in a landmark and named.
+          */}
+          {showReport ? (
+            <nav className="prt-usebar" aria-label="What you can do with this">
+              <ul className="prt-usebar__list">
+                <li><Link className="govuk-link" to={`${viewPath(id, 'use', undefined, carried)}#take`}>Download a copy</Link></li>
+                {detail.readOnly ? null : (
+                  <>
+                    <li><Link className="govuk-link" to={`${viewPath(id, 'use', undefined, carried)}#add`}>Add something to it</Link></li>
+                    <li><Link className="govuk-link" to={`${viewPath(id, 'use', undefined, carried)}#again`}>Write the report again</Link></li>
+                  </>
+                )}
+              </ul>
+            </nav>
+          ) : null}
         </>
       )}
     </>

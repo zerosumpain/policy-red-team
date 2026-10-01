@@ -117,74 +117,119 @@ try {
   // 4 — the report, once the run finishes. The page follows its own progress
   // over the event stream, so this is waiting for the UI to update itself.
   // THE SUMMARY IS THE FRONT DOOR SINCE PHASE 20, so the report is ready when
-  // its heading is — the Verdict's "Main findings" is one tab away and hidden.
+  // its heading is.
   await page.getByRole('heading', { name: 'The report at a glance' }).waitFor({ timeout: 120000 });
   const id = page.url().split('/').pop();
+  const base = `http://127.0.0.1:${PORT}/assessments/${id}`;
 
   /*
-   * THE SUMMARY (phase 20): the default tab, four figures that agree with the
-   * tabs they open, and a way on that actually changes tab. A summary that
+   * ONE QUESTION PER PAGE (phase 21). The views are routes now, reached from
+   * GOV.UK's service navigation, and each section of a view is a page of its
+   * own. `openView` clicks the navigation — never `goto` — because a link that
+   * renders and does not route is the failure a walk exists to catch, and it
+   * waits for the URL and the page's own content, not the shell.
+   */
+  const serviceNav = page.locator('.govuk-service-navigation');
+  const currentView = async () => (await serviceNav.locator('.govuk-service-navigation__item--active').innerText().catch(() => '')).trim();
+  const settle = async () => {
+    await page.locator('.prt-view').first().waitFor({ timeout: 30000 });
+    await page.waitForTimeout(150);
+  };
+  const openView = async (label) => {
+    await serviceNav.getByRole('link', { name: label, exact: true }).click();
+    await page.waitForFunction((name) => {
+      const active = document.querySelector('.govuk-service-navigation__item--active');
+      return active?.textContent?.trim() === name;
+    }, label, { timeout: 10000 });
+    await settle();
+  };
+  /** A section of the view on screen, opened from its card on the landing page. */
+  const openSection = async (title) => {
+    await page.locator('.prt-tiles').getByRole('link', { name: title, exact: true }).click();
+    await page.getByRole('heading', { level: 2, name: title, exact: true }).first().waitFor({ timeout: 10000 });
+    await settle();
+  };
+  const pathOf = () => { const url = new URL(page.url()); return url.pathname.replace(`/assessments/${id}`, '') || '/'; };
+
+  /*
+   * THE SUMMARY (phase 20): the default page, four figures that agree with the
+   * views they open, and a way on that actually changes page. A summary that
    * disagrees with its own detail is worse than none, so the figure on the
-   * first tile is checked against the Threats tab's own count.
+   * first tile is checked against the Threats page's own count.
    */
   {
-    const selected = await page.locator('[role="tab"][aria-selected="true"]').innerText().catch(() => '');
-    if (!/summary/i.test(selected)) failures.push(`summary: the report opened on "${selected.replace(/\s+/g, ' ').slice(0, 40)}", not the summary`);
-    const panel = page.locator('#report-panel-overview');
+    const selected = await currentView();
+    if (selected !== 'Summary') failures.push(`summary: the report opened on "${selected}", not the summary`);
+    const panel = page.locator('.prt-view');
     const tiles = await panel.locator('.prt-kpi').count();
     if (tiles < 2) failures.push(`summary: ${tiles} headline figures, expected at least two`);
     const cards = await panel.locator('.prt-card').count();
     if (cards < 3) failures.push(`summary: ${cards} summary boxes, expected at least three`);
+    if (await page.getByRole('heading', { name: 'Read the report in full' }).count()) failures.push('summary: still carries "Read the report in full", which the navigation above it already is');
     const first = (await panel.locator('.prt-kpi__value').first().innerText()).trim();
-    const threatsTab = (await page.getByRole('tab', { name: /threats/i }).innerText()).replace(/\s+/g, ' ');
-    if (!threatsTab.includes(`${first} way`)) failures.push(`summary: the first figure says ${first} and the Threats tab says "${threatsTab}"`);
     await panel.getByRole('link', { name: /^See all \d+ ways to beat it/ }).click();
-    await page.waitForTimeout(300);
-    const now = await page.locator('[role="tab"][aria-selected="true"]').innerText().catch(() => '');
-    if (!/threats/i.test(now)) failures.push(`summary: "See all … ways to beat it" left the reader on "${now.replace(/\s+/g, ' ').slice(0, 40)}"`);
-    if (new URL(page.url()).searchParams.get('move') !== 'threats') failures.push('summary: the way on changed tab without changing the URL');
-    note(`summary: ${tiles} figures, ${cards} boxes, and the way on opens Threats`);
+    await page.waitForURL((url) => url.pathname.endsWith('/threats/weights'), { timeout: 10000 }).catch(() => {});
+    await settle();
+    if (await currentView() !== 'Threats') failures.push(`summary: "See all … ways to beat it" left the reader on "${await currentView()}"`);
+    if (pathOf() !== '/threats/weights') failures.push(`summary: "See all … ways to beat it" opened ${pathOf()}, not the ranked list's own page`);
+    await openView('Threats');
+    const caption = (await page.locator('.prt-viewhead').innerText()).replace(/\s+/g, ' ');
+    if (!caption.includes(`${first} way`)) failures.push(`summary: the first figure says ${first} and the Threats page says "${caption}"`);
+    note(`summary: ${tiles} figures, ${cards} boxes, and the way on opens a section of Threats`);
   }
 
   /*
-   * THE REPORT IS FOUR MOVES NOW, so a section being absent from the page is
-   * only a failure if its own tab is open. Every move is visited, because a
-   * section silently assigned to the wrong one still renders — just never where
-   * the reader looking for it will be.
+   * EVERY VIEW IS VISITED, because a section silently assigned to the wrong one
+   * still renders — just never where the reader looking for it will be. A
+   * landing page names its sections on cards, so a section's title is on its
+   * own view's landing page whether it is the lead or a card.
    */
-  const MOVES = [
-    // THE TAB NAMES ARE PLAIN ENGLISH SINCE PHASE 19 — "Causes", "Who is
-    // involved", "Where this comes from" — so the regex is the visible label.
-    ['summary', 'The report at a glance'],
-    ['verdict', 'Main findings'],
-    ['causes', 'How they connect'],
-    ['threats', 'Ways to beat it'],
-    ['who is involved', 'Who is involved'],
-    ['where this comes from', 'How this was produced'],
+  const VIEWS = [
+    ['Summary', '/', 'The report at a glance'],
+    ['Findings', '/findings', 'Main findings'],
+    ['Causes', '/causes', 'How they connect'],
+    ['Threats', '/threats', 'Ways to beat it'],
+    ['Who is involved', '/who', 'Who is involved'],
+    ['How it was made', '/method', 'How this was produced'],
   ];
-  for (const [tab, heading] of MOVES) {
-    await page.getByRole('tab', { name: new RegExp(tab, 'i') }).click();
+  for (const [label, path, heading] of VIEWS) {
+    await openView(label);
+    if (pathOf() !== path) failures.push(`report: "${label}" in the navigation opened ${pathOf()}, not ${path}`);
     const visible = await page.locator('#main-content').innerText();
-    if (!visible.includes(heading)) failures.push(`report: "${heading}" is not in the ${tab} move`);
+    if (!visible.includes(heading)) failures.push(`report: "${heading}" is not in ${label}`);
+    if (!(await page.locator('.prt-usebar').count())) failures.push(`report: ${label} has no bar of things to do with it`);
+  }
+  // The big block under every view is gone; its contents live on /use.
+  if (await page.getByRole('heading', { name: 'What you can do with this' }).count()) failures.push('report: "What you can do with this" is still a block under the report');
+
+  await openView('How it was made');
+  await openSection('How this was produced');
+  if (!/18 of 18 completed/.test(await page.locator('#main-content').innerText())) failures.push('report: does not say all eighteen stages completed');
+  /*
+   * A SECTION PAGE: the section, a side menu of its siblings with this one
+   * marked, and previous/next. The menu's current entry is the page's own.
+   */
+  {
+    const current = await page.locator('.prt-sidenav [aria-current="page"]').innerText().catch(() => '');
+    if (current !== 'How this was produced') failures.push(`section page: the side menu marks "${current}" as the page`);
+    if (!(await page.locator('.govuk-pagination').count())) failures.push('section page: no previous/next');
+    if (await currentView() !== 'How it was made') failures.push('section page: the navigation does not mark the view it is under');
+    await audit('/assessments/:id/method/provenance (a section page)');
   }
 
-  await page.getByRole('tab', { name: /where this comes from/i }).click();
-  const provenance = await page.locator('#main-content').innerText();
-  if (!/18 of 18 completed/.test(provenance)) failures.push('report: does not say all eighteen stages completed');
-
   /*
-   * THE BRIEF IS THE FIRST THING ON THE REPORT (phase 19, workstream B). The
+   * THE BRIEF IS THE FIRST THING IN FINDINGS (phase 19, workstream B). The
    * fixture writes key judgements, so the brief is built from them: the
    * heading says so, a judgement quotes the paper as a quote, and the Word
    * download of the brief alone answers with a Word file.
    */
-  await page.getByRole('tab', { name: /verdict/i }).click();
-  const brief = page.locator('#report-panel-verdict .prt-brief');
+  await openView('Findings');
+  const brief = page.locator('.prt-view .prt-brief');
   if (!(await brief.count())) {
-    failures.push('brief: the Verdict does not open with the brief');
+    failures.push('brief: Findings does not open with the brief');
   } else {
-    const firstSection = await page.locator('#report-panel-verdict section').first().getAttribute('aria-labelledby');
-    if (firstSection !== 'main-findings') failures.push(`brief: the Verdict opens with "${firstSection}", not the brief`);
+    const firstSection = await page.locator('.prt-view section').first().getAttribute('aria-labelledby');
+    if (firstSection !== 'main-findings') failures.push(`brief: Findings opens with "${firstSection}", not the brief`);
     if (!(await brief.getByRole('heading', { name: 'Key judgements' }).count())) failures.push('brief: the fixture has key judgements and the brief does not lead with them');
     if (!(await brief.locator('blockquote').count())) failures.push('brief: no judgement quotes the paper');
     if (!(await brief.getByRole('heading', { name: 'What we could not check' }).count())) note('brief: the fixture run noted nothing it could not check');
@@ -194,78 +239,98 @@ try {
     if (!docx.ok || !/wordprocessingml/.test(docx.headers.get('content-type') ?? '')) failures.push(`brief: the Word download answered ${docx.status} ${docx.headers.get('content-type')}`);
     const sharedBrief = await (await fetch(`http://127.0.0.1:${PORT}${href.replace('format=docx', 'format=md')}&scope=shared`)).text();
     if (!/This is a shared copy/.test(sharedBrief) || !/## Key judgements/.test(sharedBrief)) failures.push('brief: the shared brief is not the brief, or does not say it is shared');
-    note('the brief leads the Verdict, from key judgements, with a Word copy of it alone');
+    note('the brief leads Findings, from key judgements, with a Word copy of it alone');
   }
 
   /*
    * THE PATTERN GRID LEADS THREATS, and a square is a carried selection: it
    * narrows the ranked list and the banner says both halves of it.
    */
-  await page.getByRole('tab', { name: /threats/i }).click();
-  const firstThreat = await page.locator('#report-panel-threats section').first().getAttribute('aria-labelledby');
+  await openView('Threats');
+  const firstThreat = await page.locator('.prt-view section').first().getAttribute('aria-labelledby');
   if (firstThreat !== 'patterns') failures.push(`grid: Threats opens with "${firstThreat}", not the pattern grid`);
-  const square = page.locator('#report-panel-threats .prt-pgrid__square').first();
+  const square = page.locator('.prt-view .prt-pgrid__square').first();
   if (await square.count()) {
     await square.click();
     const said = await page.locator('.prt-selection').innerText();
     if (!/aimed at/.test(said)) failures.push(`grid: pressing a square said "${said}"`);
     if ((await square.getAttribute('aria-pressed')) !== 'true') failures.push('grid: the pressed square is not marked pressed');
     await page.getByRole('button', { name: /Clear the selection/i }).first().click();
-    note('a square of the pattern grid narrows every tab and says so');
+    note('a square of the pattern grid narrows the report and says so');
   } else {
     failures.push('grid: no square to press');
   }
 
   /*
-   * THE SELECTION HAS TO SURVIVE A TAB CHANGE, which is the one thing here that
-   * breaks without throwing: the view simply shows a narrower set, and a reader
-   * comparing two moves draws a conclusion from a list they did not know was
-   * filtered.
+   * THE SELECTION HAS TO SURVIVE A PAGE CHANGE, which is the one thing here
+   * that breaks without throwing: the next page simply shows a narrower set,
+   * and a reader comparing two views draws a conclusion from a list they did
+   * not know was filtered. It rides in `?sel=` on every link — the service
+   * navigation, the cards and previous/next — so each of those is crossed.
    */
-  // THE BAND PICKER LEADS THREATS SINCE PHASE 19 (it sat above the tab strip),
-  // so the walk selects there and checks the selection survives into Verdict.
-  await page.getByRole('tab', { name: /threats/i }).click();
-  // The four exposure boxes are one segmented bar now: `.prt-profile` is gone
-  // from the markup and, since the dead-rule sweep, from the stylesheet too.
-  // and the segments are the control. The walk went green on a selector that
-  // matched nothing, reporting "no exposure band to select" rather than passing
-  // — which is the right failure, and is why this is a walk and not a unit test.
-  // SCOPED TO THE THREATS PANEL since phase 20: the Summary draws the same
-  // bar, and a page-wide `.first()` resolves inside its hidden panel and waits
-  // forever for it to become visible.
-  const band = page.locator('#report-panel-threats .prt-stack__seg').first();
+  await openSection('How exposed the policy is');
+  const band = page.locator('.prt-view .prt-stack__seg').first();
+  let selectedAt = '';
   if (await band.count()) {
     await band.click();
+    await page.waitForTimeout(200);
     const banner = page.locator('.prt-selection');
     const stated = await banner.innerText();
-    if (!/Showing/.test(stated)) failures.push('report: selecting a band says nothing above the views');
+    if (!/Showing/.test(stated)) failures.push('report: selecting a band says nothing above the page');
+    if (!new URL(page.url()).searchParams.get('sel')) failures.push('report: selecting a band did not put it in the address');
+    const navHref = await serviceNav.getByRole('link', { name: 'Findings', exact: true }).getAttribute('href');
+    if (!navHref?.includes('sel=')) failures.push(`report: the service navigation does not carry the selection (${navHref})`);
 
-    await page.getByRole('tab', { name: /verdict/i }).click();
-    const afterTab = await page.locator('.prt-selection').innerText();
-    if (afterTab !== stated) failures.push('report: the selection did not survive a tab change');
+    await openView('Findings');
+    const afterView = await page.locator('.prt-selection').innerText().catch(() => '');
+    if (afterView !== stated) failures.push('report: the selection did not survive a change of view');
 
-    // And it is clearable from a view other than the one that set it.
+    // And through previous/next on a section page, back in Threats.
+    await openView('Threats');
+    await openSection('How exposed the policy is');
+    await page.locator('.govuk-pagination__next a').click();
+    await page.waitForURL((url) => url.pathname.endsWith('/threats/weights'), { timeout: 10000 });
+    await settle();
+    if ((await page.locator('.prt-selection').innerText().catch(() => '')) !== stated) failures.push('report: the selection did not survive "Next"');
+    selectedAt = pathOf() + new URL(page.url()).search;
+
+    // And it is clearable from a page other than the one that set it.
+    await openView('Who is involved');
     await page.getByRole('button', { name: /Clear the selection/i }).click();
-    const cleared = await page.locator('.prt-selection').innerText();
-    if (!/Select a level of exposure/.test(cleared)) failures.push('report: the selection could not be cleared from another move');
+    await page.waitForTimeout(200);
+    if (await page.locator('.prt-selection').count()) failures.push('report: the selection could not be cleared from another view');
+    if (new URL(page.url()).searchParams.get('sel')) failures.push('report: clearing the selection left it in the address');
+    const clearedHref = await serviceNav.getByRole('link', { name: 'Threats', exact: true }).getAttribute('href');
+    if (clearedHref?.includes('sel=')) failures.push('report: the navigation still carries a cleared selection');
   } else {
     failures.push('report: no exposure band to select');
   }
 
   /*
-   * EVERY MOVE IS AUDITED, not just the one that happens to be open.
-   *
-   * `hidden` content is invisible to axe, so a single run with Verdict showing
-   * audited a fifth of the report — the weighting sliders, the mechanism bars
-   * and the provenance table would all have shipped unchecked. Before the moves
-   * this was one visible cascade and one run covered it.
+   * EVERY VIEW IS AUDITED, landing page by landing page, and a section page
+   * once above. Only what is mounted is audited, so this is the floor.
    */
-  for (const [tab] of MOVES) {
-    await page.getByRole('tab', { name: new RegExp(tab, 'i') }).click();
-    await audit(`/assessments/:id (report — ${tab})`);
+  for (const [label] of VIEWS) {
+    await openView(label);
+    await audit(`/assessments/:id (report — ${label})`);
   }
-  await page.getByRole('tab', { name: /verdict/i }).click();
-  note(`report rendered for ${id}, four moves with a carried selection`);
+  note(`report rendered for ${id}: six views, section pages, and a carried selection`);
+
+  /*
+   * OLD ADDRESSES STILL ANSWER. `?move=` was the tabbed report's, and it is in
+   * browsers' histories; it must land on the view it named with the selection
+   * it carried.
+   */
+  await page.goto(`${base}?move=causality&sel=band:severe`, { waitUntil: 'networkidle' });
+  await settle();
+  if (pathOf() !== '/causes') failures.push(`old address: ?move=causality landed on ${pathOf()}`);
+  if (!new URL(page.url()).searchParams.get('sel')) failures.push('old address: ?move= dropped the selection on the way');
+  await page.goto(`${base}?move=verdict#suggests`, { waitUntil: 'networkidle' });
+  await page.waitForURL((url) => url.pathname.endsWith('/findings/suggests'), { timeout: 10000 }).catch(() => {
+    failures.push(`old address: ?move=verdict#suggests landed on ${pathOf()}, not the recommendations' page`);
+  });
+  await page.goto(base, { waitUntil: 'networkidle' });
+  await settle();
 
   // 5 — the diagram and its table are both reachable, which the accessibility
   // statement promises and which nothing else checks.
@@ -274,7 +339,8 @@ try {
   // nothing about which table.
   // The ease-against-impact scatter was cut in phase 19; the toggle checked
   // here is the theory-of-change strips', in Causes, where the fixture has one.
-  await page.getByRole('tab', { name: /causes/i }).click();
+  await openView('Causes');
+  await openSection('How each part is meant to work');
   const tableToggle = page.getByRole('button', { name: 'Table of how each part is meant to work' });
   if (await tableToggle.count()) {
     await tableToggle.click();
@@ -304,8 +370,9 @@ try {
   // 5b — THE RELATIONSHIP GRAPH. Present only when the paper states
   // relationships; the fixture states one, which is enough to prove the section
   // renders, counts and links.
-  // The graph lives in Causality now; open that move before looking for it.
-  await page.getByRole('tab', { name: /causes/i }).click();
+  // The graph lives in Causes, on its own page since phase 21.
+  await openView('Causes');
+  await openSection('How they connect');
   const connect = page.getByRole('heading', { name: 'How they connect' });
   if (await connect.count()) {
     await connect.scrollIntoViewIfNeeded();
@@ -338,7 +405,8 @@ try {
   // DOM from the one at rest.
   // The stress lab is the one thing you RUN rather than read, so it sits with
   // the plays in Threats.
-  await page.getByRole('tab', { name: /threats/i }).click();
+  await openView('Threats');
+  await openSection('What if we are wrong');
   const stress = page.getByRole('heading', { name: 'What if we are wrong' });
   if (await stress.count()) {
     await stress.scrollIntoViewIfNeeded();
@@ -432,9 +500,14 @@ try {
   // paper two requests later. The redacted copy leaves as a FILE, and these are
   // the assertions that matter — not that the page rendered, but that three
   // kinds of thing are absent from what a recipient receives.
-  // Sharing and the export are actions on the whole report, so they sit in
-  // Verdict — and the walk has been in Threats since the stress test.
-  await page.getByRole('tab', { name: /verdict/i }).click();
+  // Sharing and the export are actions on the whole report, so since phase 21
+  // they are on a page of their own, reached from the bar at the foot of every
+  // page of the report — which is the link walked here.
+  await page.locator('.prt-usebar').getByRole('link', { name: 'Download a copy' }).click();
+  await page.waitForURL((url) => url.pathname.endsWith('/use') && url.hash === '#take', { timeout: 10000 }).catch(() => {
+    failures.push(`use: "Download a copy" opened ${page.url()}`);
+  });
+  await audit('/assessments/:id/use');
   /*
    * ONE SECTION, NOT TWO. "Take it away" and "Send it to someone" were two
    * headings over one subject — every download in the first, and in the second
@@ -512,14 +585,18 @@ try {
   // conclusion, and that the banner above the verdict says so — a reader who
   // meets the conclusion first has already formed a view of a report that has
   // been overtaken.
-  await page.getByRole('tab', { name: /verdict/i }).click();
+  // FROM THE BAR, BY ITS OWN ANCHOR — which has to open the disclosure it
+  // names, or the link lands on a shut "Add something to it".
+  await page.locator('.prt-usebar').getByRole('link', { name: 'Add something to it' }).click();
+  await page.waitForURL((url) => url.hash === '#add', { timeout: 10000 });
+  await page.waitForTimeout(300);
+  if (!(await page.locator('details#add').evaluate((el) => el.open))) failures.push('use: "Add something to it" landed on a shut disclosure');
   await page.getByRole('heading', { name: 'What came after this was written' }).scrollIntoViewIfNeeded();
   const material = path.join(dataRoot, 'walk-rebuttal.txt');
   await writeFile(material, 'A rebuttal. The Council disputes that it has the capacity assumed, and says the funding line is not committed beyond one year.');
-  // The form is behind a disclosure now: 1,300px of radios and pickers at the
-  // foot of every report was a sixth of the page, permanently open, for a thing
-  // done rarely. Opening it is part of the journey and so is walked.
-  await page.locator('summary', { hasText: 'Add something to it' }).click();
+  // The form is behind a disclosure: 1,300px of radios and pickers at the foot
+  // of every report was a sixth of the page, permanently open, for a thing done
+  // rarely. The bar's link opened it above.
   await page.getByLabel('A critique or rebuttal').check();
   await page.getByLabel('The document', { exact: true }).setInputFiles(material);
   await page.getByLabel('Anything you want the reading to know').fill('Sent by the Council.');
@@ -541,7 +618,6 @@ try {
     { timeout: 180000, polling: 1000 },
   );
   await page.reload({ waitUntil: 'networkidle' });
-  await page.getByRole('tab', { name: /verdict/i }).click();
   await page.getByRole('heading', { name: 'What came after this was written' }).waitFor({ timeout: 60000 });
 
   const afterText = await page.locator('section[aria-labelledby="after"]').innerText();
@@ -580,9 +656,8 @@ try {
       { timeout: 180000, polling: 1000 },
     );
     await page.reload({ waitUntil: 'networkidle' });
-    // ATTACHED, NOT VISIBLE: the reload restores whichever view the URL names,
-    // and the summary's heading is in the DOM whichever that is.
-    await page.locator('#overview').waitFor({ state: 'attached', timeout: 60000 });
+    // The reload keeps the page the URL names, which is /use.
+    await page.locator('section[aria-labelledby="after"]').waitFor({ state: 'attached', timeout: 60000 });
     const detail = await page.evaluate(async (a) => (await fetch(`/api/policy-analysis/${a}`)).json(), id);
     if (!detail.passes.some((p) => p.kind === 'restatement' && /completed/.test(p.status))) {
       failures.push('restate: no completed restatement was recorded');
@@ -601,18 +676,19 @@ try {
   // Reached by clicking a name in the report, never by typing the URL. A link
   // that renders and does not navigate is the exact failure this step exists to
   // catch, and it is invisible to a type check.
-  await page.getByRole('tab', { name: /threats/i }).click();
+  // FROM A SECTION PAGE UNDER A SELECTION, so the way back has something to
+  // lose: the ranked list's own page, narrowed by the band chosen above.
+  await page.goto(`${base}${selectedAt || '/threats/weights'}`, { waitUntil: 'networkidle' });
+  await settle();
+  const openedFrom = pathOf() + new URL(page.url()).search;
   // The playbook TABLE is gone — it printed the same forty-seven plays the
   // ranked cards above it already print, in five columns narrow enough to set
   // "compliant" as "compli / ant". The cards are the list now, so the drill is
   // entered from the first card's title, which is the link a reader would use.
-  // SCOPED TO THE OPEN PANEL. Play cards appear in Verdict too ("read these
-  // three first"), and a page-wide locator resolved to one inside a `hidden`
-  // panel — which clicks forever without ever being visible.
-  const firstPlay = page.locator('#report-panel-threats .prt-play__title a').first();
+  const firstPlay = page.locator('.prt-view .prt-play__title a').first();
   const playName = (await firstPlay.innerText()).trim();
   await firstPlay.click();
-  await page.waitForURL('**/artefacts/**', { timeout: 10000 });
+  await page.waitForURL('**/items/**', { timeout: 10000 });
   const drillUrl = page.url();
   // WAIT FOR THE HEADING, don't just look for it. The drill fetches the
   // assessment on mount, so the URL changes a beat before the page has anything
@@ -644,7 +720,7 @@ try {
   // the thing the drill is FOR.
   if (!/Followed back \d+ steps?/.test(drill)) failures.push('drill: the chain does not say how far back it went');
   if (!/Back at the paper/.test(drill)) failures.push('drill: the chain never reaches the paper');
-  await audit('/assessments/:id/artefacts/:artefactId (a play)');
+  await audit('/assessments/:id/items/:artefactId (a play)');
   note(`drill opens on "${playName}", with its chain`);
 
   // 7 — follow the chain one hop, then reverse out of it two ways.
@@ -654,12 +730,14 @@ try {
   // plain <a href> in a single-page app announces itself.
   const here = page.url();
   await page.evaluate(() => { window.__spa = true; });
-  await page.locator('#main-content a[href*="/artefacts/"]').first().click();
+  // `/artefacts/` is the old address and redirects; the item page may still
+  // build either while it is being rebuilt.
+  await page.locator('#main-content a[href*="/items/"], #main-content a[href*="/artefacts/"]').first().click();
   await page.waitForFunction((was) => location.href !== was, here, { timeout: 10000 });
   await page.getByRole('heading', { level: 1 }).waitFor({ timeout: 10000 }).catch(() => {
     failures.push('drill: following the chain landed on a page that never rendered a heading');
   });
-  await audit('/assessments/:id/artefacts/:artefactId (followed)');
+  await audit('/assessments/:id/items/:artefactId (followed)');
 
   await page.goBack();
   await page.waitForURL(here, { timeout: 10000 });
@@ -681,29 +759,29 @@ try {
    * through the moves changes.
    */
   await page.locator('.govuk-back-link').click();
-  await page.waitForURL((url) => /\/assessments\/[^/]+$/.test(url.pathname), { timeout: 10000 });
-  await page.getByRole('tablist').waitFor({ timeout: 15000 }).catch(() => {
-    failures.push('drill: the back link did not return to the report');
+  await page.waitForURL((url) => url.pathname.startsWith(`/assessments/${id}`) && !url.pathname.includes('/items/'), { timeout: 10000 }).catch(() => {
+    failures.push(`drill: the back link went to ${page.url()}`);
   });
+  await settle();
   /*
-   * AND THE URL HAS TO AGREE WITH THE PANEL, which is a second assertion and not
-   * a restatement of the first. The move arrives as a query parameter and the
-   * component mounts on its default before the reading effect applies it, so the
-   * writing effect can strip the parameter on the first commit and put it back
-   * on the second. A page that shows Threats under a URL that says Verdict looks
-   * right and loses the reader's place on reload — which is the whole defect this
-   * carries the position to fix.
+   * AND THE URL HAS TO SETTLE ON THE PAGE IT CAME FROM — path, section and
+   * selection. Read after a pause, because the report writes the selection
+   * back through the router and a writer that disagreed with the reader would
+   * show the right page under an address that loses it on reload.
    */
-  const showing = await page.locator('[role="tab"][aria-selected="true"]').innerText().catch(() => '');
-  await page.waitForFunction(() => true, null, { timeout: 1000 }).catch(() => {});
   await page.waitForTimeout(600);
-  const cameBack = new URL(page.url()).searchParams.get('move') ?? 'summary';
-  if (!showing.toLowerCase().includes(cameBack)) {
-    failures.push(`drill: the back link showed "${showing.replace(/\s+/g, ' ').slice(0, 40)}" and the URL settled on ${cameBack} — a reload would lose the reader's place`);
-  }
+  const cameBack = pathOf() + new URL(page.url()).search;
+  if (cameBack !== openedFrom) failures.push(`drill: opened from ${openedFrom}, and the back link settled on ${cameBack}`);
+  if (openedFrom.includes('sel=') && !(await page.locator('.prt-selection').count())) failures.push('drill: the back link lost the selection banner');
   if (!(await page.evaluate(() => window.__spa === true))) {
     failures.push('drill: leaving the drill reloaded the whole app rather than routing');
   }
+  // THE OLD ITEM ADDRESS REDIRECTS, keeping what it carried.
+  const itemId = new URL(drillUrl).pathname.split('/items/')[1];
+  await page.goto(`${base}/artefacts/${itemId}?from=${encodeURIComponent(`/assessments/${id}/causes`)}`, { waitUntil: 'networkidle' });
+  if (!new URL(page.url()).pathname.includes('/items/') || !new URL(page.url()).searchParams.get('from')) failures.push(`drill: the old /artefacts/ address landed on ${page.url()}`);
+  const backText = (await page.locator('.govuk-back-link').innerText()).trim();
+  if (backText !== 'Back to Causes') failures.push(`drill: the back link from a Causes page reads "${backText}"`);
   note(`the back link returns to ${cameBack}, without reloading`);
 
   // 8 — REFLOW, at the narrowest width WCAG 2.2 asks about.
@@ -716,64 +794,61 @@ try {
   // notices the next one.
   await page.setViewportSize({ width: 320, height: 800 });
   /*
-   * EVERY VIEW OF THE REPORT, ONE AT A TIME (phase 20). Below `tablet` the
-   * report used to show all its panels at once — 162,585px on the real Best
-   * Start run — and this check measured that one long document. A phone now
-   * shows one view at a time, so the check visits each through the `?move=`
-   * URL and waits for a heading only that view has. Measuring only the view
-   * that happens to be open is the silent narrowing the old assertion below
-   * existed to catch; this makes the narrowing impossible instead.
+   * EVERY VIEW OF THE REPORT, ONE PAGE AT A TIME — the landing pages, and a
+   * section page, whose side menu and previous/next are the furniture most
+   * likely to push a phone sideways. Each waits for a heading only that page
+   * has, because `Template` paints an h1 before the detail request returns.
    */
   const views = [
-    ['report (summary)', `http://127.0.0.1:${PORT}/assessments/${id}`, 'The report at a glance'],
-    ['report (verdict)', `http://127.0.0.1:${PORT}/assessments/${id}?move=verdict`, 'Main findings'],
-    ['report (causes)', `http://127.0.0.1:${PORT}/assessments/${id}?move=causality`, 'How they connect'],
-    ['report (threats)', `http://127.0.0.1:${PORT}/assessments/${id}?move=threats`, 'Ways to beat it'],
-    ['report (who is involved)', `http://127.0.0.1:${PORT}/assessments/${id}?move=actors`, 'Who is involved'],
-    ['report (where this comes from)', `http://127.0.0.1:${PORT}/assessments/${id}?move=provenance`, 'How this was produced'],
+    ['report (summary)', base, 'The report at a glance'],
+    ['report (findings)', `${base}/findings`, 'Main findings'],
+    ['report (causes)', `${base}/causes`, 'The parts of the policy most ways to beat it rest on'],
+    ['report (threats)', `${base}/threats`, 'The same few ideas, aimed at the same parts'],
+    ['report (who is involved)', `${base}/who`, 'Who is coming for what'],
+    ['report (how it was made)', `${base}/method`, 'What was discarded, and why'],
+    ['report (a section page)', `${base}/threats/weights`, 'Ways to beat it'],
+    ['report (what you can do)', `${base}/use`, 'Take it away'],
     ['drill', drillUrl, null],
   ];
   for (const [label, url, ready] of views) {
     await page.goto(url, { waitUntil: 'networkidle' });
     await page.getByRole('heading', { level: 1 }).waitFor({ timeout: 20000 });
-    // WAIT FOR THE CONTENT, NOT THE SHELL. `Template` paints an h1 before the
-    // detail request returns; the second wait names something only this view has.
     if (ready) await page.getByRole('heading', { name: ready, exact: true }).first().waitFor({ timeout: 30000 });
     const wide = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
     if (wide > 0) failures.push(`${label}: at 320px the page scrolls ${wide}px sideways — a table needs <Table scroll>`);
     /*
      * AND AXE, AT THIS WIDTH. Every audit in this file runs at 1280×900, so the
      * rules that only bite on a phone were never asked: `target-size` on the
-     * exposure bar's narrowest segment (12px of a 24px floor) and `list` on the
-     * tab strip, whose items keep `role="presentation"` after the component tears
-     * itself down. Both were sitting on the live report, both serious, and the
-     * gate was green because nobody measured at 320.
+     * exposure bar's narrowest segment (12px of a 24px floor) was one. Both of
+     * those were sitting on the live report, both serious, and the gate was
+     * green because nobody measured at 320.
      */
     await audit(label + ' at 320px');
   }
 
   /*
-   * AND A PHONE REALLY DOES SHOW ONE VIEW. The list of views stays, with the
-   * current one marked, and exactly one panel is visible.
+   * THE SERVICE NAVIGATION COLLAPSES ON A PHONE, as govuk-frontend's own does:
+   * a Menu button, the list hidden until it is pressed, and a choice that both
+   * routes and closes it. Implemented in React rather than by the framework's
+   * class, so the behaviour is asserted here rather than trusted.
    */
-  await page.goto(`http://127.0.0.1:${PORT}/assessments/${id}`, { waitUntil: 'networkidle' });
+  await page.goto(base, { waitUntil: 'networkidle' });
   await page.getByRole('heading', { name: 'The report at a glance' }).waitFor({ timeout: 30000 });
-  const shown = await page.locator('.govuk-tabs__panel:not([hidden])').count();
-  if (shown !== 1) failures.push(`report at 320px: ${shown} views are drawn at once, expected one`);
-  if (!(await page.locator('.prt-tab[aria-current="true"]').count())) failures.push('report at 320px: the list of views does not mark the current one');
-  // A VIEW CHOSEN FROM THE LIST, THEN LEFT ANOTHER WAY, MUST NOT COME BACK. The
-  // list's anchors write `#report-panel-*`; a summary box moves on without one,
-  // and a stale hash would win the next Back or reload.
-  await page.locator('.prt-tab', { hasText: 'Summary' }).click();
-  await page.locator('#report-panel-overview .prt-kpi__link').first().click();
-  await page.waitForTimeout(400);
-  const leftBy = new URL(page.url());
-  if (leftBy.hash === '#report-panel-overview') failures.push(`report at 320px: moved to ${leftBy.searchParams.get('move')} but the address still names the summary (${leftBy.hash}), so Back or reload returns there`);
-  await page.reload({ waitUntil: 'networkidle' });
-  await page.locator('#overview').waitFor({ state: 'attached', timeout: 30000 });
-  const reloaded = await page.locator('.govuk-tabs__panel:not([hidden])').getAttribute('id');
-  if (reloaded === 'report-panel-overview') failures.push('report at 320px: a reload after leaving the summary by a box lands on the summary again');
+  const menu = page.locator('.govuk-service-navigation__toggle');
+  const list = page.locator('.govuk-service-navigation__list');
+  if (!(await menu.isVisible())) failures.push('nav at 320px: no Menu button');
+  else {
+    if (await list.isVisible()) failures.push('nav at 320px: the list is open before Menu is pressed');
+    await menu.click();
+    if ((await menu.getAttribute('aria-expanded')) !== 'true' || !(await list.isVisible())) failures.push('nav at 320px: Menu does not open the list');
+    if ((await page.locator('.govuk-service-navigation__item--active').count()) !== 1) failures.push('nav at 320px: the list does not mark the current view');
+    await list.getByRole('link', { name: 'Causes', exact: true }).click();
+    await page.waitForURL((url) => url.pathname.endsWith('/causes'), { timeout: 10000 }).catch(() => failures.push('nav at 320px: choosing a view did not route'));
+    if (await list.isVisible()) failures.push('nav at 320px: the list stays open over the page it opened');
+  }
   await page.setViewportSize({ width: 1280, height: 900 });
+  if (!(await menu.isHidden())) failures.push('nav at 1280px: the Menu button is still drawn');
+  if (!(await list.isVisible())) failures.push('nav at 1280px: the list is hidden');
   note('nothing overflows at 320px');
 
   // 9 — the history now has a row, and it links back

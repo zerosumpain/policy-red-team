@@ -55,13 +55,11 @@
 @use "./parts/scope";
 @use "./parts/selection-pack";
 @use "./parts/sortbutton";
-@use "./parts/spine";
 @use "./parts/stageladder";
 @use "./parts/stagerail";
 @use "./parts/stress";
 @use "./parts/strip";
 @use "./parts/suggests";
-@use "./parts/tabcount";
 @use "./parts/typeroles";
 @use "./parts/verdict";
 @use "./parts/verdictband";
@@ -70,4 +68,5 @@
 @use "./parts/withheld";
 @use "./parts/writeup-judgement";
 @use "./parts/overview";
+@use "./parts/pages";
 @use "./parts/home";

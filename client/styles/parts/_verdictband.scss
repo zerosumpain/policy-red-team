@@ -10,7 +10,7 @@
 // inside one of five panels, for a figure that is true of all five and is also
 // the page's only band picker.
 //
-// A PLAIN COMPONENT RULE, NOT THE PANEL/PACK PAIR. The `.govuk-tabs__panel X,
+// A PLAIN COMPONENT RULE, NOT THE PANEL/PACK PAIR. The `.prt-view X,
 // .prt-pack X` pairing exists for rules that override a framework class or use a
 // child combinator on the panel or pack root. This sits OUTSIDE both — above the
 // tab strip in the service and above the contents in the pack — so pairing it

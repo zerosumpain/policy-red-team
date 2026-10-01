@@ -276,51 +276,7 @@
   li { margin-bottom: govuk.govuk-spacing(2); }
 }
 
-// ── Read the report in full ────────────────────────────────────────────────
-.prt-wayon {
-  border-top: 2px solid govuk.govuk-colour("black");
-  padding-top: govuk.govuk-spacing(4);
-
-  &__list {
-    list-style: none;
-    margin: 0;
-    padding: 0;
-    display: grid;
-    gap: govuk.govuk-spacing(4);
-    grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
-  }
-
-  &__item {
-    border-left: 3px solid govuk.govuk-colour("black", $variant: "tint-80");
-    padding-left: govuk.govuk-spacing(3);
-    display: flex;
-    flex-direction: column;
-  }
-
-  &__link {
-    display: flex;
-    flex-direction: column;
-  }
-
-  &__step {
-    @include govuk.govuk-font($size: 16);
-    color: govuk.govuk-colour("black", $variant: "tint-25");
-  }
-
-  &__link:focus &__step { color: govuk.govuk-colour("black"); }
-
-  &__label {
-    @include govuk.govuk-font($size: 19, $weight: bold);
-  }
-
-  &__hint {
-    @include govuk.govuk-font($size: 16);
-    color: govuk.govuk-colour("black", $variant: "tint-25");
-    margin-top: 2px;
-  }
-}
-
-// ── "In this tab" — each move's contents as cards ──────────────────────────
+// ── "In this section" — a view's other pages, as cards ─────────────────────
 .prt-tiles {
   margin-bottom: govuk.govuk-spacing(8);
 
@@ -379,30 +335,6 @@
       line-height: 24px;
     }
   }
-}
-
-// ── The tab list on a phone ────────────────────────────────────────────────
-//
-// Below `tablet` the strip is a list of links and only the chosen view is
-// drawn (see `Tabs.tsx`), so the list has to say which one that is. The
-// current entry drops its underline and takes a rule, the way GOV.UK's own
-// contents lists and side navigation mark "you are here".
-@include govuk.govuk-media-query($until: tablet) {
-  .govuk-tabs__list-item {
-    margin-bottom: govuk.govuk-spacing(2);
-  }
-
-  .prt-tab[aria-current="true"] {
-    &:link, &:visited { color: govuk.govuk-colour("black"); }
-    display: inline-block;
-    border-left: 4px solid govuk.govuk-functional-colour("link");
-    padding-left: govuk.govuk-spacing(2);
-
-    .prt-tab__label { text-decoration: none; }
-  }
-
-  .prt-tab__hint { display: inline; }
-  .prt-tab__hint::before { content: " — "; }
 }
 
 @media print {
