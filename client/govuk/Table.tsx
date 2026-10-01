@@ -28,6 +28,12 @@ export interface Column {
    * work out which end of the scale the word points at.
    */
   order?: { asc: string; desc: string };
+  /**
+   * A class for this column's header and every cell under it — how a
+   * `.prt-table` column says it is a score (`prt-table__num`) or a gloss
+   * (`prt-table__secondary`). See `client/styles/parts/_table.scss`.
+   */
+  className?: string;
 }
 
 type Direction = 'asc' | 'desc';
@@ -59,7 +65,7 @@ type Direction = 'asc' | 'desc';
  * arrived in.
  */
 export function Table({
-  caption, captionSize = 'm', columns, rows, scroll, firstCellIsHeader, sortKeys, defaultOrder,
+  caption, captionSize = 'm', columns, rows, scroll, firstCellIsHeader, sortKeys, defaultOrder, className,
 }: {
   caption?: ReactNode;
   captionSize?: 's' | 'm' | 'l' | 'xl';
@@ -76,6 +82,8 @@ export function Table({
   sortKeys?: (string | number)[][];
   /** What the rows' own order is called, for the third press. */
   defaultOrder?: string;
+  /** Added to `govuk-table` — `prt-table` and its modifiers, in `parts/_table.scss`. */
+  className?: string;
 }) {
   const [sort, setSort] = useState<{ column: number; direction: Direction } | null>(null);
   const sortable = columns.some((column) => column.sortable);
@@ -128,7 +136,7 @@ export function Table({
     : `In ${defaultOrder ?? 'the original order'}.`;
 
   const table = (
-    <table className="govuk-table">
+    <table className={cx('govuk-table', className)}>
       {caption ? <caption className={`govuk-table__caption govuk-table__caption--${captionSize}`}>{caption}</caption> : null}
       <thead className="govuk-table__head">
         <tr className="govuk-table__row">
@@ -148,6 +156,7 @@ export function Table({
                   'govuk-table__header',
                   column.numeric && 'govuk-table__header--numeric',
                   column.numeric && 'prt-nowrap',
+                  column.className,
                 )}>
               {column.sortable && sortKeys ? (
                 /*
@@ -174,9 +183,9 @@ export function Table({
           <tr key={source} className="govuk-table__row">
             {rows[source].map((cell, j) =>
               j === 0 && firstCellIsHeader ? (
-                <th key={j} scope="row" className="govuk-table__header">{cell}</th>
+                <th key={j} scope="row" className={cx('govuk-table__header', columns[j]?.className)}>{cell}</th>
               ) : (
-                <td key={j} className={cx('govuk-table__cell', columns[j]?.numeric && 'govuk-table__cell--numeric')}>{cell}</td>
+                <td key={j} className={cx('govuk-table__cell', columns[j]?.numeric && 'govuk-table__cell--numeric', columns[j]?.className)}>{cell}</td>
               )
             )}
           </tr>
