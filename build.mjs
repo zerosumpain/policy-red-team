@@ -34,7 +34,7 @@ const lib = path.join(root, 'src', 'lib');
  * and is erased before this runs. The importer is checked so a future `./provider`
  * somewhere else cannot be silently swapped too.
  */
-function fixtureProviderPlugin(target, registryTarget, tavilyTarget, bodySourcesTarget) {
+function fixtureProviderPlugin(target, registryTarget, tavilyTarget, bodySourcesTarget, fetchPageTarget) {
   return {
     name: 'fixture-provider',
     setup(b) {
@@ -88,6 +88,14 @@ function fixtureProviderPlugin(target, registryTarget, tavilyTarget, bodySources
        * imports the adapter, and the importer is checked for the reason the
        * provider's is.
        */
+      /*
+       * AND THE PAGE READER (phase 22 part 2). Free and keyless like the
+       * public record, and swapped for the same reason: the walk submits a
+       * reader's web address and must not fetch it. Every importer reaches it
+       * by the one `$lib` path, so the path is what is matched; the real
+       * module's user agent is in ENDPOINTS below.
+       */
+      b.onResolve({ filter: /^\$lib\/server\/fetch-page$/ }, () => ({ path: fetchPageTarget }));
       b.onResolve({ filter: /^\.\/body-sources$/ }, (args) => {
         const from = args.importer.replace(/\\/g, '/');
         if (!from.endsWith('/policy-analysis/server/body-evidence.ts')) return null;
@@ -138,7 +146,8 @@ const fixtureProvider = () => [
     path.join(lib, 'policy-analysis', 'server', 'provider.fixture.ts'),
     path.join(lib, 'llm', 'providers', 'index.fixture.ts'),
     path.join(lib, 'deepdive', 'tavily.fixture.ts'),
-    path.join(lib, 'policy-analysis', 'server', 'body-sources.fixture.ts')
+    path.join(lib, 'policy-analysis', 'server', 'body-sources.fixture.ts'),
+    path.join(lib, 'server', 'fetch-page.fixture.ts')
   ),
 ];
 
@@ -205,6 +214,9 @@ const ENDPOINTS = [
   'www.gov.uk/api/search.json',
   'committees-api.parliament.uk',
   'hansard-api.parliament.uk',
+  // The page reader's user agent, ONE literal in `fetch-page.ts`: present only
+  // if the real reader survived the redirect above. Phase 22 part 2.
+  'policy-red-team-page-reader/1',
 ];
 for (const [name, source] of [['cli-fixture.js', fixture], ['server-fixture.js', fixtureServer]]) {
   const found = ENDPOINTS.filter((endpoint) => source.includes(endpoint));

@@ -25,6 +25,10 @@ import './../src/lib/polyfills';
 // fixture build uses, for every file, so it is a guarantee rather than an
 // accident of which bodies the fixtures happen to name.
 vi.mock('../src/lib/policy-analysis/server/body-sources', () => import('../src/lib/policy-analysis/server/body-sources.fixture'));
+// NOR DOES ANY INTEGRATION TEST FETCH A PAGE (phase 22 part 2): research's
+// full-text fallback and a reader's supplied address both go through this one
+// module, swapped here as the fixture builds swap it.
+vi.mock('../src/lib/server/fetch-page', () => import('../src/lib/server/fetch-page.fixture'));
 
 const root = mkdtempSync(path.join(tmpdir(), 'policy-test-'));
 process.env.POLICY_DATA_DIR = path.join(root, 'db');
