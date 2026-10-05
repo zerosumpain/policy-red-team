@@ -129,6 +129,30 @@ const CONSECUTIVE_TIMEOUT_LIMIT = 6;
  */
 const CONCURRENT_EVENT_CODES = new Set(['provider']);
 
+/**
+ * THE FAN-OUTS THAT SEND ONE CALL FIRST, AND RELEASE THE OTHER LANES WHEN IT LANDS.
+ *
+ * Every call in these stages opens with the same fitted shared block
+ * (`orderedContext`), and a prompt cache can only serve a prefix somebody has
+ * already sent. Six lanes dispatched in the same millisecond all arrive cold.
+ * Measured on every real run in the live database (phase 23): in stages 3 and
+ * 14, NOT ONE of the 46 calls that started before any sibling had finished read
+ * anything from the cache, and 72–83% of those that started after one had
+ * finished read nearly all of it, however many lanes were busy.
+ *
+ * Stages 6, 7, 9, 10 and 16 are here on the same reasoning, and the same
+ * measurement is honest about them: their calls missed whether a sibling had
+ * finished or not (2 of 85), for a reason the call records do not show. The
+ * warm-up removes the one cause the records DO show; the first real run after
+ * it says whether the other one is real. `docs/phase-23-tokens.md` has the
+ * table, and what to try next if these stages stay cold.
+ *
+ * The price is one serial call per stage — a cache hit is no faster than a miss
+ * (phase 19), so it saves money, never time. Nothing a call is asked changes:
+ * this is the order calls LEAVE in, nothing else.
+ */
+export const WARM_FIRST_STAGES: ReadonlySet<number> = new Set([3, 6, 7, 9, 10, 14, 16]);
+
 /** Ceilings on a stage's assembled output, which no envelope bounds. */
 const MAX_STAGE_ARTEFACTS = 4000;
 const MAX_REFS = 200;
@@ -310,8 +334,16 @@ export async function executeStage(input: StageInput, deps: PipelineDeps): Promi
    * the fold throws, the calls still in flight are aborted and THEN awaited, so
    * no late record lands beside the retry's — without waiting out a deadline
    * per call first, which in an all-timeout stage was a second deadline.
+   *
+   * A WARM-UP, WHERE THE STAGE ASKS FOR ONE (`WARM_FIRST_STAGES`). Unit 0 goes
+   * out alone and the other lanes wait for it to LAND — answered or failed,
+   * either way — so the shared prefix is in the provider's cache before the
+   * rest arrive. A failed unit 0 opens the gate like any other landing: the
+   * brake above then decides what may follow, exactly as it would have. A
+   * withdrawn fan-out opens it too, so no lane is left waiting on a call that
+   * is never coming back.
    */
-  const fanOut = async (units: Unit[], onResult?: (unit: Unit, result: ReturnType<typeof absorb> | null) => void, onFailure?: (unit: Unit, err: unknown) => void) => {
+  const fanOut = async (units: Unit[], onResult?: (unit: Unit, result: ReturnType<typeof absorb> | null) => void, onFailure?: (unit: Unit, err: unknown) => void, warmUp = WARM_FIRST_STAGES.has(stage)) => {
     // Units that answered with nothing. Silence is a legitimate finding — a body
     // the paper names once has no relationships to assert — but it is still
     // something the reader should be able to see, so it is counted and named once
@@ -349,8 +381,14 @@ export async function executeStage(input: StageInput, deps: PipelineDeps): Promi
       events.set(signature, [...seen, opened]);
       return opened.id;
     };
+    // Only worth a gate when something would otherwise go out beside unit 0.
+    let openGate = () => {};
+    let gate: Promise<void> | null = warmUp && units.length > 1 && lanes > 1
+      ? new Promise<void>((resolve) => { openGate = () => { gate = null; resolve(); }; })
+      : null;
     const lane = async () => {
       while (!stopped && next < units.length) {
+        if (gate && next > 0) { await gate; continue; }
         if (!mayDispatch(next)) { await new Promise<void>((resume) => waiting.push(resume)); continue; }
         const k = next++;
         const unit = units[k];
@@ -360,6 +398,7 @@ export async function executeStage(input: StageInput, deps: PipelineDeps): Promi
           (err: unknown): Landed => ({ raw: null, err, event: eventOf(k, err) }),
         );
         inFlight.delete(k);
+        if (k === 0) openGate();
         // Real progress, reported as each call lands. The worker turns this into
         // a liveness beat, so a stage that is working says so — and one that has
         // stopped working stops saying so, which is the case the probe exists for.
@@ -400,6 +439,7 @@ export async function executeStage(input: StageInput, deps: PipelineDeps): Promi
       // beside the retry's.
       stopped = true;
       withdraw.abort();
+      openGate();
       wake();
       await Promise.allSettled(running);
       throw err;
