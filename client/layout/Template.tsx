@@ -1,8 +1,11 @@
 import type { ReactNode } from 'react';
-import { createContext, useContext, useEffect, useState } from 'react';
+import { useEffect } from 'react';
 import { Link, useLocation } from 'react-router';
 import { cx } from '../govuk/cx';
 import { PhaseBanner } from '../govuk/Feedback';
+import { ServiceNavigation, type ServiceNavItem } from '../govuk/ServiceNavigation';
+import { GUIDE, HUB } from '../places';
+import { useSite } from './site';
 
 /** The service's own name. Not a government service, and it says so. */
 export const SERVICE_NAME = 'Policy Red Team';
@@ -88,33 +91,55 @@ export function usePageTitle(title?: string) {
  *   notice rather than having to hear it on every page.
  */
 /**
- * WHERE A PAGE PUTS ITS SERVICE NAVIGATION, which is not where the page is.
+ * THE SERVICE'S OWN NAVIGATION, ON EVERY PAGE (phase 24).
  *
- * GOV.UK's service navigation sits directly under the header, full bleed, above
- * the back link — outside the width container the page's content renders into.
- * The assessment is the only page that has one, and only it knows whether to
- * draw it: a run still in progress has no views to navigate between. So the
- * Template leaves an empty element in the right place and hands it down, and
- * the page PORTALS its navigation into it.
+ * Before this the only way to the bodies across policies was a footer link,
+ * and the only navigation at the top of any page was an assessment's own six
+ * views. GOV.UK's service navigation is the component for "the parts of this
+ * service": full bleed, directly under the header, current part marked.
  *
- * A portal rather than state lifted into the Template: a page that set a node
- * into its parent's state on every render would re-render the parent, which
- * re-renders the page, which sets a new node — a loop with an element identity
- * at the heart of it. The element here is set once, by a ref.
+ * WHAT IS ACTIVE IS READ OFF THE PATH, here, once — not passed by each page.
+ * An assessment and an item in it are both "inside" Assessments; a body's page
+ * and the pages ruling on who it is are inside Bodies across policies. `page`
+ * on the exact address, `true` under it: the framework's own distinction.
+ *
+ * NO "GROUNDING LIBRARY" YET. Phase 25 adds it with the pages behind it; an item
+ * that leads nowhere is the dead end this navigation exists to remove.
+ *
+ * THE SECTIONS OF ONE THING ARE NOT HERE. An assessment's views and the bodies
+ * hub's views are drawn inside the page under its title (`ServiceNavigation`'s
+ * `sections`), so there is one bar across the top of every page and it always
+ * means the same thing.
  */
-const NavSlot = createContext<HTMLElement | null>(null);
-
-/** The element a page's service navigation is portalled into, or null where the route has none. */
-export function useNavSlot(): HTMLElement | null {
-  return useContext(NavSlot);
+function SiteNavigation({ wide }: { wide?: boolean }) {
+  const { pathname } = useLocation();
+  const { readOnly } = useSite();
+  const under = (path: string) => pathname.startsWith(`${path}/`);
+  const items: ServiceNavItem[] = [
+    { href: '/', text: 'Assessments', current: pathname === '/', active: under('/assessments') },
+    { href: HUB, text: 'Bodies across policies', current: pathname === HUB, active: under(HUB) || pathname === '/personas' || under('/personas') },
+    { href: GUIDE, text: 'How to read a report', current: pathname === GUIDE, active: under(GUIDE) },
+    // The read-only copy cannot start anything, and says so on the landing
+    // page; a navigation item that opens a form which can only answer 403 is
+    // the disabled control that page refuses to draw.
+    ...(readOnly ? [] : [{ href: '/new', text: 'Assess a paper', current: pathname === '/new' }]),
+  ];
+  return (
+    <ServiceNavigation
+      wide={wide}
+      label="Policy Red Team"
+      items={items}
+      render={({ href, className, current, children }) => (
+        <Link to={href} className={className} aria-current={current}>{children}</Link>
+      )}
+    />
+  );
 }
 
-export function Template({ children, backLink, wide, transient, navSlot }: {
+export function Template({ children, backLink, wide, transient }: {
   children: ReactNode;
   backLink?: { href: string; text?: string };
   wide?: boolean;
-  /** Leave room under the header for the page's own service navigation. See `useNavSlot`. */
-  navSlot?: boolean;
   /**
    * This render is a placeholder for a page still loading, not the page.
    *
@@ -124,7 +149,6 @@ export function Template({ children, backLink, wide, transient, navSlot }: {
   transient?: boolean;
 }) {
   useRouteChange(!!transient);
-  const [slot, setSlot] = useState<HTMLElement | null>(null);
   return (
     <>
       <a href="#main-content" className="govuk-skip-link" data-module="govuk-skip-link">
@@ -146,10 +170,9 @@ export function Template({ children, backLink, wide, transient, navSlot }: {
             </div>
           </div>
         </div>
-        {/* THE SERVICE NAVIGATION'S PLACE, under the header and above the phase
-            banner, which is the order GOV.UK's own template gives them. Empty
-            until a page portals into it — see `useNavSlot`. */}
-        {navSlot ? <div ref={setSlot} /> : null}
+        {/* THE SERVICE NAVIGATION, under the header and above the phase
+            banner, which is the order GOV.UK's own template gives them. */}
+        <SiteNavigation wide={wide} />
         {/* Inside the banner landmark, not loose between it and <main>. axe's
             "region" rule wants every piece of content inside a landmark, and a
             phase banner floating between two of them is content nobody owns. */}
@@ -176,7 +199,7 @@ export function Template({ children, backLink, wide, transient, navSlot }: {
         ) : null}
 
         <main className="govuk-main-wrapper" id="main-content" tabIndex={-1}>
-          <NavSlot.Provider value={slot}>{children}</NavSlot.Provider>
+          {children}
         </main>
       </div>
 
@@ -207,7 +230,7 @@ function Footer({ wide }: { wide?: boolean }) {
                 <a className="govuk-footer__link" href="/about">About this tool</a>
               </li>
               <li className="govuk-footer__inline-list-item">
-                <a className="govuk-footer__link" href="/personas">Persona library</a>
+                <a className="govuk-footer__link" href={HUB}>Bodies across policies</a>
               </li>
               <li className="govuk-footer__inline-list-item">
                 <a className="govuk-footer__link" href="/design">Design system</a>

@@ -3,6 +3,7 @@ import { Link, useLocation } from 'react-router';
 import { reader } from '../api';
 import { Button, ButtonGroup, ErrorSummary, Input } from '../govuk';
 import { Template, usePageTitle } from '../layout/Template';
+import { SiteContext } from '../layout/site';
 
 /**
  * Pages a visitor must reach WITHOUT the reader password: the admin panel and
@@ -22,21 +23,28 @@ const OPEN = ['/admin', '/setup', '/about', '/accessibility', '/design'];
 export function ReaderGate({ children }: { children: ReactNode }) {
   const { pathname } = useLocation();
   const [state, setState] = useState<'asking' | 'open' | 'closed'>('asking');
+  const [readOnly, setReadOnly] = useState<boolean | null>(null);
 
   useEffect(() => {
     let live = true;
     reader.status()
-      .then((s) => { if (live) setState(!s.gated || s.signedIn ? 'open' : 'closed'); })
+      .then((s) => {
+        if (!live) return;
+        setState(!s.gated || s.signedIn ? 'open' : 'closed');
+        // An older server does not send it, and absent is not a "no".
+        setReadOnly(typeof s.readOnly === 'boolean' ? s.readOnly : null);
+      })
       // A status that cannot be read is not a reason to lock the page: the data
       // requests still carry their own 401, which is the real lock.
       .catch(() => { if (live) setState('open'); });
     return () => { live = false; };
   }, []);
 
-  if (OPEN.some((p) => pathname === p || pathname.startsWith(`${p}/`))) return <>{children}</>;
+  const site = { readOnly };
+  if (OPEN.some((p) => pathname === p || pathname.startsWith(`${p}/`))) return <SiteContext.Provider value={site}>{children}</SiteContext.Provider>;
   if (state === 'asking') return null;
-  if (state === 'open') return <>{children}</>;
-  return <Template><ReaderSignIn onSignedIn={() => setState('open')} /></Template>;
+  if (state === 'open') return <SiteContext.Provider value={site}>{children}</SiteContext.Provider>;
+  return <SiteContext.Provider value={site}><Template><ReaderSignIn onSignedIn={() => setState('open')} /></Template></SiteContext.Provider>;
 }
 
 function ReaderSignIn({ onSignedIn }: { onSignedIn: () => void }) {
