@@ -85,7 +85,7 @@ export function BodiesList() {
   useEffect(() => {
     api.personas()
       .then((data) => {
-        setRows(data.personas);
+        setRows(data.personas ?? []);
         setDuplicates(data.duplicates ?? []);
         setReadOnly(data.readOnly);
       })

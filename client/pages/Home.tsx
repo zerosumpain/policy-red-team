@@ -356,6 +356,8 @@ function Feature({ row, card }: { row: AnalysisRow; card: OverviewCard }) {
 function Recurring({ data, error }: { data: RecurringBodies | null; error: string | null }) {
   if (error) return <p className="govuk-body govuk-error-message">{error}</p>;
   if (!data) return <p className="govuk-body">Loading…</p>;
+  // An answer without the list (an older server, a stub) is "nothing to show", never a crash of the landing page.
+  if (!Array.isArray(data.bodies)) return <p className="govuk-body">Nothing to show yet.</p>;
   const empty = !data.bodies.length;
   return (
     <section className="prt-recurring" aria-label="Bodies that turn up again">
