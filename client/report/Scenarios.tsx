@@ -1,6 +1,8 @@
 import { scenarioTotals, type ScenarioView } from '$lib/scenario-view';
 import { fieldLabel } from './ArtefactValue';
 import type { ArtefactLink } from './Report';
+import { plainRows } from '$lib/policy-analysis/plain';
+import { PlainBlock } from './Plain';
 
 /**
  * THE CONDITIONS THE POLICY HAS TO SURVIVE — Move 3, between the plays and the
@@ -87,6 +89,10 @@ export function Scenarios({ views, linkTo }: {
                 </span>
               </summary>
 
+              {/* THE SCENARIO IN PLAIN WORDS, FIRST (phase 23), then the
+                  sequence the record holds. Nothing on an older run. */}
+              <PlainBlock artefact={view.artefact} className="prt-scenario__plain" />
+              {plainRows(view.artefact).length ? <p className="prt-beat__label prt-scenario__detail">The full sequence</p> : null}
               <ol className="prt-beats">
                 {view.segments.map((segment) => (
                   <li key={segment.key} className="prt-beat">

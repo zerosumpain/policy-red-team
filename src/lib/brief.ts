@@ -8,6 +8,7 @@ import { stageFacts, truncations } from '$lib/policy-analysis/stage-facts';
 import { BAND_LABEL, findingsBySection, headlineSentence, recommendations, type Band } from '$lib/policy-analysis/view';
 import { provenance } from '$lib/provenance';
 import { rankFindings, withoutEcho, type Severity } from '$lib/writeup-view';
+import { plainField, plainRows, type PlainRow } from '$lib/policy-analysis/plain';
 
 /**
  * THE ONE-PAGE BRIEF — what a busy official reads in two minutes.
@@ -66,6 +67,8 @@ export type BriefPlay = {
   earlyWarning: string;
   /** What would stop it. First sentence only. */
   fix: string;
+  /** What goes wrong, and for whom, from the play's plain block (phase 23). '' on an older play. */
+  goesWrong: string;
 };
 
 export type BriefItem = {
@@ -98,6 +101,8 @@ export type BriefItem = {
   restsOn: Artefact | null;
   /** The decision a key judgement bears on. The full document prints it; the brief does not. */
   decision: string;
+  /** A key judgement's plain block — who it happens to, why it matters (phase 23). Empty otherwise. */
+  plain: PlainRow[];
 };
 
 export type Brief = {
@@ -154,6 +159,7 @@ function briefPlay(play: Artefact): BriefPlay {
     pattern: patternLabel(play),
     earlyWarning: clip(sentences(String(play.data.earlyWarning ?? '')), PROSE_MAX),
     fix: clip(sentences(String(play.data.counter ?? '')), PROSE_MAX),
+    goesWrong: clip(plainField(play, 'goesWrong'), PROSE_MAX),
   };
 }
 
@@ -178,6 +184,7 @@ function fromJudgements(artefacts: Artefact[]): BriefItem[] {
       severity: null,
       restsOn: j.assumption,
       decision: clean(j.decision),
+      plain: plainRows(j.artefact),
     };
   });
 }
@@ -249,6 +256,7 @@ function fromFindings(artefacts: Artefact[]): BriefItem[] {
       severity: view.severity,
       restsOn: null,
       decision: '',
+      plain: [],
     };
   });
 }
@@ -365,3 +373,27 @@ export function briefOf(artefacts: Artefact[], stages: StageWarnings[]): Brief {
 
 /** The band a brief item wears, where it has one. */
 export const briefBand = (item: BriefItem): string | null => (item.play ? BAND_LABEL[item.play.band] : null);
+
+/**
+ * WHAT THIS REPORT SAYS, IN PLAIN WORDS — the Summary's first card (phase 23).
+ *
+ * Three lines at most, each what goes wrong and for whom, from a play's plain
+ * block: first the plays the brief leads with, in the brief's order, then the
+ * worst of the rest. One per play and never the same sentence twice. Empty on
+ * an assessment written before plain blocks — both live runs — and the card
+ * is then not drawn, rather than drawn from words written for someone else.
+ */
+export const PLAIN_LINES = 3;
+export function plainLines(brief: Brief, worst: Artefact[]): { text: string; artefact: Artefact }[] {
+  const out: { text: string; artefact: Artefact }[] = [];
+  const seen = new Set<string>();
+  for (const play of [...brief.items.map((item) => item.play?.artefact), ...worst]) {
+    if (!play || seen.has(play.id)) continue;
+    seen.add(play.id);
+    const text = clean(plainField(play, 'goesWrong'));
+    if (!text || out.some((line) => line.text === text)) continue;
+    out.push({ text, artefact: play });
+    if (out.length >= PLAIN_LINES) break;
+  }
+  return out;
+}

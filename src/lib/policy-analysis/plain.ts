@@ -212,23 +212,37 @@ export function idsInProse(text: string): string[] {
  * it sits, and is never touched (`ID_ONLY`).
  */
 const NOT_PROSE = new Set(['wording', 'about', 'note', 'searchStrategy', 'documentHash', 'retrievedAt', 'url']);
+/**
+ * Fields that HOLD identifiers — the joins every view reads. An entry that is
+ * wholly an id anywhere ELSE is the model filing a reference where a reader
+ * expects words: on the live run a logic model's "What goes in" was the single
+ * string `s1_011_claim_001`. Such an entry is replaced by the item's name when
+ * the run holds it (`whole`), and left alone when it does not — an unknown
+ * field that is really a join must keep working.
+ */
+const REFERENCE_KEYS = new Set(['refs', 'parent', 'firstActor', 'players', 'assumptions', 'targets', 'preconditions', 'candidates', 'mentions', 'dependencies', 'affectedOutcomes', 'aliases', 'actors']);
+/** A computed check's `inputs` are ids; a logic model's are words. */
+const isReferenceKey = (key: string, kind: string) => REFERENCE_KEYS.has(key) || /Ids?$/.test(key) || (kind === 'test' && key === 'inputs');
 const NOT_PROSE_KINDS = new Set(['passage', 'research_source']);
 
 type Leaf = (text: string) => string;
-function mapProse(value: unknown, leaf: Leaf, depth = 0): unknown {
-  if (typeof value === 'string') return ID_ONLY.test(value) ? value : leaf(value);
+function mapProse(value: unknown, leaf: Leaf, depth = 0, key = '', whole?: Leaf, kind = ''): unknown {
+  if (typeof value === 'string') {
+    if (!ID_ONLY.test(value)) return leaf(value);
+    return whole && key && !isReferenceKey(key, kind) ? whole(value) : value;
+  }
   if (depth > 4 || !value || typeof value !== 'object') return value;
   if (Array.isArray(value)) {
     let changed = false;
-    const out = value.map((v) => { const next = mapProse(v, leaf, depth + 1); if (next !== v) changed = true; return next; });
+    const out = value.map((v) => { const next = mapProse(v, leaf, depth + 1, key, whole, kind); if (next !== v) changed = true; return next; });
     return changed ? out : value;
   }
   let changed = false;
   const out: Record<string, unknown> = {};
-  for (const [key, v] of Object.entries(value as Record<string, unknown>)) {
-    const next = NOT_PROSE.has(key) ? v : mapProse(v, leaf, depth + 1);
+  for (const [field, v] of Object.entries(value as Record<string, unknown>)) {
+    const next = NOT_PROSE.has(field) ? v : mapProse(v, leaf, depth + 1, field, whole, kind);
     if (next !== v) changed = true;
-    out[key] = next;
+    out[field] = next;
   }
   return changed ? out : value;
 }
@@ -272,12 +286,14 @@ export function withoutIds(artefacts: Artefact[]): Artefact[] {
       .replace(pattern, (id) => named(id) ?? 'another item in this assessment')
       .replace(checks, (word) => named(word) ?? word);
   };
+  // An entry that IS an id, in a field of words: the bare name, or as it was.
+  const whole: Leaf = (text) => labels.get(text.trim())?.trim() || text;
   let changed = false;
   const out = artefacts.map((a) => {
     if (NOT_PROSE_KINDS.has(a.kind)) return a;
     const label = leaf(a.label);
     const statement = leaf(a.statement);
-    const data = mapProse(a.data, leaf) as Record<string, unknown>;
+    const data = mapProse(a.data, leaf, 0, '', whole, a.kind) as Record<string, unknown>;
     if (label === a.label && statement === a.statement && data === a.data) return a;
     changed = true;
     return { ...a, label, statement, data };

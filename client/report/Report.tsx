@@ -24,6 +24,9 @@ import { PatternGrid } from './PatternGrid';
 import { briefOf } from '$lib/brief';
 import { overviewOf } from '$lib/overview';
 import { markDownJudgements } from '$lib/evidence-grade';
+import { withoutIds } from '$lib/policy-analysis/plain';
+import { policyTerms, termFinder } from '$lib/policy-terms';
+import { TermsContext } from './Term';
 import { Overview } from './Overview';
 import { WorstPlays } from './moves/WorstPlays';
 import { CausalityLead } from './moves/CausalityLead';
@@ -281,7 +284,29 @@ export type ArtefactLink = (artefact: Artefact, label?: string, at?: string) => 
  * reader the very file they are already reading. Found by looking at a real pack
  * rather than by any test, which is the argument for looking at real output.
  */
-export function Report({ detail, offline, linkTo, onChanged, route, onTitle }: {
+/**
+ * THE TWO READINGS EVERY PAGE OF THE REPORT TAKES, ONCE, AT THE ROOT (phase 23).
+ *
+ * `withoutIds`: an identifier the model wrote into a sentence — the live run's
+ * scenarios say "If s1_023_assumption_001 is true" 76 times — is read as the
+ * name of the item it points to, so no page, the pack included, ever shows
+ * one. The glossary: the paper's own names, defined on tap wherever a sentence
+ * uses them (`Term`). Both here, around the report, rather than in each
+ * component, for the reason `markDownJudgements` is at the root below.
+ */
+export function Report(props: Parameters<typeof ReportBody>[0]) {
+  const { detail } = props;
+  const shown = useMemo(() => withoutIds(detail.artefacts), [detail.artefacts]);
+  const readable = useMemo(() => (shown === detail.artefacts ? detail : { ...detail, artefacts: shown }), [detail, shown]);
+  const finder = useMemo(() => termFinder(policyTerms(shown)), [shown]);
+  return (
+    <TermsContext.Provider value={finder}>
+      <ReportBody {...props} detail={readable} />
+    </TermsContext.Provider>
+  );
+}
+
+function ReportBody({ detail, offline, linkTo, onChanged, route, onTitle }: {
   detail: Detail;
   offline?: boolean;
   linkTo?: ArtefactLink;

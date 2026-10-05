@@ -143,6 +143,13 @@ describe('ids never reach a reader', () => {
     expect(sentences.flatMap(idsInProse)).toEqual([]);
     expect(scenario.data.firstActor).toBe('s1_023_assumption_001');
     expect(scenario.data.assumptions).toEqual(['s1_023_assumption_001']);
+    // A whole entry that is an id, in a field of words, is the item's name;
+    // in a field of references it is left as the join it is.
+    const model = withoutIds([...run, artefact('s14_l', 'logic_model', 'L', 'x', { inputs: ['s1_023_assumption_001', 's1_999_unknown_001'], mechanismIds: ['s1_023_assumption_001'] })]).at(-1)!;
+    expect(model.data.inputs).toEqual(['Provider capacity is sufficient', 's1_999_unknown_001']);
+    expect(model.data.mechanismIds).toEqual(['s1_023_assumption_001']);
+    const check = withoutIds([...run, artefact('test_x', 'test', 'X', 'x', { inputs: ['s1_023_assumption_001'], actors: ['s1_023_assumption_001'] })]).at(-1)!;
+    expect(check.data).toEqual({ inputs: ['s1_023_assumption_001'], actors: ['s1_023_assumption_001'] });
     expect(withoutIds([artefact('s12_f', 'finding', 'F', 'See test_veto and test_results.', {}), ...run])[0].statement).toBe('See “Veto check” and test_results.');
   });
 
