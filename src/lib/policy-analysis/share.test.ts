@@ -101,3 +101,30 @@ describe('a shared copy and what the reader supplied', () => {
     expect(by.get('q')!.data.wording).toBeUndefined();
   });
 });
+
+describe('the owner’s master list of actors does not travel (phase 23)', () => {
+  const mention = artefact('s1_0_actor', 'actor', 'Childcare providers', 'Childcare providers deliver places.', { entityType: 'provider', aliases: [], mentions: ['passage_0001'], ambiguity: '', dates: [], parent: null }, { refs: ['passage_0001'], origin: 'extracted_fact' });
+  const listed = artefact('s2_reg_000', 'actor', 'Early years providers', 'A category written in another paper.', {
+    entityType: 'provider', aliases: ['Childcare providers'], mentions: ['s1_0_actor'], ambiguity: 'x', dates: [], parent: 'Private parent from another paper',
+    whatItIs: 'Words the list holds from another paper.',
+    master: { id: 'uuid-1', key: 'e:uuid-1', status: 'confirmed', kind: 'sector_or_category', partOf: { id: 'uuid-2', key: 'e:uuid-2', name: 'Private parent from another paper' }, kindOf: null, bodyId: null, basis: 'alias' },
+  }, { refs: ['s1_0_actor'] });
+  const fresh = artefact('s2_reg_001', 'actor', 'Childminders', 'Childminders look after children.', {
+    entityType: 'provider', aliases: [], mentions: ['s1_0_actor'], ambiguity: 'x', dates: [], parent: null, whatItIs: 'People who look after children in their own homes.',
+    master: { id: null, key: 'n:childminder', status: 'new', kind: 'sector_or_category', partOf: null, kindOf: null, bodyId: null, basis: 'model' },
+  }, { refs: ['s1_0_actor'] });
+  const shared = shareableReport({ artefacts: [passage, mention, listed, fresh], stages });
+  const by = new Map(shared.artefacts.map((a) => [a.id, a]));
+
+  it('names a listed actor in this paper’s own words, with nothing the list wrote', () => {
+    expect(by.get('s2_reg_000')).toMatchObject({ label: 'Childcare providers', statement: 'Childcare providers deliver places.' });
+    expect(by.get('s2_reg_000')!.data.master).toBeUndefined();
+    expect(by.get('s2_reg_000')!.data.whatItIs).toBeUndefined();
+    expect(JSON.stringify(shared)).not.toContain('another paper');
+  });
+
+  it('keeps what this paper itself proposed, without the list’s ids', () => {
+    expect(by.get('s2_reg_001')).toMatchObject({ label: 'Childminders', data: { whatItIs: 'People who look after children in their own homes.' } });
+    expect(by.get('s2_reg_001')!.data.master).toBeUndefined();
+  });
+});

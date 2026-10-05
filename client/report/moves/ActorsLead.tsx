@@ -8,6 +8,19 @@ import { cleanBodies, kindCounts, pressureBoard, pressurePlays, targetLookup, ty
 import { filterPlays, type Selection } from '../selection';
 
 /**
+ * WHERE A BODY SITS on the master list of actors (phase 23): the actor it is
+ * part of, as stage 2 stamped it — "Council, part of Department for
+ * Education". Read straight off the artefact rather than through
+ * `actor-register.ts`, which carries the identity policy and would put it in
+ * the pack's bundle for one field. An assessment written before the list has
+ * no `master`, and shows exactly what it showed before.
+ */
+function partOfName(actor: Artefact): string | null {
+  const master = actor.data.master as { partOf?: { name?: unknown } | null } | undefined;
+  return typeof master?.partOf?.name === 'string' ? master.partOf.name : null;
+}
+
+/**
  * WHO IS COMING FOR WHAT — the head of Move 4.
  *
  * The other three moves each open with a lead that states the move's question in
@@ -138,6 +151,7 @@ export function ActorsLead({ artefacts = [], plays = [], interplay, personas, se
         <BodyToggle id={body.id} label={body.label} selection={selection} onSelect={onSelect}>
           {artefact && linkTo ? linkTo(artefact, body.label) : body.label}
         </BodyToggle>
+        {artefact && partOfName(artefact) ? <span className="prt-meta prt-actors__kind">part of {partOfName(artefact)}</span> : null}
         {onSelect && linkTo && artefact ? (
           <span className="prt-meta prt-actors__open">{linkTo(artefact, 'open')}</span>
         ) : null}
