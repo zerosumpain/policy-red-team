@@ -58,6 +58,14 @@ const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
 page.on('pageerror', (err) => failures.push(`page error: ${err.message}`));
 
 async function audit(label) {
+  // SETTLED, NOT MID-FADE. The guide's pieces enter from opacity 0, and axe
+  // measuring one partway through reported a contrast failure on /guide/2 and
+  // /guide/3 about one walk in three — text no reader ever sees at that
+  // opacity. Wait for running animations to finish, so the scan reads the page
+  // as it rests. Infinite ones (a pulse) are left alone: they never settle.
+  await page.evaluate(() => Promise.all(document.getAnimations()
+    .filter((a) => a.playState === 'running' && a.effect?.getComputedTiming().iterations !== Infinity)
+    .map((a) => a.finished.catch(() => {}))));
   await page.addScriptTag({ content: axeSource });
   const violations = await page.evaluate(async () => {
     const r = await window.axe.run(document, {
