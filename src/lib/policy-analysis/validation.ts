@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { artefactSchema, dataSchemas, looseOutputSchema, PROFILE_FIELDS, RESULT_KINDS, SHORT_PROFILE_FIELDS, stageKinds, stageOutputSchema, type Artefact, type PassKind, type StageOutput } from './contracts';
+import { ASSURANCE_STAGE, ASSURED_SYNTHESIS_STAGE, artefactSchema, dataSchemas, looseOutputSchema, PROFILE_FIELDS, RESULT_KINDS, SHORT_PROFILE_FIELDS, stageKinds, stageOutputSchema, type Artefact, type PassKind, type StageOutput } from './contracts';
 import { locateQuote } from './quotes';
 import { clearedByWording, isPlay } from './cleared';
 
@@ -686,6 +686,7 @@ export function triageArtefacts(output: StageOutput, stage: number, prior: Artef
     seen.add(a.id);
     kept.push(a);
   }
+  if (stage === ASSURED_SYNTHESIS_STAGE || passKind === 'restatement') refileChallenges(kept, prior);
 
   const structural: Artefact[] = [];
   const map = new Map(prior.map((a) => [a.id, a]));
@@ -796,6 +797,49 @@ export function triageArtefacts(output: StageOutput, stage: number, prior: Artef
     for (const [, group] of byCode) warnings.push(discardWarning(group));
   }
   return { artefacts: kept, warnings: clampWarnings(warnings), rejected };
+}
+
+/**
+ * A CHALLENGE CITED BY A GUESSED IDENTIFIER IS REFILED BY ITS SLOT (phase 23).
+ *
+ * Each challenge remit is one call of stage 16 with a slot of its own, and
+ * writes one challenge under it: `s16_003_assurance_challenge_001`. On the Best
+ * Start run one remit wrote `s16_002_assurance_001` instead, and the final
+ * review — copying the PATTERN rather than the ids — answered the other six as
+ * `s16_003_assurance_001` and so on: 29 responses refused for "an invalid
+ * entity reference", and the recommendations citing them with them, across
+ * every attempt of the stage (replayed offline from the stored replies).
+ *
+ * An identifier the run does not hold whose `s16_<slot>_` names a slot that
+ * wrote exactly ONE challenge can only mean that challenge, so it is refiled to
+ * it — in `challengeId`, `challengeIds` and `refs` — rather than refused.
+ * Silent, as the refiling of an id under the wrong heading is
+ * (`semanticFault`): nothing the model asserted changes, only the spelling of
+ * which challenge it answered. A slot with two challenges, or none, is left
+ * alone and refused exactly as before.
+ */
+function refileChallenges(artefacts: Artefact[], prior: Artefact[]) {
+  const slotOf = (id: string) => new RegExp(`^(s${ASSURANCE_STAGE}_[^_]+_)`).exec(id)?.[1] ?? null;
+  const bySlot = new Map<string, string[]>();
+  for (const a of prior) {
+    if (a.kind !== 'assurance_challenge') continue;
+    const slot = slotOf(a.id);
+    if (slot) bySlot.set(slot, [...(bySlot.get(slot) ?? []), a.id]);
+  }
+  if (!bySlot.size) return;
+  const known = new Set([...prior.map((a) => a.id), ...artefacts.map((a) => a.id)]);
+  const refile = (id: unknown) => {
+    if (typeof id !== 'string' || known.has(id)) return id;
+    const slot = slotOf(id);
+    const only = slot ? bySlot.get(slot) : undefined;
+    return only?.length === 1 ? only[0] : id;
+  };
+  for (const a of artefacts) {
+    if (!a.data || typeof a.data !== 'object') continue;
+    if (typeof a.data.challengeId === 'string') a.data.challengeId = refile(a.data.challengeId);
+    if (Array.isArray(a.data.challengeIds)) a.data.challengeIds = [...new Set(a.data.challengeIds.map(refile))];
+    if (Array.isArray(a.refs)) a.refs = [...new Set(a.refs.map((id) => refile(id) as string))];
+  }
 }
 
 /** The most a stored warning may hold; `stage-facts.ts` and the report read it whole. */

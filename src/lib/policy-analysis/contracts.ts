@@ -755,6 +755,19 @@ export const dataSchemas = {
  * failure (see `reconcileKeyJudgements`).
  */
 export const MAX_KEY_JUDGEMENTS = 5;
+/**
+ * The fewest key judgements a final review is asked AGAIN for (phase 23).
+ *
+ * The Best Start run led with 2 of a possible 5. Replayed from its stored
+ * replies, the cause was the context, not the model: the old theory of change
+ * (75 chains, 537k characters) took the call's room, and stage 17 was sent
+ * none of the 75 mechanisms and none of the 365 claims a judgement must name
+ * and quote — so it wrote the two it could. Today's stage 14 (one logic model
+ * and eight chains) leaves room for all 75 quotable items, and the instruction
+ * now asks for five. Below this floor the existing top-up asks once more, for
+ * more, naming the ones already written.
+ */
+export const KEY_JUDGEMENT_FLOOR = 3;
 export const RESULT_KINDS = ['test', 'model', 'scenario', 'exploit', 'cross_policy', 'causal_chain', 'logic_model', 'option_appraisal', 'evaluation_plan'] as const;
 
 export const REPORT_SECTIONS = ['executive_assessment', 'scope_methodology', 'objectives', 'actors', 'mechanisms', 'theory_of_change', 'options_appraisal', 'evaluation_plan', 'assurance', 'high_risk_assumptions', 'test_results', 'strategic_responses', 'scenarios', 'exploitation', 'cross_policy', 'evidence_gaps', 'confidence_uncertainty', 'distribution', 'unresolved_questions'] as const;

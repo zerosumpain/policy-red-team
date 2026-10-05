@@ -1,5 +1,5 @@
 // Synthetic provider responses used only by automated tests. Not a runtime fallback.
-import { artefact, ASSURANCE_CATEGORIES, isPassStage, passOf, passStep, PATTERNS, SCENARIOS, PROFILE_FIELDS, REPORT_SECTIONS, SHORT_PROFILE_FIELDS, type Artefact, type StageInput, type StageOutput } from '../../../src/lib/policy-analysis/contracts';
+import { artefact, ASSURANCE_CATEGORIES, KEY_JUDGEMENT_FLOOR, MAX_KEY_JUDGEMENTS, isPassStage, passOf, passStep, PATTERNS, SCENARIOS, PROFILE_FIELDS, REPORT_SECTIONS, SHORT_PROFILE_FIELDS, type Artefact, type StageInput, type StageOutput } from '../../../src/lib/policy-analysis/contracts';
 export function fixtureModel(stage: number, _key: string, raw: unknown, _options?: { signal?: AbortSignal }): StageOutput {
   const input = raw as StageInput & { idPrefix: string; targetActorId?: string | null; targetActorIds?: string[]; targetPattern?: string; targetScenario?: string; targetMechanismId?: string; targetCategory?: string };
   const prefix = input.idPrefix;
@@ -61,7 +61,7 @@ export function fixtureModel(stage: number, _key: string, raw: unknown, _options
       }, [challenge.id])));
       items.push({ ...make('redesign', 'recommendation', { findingIds: [items[0].id], change: 'Commit resources and review authority.', tradeoffs: 'Additional public expenditure.', beneficiaries: ['Service users'], burdenBearers: ['Department'], validationNeeded: 'Verify capacity.', revision: 'assured', challengeIds: challenges.map((c) => c.id), judgement: 'supported_with_limits' }, [items[0].id, ...challenges.map((c) => c.id)]), origin: 'normative_judgement' });
       items.push(make('summary', 'review_summary', { decisionUse: 'independently_challenged', judgement: 'supported_with_limits', openChallenges: 0, acceptedChallenges: 0, unresolvedMaterialChallenges: 0, scope: 'Restated after material was attached.', limitations: ['No human sign-off.'] }, challenges.map((c) => c.id)));
-      items.push(...keyJudgements(input, [items[0].id]));
+      items.push(...keyJudgements(input, [items[0].id], 1));
     }
   } else if (stage === 1) {
     const p = one('passage');
@@ -188,7 +188,13 @@ export function fixtureModel(stage: number, _key: string, raw: unknown, _options
     }, [challenge.id])));
     items.push({ ...make('redesign', 'recommendation', { findingIds: [items[0].id], change: 'Commit resources and review authority.', tradeoffs: 'Additional public expenditure.', beneficiaries: ['Service users'], burdenBearers: ['Department'], validationNeeded: 'Verify capacity and legal powers.', revision: 'assured', challengeIds: challenges.map((c) => c.id), judgement: 'supported_with_limits' }, [items[0].id, ...challenges.map((c) => c.id)]), origin: 'normative_judgement' });
     items.push(make('summary', 'review_summary', { decisionUse: 'independently_challenged', judgement: 'supported_with_limits', openChallenges: 0, acceptedChallenges: 0, unresolvedMaterialChallenges: 0, scope: 'Automated independent challenge.', limitations: ['No human sign-off.'] }, challenges.map((c) => c.id)));
-    items.push(...keyJudgements(input, [items[0].id]));
+    // The main call writes `KEY_JUDGEMENT_FLOOR`; a top-up asked for more
+    // (phase 23) writes the rest, each about a combination the ones already
+    // written do not use — which is what the instruction asks of a model.
+    const asking = input as unknown as { coverageGap?: unknown; keyJudgementsWritten?: { mechanismId?: unknown; playIds?: unknown }[] };
+    const asked = Array.isArray(asking.coverageGap) && asking.coverageGap.includes('key_judgements');
+    const written = asking.keyJudgementsWritten ?? [];
+    items.push(...keyJudgements(input, [items[0].id], asked ? MAX_KEY_JUDGEMENTS - written.length : KEY_JUDGEMENT_FLOOR, written));
   }
   // ONE NOTE ABOUT THE PAPER, from decomposition (phase 23): what the provider
   // hands back as `notes` when a model's reply says, in its own `warnings`,
@@ -203,19 +209,32 @@ export function fixtureModel(stage: number, _key: string, raw: unknown, _options
 export const FIXTURE_NOTE = 'The passage does not say how the shared access programme will be funded after its first year.';
 
 /**
- * The key judgements a revised report leads with: one, quoting the mechanism
- * it is about exactly as stage 1 located it, naming the sharpest play.
+ * The key judgements a revised report leads with: up to `count`, each quoting
+ * the mechanism it is about exactly as stage 1 located it and naming a play,
+ * and none repeating a (mechanism, play) pair in `written` or in this list.
  */
-function keyJudgements(input: StageInput & { idPrefix: string }, findingIds: string[]): Artefact[] {
-  const mechanism = input.artefacts.find((a) => a.kind === 'mechanism' && a.sourceId && a.sourceQuote);
-  const play = input.artefacts.find((a) => a.kind === 'exploit');
+function keyJudgements(input: StageInput & { idPrefix: string }, findingIds: string[], count: number, written: { mechanismId?: unknown; playIds?: unknown }[] = []): Artefact[] {
+  const mechanisms = input.artefacts.filter((a) => a.kind === 'mechanism' && a.sourceId && a.sourceQuote);
+  const plays = input.artefacts.filter((a) => a.kind === 'exploit');
   const assumption = input.artefacts.find((a) => a.kind === 'assumption');
-  if (!mechanism || !play || !assumption) return [];
-  return [artefact(`${input.idPrefix}judgement_1`, 'key_judgement', 'Councils can comply on paper', 'Councils can report against the access measure without changing practice, so the shared access programme can look delivered when it is not.', {
-    rank: 1, mechanismId: mechanism.id, playIds: [play.id], assumptionId: assumption.id,
-    wouldChangeIf: 'An independent check found practice changing where the measure improves.',
-    decision: 'Whether to fund the programme beyond its first year.',
-    action: 'Add an independent check of practice before the second year of funding.', owner: 'The funding department',
-    findingIds,
-  }, { refs: [mechanism.id, play.id, assumption.id, ...findingIds], sourceId: mechanism.sourceId, sourceQuote: mechanism.sourceQuote, origin: 'structural_inference', confidence: null })];
+  if (!mechanisms.length || !plays.length || !assumption) return [];
+  const taken = new Set(written.map((w) => `${String(w.mechanismId)}|${Array.isArray(w.playIds) ? String(w.playIds[0]) : ''}`));
+  const out: Artefact[] = [];
+  for (let i = 0; out.length < count && i < mechanisms.length * plays.length; i++) {
+    const mechanism = mechanisms[i % mechanisms.length];
+    const play = plays[Math.floor(i / mechanisms.length) % plays.length];
+    if (taken.has(`${mechanism.id}|${play.id}`)) continue;
+    taken.add(`${mechanism.id}|${play.id}`);
+    const n = out.length + 1;
+    out.push(artefact(`${input.idPrefix}judgement_${n}`, 'key_judgement', n === 1 ? 'Councils can comply on paper' : `Synthetic judgement ${n}`, n === 1
+      ? 'Councils can report against the access measure without changing practice, so the shared access programme can look delivered when it is not.'
+      : `Synthetic key judgement ${n}: a body can meet the letter of this part of the policy without its purpose.`, {
+      rank: n, mechanismId: mechanism.id, playIds: [play.id], assumptionId: assumption.id,
+      wouldChangeIf: 'An independent check found practice changing where the measure improves.',
+      decision: 'Whether to fund the programme beyond its first year.',
+      action: 'Add an independent check of practice before the second year of funding.', owner: 'The funding department',
+      findingIds,
+    }, { refs: [mechanism.id, play.id, assumption.id, ...findingIds], sourceId: mechanism.sourceId, sourceQuote: mechanism.sourceQuote, origin: 'structural_inference', confidence: null }));
+  }
+  return out;
 }

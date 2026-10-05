@@ -1,6 +1,6 @@
 import { capForRival } from './decision-use';
 import { readerArtefacts, researchRank, type LookUp, type SuppliedSource } from './reader-inputs';
-import { APPRAISAL_STAGE, assuranceCategories, ASSURANCE_STAGE, ASSURED_SYNTHESIS_STAGE, CONCURRENCY_OPTIONS, DEEP_CHAINS, DEFAULT_CONCURRENCY, DEFAULT_EXTRACTION, DEPTH_LIMITS, FIT_LIMIT, FOLLOW_UP_STAGES, FULL_PROFILES, MAX_KEY_JUDGEMENTS, isPassStage, passOf, passOrdinal, passStep, PATTERNS, PERSONA_STAGE, REPORT_SECTIONS, RESULT_KINDS, REVISION_STATUSES, SCENARIOS, SHORT_PROFILE_BATCH, STAGE_CONTEXT, SYNTHESIS_STAGE, THEORY_STAGE, type Artefact, type Concurrency, type Extraction, type PassKind, type StageInput, type StageOutput } from './contracts';
+import { APPRAISAL_STAGE, assuranceCategories, ASSURANCE_STAGE, ASSURED_SYNTHESIS_STAGE, CONCURRENCY_OPTIONS, DEEP_CHAINS, DEFAULT_CONCURRENCY, DEFAULT_EXTRACTION, DEPTH_LIMITS, FIT_LIMIT, FOLLOW_UP_STAGES, FULL_PROFILES, KEY_JUDGEMENT_FLOOR, MAX_KEY_JUDGEMENTS, isPassStage, passOf, passOrdinal, passStep, PATTERNS, PERSONA_STAGE, REPORT_SECTIONS, RESULT_KINDS, REVISION_STATUSES, SCENARIOS, SHORT_PROFILE_BATCH, STAGE_CONTEXT, SYNTHESIS_STAGE, THEORY_STAGE, type Artefact, type Concurrency, type Extraction, type PassKind, type StageInput, type StageOutput } from './contracts';
 import { consumedSources, encodedSize, fitToBudget } from './budget';
 import { scoreExploits } from './exposure';
 import { isPlay } from './cleared';
@@ -618,6 +618,17 @@ export async function executeStage(input: StageInput, deps: PipelineDeps): Promi
     ? patternBrief(input.artefacts)
     : null;
   const patterns = brief ? { playPatterns: brief } : {};
+  /**
+   * WHICH ASSUMPTIONS EACH CITABLE RESULT RESTS ON, for the stages that write
+   * findings (phase 23, T4). A finding is refused when none of its hypotheses
+   * is reached from its results through `refs` — the commonest refusal in the
+   * final review — and the model, shown the artefacts but not the graph
+   * between them, guesses. This is the corrective round's hint, sent first.
+   * An `extra`, so it rides after the artefacts and the cached prefix stands.
+   */
+  const supportsFor = (context: Artefact[]) => ([SYNTHESIS_STAGE, ASSURED_SYNTHESIS_STAGE].includes(stage) || (isPassStage(stage) && deps.passKind === 'restatement'))
+    ? { resultAssumptions: resultAssumptions(context, input.artefacts) }
+    : {};
 
   /**
    * What the reader's persona library already holds about the bodies in this run.
@@ -711,7 +722,7 @@ export async function executeStage(input: StageInput, deps: PipelineDeps): Promi
         // A restatement writes key judgements too, and quotes from the same place.
         ...quotableForJudgements(input.artefacts),
       ];
-      await request('main', context, { protect, ...patterns });
+      await request('main', context, { protect, ...patterns, ...supportsFor(context) });
     } else if (step === 1) {
       if (!materialPassages.length) throw new PolicyError('extraction', 'The attached material yielded no readable passages, so there is nothing to read into the assessment.');
       // THE CAST IS PINNED, and this is the rule that makes an addendum worth
@@ -1222,7 +1233,7 @@ export async function executeStage(input: StageInput, deps: PipelineDeps): Promi
     // was passed only to the follow-up rounds, so the first round was bounded by a
     // number written into the prompt — and raising `questions` in the contract then
     // changed nothing at all, which is the whole of what stage 5 does.
-    const extra = { ...(protect.length ? { protect } : {}), ...(stage === 5 ? { remainingQuestions: limits.questions } : {}), ...patterns };
+    const extra = { ...(protect.length ? { protect } : {}), ...(stage === 5 ? { remainingQuestions: limits.questions } : {}), ...patterns, ...supportsFor(context) };
     await request('main', context, extra);
     /**
      * DIVERGENCE: ONE MORE ASK FOR EXACTLY WHAT IS MISSING.
@@ -1258,12 +1269,14 @@ export async function executeStage(input: StageInput, deps: PipelineDeps): Promi
      * coverage rule can end a run over a single absence.
      */
     // `KEY_JUDGEMENT_GAP` joins the challenge ids when the report came back with
-    // no usable key judgement: one ask for the "so what", in the same call.
+    // fewer than `KEY_JUDGEMENT_FLOOR` usable key judgements (phase 23; it was
+    // "none"): one ask for more of the "so what", in the same call.
+    const judged = output.artefacts.filter((a) => a.kind === 'key_judgement');
     const gap = stage === ASSURED_SYNTHESIS_STAGE
       ? [...input.artefacts.filter((a) => a.kind === 'assurance_challenge')
         .filter((c) => !output.artefacts.some((a) => a.kind === 'assurance_response' && a.data.challengeId === c.id))
         .map((a) => a.id),
-      ...(output.artefacts.some((a) => a.kind === 'key_judgement') ? [] : [KEY_JUDGEMENT_GAP])]
+      ...(judged.length >= KEY_JUDGEMENT_FLOOR ? [] : [KEY_JUDGEMENT_GAP])]
       : stage === APPRAISAL_STAGE
         // Mirrors the appraisal rule below. Written out rather than shared with it
         // because the two sit 120 lines apart and this is a recorded divergence:
@@ -1303,8 +1316,13 @@ export async function executeStage(input: StageInput, deps: PipelineDeps): Promi
        * "could not be assessed" beside it. The failed call itself is on the
        * durable record in `policy_model_calls`, with its error.
        */
+      // The judgements already written, so the second ask adds to them rather
+      // than restating them (phase 23). Only when it is asked for judgements.
+      const written = gap.includes(KEY_JUDGEMENT_GAP) && judged.length
+        ? { keyJudgementsWritten: judged.map((a) => ({ id: a.id, label: a.label, rank: a.data.rank, mechanismId: a.data.mechanismId, playIds: a.data.playIds })) }
+        : {};
       try {
-        await request('topup', context, { ...extra, coverageGap: gap });
+        await request('topup', context, { ...extra, ...written, coverageGap: gap });
       } catch (err) {
         deps.signal.throwIfAborted();
         if (!(err instanceof PolicyError)) throw err;
@@ -1354,6 +1372,16 @@ export async function executeStage(input: StageInput, deps: PipelineDeps): Promi
         output.artefacts = output.artefacts.filter((a) => keep.has(a.id) || !byId.has(a.id));
         output.warnings.push(`The second call restated ${unwanted.length} item${unwanted.length === 1 ? '' : 's'} this stage already holds; ${unwanted.length === 1 ? 'it was' : 'they were'} discarded rather than recorded twice. Only what was actually missing, and what that rests on, was taken from it.`);
       }
+      /*
+       * AN ADDED JUDGEMENT RANKS AFTER THE ONES ALREADY WRITTEN (phase 23). The
+       * reconcile keeps the LAST of each rank, so a second ask that numbered
+       * its own judgements from 1 would replace the first ask's instead of
+       * joining them — the opposite of why it was asked.
+       */
+      let rank = judged.reduce((most, a) => Math.max(most, Number(a.data.rank) || 0), 0);
+      const joining = added.filter((a) => a.kind === 'key_judgement' && keep.has(a.id))
+        .sort((a, b) => (Number(a.data.rank) || 0) - (Number(b.data.rank) || 0));
+      for (const judgement of joining) judgement.data.rank = ++rank;
     }
   }
 
@@ -1918,6 +1946,41 @@ export function deepChainMechanisms(all: Artefact[], limit = DEEP_CHAINS): { sel
  * STAGE, computed from its input: the shared block is still fitted once,
  * first, and the main call and the top-up still send identical bytes.
  */
+/**
+ * For each result in a context, the assumptions it reaches through `refs` —
+ * the very walk `validation.ts` makes (`reaches`) to decide whether a finding's
+ * hypothesis is supported by the results it cites. Nearest first, at most
+ * `cap` per result: the first assumptions a result's own references name are
+ * the ones it is about, and the list rides on every call of the stage.
+ * A result that reaches none is left out — it cannot carry a finding alone.
+ */
+export const RESULT_ASSUMPTIONS_CAP = 8;
+export function resultAssumptions(context: Artefact[], all: Artefact[], cap = RESULT_ASSUMPTIONS_CAP): Record<string, string[]> {
+  const byId = new Map(all.map((a) => [a.id, a]));
+  for (const a of context) if (!byId.has(a.id)) byId.set(a.id, a);
+  const out: Record<string, string[]> = {};
+  for (const result of context) {
+    if (!(RESULT_KINDS as readonly string[]).includes(result.kind)) continue;
+    const found: string[] = [];
+    const seen = new Set<string>([result.id]);
+    let frontier = [result.id];
+    while (frontier.length && found.length < cap) {
+      const next: string[] = [];
+      for (const id of frontier) {
+        for (const ref of byId.get(id)?.refs ?? []) {
+          if (seen.has(ref)) continue;
+          seen.add(ref);
+          if (byId.get(ref)?.kind === 'assumption' && found.length < cap) found.push(ref);
+          next.push(ref);
+        }
+      }
+      frontier = next;
+    }
+    if (found.length) out[result.id] = found;
+  }
+  return out;
+}
+
 export function quotableForJudgements(all: Artefact[]): string[] {
   const mechanisms = deepChainMechanisms(all).selected;
   const chosen = new Set(mechanisms.map((m) => m.id));
