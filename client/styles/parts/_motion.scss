@@ -1,0 +1,38 @@
+// ── Motion, as tokens (phase 26) ───────────────────────────────────────────
+//
+// THERE WAS NO MOTION ANYWHERE IN THE CLIENT before the guide, so this starts
+// as a small, named set rather than a duration typed into each rule: three
+// lengths and three easings, the vocabulary a later change reaches for instead
+// of inventing a fourth length. Everything that moves reads these.
+//
+// REDUCED MOTION IS DECIDED HERE, ONCE. Under `prefers-reduced-motion: reduce`
+// every duration collapses to a hundredth of a millisecond — not zero, so
+// `transitionend` and `animationend` still fire for anything listening — and
+// the one class that marks a LOOPING animation (`.prt-motion-loop`) has its
+// animation removed outright. Each animated figure is written so that its
+// static state, with no animation applied, IS its end state; switching the
+// motion off can therefore never leave a picture half-drawn.
+:root {
+  --motion-duration-short: 150ms;
+  --motion-duration-medium: 300ms;
+  --motion-duration-long: 700ms;
+  // Standard for a thing that moves within the page; enter decelerates into
+  // place; exit accelerates away. Material's curves, which match the
+  // framework's own (GOV.UK uses ease-out for its accordion and tabs).
+  --motion-ease-standard: cubic-bezier(0.2, 0, 0, 1);
+  --motion-ease-enter: cubic-bezier(0, 0, 0.2, 1);
+  --motion-ease-exit: cubic-bezier(0.4, 0, 1, 1);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --motion-duration-short: 0.01ms;
+    --motion-duration-medium: 0.01ms;
+    --motion-duration-long: 0.01ms;
+  }
+
+  .prt-motion-loop,
+  .prt-motion-loop * {
+    animation: none !important;
+  }
+}
