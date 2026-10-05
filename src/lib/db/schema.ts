@@ -76,6 +76,9 @@ export const policyStages = pgTable('policy_stages', {
   completedAt: timestamp('completed_at', { withTimezone: true }),
   error: text('error'),
   warnings: jsonb('warnings').$type<string[]>().notNull().default([]),
+  // The model's own remarks about the paper (phase 23, `0006-stage-notes.sql`).
+  // Never carried into a later prompt; see `StageOutput`.
+  notes: jsonb('notes').$type<string[]>().notNull().default([]),
   output: jsonb('output'),
 }, (t) => [uniqueIndex('policy_stages_order_idx').on(t.analysisId, t.ordinal)]);
 

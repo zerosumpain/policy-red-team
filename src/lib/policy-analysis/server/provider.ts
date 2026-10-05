@@ -188,7 +188,7 @@ export function modelCaller(executionId: string, runId: string, runSignal: Abort
       .orderBy(desc(policyModelCalls.completedAt)).limit(1);
     const cachedResult = cached?.output == null ? null : accept(triageOutput(asEnvelope(cached.output), stage, prior, commission?.passKind), prefix);
     if (cachedResult && !cachedResult.rejected.length && !cachedResult.incomplete.length) {
-      return { artefacts: cachedResult.output.artefacts, warnings: [...fitted.notes, ...cachedResult.output.warnings] };
+      return { artefacts: cachedResult.output.artefacts, warnings: [...fitted.notes, ...cachedResult.output.warnings], notes: cachedResult.output.notes };
     }
 
     // The reader may commission a specific Codex model and reasoning effort; a
@@ -215,6 +215,9 @@ export function modelCaller(executionId: string, runId: string, runSignal: Abort
     // discarded.
     const accepted: Artefact[] = [...(cachedResult?.output.artefacts ?? [])];
     const warnings: string[] = [...fitted.notes, ...(cachedResult?.output.warnings ?? [])];
+    // The model's own remarks about the paper, every round's, kept apart from
+    // `warnings` (phase 23 — see `StageOutput`).
+    const notes: string[] = [...(cachedResult?.output.notes ?? [])];
     let lastError: PolicyError | null = cachedResult?.rejected[0]
       ? new PolicyError(cachedResult.rejected[0].code, cachedResult.rejected[0].reason)
       : null;
@@ -229,7 +232,7 @@ export function modelCaller(executionId: string, runId: string, runSignal: Abort
       const room = CONTEXT_LIMIT - sent - instruction.length - 2_000;
       if (room < 0) {
         if (!accepted.length) throw lastError;
-        return { artefacts: accepted, warnings: [...warnings, 'There was no room left in the model’s context window for a corrective attempt.'] };
+        return { artefacts: accepted, warnings: [...warnings, 'There was no room left in the model’s context window for a corrective attempt.'], notes };
       }
       if (room >= 4_000) messages.push({ role: 'assistant', content: cachedContent.slice(0, room) });
       messages.push({ role: 'user', content: instruction });
@@ -302,14 +305,15 @@ export function modelCaller(executionId: string, runId: string, runSignal: Abort
         asked = new Set(incomplete.map((r) => r.id));
         accepted.push(...round1.artefacts);
         warnings.push(...round1.warnings);
+        notes.push(...(round1.notes ?? []));
         await db.update(policyModelCalls).set({ status: 'completed', output: sealed ? null : output, usage: llmCalls, provider: llmCalls.at(-1)?.provider ?? null, model: llmCalls.at(-1)?.model ?? result.model, completedAt: new Date() }).where(eq(policyModelCalls.id, call.id));
 
         if (!needsRepair(round1.artefacts.length, rejected, round) || round === REPAIR_ROUNDS) {
           // An empty reply is an ANSWER, not a fault, and not evidence of a dead
           // provider — see `isLegitimateSilence`, which is where the rule lives.
-          if (isLegitimateSilence(accepted.length, rejected, !!lastError)) return { artefacts: [], warnings };
+          if (isLegitimateSilence(accepted.length, rejected, !!lastError)) return { artefacts: [], warnings, notes };
           if (!accepted.length) throw lastError ?? new PolicyError(rejected[0]?.code ?? 'contract', rejected[0]?.reason ?? 'The model returned nothing this stage could use.');
-          return { artefacts: accepted, warnings };
+          return { artefacts: accepted, warnings, notes };
         }
         lastError = new PolicyError(rejected[0]?.code ?? 'contract', rejected[0]?.reason ?? 'Output was discarded.');
         const instruction = repairPrompt(rejected, prefix, truncated, !!indexed);
@@ -322,7 +326,7 @@ export function modelCaller(executionId: string, runId: string, runSignal: Abort
         // the whole value. A large stage leaves no room for the echo, and bailing
         // there meant the corrective round-trip never ran at exactly the stages
         // that needed it most. Drop the echo instead of the repair.
-        if (room < 0) { if (!accepted.length) throw lastError; return { artefacts: accepted, warnings: [...warnings, 'There was no room left in the model’s context window for a corrective attempt.'] }; }
+        if (room < 0) { if (!accepted.length) throw lastError; return { artefacts: accepted, warnings: [...warnings, 'There was no room left in the model’s context window for a corrective attempt.'], notes }; }
         if (room >= 4_000) messages.push({ role: 'assistant', content: content.slice(0, room) });
         messages.push({ role: 'user', content: instruction });
       } catch (err) {
@@ -341,7 +345,7 @@ export function modelCaller(executionId: string, runId: string, runSignal: Abort
           ? new PolicyError('timeout', `“${model}” did not answer within ${Math.round(callTimeoutMs(context.provider) / 1000)} seconds on this call (gave up after ${elapsed}s). This is a per-call deadline, not a provider outage — the run needs a model that answers inside it, and resuming on the same one will stop here again.`)
           : new PolicyError('provider', `The configured model provider could not be reached for “${model}” (after ${elapsed}s). Check site connections, then resume.`);
         await db.update(policyModelCalls).set({ status: 'failed', usage: llmCalls, completedAt: new Date(), error: fault.message }).where(eq(policyModelCalls.id, call.id));
-        if (accepted.length) return { artefacts: accepted, warnings: [...warnings, `A corrective attempt failed (${fault.message}); the assessment keeps what was already accepted.`] };
+        if (accepted.length) return { artefacts: accepted, warnings: [...warnings, `A corrective attempt failed (${fault.message}); the assessment keeps what was already accepted.`], notes };
         // THE WIRE GOING AWAY IS WORTH WAITING OUT. The bridge these calls run
         // through is restarted by other deploys on the box and comes back in
         // about ten seconds; failing a stage over that loses an attempt it may
@@ -372,9 +376,9 @@ export function modelCaller(executionId: string, runId: string, runSignal: Abort
  * other faulty artefact rather than failing the whole response — the repair
  * round then gets told exactly what the prefix is.
  */
-function accept(triaged: { artefacts: Artefact[]; warnings: string[]; rejected: Rejection[]; incomplete?: Rejection[] }, prefix: string) {
+function accept(triaged: { artefacts: Artefact[]; warnings: string[]; notes?: string[]; rejected: Rejection[]; incomplete?: Rejection[] }, prefix: string) {
   const asks = triaged.incomplete ?? [];
-  if (!prefix) return { output: { artefacts: triaged.artefacts, warnings: triaged.warnings }, rejected: triaged.rejected, incomplete: asks };
+  if (!prefix) return { output: { artefacts: triaged.artefacts, warnings: triaged.warnings, notes: triaged.notes ?? [] }, rejected: triaged.rejected, incomplete: asks };
   const rejected = [...triaged.rejected];
   const kept = triaged.artefacts.filter((a) => {
     if (a.id.startsWith(prefix)) return true;
@@ -385,5 +389,5 @@ function accept(triaged: { artefacts: Artefact[]; warnings: string[]; rejected: 
   const strays = rejected.length - triaged.rejected.length;
   if (strays) warnings.push(`${strays} model output${strays === 1 ? '' : 's'} used identifiers outside this call's namespace and could not be linked into the assessment.`);
   const keptIds = new Set(kept.map((a) => a.id));
-  return { output: { artefacts: kept, warnings }, rejected, incomplete: asks.filter((r) => keptIds.has(r.id)) };
+  return { output: { artefacts: kept, warnings, notes: triaged.notes ?? [] }, rejected, incomplete: asks.filter((r) => keptIds.has(r.id)) };
 }

@@ -14,7 +14,7 @@ import { MOVES, viewPath } from '../moves';
 import {
   filterPlays, mechanismIdsOf, mechanismsOf, narrowExcept, parseSelection, selectionParam, type Selection,
 } from './selection';
-import { byReason, groupLimits, truncations } from './warnings';
+import { byReason, groupLimits, noteRows, partLimits, truncations } from './warnings';
 import { Metrics } from './Metrics';
 import { WriteUp } from './WriteUp';
 import { SelectionBanner } from './moves/SelectionBanner';
@@ -77,6 +77,7 @@ import { Models } from './Models';
 import { Resolution } from './Resolution';
 /* Provenance: the run itself, what it could not see, and what it could not establish. */
 import { RunProfile } from './RunProfile';
+import { ValueLedger } from './ValueLedger';
 import { Withheld } from './Withheld';
 import { Limits } from './Limits';
 import { DownloadGrid } from './DownloadGrid';
@@ -192,8 +193,9 @@ const SECTION_NOTES: Record<string, string> = {
   machine: 'How much the run produced.',
   discarded: 'What the model wrote that was thrown out, and why.',
   provenance: 'Which model, how long each step took, what it cost.',
+  value: 'The tokens each step spent, against what a later step or a reader used.',
   withheld: 'Steps where the model saw only part of the assessment.',
-  gaps: 'Every limit a step recorded, each said once.',
+  gaps: 'Every limit a step recorded, each said once, and what the paper does not say.',
   composition: 'The claims and machinery the paper is built from.',
   evidence: 'Which claims have evidence behind them.',
   assurance: 'The challenge round that attacked the findings.',
@@ -217,7 +219,7 @@ const READING_ORDER: Partial<Record<Move, string[]>> = {
   ],
   causality: ['mechanisms', 'change', 'network'],
   provenance: [
-    'machine', 'discarded', 'provenance', 'withheld', 'gaps', 'composition', 'evidence', 'assurance', 'paper',
+    'machine', 'discarded', 'provenance', 'value', 'withheld', 'gaps', 'composition', 'evidence', 'assurance', 'paper',
   ],
 };
 
@@ -1214,10 +1216,15 @@ function ReportView({ detail, offline, linkTo, onChanged, route, onTitle }: Repo
    * lead sentence and reports 181, so the index reads the same function the
    * section does rather than a number that was true of the block it replaced.
    */
-  const limitGroups = useMemo(() => groupLimits(stages), [stages]);
+  // THE RUN'S LIMITS AND THE MODEL'S NOTES ABOUT THE PAPER, counted as the
+  // section draws them: two lists (phase 23, `partLimits`).
+  const limitGroups = useMemo(() => {
+    const parted = partLimits(stages);
+    return groupLimits(parted.limits).length + noteRows(parted.notes).length;
+  }, [stages]);
   section('gaps', 'What it could not establish', 'provenance',
-    limitGroups.length ? <Limits stages={stages} artefacts={artefacts} /> : null,
-    { count: { n: limitGroups.length, noun: 'different gaps' } });
+    limitGroups ? <Limits stages={stages} artefacts={artefacts} /> : null,
+    { count: { n: limitGroups, noun: 'different gaps' } });
 
   /*
    * ONE SECTION, BECAUSE THE DIFFERENCE BETWEEN SIX DOWNLOADS IS TWO FACTS.
@@ -1275,6 +1282,15 @@ function ReportView({ detail, offline, linkTo, onChanged, route, onTitle }: Repo
       cost={detail.cost}
       offline={offline}
     />);
+
+  /*
+   * WHAT EACH STEP SPENT, AGAINST WHAT CAME OF IT — under the ladder it reads
+   * beside (phase 23). Computed on the server from stored rows, and carried in
+   * the pack's run facts, so both renderers draw the same figure; an older
+   * reading has no ledger and the section is simply absent.
+   */
+  section('value', 'What each step spent, and what came of it', 'provenance',
+    detail.ledger ? <ValueLedger ledger={detail.ledger} /> : null);
 
   /*
    * THE PAPER ITSELF, IN THE PACK, WHERE A READER CAN FIND IT.

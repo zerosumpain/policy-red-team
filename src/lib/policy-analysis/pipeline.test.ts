@@ -85,7 +85,10 @@ describe('policy ingestion and untrusted contracts', () => {
   });
   it('rejects malformed model output, fake quotes, missing provenance and invalid confidence', async () => {
     const source = (await ingest(fixture, 'policy.txt', 'text/plain')).artefacts;
-    const good = fixtureModel(1, '', { artefacts: source, idPrefix: 's1_' });
+    // The fixture stands in for the PROVIDER, which parts a reply's own warnings
+    // into `notes` (phase 23); as the model's reply they are its `warnings`.
+    const { notes, ...provided } = fixtureModel(1, '', { artefacts: source, idPrefix: 's1_' });
+    const good = { ...provided, warnings: [...provided.warnings, ...(notes ?? [])] };
     expect(() => validateOutput('not JSON', 1, source)).toThrow('invalid structured');
     const fake = structuredClone(good); fake.artefacts[0].sourceQuote = 'invented quote';
     expect(() => validateOutput(fake, 1, source)).toThrow('could not be located');
@@ -515,9 +518,13 @@ describe('concurrent agents', () => {
    * `lanes`, so one slow call held its whole batch — and the next — hostage:
    * measured 3.2 to 3.9 of six lanes busy on the review of 25 September 2026.
    *
-   * The first unit here does not answer until every other unit has STARTED. A
-   * batched fan-out can never get there (units 4 onward wait for unit 1), so the
+   * The SECOND unit here does not answer until every other unit has STARTED. A
+   * batched fan-out can never get there (units 4 onward wait for unit 2), so the
    * safety timer releases it instead and the test says which happened.
+   *
+   * The second and not the first since phase 23: stage 7 WARMS UP
+   * (`WARM_FIRST_STAGES`), so unit 1 goes out alone and holds everything by
+   * design until it lands. `warm-up.test.ts` covers that half.
    */
   it('starts the next unit as soon as a lane frees, so one slow call holds up nothing', async () => {
     const upTo7 = async (model: Parameters<typeof executeStage>[1]['model'], lanes: 1 | 3) => {
@@ -541,7 +548,7 @@ describe('concurrent agents', () => {
     const model: Parameters<typeof executeStage>[1]['model'] = async (stage, key, input) => {
       started.push(key);
       inFlight++; peak = Math.max(peak, inFlight);
-      if (key === PATTERNS[0]) await slow;
+      if (key === PATTERNS[1]) await slow;
       else if (started.length === PATTERNS.length) release('pool');
       await new Promise((resolve) => setTimeout(resolve, 1));
       inFlight--;
@@ -550,7 +557,7 @@ describe('concurrent agents', () => {
     const wide = await upTo7(model, 3);
     clearTimeout(safety);
 
-    // Every other pattern started while the first was still out, and never more
+    // Every other pattern started while the second was still out, and never more
     // than three at once.
     expect(await slow).toBe('pool');
     expect(peak).toBeLessThanOrEqual(3);

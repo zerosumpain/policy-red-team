@@ -11,6 +11,7 @@ import type { Artefact } from '$lib/policy-analysis/contracts';
 import type { Clash, Grid, PaperAsks } from '$lib/policy-analysis/intel';
 import type { BodyEvidenceRecord, EvidenceSource } from '$lib/policy-analysis/body-evidence';
 import type { PassRow, RunCost } from '$lib/policy-analysis/view';
+import type { ValueLedger } from '$lib/value-ledger';
 
 export interface OfferedModel {
   id: string;
@@ -47,7 +48,13 @@ export interface StageRow {
   ordinal: number;
   name: string;
   status: string;
+  /** EVERYTHING the stage noted, the model's remarks about the paper included. */
   warnings: string[];
+  /**
+   * The model's part of `warnings`: remarks about the paper, not about the run
+   * (phase 23, `$lib/policy-analysis/notes`). Absent on an older server or pack.
+   */
+  notes?: string[];
   startedAt: string | null;
   completedAt: string | null;
   error: string | null;
@@ -114,6 +121,12 @@ export interface Detail {
    * was written to protect.
    */
   cost?: RunCost | null;
+  /**
+   * What each step spent, against what came of it (phase 23,
+   * `$lib/value-ledger`). Null where the reading cannot say; absent on an
+   * older server or pack.
+   */
+  ledger?: ValueLedger | null;
   /** True when the server refuses every mutation, so the page can decline to draw a control that would 403. */
   readOnly: boolean;
 }

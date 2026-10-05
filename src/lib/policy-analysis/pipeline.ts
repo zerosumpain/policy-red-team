@@ -1,6 +1,6 @@
 import { capForRival } from './decision-use';
 import { readerArtefacts, researchRank, type LookUp, type SuppliedSource } from './reader-inputs';
-import { APPRAISAL_STAGE, assuranceCategories, ASSURANCE_STAGE, ASSURED_SYNTHESIS_STAGE, CONCURRENCY_OPTIONS, DEEP_CHAINS, DEFAULT_CONCURRENCY, DEFAULT_EXTRACTION, DEPTH_LIMITS, FIT_LIMIT, FOLLOW_UP_STAGES, FULL_PROFILES, MAX_KEY_JUDGEMENTS, isPassStage, passOf, passOrdinal, passStep, PATTERNS, PERSONA_STAGE, REPORT_SECTIONS, RESULT_KINDS, REVISION_STATUSES, SCENARIOS, SHORT_PROFILE_BATCH, STAGE_CONTEXT, SYNTHESIS_STAGE, THEORY_STAGE, type Artefact, type Concurrency, type Extraction, type PassKind, type StageInput, type StageOutput } from './contracts';
+import { APPRAISAL_STAGE, assuranceCategories, ASSURANCE_STAGE, ASSURED_SYNTHESIS_STAGE, CONCURRENCY_OPTIONS, DEEP_CHAINS, DEFAULT_CONCURRENCY, DEFAULT_EXTRACTION, DEPTH_LIMITS, FIT_LIMIT, FOLLOW_UP_STAGES, FULL_PROFILES, KEY_JUDGEMENT_FLOOR, MAX_KEY_JUDGEMENTS, isPassStage, passOf, passOrdinal, passStep, PATTERNS, PERSONA_STAGE, REPORT_SECTIONS, RESULT_KINDS, REVISION_STATUSES, SCENARIOS, SHORT_PROFILE_BATCH, STAGE_CONTEXT, SYNTHESIS_STAGE, THEORY_STAGE, type Artefact, type Concurrency, type Extraction, type PassKind, type StageInput, type StageOutput } from './contracts';
 import { consumedSources, encodedSize, fitToBudget } from './budget';
 import { scoreExploits } from './exposure';
 import { isPlay } from './cleared';
@@ -130,8 +130,34 @@ const CONSECUTIVE_TIMEOUT_LIMIT = 6;
  */
 const CONCURRENT_EVENT_CODES = new Set(['provider']);
 
+/**
+ * THE FAN-OUTS THAT SEND ONE CALL FIRST, AND RELEASE THE OTHER LANES WHEN IT LANDS.
+ *
+ * Every call in these stages opens with the same fitted shared block
+ * (`orderedContext`), and a prompt cache can only serve a prefix somebody has
+ * already sent. Six lanes dispatched in the same millisecond all arrive cold.
+ * Measured on every real run in the live database (phase 23): in stages 3 and
+ * 14, NOT ONE of the 51 calls that started before any sibling had finished read
+ * anything from the cache, and 72–83% of those that started after one had
+ * finished read nearly all of it, however many lanes were busy.
+ *
+ * Stages 6, 7, 9, 10 and 16 are here on the same reasoning, and the same
+ * measurement is honest about them: their calls missed whether a sibling had
+ * finished or not (2 of 93 once warm), for a reason the call records do not show. The
+ * warm-up removes the one cause the records DO show; the first real run after
+ * it says whether the other one is real. `docs/phase-23-tokens.md` has the
+ * table, and what to try next if these stages stay cold.
+ *
+ * The price is one serial call per stage — a cache hit is no faster than a miss
+ * (phase 19), so it saves money, never time. Nothing a call is asked changes:
+ * this is the order calls LEAVE in, nothing else.
+ */
+export const WARM_FIRST_STAGES: ReadonlySet<number> = new Set([3, 6, 7, 9, 10, 14, 16]);
+
 /** Ceilings on a stage's assembled output, which no envelope bounds. */
 const MAX_STAGE_ARTEFACTS = 4000;
+/** The model's notes a stage keeps (phase 23). One reply may carry 100; a stage is many replies. */
+const MAX_NOTES = 200;
 const MAX_REFS = 200;
 
 export async function executeStage(input: StageInput, deps: PipelineDeps): Promise<StageOutput & { rejected: number }> {
@@ -153,7 +179,7 @@ export async function executeStage(input: StageInput, deps: PipelineDeps): Promi
   // A concurrency nobody offers is a request the run cannot honour; take the
   // default rather than failing a stage over it, exactly as model and effort do.
   const lanes: number = (CONCURRENCY_OPTIONS as readonly number[]).includes(deps.concurrency as Concurrency) ? (deps.concurrency as Concurrency) : DEFAULT_CONCURRENCY;
-  const output: StageOutput = { artefacts: [], warnings: [] };
+  const output: StageOutput & { notes: string[] } = { artefacts: [], warnings: [], notes: [] };
   let consecutive = 0;
   // The failure immediately before this one, so a fan-out can tell "three lanes
   // died together" from "three units failed one after another". Cleared by any
@@ -197,7 +223,15 @@ export async function executeStage(input: StageInput, deps: PipelineDeps): Promi
    * order or they change which artefacts are quarantined.
    */
   const absorb = (raw: unknown) => {
-    const result = triageOutput(raw, stage, [...input.artefacts, ...output.artefacts], deps.passKind);
+    // WHAT ARRIVES HERE IS THE PROVIDER'S OUTPUT, NOT THE MODEL'S REPLY: its
+    // `warnings` are already the run's own (the provider's triage, its budget
+    // notes), and the model's remarks have already been parted from them into
+    // `notes`. Re-reading `warnings` as an envelope would file every one of
+    // them as a model note, so both are taken off before the second triage
+    // and put back in their own channels, in the order they always had.
+    const { warnings: carried = [], notes: remarks = [], ...reply } = (raw && typeof raw === 'object' ? raw : {}) as { warnings?: unknown; notes?: unknown };
+    const triaged = triageOutput(reply, stage, [...input.artefacts, ...output.artefacts], deps.passKind);
+    const result = { ...triaged, warnings: [...(Array.isArray(carried) ? carried.filter((w): w is string => typeof w === 'string') : []), ...triaged.warnings], notes: Array.isArray(remarks) ? remarks.filter((w): w is string => typeof w === 'string') : [] };
     // Retrieved sources are minted by the retrieval adapter and nowhere else. The
     // kind is permitted at this stage so the server's own rows validate, which
     // would otherwise let a model hand back a source — and a URL — of its own.
@@ -211,7 +245,7 @@ export async function executeStage(input: StageInput, deps: PipelineDeps): Promi
     // ranks a question above every model question, so a model that wrote it
     // would be promoting its own question over the reader's.
     for (const a of result.artefacts) if (a.kind === 'research_question') { delete a.data.asked; delete a.data.wording; }
-    output.artefacts.push(...result.artefacts); output.warnings.push(...result.warnings);
+    output.artefacts.push(...result.artefacts); output.warnings.push(...result.warnings); output.notes.push(...result.notes);
     return result;
   };
 
@@ -311,8 +345,16 @@ export async function executeStage(input: StageInput, deps: PipelineDeps): Promi
    * the fold throws, the calls still in flight are aborted and THEN awaited, so
    * no late record lands beside the retry's — without waiting out a deadline
    * per call first, which in an all-timeout stage was a second deadline.
+   *
+   * A WARM-UP, WHERE THE STAGE ASKS FOR ONE (`WARM_FIRST_STAGES`). Unit 0 goes
+   * out alone and the other lanes wait for it to LAND — answered or failed,
+   * either way — so the shared prefix is in the provider's cache before the
+   * rest arrive. A failed unit 0 opens the gate like any other landing: the
+   * brake above then decides what may follow, exactly as it would have. A
+   * withdrawn fan-out opens it too, so no lane is left waiting on a call that
+   * is never coming back.
    */
-  const fanOut = async (units: Unit[], onResult?: (unit: Unit, result: ReturnType<typeof absorb> | null) => void, onFailure?: (unit: Unit, err: unknown) => void) => {
+  const fanOut = async (units: Unit[], onResult?: (unit: Unit, result: ReturnType<typeof absorb> | null) => void, onFailure?: (unit: Unit, err: unknown) => void, warmUp = WARM_FIRST_STAGES.has(stage)) => {
     // Units that answered with nothing. Silence is a legitimate finding — a body
     // the paper names once has no relationships to assert — but it is still
     // something the reader should be able to see, so it is counted and named once
@@ -350,8 +392,14 @@ export async function executeStage(input: StageInput, deps: PipelineDeps): Promi
       events.set(signature, [...seen, opened]);
       return opened.id;
     };
+    // Only worth a gate when something would otherwise go out beside unit 0.
+    let openGate = () => {};
+    let gate: Promise<void> | null = warmUp && units.length > 1 && lanes > 1
+      ? new Promise<void>((resolve) => { openGate = () => { gate = null; resolve(); }; })
+      : null;
     const lane = async () => {
       while (!stopped && next < units.length) {
+        if (gate && next > 0) { await gate; continue; }
         if (!mayDispatch(next)) { await new Promise<void>((resume) => waiting.push(resume)); continue; }
         const k = next++;
         const unit = units[k];
@@ -361,6 +409,7 @@ export async function executeStage(input: StageInput, deps: PipelineDeps): Promi
           (err: unknown): Landed => ({ raw: null, err, event: eventOf(k, err) }),
         );
         inFlight.delete(k);
+        if (k === 0) openGate();
         // Real progress, reported as each call lands. The worker turns this into
         // a liveness beat, so a stage that is working says so — and one that has
         // stopped working stops saying so, which is the case the probe exists for.
@@ -401,6 +450,7 @@ export async function executeStage(input: StageInput, deps: PipelineDeps): Promi
       // beside the retry's.
       stopped = true;
       withdraw.abort();
+      openGate();
       wake();
       await Promise.allSettled(running);
       throw err;
@@ -569,6 +619,17 @@ export async function executeStage(input: StageInput, deps: PipelineDeps): Promi
     ? patternBrief(input.artefacts)
     : null;
   const patterns = brief ? { playPatterns: brief } : {};
+  /**
+   * WHICH ASSUMPTIONS EACH CITABLE RESULT RESTS ON, for the stages that write
+   * findings (phase 23, T4). A finding is refused when none of its hypotheses
+   * is reached from its results through `refs` — the commonest refusal in the
+   * final review — and the model, shown the artefacts but not the graph
+   * between them, guesses. This is the corrective round's hint, sent first.
+   * An `extra`, so it rides after the artefacts and the cached prefix stands.
+   */
+  const supportsFor = (context: Artefact[]) => ([SYNTHESIS_STAGE, ASSURED_SYNTHESIS_STAGE].includes(stage) || (isPassStage(stage) && deps.passKind === 'restatement'))
+    ? { resultAssumptions: resultAssumptions(context, input.artefacts) }
+    : {};
 
   /**
    * What the reader's persona library already holds about the bodies in this run.
@@ -662,7 +723,7 @@ export async function executeStage(input: StageInput, deps: PipelineDeps): Promi
         // A restatement writes key judgements too, and quotes from the same place.
         ...quotableForJudgements(input.artefacts),
       ];
-      await request('main', context, { protect, ...patterns });
+      await request('main', context, { protect, ...patterns, ...supportsFor(context) });
     } else if (step === 1) {
       if (!materialPassages.length) throw new PolicyError('extraction', 'The attached material yielded no readable passages, so there is nothing to read into the assessment.');
       // THE CAST IS PINNED, and this is the rule that makes an addendum worth
@@ -1173,7 +1234,7 @@ export async function executeStage(input: StageInput, deps: PipelineDeps): Promi
     // was passed only to the follow-up rounds, so the first round was bounded by a
     // number written into the prompt — and raising `questions` in the contract then
     // changed nothing at all, which is the whole of what stage 5 does.
-    const extra = { ...(protect.length ? { protect } : {}), ...(stage === 5 ? { remainingQuestions: limits.questions } : {}), ...patterns };
+    const extra = { ...(protect.length ? { protect } : {}), ...(stage === 5 ? { remainingQuestions: limits.questions } : {}), ...patterns, ...supportsFor(context) };
     await request('main', context, extra);
     /**
      * DIVERGENCE: ONE MORE ASK FOR EXACTLY WHAT IS MISSING.
@@ -1209,12 +1270,14 @@ export async function executeStage(input: StageInput, deps: PipelineDeps): Promi
      * coverage rule can end a run over a single absence.
      */
     // `KEY_JUDGEMENT_GAP` joins the challenge ids when the report came back with
-    // no usable key judgement: one ask for the "so what", in the same call.
+    // fewer than `KEY_JUDGEMENT_FLOOR` usable key judgements (phase 23; it was
+    // "none"): one ask for more of the "so what", in the same call.
+    const judged = output.artefacts.filter((a) => a.kind === 'key_judgement');
     const gap = stage === ASSURED_SYNTHESIS_STAGE
       ? [...input.artefacts.filter((a) => a.kind === 'assurance_challenge')
         .filter((c) => !output.artefacts.some((a) => a.kind === 'assurance_response' && a.data.challengeId === c.id))
         .map((a) => a.id),
-      ...(output.artefacts.some((a) => a.kind === 'key_judgement') ? [] : [KEY_JUDGEMENT_GAP])]
+      ...(judged.length >= KEY_JUDGEMENT_FLOOR ? [] : [KEY_JUDGEMENT_GAP])]
       : stage === APPRAISAL_STAGE
         // Mirrors the appraisal rule below. Written out rather than shared with it
         // because the two sit 120 lines apart and this is a recorded divergence:
@@ -1254,8 +1317,13 @@ export async function executeStage(input: StageInput, deps: PipelineDeps): Promi
        * "could not be assessed" beside it. The failed call itself is on the
        * durable record in `policy_model_calls`, with its error.
        */
+      // The judgements already written, so the second ask adds to them rather
+      // than restating them (phase 23). Only when it is asked for judgements.
+      const written = gap.includes(KEY_JUDGEMENT_GAP) && judged.length
+        ? { keyJudgementsWritten: judged.map((a) => ({ id: a.id, label: a.label, rank: a.data.rank, mechanismId: a.data.mechanismId, playIds: a.data.playIds })) }
+        : {};
       try {
-        await request('topup', context, { ...extra, coverageGap: gap });
+        await request('topup', context, { ...extra, ...written, coverageGap: gap });
       } catch (err) {
         deps.signal.throwIfAborted();
         if (!(err instanceof PolicyError)) throw err;
@@ -1305,6 +1373,16 @@ export async function executeStage(input: StageInput, deps: PipelineDeps): Promi
         output.artefacts = output.artefacts.filter((a) => keep.has(a.id) || !byId.has(a.id));
         output.warnings.push(`The second call restated ${unwanted.length} item${unwanted.length === 1 ? '' : 's'} this stage already holds; ${unwanted.length === 1 ? 'it was' : 'they were'} discarded rather than recorded twice. Only what was actually missing, and what that rests on, was taken from it.`);
       }
+      /*
+       * AN ADDED JUDGEMENT RANKS AFTER THE ONES ALREADY WRITTEN (phase 23). The
+       * reconcile keeps the LAST of each rank, so a second ask that numbered
+       * its own judgements from 1 would replace the first ask's instead of
+       * joining them — the opposite of why it was asked.
+       */
+      let rank = judged.reduce((most, a) => Math.max(most, Number(a.data.rank) || 0), 0);
+      const joining = added.filter((a) => a.kind === 'key_judgement' && keep.has(a.id))
+        .sort((a, b) => (Number(a.data.rank) || 0) - (Number(b.data.rank) || 0));
+      for (const judgement of joining) judgement.data.rank = ++rank;
     }
   }
 
@@ -1727,7 +1805,10 @@ export async function executeStage(input: StageInput, deps: PipelineDeps): Promi
       warnings.push('1 of 1 key judgement sections were not assessed: the revised assessment came back with no usable key judgement, after the model was asked a second time for one, so the report leads with its findings instead. This is a limit of this run, not a gap in the paper.');
     }
   }
-  return { artefacts: kept, warnings: clampWarnings(warnings), rejected };
+  // The model's notes, said once each: a fan-out over forty passages repeats
+  // the same remark, and `stageOutputSchema` bounds a reply, not a stage.
+  const notes = [...new Set(output.notes)];
+  return { artefacts: kept, warnings: clampWarnings(warnings), notes: notes.slice(0, MAX_NOTES), rejected };
 }
 
 /**
@@ -1869,6 +1950,41 @@ export function deepChainMechanisms(all: Artefact[], limit = DEEP_CHAINS): { sel
  * STAGE, computed from its input: the shared block is still fitted once,
  * first, and the main call and the top-up still send identical bytes.
  */
+/**
+ * For each result in a context, the assumptions it reaches through `refs` —
+ * the very walk `validation.ts` makes (`reaches`) to decide whether a finding's
+ * hypothesis is supported by the results it cites. Nearest first, at most
+ * `cap` per result: the first assumptions a result's own references name are
+ * the ones it is about, and the list rides on every call of the stage.
+ * A result that reaches none is left out — it cannot carry a finding alone.
+ */
+export const RESULT_ASSUMPTIONS_CAP = 8;
+export function resultAssumptions(context: Artefact[], all: Artefact[], cap = RESULT_ASSUMPTIONS_CAP): Record<string, string[]> {
+  const byId = new Map(all.map((a) => [a.id, a]));
+  for (const a of context) if (!byId.has(a.id)) byId.set(a.id, a);
+  const out: Record<string, string[]> = {};
+  for (const result of context) {
+    if (!(RESULT_KINDS as readonly string[]).includes(result.kind)) continue;
+    const found: string[] = [];
+    const seen = new Set<string>([result.id]);
+    let frontier = [result.id];
+    while (frontier.length && found.length < cap) {
+      const next: string[] = [];
+      for (const id of frontier) {
+        for (const ref of byId.get(id)?.refs ?? []) {
+          if (seen.has(ref)) continue;
+          seen.add(ref);
+          if (byId.get(ref)?.kind === 'assumption' && found.length < cap) found.push(ref);
+          next.push(ref);
+        }
+      }
+      frontier = next;
+    }
+    if (found.length) out[result.id] = found;
+  }
+  return out;
+}
+
 export function quotableForJudgements(all: Artefact[]): string[] {
   const mechanisms = deepChainMechanisms(all).selected;
   const chosen = new Set(mechanisms.map((m) => m.id));

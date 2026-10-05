@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { ASSURANCE_CATEGORIES, ASSURANCE_STAGE, ASSURED_SYNTHESIS_STAGE, MAX_KEY_JUDGEMENTS, SYNTHESIS_STAGE, SHORT_PROFILE_FIELDS, dataSchemas, FOLLOW_UP_STAGES, indexedOutputSchema, isPassStage, modelKinds, passStep, RECONCILE_RELATIONS, REPORT_SECTIONS, REVISION_STATUSES, stageName, stageOutputSchema, PROMPT_VERSION, PATTERNS, PERSONA_TRAITS, SCENARIOS, CROSS_PATTERNS, type Extraction, type PassKind, RELATIONS } from './contracts';
+import { ASSURANCE_CATEGORIES, ASSURANCE_STAGE, ASSURED_SYNTHESIS_STAGE, KEY_JUDGEMENT_FLOOR, MAX_KEY_JUDGEMENTS, SYNTHESIS_STAGE, SHORT_PROFILE_FIELDS, dataSchemas, FOLLOW_UP_STAGES, indexedOutputSchema, isPassStage, modelKinds, passStep, RECONCILE_RELATIONS, REPORT_SECTIONS, REVISION_STATUSES, stageName, stageOutputSchema, PROMPT_VERSION, PATTERNS, PERSONA_TRAITS, SCENARIOS, CROSS_PATTERNS, type Extraction, type PassKind, RELATIONS } from './contracts';
 import { EXPOSURE_FACTORS } from './exposure';
 import { RELATION_FAMILIES } from './glossary';
 import type { Rejection } from './validation';
@@ -89,7 +89,7 @@ const CHALLENGE_REMITS = ASSURANCE_CATEGORIES.map((category) => `- ${category}: 
  * sent carries a verbatim `sourceQuote` and the `sourceId` it was located in.
  */
 const KEY_JUDGEMENT_PROMPT = `
-KEY JUDGEMENTS. Lead the report with between one and ${MAX_KEY_JUDGEMENTS} key_judgement artefacts: the few things a busy official must know about THIS policy, ranked from 1, the most important. For each:
+KEY JUDGEMENTS. Lead the report with ${MAX_KEY_JUDGEMENTS} key_judgement artefacts: the things a busy official must know about THIS policy, ranked from 1, the most important, each about a different mechanism or a different way to beat it. Write fewer only when the assessment does not hold ${MAX_KEY_JUDGEMENTS} distinct judgements; ${KEY_JUDGEMENT_FLOOR} is the fewest a report of this depth should lead with. For each:
 - statement: ONE plain sentence, under 30 words, saying what will happen, to whom and why. Name the body and the mechanism. Do not write "may", "potentially" or "could" unless the doubt is the point.
 - label: a headline of about six words.
 - mechanismId: the mechanism it is about.
@@ -217,7 +217,7 @@ A report can be too vague as easily as it can be too confident. Hedging is not a
 RIVAL EXPLANATION. If targetCategory is rival_explanation, do not criticise: BUILD. Take the report's most consequential conclusion, name it in targetIds, and write the strongest other account of the same observations — a different mechanism, or a different reason the bodies involved behave as they do — as a serious analyst who believed it would. Put that account in rival, in two or three plain sentences. In discriminators, list the evidence that would tell the two accounts apart, each item saying which account it would favour: "If completion rates fall only where funding was cut, that favours the rival; if they fall everywhere, it favours the report". Set finding=issue when the rival fits the evidence supplied about as well as the report's account, and finding=cleared when the evidence already favours the report — and say which evidence in testApplied. A rival that is merely the report's account restated, or a straw man, is worse than none.`,
   17: `ASSURED SYNTHESIS. Revise the INITIAL report after reading the programme logic model, every causal chain, option appraisal, evaluation plan and independent challenge. A finding's hypothesisIds must be assumptions that its resultIds actually rest on, through their refs: a theory-of-change assumption (an s14_ id) is reached only through the causal chain or logic model that cites it, so cite THAT in resultIds — a scenario, test or play written before stage 14 cannot support it. An evaluation plan is a finding with section=evaluation_plan here, never an evaluation_plan artefact. Produce a complete replacement set of findings with revision=assured, including all report sections where evidence permits: ${REPORT_SECTIONS.join(', ')}. Every assured finding must name the initial findings it reviewed in reviewedFindingIds, the challenges that affected it in challengeIds, a qualitative judgement, resultIds and hypothesisIds; put every one of those identifiers in refs. Produce one assurance_response for every assurance_challenge, stating accepted, partly accepted, rejected or unresolved and what changed. A rival_explanation challenge must be weighed explicitly, not acknowledged: say in response which account the supplied evidence favours and why, and in changes what the report now says about the rival. Where the evidence cannot tell the two apart, the disposition is unresolved — that is a proper answer, not a failure — and remainingLimit names the evidence from its discriminators that would settle it. Never resolve a rival by assertion. Preserve disagreement where it remains. Produce replacement recommendations with revision=assured and one review_summary. The server recomputes the review_summary counts and decision-use level; do not use a numerical confidence or claim formal assurance. A recommendation is a normative judgement. An automated independent challenge can support decision use, but human sign-off and specialist legal, economic or scientific review remain outside scope.
 ${KEY_JUDGEMENT_PROMPT}
-If a "coverageGap" list is supplied, this is a SECOND call about a report you have already written, and the list names assurance_challenge identifiers that your previous response left with no assurance_response. Return ONLY the missing assurance_response artefacts — exactly one for each identifier listed — and nothing else. Do not restate the findings, the recommendations or the review summary: they are already recorded, and repeating them would replace them with duplicates. Answer each challenge on its merits; "rejected" and "unresolved" are proper answers and a disposition you cannot support is worse than an honest refusal. If the list includes "key_judgements", your previous response had no usable key judgement: return between one and ${MAX_KEY_JUDGEMENTS} key_judgement artefacts as well, following the KEY JUDGEMENTS rules above exactly.`,
+If a "coverageGap" list is supplied, this is a SECOND call about a report you have already written, and the list names assurance_challenge identifiers that your previous response left with no assurance_response. Return ONLY the missing assurance_response artefacts — exactly one for each identifier listed — and nothing else. Do not restate the findings, the recommendations or the review summary: they are already recorded, and repeating them would replace them with duplicates. Answer each challenge on its merits; "rejected" and "unresolved" are proper answers and a disposition you cannot support is worse than an honest refusal. If the list includes "key_judgements", your previous response had fewer than ${KEY_JUDGEMENT_FLOOR} usable key judgements, and "keyJudgementsWritten" lists the ones it had: return more key_judgement artefacts as well — up to ${MAX_KEY_JUDGEMENTS} in all, counting those — each about a different mechanism or play from them and from each other, ranked after them, following the KEY JUDGEMENTS rules above exactly.`,
 };
 /**
  * The addendum pass, keyed by STEP within the pass rather than by ordinal.
@@ -356,6 +356,49 @@ An assumption is UNCHANGED. It is your inference, it is not in any one sentence,
  */
 export const WRITING_RULE = `WRITING. Everything you write in your own words — labels, statements and the text fields in data — is read by someone who has never read this policy. Use plain British English in GOV.UK style: lead with the point; keep sentences under 20 words where you can; use common words and the active voice; name who does what. The first time you name a programme, fund, body, target or phase from the paper, say in a few words what it is. Say what happens to a real person — a parent, a child, a teacher — rather than using delivery terms such as "referral completion". Spell out acronyms. Write "for example", not Latin abbreviations. Cut filler such as "leverage", "robust", "stakeholders" and "in order to". Never put an identifier in a sentence: name the thing in words; ids go only in id and reference fields. This never applies to sourceQuote or any other quotation, which stays exactly as the source wrote it, nor to identifiers and fixed values.`;
 
+/**
+ * THE RULES REPLIES BREAK MOST, IN THE FIRST INSTRUCTION AND NOT ONLY THE
+ * CORRECTIVE ROUND (phase 23, T4).
+ *
+ * A repair round re-sends the whole call — on the Best Start run 60 of them,
+ * 5.3M input tokens — to say something the first instruction could have said.
+ * These are the reasons the stored replies were refused, counted by replaying
+ * every reply of the Best Start and Post-16 runs through `triageOutput`:
+ *
+ * - Decomposition: 33 claims filed under the category "intervention" or
+ *   "implementation", which the contract does not have (the instruction lists
+ *   "interventions and implementation" among the things to extract, and the
+ *   model made categories of them); 31 edges, which belong to stage 3; 24
+ *   assumptions citing an id that does not exist or no actor or mechanism.
+ * - The final review: 12 findings, in the one reply that otherwise held, whose
+ *   hypotheses none of their cited results rests on — the rule phase 19 added
+ *   a corrective-round hint for. The hint's content now arrives up front as
+ *   `resultAssumptions`, the assumptions each citable result actually reaches.
+ *
+ * A separate table rather than edits to `instructions`, so the per-stage prose
+ * other work changes stays untouched, and each rule here is visibly the one
+ * the counts above earned.
+ */
+const CLAIM_CATEGORIES = dataSchemas.claim.shape.category.options;
+const RESULT_ASSUMPTIONS_RULE = `- A finding's hypothesisIds must be assumptions its resultIds actually rest on. "resultAssumptions" lists, for each result you may cite, the assumption ids it rests on through its own references. Choose each finding's hypotheses from the lists of the results it cites, and cite those results in resultIds and refs. An assumption that is relevant but that none of its cited results rests on is refused, and the finding with it.`;
+/** Decomposition's quote rule, for the prose contract only: the indexed one writes no quote at all. */
+const QUOTE_RULE = `
+- A sourceQuote is one unbroken span of THIS passage, copied character for character: no ellipsis, no joining of two places, no correction of the text.`;
+const FIRST_ROUND: Partial<Record<number, string>> = {
+  1: `
+BEFORE YOU RETURN, CHECK THESE. They are the rules decomposition replies have broken most often on real papers:
+- A claim's data.category is exactly one of: ${CLAIM_CATEGORIES.join(', ')}. There is no "intervention" or "implementation" category. An intervention, a programme or the way it is delivered is a MECHANISM row; a claim about one takes the category of what it asserts (objective, funding, responsibility, measure and so on).
+- Return no edge artefacts at this stage. Link related rows with refs; relationships are built later.
+- Every assumption's refs include the actor or mechanism it is about, from this same response. Every id in any refs is the passage's id or an id minted in this response.`,
+  12: `
+BEFORE YOU RETURN, CHECK THIS. It is the rule synthesis replies have broken most often on real papers:
+${RESULT_ASSUMPTIONS_RULE}`,
+  17: `
+BEFORE YOU RETURN, CHECK THESE. They are the rules final reviews have broken most often on real papers:
+${RESULT_ASSUMPTIONS_RULE}
+- Copy every assurance_challenge id exactly as it is supplied, in challengeId, challengeIds and refs. The ids do not follow a pattern; never compose one.`,
+};
+
 export function systemPrompt(stage: number, passKind?: PassKind | null, extraction?: Extraction | null): string {
   const kinds = modelKinds(stage, passKind);
   // `modelKinds`, not `stageKinds`: a stage that may CARRY a retrieved source is
@@ -371,9 +414,9 @@ export function systemPrompt(stage: number, passKind?: PassKind | null, extracti
   // radius to the one stage this was measured on.
   const indexed = extraction === 'indexed' && stage === 1 && !pass;
   const instruction = !pass
-    ? `${instructions[stage] ?? ''}${indexed ? INDEXED_EXTRACTION : ''}${PATTERN_STAGES.has(stage) ? PATTERN_PROMPT : ''}${FOLLOW_UP_PROMPT[stage] ?? ''}`
+    ? `${instructions[stage] ?? ''}${indexed ? INDEXED_EXTRACTION : ''}${PATTERN_STAGES.has(stage) ? PATTERN_PROMPT : ''}${FOLLOW_UP_PROMPT[stage] ?? ''}${FIRST_ROUND[stage] ?? ''}${stage === 1 && !indexed ? QUOTE_RULE : ''}`
     : passKind === 'restatement'
-      ? `${RESTATEMENT_PREAMBLE}${instructions[ASSURED_SYNTHESIS_STAGE] ?? ''}${PATTERN_PROMPT}`
+      ? `${RESTATEMENT_PREAMBLE}${instructions[ASSURED_SYNTHESIS_STAGE] ?? ''}${PATTERN_PROMPT}${FIRST_ROUND[ASSURED_SYNTHESIS_STAGE] ?? ''}`
       : ADDENDUM_INSTRUCTIONS[step] ?? '';
   // A pass reasons over an inventory the main run built, so its ids are the main
   // run's ids and the s2_ rule applies to it exactly as it does from stage 3 on.
