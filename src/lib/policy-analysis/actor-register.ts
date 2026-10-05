@@ -636,7 +636,12 @@ export function ancestry(id: string, parentOf: (id: string) => string | null, na
 export type RegisterPlan = {
   proposals: Proposal[];
   mentions: { mentionId: string; wording: string; target: Target; actorId: string | null; capacity: Capacity; basis: string }[];
-  aliases: { id: string; names: string[] }[];
+  /**
+   * Each paper wording to keep on the entry it matched. `byModel` names the
+   * ones only the matching MODEL put there (phase 24b): an alias is a rule on
+   * every later run, so the review queue lists those for a reader to check.
+   */
+  aliases: { id: string; names: string[]; byModel?: string[] }[];
 };
 
 export type Assembled = { actors: Artefact[]; plan: RegisterPlan; notes: string[] };
@@ -749,7 +754,15 @@ export function assemble(mentions: Artefact[], resolutions: Resolution[], propos
     const statement = whatItIs ?? clip([...g.mentions].sort((a, b) => b.statement.length - a.statement.length)[0]?.statement, 600) ?? name;
     const basisOf = resolutions.find((r) => g.mentions.some((m) => m.id === r.mentionId) && r.target && targetId(settle(r.target)!) === targetId(g.target))?.basis ?? 'reconciled';
     for (const row of plan.mentions) if (targetId(row.target) === targetId(g.target)) row.actorId = id;
-    if (entry && wordings.length) plan.aliases.push({ id: entry.id, names: wordings });
+    if (entry && wordings.length) {
+      // A wording the model joined, and no rule: the guess that would become a rule.
+      const basisOfMention = (m: Artefact) => resolutions.find((r) => r.mentionId === m.id && r.target && targetId(settle(r.target)!) === targetId(g.target))?.basis;
+      const byModel = wordings.filter((w) => {
+        const said = g.mentions.filter((m) => normaliseName(m.label) === normaliseName(w));
+        return said.length > 0 && said.every((m) => basisOfMention(m) === 'model');
+      });
+      plan.aliases.push({ id: entry.id, names: wordings, ...(byModel.length ? { byModel } : {}) });
+    }
     const data: Record<string, unknown> = {
       entityType: commonest,
       aliases: wordings.slice(0, 24),

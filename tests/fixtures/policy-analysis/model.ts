@@ -83,6 +83,12 @@ export function fixtureModel(stage: number, _key: string, raw: unknown, _options
         ['actor_programme', 'Shared access programme', 'programme', 'The shared access programme is delivered by the Council.'],
         ['actor_person', 'Jane Smith', 'person', 'Jane Smith is a resident who uses the service.'],
       ].map(([id, label, entityType, statement]) => ({ ...make(id, 'actor', { entityType, aliases: [], mentions: [p.id], ambiguity: 'None within this synthetic fixture.', dates: [], parent: null }, [p.id], statement), ...common, label })),
+      // PHASE 24B: a paper that says "the local authority" names the council
+      // in other words. No rule can join the two; the matching answer below
+      // does, which is the model-made join the review queue lists to check.
+      ...(input.artefacts.some((a) => a.kind === 'passage' && /the local authority/i.test(a.statement))
+        ? [{ ...make('actor_la', 'actor', { entityType: 'local_authority', aliases: [], mentions: [p.id], ambiguity: 'None within this synthetic fixture.', dates: [], parent: null }, [p.id], 'The local authority runs the scheme day to day.'), ...common, label: 'The local authority' }]
+        : []),
     ];
   } else if (stage === 2 && Array.isArray((raw as { items?: unknown }).items)) {
     // THE MASTER-LIST MATCH (phase 23): the answers a model would give for the
@@ -91,7 +97,9 @@ export function fixtureModel(stage: number, _key: string, raw: unknown, _options
     // person with no role is a named individual; anything else is new.
     const asked = (raw as { items: { item: string; mentions: string[]; said: string; type: string; hint?: string }[] }).items;
     const tree = String((raw as { register?: unknown }).register ?? '');
-    const onTree = (said: string) => tree.split('\n').map((line) => /^([rn]\d+) (.*?) \[/.exec(line)).find((m) => m && m[2].toLowerCase().replace(/s$/, '') === said.toLowerCase().replace(/s$/, ''))?.[1] ?? null;
+    // "The local authority" is the council in other words — a join only a model makes.
+    const synonym = (said: string) => (/^the local authority$/i.test(said) ? 'council' : said.toLowerCase().replace(/s$/, ''));
+    const onTree = (said: string) => tree.split('\n').map((line) => /^([rn]\d+) (.*?) \[/.exec(line)).find((m) => m && m[2].toLowerCase().replace(/s$/, '') === synonym(said))?.[1] ?? null;
     const runner = asked.find((i) => i.hint !== 'programme' && i.hint !== 'person');
     asked.forEach((item, i) => {
       const capacities = item.mentions.map((mentionId) => ({ mentionId, capacity: item.type === 'provider' ? 'delivers' : 'decides' }));
