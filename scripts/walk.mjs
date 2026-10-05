@@ -262,10 +262,14 @@ try {
       if (!(await card.locator('.prt-play__closing').getByText('How it runs').isVisible())) failures.push('play card: the detail under the plain block does not carry the play itself');
     }
 
-    const term = card.locator('.prt-term__name').first();
+    // THE PART OF THE POLICY, not a body: since phase 23 the bodies on a card
+    // are terms too (stage 2 writes each one a line of what it is), and the
+    // fixture names one first.
+    const partTerm = card.locator('.prt-term').filter({ hasNot: page.locator('.prt-term__name', { hasText: /\b(Councils?|Department for Education|Providers)\b/ }) }).first();
+    const term = partTerm.locator('.prt-term__name');
     if (!(await term.count())) failures.push('play card: the part of the policy it names is not a definable term');
     else {
-      const definition = card.locator('.prt-term__definition').first();
+      const definition = partTerm.locator('.prt-term__definition');
       if ((await term.getAttribute('aria-expanded')) !== 'false' || (await definition.isVisible())) failures.push('term: the definition shows before it is asked for');
       // KEYBOARD, NOT A POINTER: the accessibility statement promises nothing here appears on hover.
       await term.focus();
