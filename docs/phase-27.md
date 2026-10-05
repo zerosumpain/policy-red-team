@@ -91,3 +91,22 @@ John asked whether the fall in threats came from our token savings rather than f
 The 5.6 check finished after resuming step 17 on the fixed build: 10 recommendations, 5 key judgements, and plain blocks on all 38 threats.
 
 **Next:** one luna run on the fixed build (about 24M tokens), to confirm the ranking and prompt fixes recover the threats.
+## Confirmation: gpt-6-luna on the fixed build (5 October, night)
+
+Same paper and settings. The run resumed twice, through no fault of the code: once after a ten-minute outage, and once after the Codex Plus 5-hour window ran out (the app mislabels that 429 as "provider could not be reached"). It finished on credits.
+
+| | Luna before fixes | **Luna fixed** | 5.6, same build | Sept 5.6, old build |
+|---|---|---|---|---|
+| Graph links | 62 | **223** | 188 | 455 |
+| Live threats / cleared bodies | 8 / 5 | **31 / 3** | 37 / 1 | 46 / – |
+| Bodies red-teamed | incl. Maths Hubs, IFS | **Government, DfE, local authorities, Best Start Family Hubs, Ofsted, schools, childminders, providers** | sensible | ~6 bodies under 12 names |
+| Input / output tokens | ≈23.5M / 453k | **24.7M / 473k** | ≈25M / 633k | 57.5M / 978k |
+| Busy time | – | 80 min | – | 142 min |
+| Key judgements / recommendations | 5 / 10 | 5 / 5 | 5 / 10 | 2 / 6 |
+| Plain blocks (threats, scenarios) | 11/13, 50/50 | 33/34, 57/57 | 38/38, 8/8 | none |
+
+The fixes do what they were for: on luna, live threats went from 8 to 31, at the same token cost. Luna still cleared Families, Children and Parents as having no material way to beat it; Parents is the questionable one.
+
+### Codex credits
+
+Measured over the 16.9M tokens this run spent on credits: **41.94 credits, or 2.48 credits per 1M tokens.** The mix was about 92% uncached input, 7% cached input and 1% output, so this is a rate for input-heavy work; output was too small a share to price on its own. At that rate a full run (about 25M tokens) costs about 60 credits, and **500 credits buys about 200M tokens**, roughly 8 runs. Balance afterwards: 458.06.
