@@ -70,6 +70,7 @@ export function GroundingIndex() {
           <Table
             caption="Your policies"
             captionSize="s"
+            scroll
             columns={[{ header: 'Policy' }, { header: 'Grounding', numeric: true }, { header: 'Assessments', numeric: true }]}
             rows={policies.map((p) => [
               <Link key={p.id} className="govuk-link" to={`/grounding/${p.id}`}>{p.name}</Link>,
@@ -176,6 +177,7 @@ export function GroundingPolicy() {
           <Table
             caption={`${detail.items.length} item${detail.items.length === 1 ? '' : 's'}`}
             captionSize="s"
+            scroll
             columns={[{ header: 'Material' }, { header: 'Kind' }, { header: 'Read' }, ...(readOnly ? [] : [{ header: <span className="govuk-visually-hidden">Remove</span>, name: 'Remove' }])]}
             rows={detail.items.map((item) => [
               <span key="title">

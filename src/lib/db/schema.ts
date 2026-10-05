@@ -32,7 +32,7 @@ import { sql } from 'drizzle-orm';
 
 /**
  * A POLICY (phase 25): what drafts and re-runs of one policy share, and what
- * its grounding library hangs off. See `migrations/0008-documents-grounding.sql`.
+ * its grounding library hangs off. See `migrations/0009-documents-grounding.sql`.
  */
 export const policyPolicies = pgTable('policy_policies', {
   id: uuid('id').primaryKey().defaultRandom(),
@@ -57,7 +57,7 @@ export const policyAnalyses = pgTable('policy_analyses', {
   sharedContextFirst: boolean('shared_context_first').notNull().default(false),
   sealed: boolean('sealed').notNull().default(false),
   sealedResearch: boolean('sealed_research').notNull().default(false),
-  // Phase 25 (`0008-documents-grounding.sql`): which set of documents, which
+  // Phase 25 (`0009-documents-grounding.sql`): which set of documents, which
   // paper it counts as, and which policy it belongs to (never on a sealed run).
   documentSetHash: text('document_set_hash'),
   paperKey: text('paper_key'),

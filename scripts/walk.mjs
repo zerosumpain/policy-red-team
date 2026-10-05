@@ -1531,6 +1531,95 @@ try {
   }
   note('the setup journey lists what is left, and the test step tells the truth');
 
+  /*
+   * 9z — SEVERAL DOCUMENTS AND A GROUNDING LIBRARY (phase 25).
+   *
+   * A policy is started on the library page and given one piece of grounding
+   * (statistics, as a file); then a paper of TWO documents — the fixture paper
+   * and an annex — is submitted under that policy with its grounding ticked.
+   * The run must read the annex as part of the paper and name it in a
+   * citation, read the grounding in full at the evidence step with its
+   * quotation verified against its own text, and say so in the report under a
+   * Grounding tag. The paper shares a document with the first walk paper, so
+   * it is the SAME paper to the library: run last, it changes no count above.
+   */
+  {
+    await page.goto(`http://127.0.0.1:${PORT}/grounding`, { waitUntil: 'networkidle' });
+    await page.getByRole('heading', { name: 'Grounding library', level: 1 }).waitFor({ timeout: 10000 });
+    const libraryNav = page.locator('.govuk-service-navigation:not(.prt-subnav)');
+    if ((await libraryNav.locator('a[aria-current="page"]').innerText().catch(() => '')).trim() !== 'Grounding library') failures.push('grounding: the service navigation does not mark Grounding library as the current page');
+    await audit('/grounding');
+    await page.getByLabel('Policy name', { exact: true }).fill('Walk shared access policy');
+    await page.getByRole('button', { name: 'Start the policy' }).click();
+    await page.getByRole('status').getByRole('link', { name: 'Walk shared access policy' }).click();
+    await page.getByRole('heading', { name: 'Walk shared access policy', level: 1 }).waitFor({ timeout: 10000 });
+    await page.getByLabel('What is it?', { exact: true }).selectOption('statistics');
+    await page.getByLabel('Attach it', { exact: true }).setInputFiles({
+      name: 'workforce-statistics.txt', mimeType: 'text/plain',
+      buffer: Buffer.from('Local authority workforce statistics, 2025. Councils reported 1,240 vacancies in the advice posts the programme relies on, a rise of a fifth on the year before. Vacancy rates were highest in rural areas, where one post in eight was unfilled.'),
+    });
+    await page.getByLabel('Title (optional)', { exact: true }).fill('Walk workforce statistics');
+    await page.getByLabel('Publisher (optional)', { exact: true }).fill('Office for Local Statistics');
+    await page.getByRole('button', { name: 'Add to the library' }).click();
+    await page.locator('#main-content table strong', { hasText: 'Walk workforce statistics' }).waitFor({ timeout: 15000 });
+    await audit('/grounding/:id (with an item)');
+    note('a policy is started and given grounding on the library page');
+
+    await page.goto(`http://127.0.0.1:${PORT}/new`, { waitUntil: 'networkidle' });
+    await page.getByLabel('What is this paper called?', { exact: true }).fill('Walk two-document paper');
+    await page.getByLabel('The paper', { exact: true }).setInputFiles(path.join(ROOT, 'tests', 'fixtures', 'policy-analysis', 'policy.txt'));
+    await page.getByLabel('Which policy is this paper part of?', { exact: true }).selectOption({ label: 'Walk shared access policy — 1 grounding item' });
+    const ticked = page.getByLabel(/^Walk workforce statistics/);
+    await ticked.waitFor({ timeout: 10000 });
+    if (!(await ticked.isChecked())) failures.push('/new: the policy\'s grounding is not ticked by default');
+    await page.getByRole('button', { name: 'Add another document' }).click();
+    if (await page.evaluate(() => document.activeElement?.id) !== 'document-role-1') failures.push('/new: Add another document did not move focus to the new row');
+    await page.locator('#document-role-1').selectOption('policy');
+    await page.locator('#document-1').setInputFiles({
+      name: 'annex.txt', mimeType: 'text/plain',
+      buffer: Buffer.from('Annex A: costings. The annex sets out how the shared access programme is paid for in its first three years. Councils receive a grant for each resident who uses the service, paid quarterly in arrears. The grant does not cover the cost of new staff, which councils must meet from their own budgets.'),
+    });
+    await page.locator('#document-title-1').fill('Annex A: costings');
+    await audit('/new (two documents and a policy)');
+    await page.getByRole('button', { name: 'Start the assessment' }).click();
+    await page.waitForURL('**/assessments/**', { timeout: 20000 });
+    await page.getByRole('heading', { name: 'The report at a glance' }).waitFor({ timeout: 120000 });
+    const docsId = page.url().split('/').filter(Boolean).find((part) => /^[0-9a-f-]{36}$/.test(part));
+    const full = await page.evaluate(async (aid) => (await fetch(`/api/policy-analysis/${aid}`)).json(), docsId);
+    const arts = full.artefacts ?? [];
+    const annexClaim = arts.find((a) => a.kind === 'claim' && a.sourceId === 'd1_passage_0001');
+    if (!arts.some((a) => a.id === 'passage_0001' && a.kind === 'passage')) failures.push('documents: the main paper\'s first passage is not passage_0001');
+    if (!annexClaim) failures.push('documents: nothing was read from the annex as part of the paper');
+    const groundingPassages = arts.filter((a) => a.kind === 'grounding_passage');
+    if (!groundingPassages.length) failures.push('grounding: the run read no grounding material');
+    const groundedRow = arts.find((a) => a.kind === 'evidence' && groundingPassages.some((g) => g.id === a.sourceId));
+    if (!groundedRow) failures.push('grounding: no evidence row cites the grounding');
+    else {
+      const source = groundingPassages.find((g) => g.id === groundedRow.sourceId);
+      if (groundedRow.startOffset == null || !source.statement.includes(groundedRow.sourceQuote)) failures.push('grounding: the quotation from the grounding was not verified against its text');
+    }
+    if (annexClaim) {
+      await page.goto(`http://127.0.0.1:${PORT}/assessments/${docsId}/items/${annexClaim.id}`, { waitUntil: 'networkidle' });
+      await page.locator('#standing').waitFor({ timeout: 20000 });
+      const where = await page.locator('.govuk-summary-list').filter({ hasText: 'Where in the paper' }).innerText().catch(() => '');
+      if (!where.includes('Annex A: costings')) failures.push(`documents: a citation from the annex does not name its document ("${where.replace(/\s+/g, ' ').slice(0, 160)}")`);
+      await audit('item page (a claim from the annex)');
+    }
+    await page.goto(`http://127.0.0.1:${PORT}/assessments/${docsId}/findings/grounding`, { waitUntil: 'networkidle' });
+    await page.getByRole('heading', { name: 'What it was judged against' }).first().waitFor({ timeout: 20000 });
+    if (!(await page.locator('#main-content .govuk-tag', { hasText: 'Grounding' }).count())) failures.push('grounding: the Findings section draws no Grounding tag');
+    if (!(await page.locator('#main-content').getByText('Walk workforce statistics').count())) failures.push('grounding: Findings does not name the grounding that was used');
+    await audit('/findings/grounding');
+    await page.setViewportSize({ width: 320, height: 900 });
+    if (await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth) > 0) failures.push('grounding: the Findings section scrolls sideways at 320px');
+    await page.setViewportSize({ width: 1280, height: 900 });
+    await page.goto(`http://127.0.0.1:${PORT}/assessments/${docsId}/method/read`, { waitUntil: 'networkidle' });
+    await page.getByRole('heading', { name: 'What it read' }).first().waitFor({ timeout: 20000 });
+    if (!(await page.locator('#main-content').getByText('Annex A: costings').count())) failures.push('documents: Method does not list the annex among what it read');
+    await audit('/method/read');
+    note('two documents read as one paper, the annex named in its citation, the grounding quoted, verified and tagged');
+  }
+
   // 10 — the rest of the surface
   for (const [route, heading] of [['/bodies', 'Bodies across policies'], ['/guide', 'How to read a report'], ['/design', 'Design system'], ['/accessibility', 'Accessibility statement'], ['/about', 'About this tool']]) {
     await page.goto(`http://127.0.0.1:${PORT}${route}`, { waitUntil: 'networkidle' });

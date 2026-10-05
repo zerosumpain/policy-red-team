@@ -42,8 +42,9 @@ export function GroundingUsed({ artefacts, linkTo }: { artefacts: Artefact[]; li
         instruction.
       </p>
       <Table
-        caption="What it was judged against"
+        caption="Each piece of grounding, how much was read, and what leans on it"
         captionSize="s"
+        scroll
         className="prt-table"
         columns={[{ header: 'Material' }, { header: 'Kind' }, { header: 'Read' }, { header: 'Evidence rows', numeric: true }]}
         rows={items.map((item) => [
