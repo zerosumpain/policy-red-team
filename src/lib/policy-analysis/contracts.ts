@@ -160,6 +160,10 @@ export function passOrdinal(pass: number, step: number): number { return PASS_BA
  * stage 3 asked several master actors to a call; the rules replies broke most,
  * stated in the first instruction at 1, 12 and 17; and five key judgements asked
  * for. The model's own reply warnings are notes and no longer reach later calls.
+ * Also in 3.6 (phases 24b and 25, before any run used it): stage 11 told that a
+ * shared master id is the same body; several documents under assessment, each
+ * passage naming its document; grounding read in full at 6 and as a digest at
+ * 5, 10, 14, 15 and 16, trusted as evidence and never as instruction.
  */
 export const PROMPT_VERSION = 'policy-analysis/3.6';
 export const MAX_BYTES = 10 * 1024 * 1024;

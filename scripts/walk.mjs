@@ -1673,8 +1673,13 @@ try {
         const before = (await mark.innerText()).trim();
         await page.getByLabel('How much do they gain?', { exact: true }).focus();
         await page.keyboard.press('Home');
+        // WAIT for the re-render rather than reading straight after the key:
+        // read at once, the band and the live region raced React and failed
+        // about one full run in three with nothing wrong on the page.
+        await page.waitForFunction((was) => document.querySelector('.prt-buildband__mark')?.textContent?.trim() !== was, before, { timeout: 3000 }).catch(() => {});
         const after = (await mark.innerText()).trim();
         if (before === after) failures.push(`guide 4: moving a slider to 0 left the band at "${after}"`);
+        await page.waitForFunction(() => /now limited/.test(document.querySelector('.prt-buildband [aria-live]')?.textContent ?? ''), null, { timeout: 3000 }).catch(() => {});
         if (!/now limited/.test(await page.locator('.prt-buildband [aria-live]').innerText())) failures.push('guide 4: the band change was not announced');
       }
       if (i === 4) {
