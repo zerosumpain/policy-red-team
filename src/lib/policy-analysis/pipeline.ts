@@ -853,9 +853,12 @@ export async function executeStage(input: StageInput, deps: PipelineDeps): Promi
      * worse answer than asking once with all 42 rows' evidence.
      */
     const resolved = input.artefacts.filter((a) => a.kind === 'actor' && a.id.startsWith('s2_'));
+    // ONE UNIT PER MASTER ACTOR (phase 23). Stage 2 now writes one actor per
+    // master actor, so this is one unit per actor; an assessment written before
+    // it still groups its rows by label, exactly as it did.
     const groups = new Map<string, Artefact[]>();
     for (const a of resolved) {
-      const key = a.label.trim().toLowerCase();
+      const key = actorUnitKey(a);
       const bucket = groups.get(key);
       if (bucket) bucket.push(a); else groups.set(key, [a]);
     }
@@ -863,20 +866,53 @@ export async function executeStage(input: StageInput, deps: PipelineDeps): Promi
     // relationship needs both of its endpoints present to be assertable at all.
     const endpoints = input.artefacts.filter((a) => ['mechanism', 'claim'].includes(a.kind) || (a.kind === 'actor' && a.id.startsWith('s2_')));
     const mentionsOf = (a: Artefact) => (Array.isArray(a.data.mentions) ? a.data.mentions.length : 0);
-    // Every group's own block, before any call is built: the shared fit has to
-    // leave room for the LARGEST of them, not the first one it happens to see.
-    const graphUnits = [...groups.values()].map((members) => ({
+    const allUnits = [...groups.values()].map((members) => ({
       members,
+      primary: [...members].sort((x, y) => mentionsOf(y) - mentionsOf(x) || x.id.localeCompare(y.id))[0],
       own: input.artefacts.filter((a) => members.some((m) => a.id === m.id || a.refs.includes(m.id))),
     }));
-    const graphOwns = graphUnits.map((u) => u.own);
-    await fanOut(graphUnits.map(({ members, own }) => {
-      const primary = [...members].sort((x, y) => mentionsOf(y) - mentionsOf(x) || x.id.localeCompare(y.id))[0];
+    /**
+     * T1: SKIP A BODY THE PAPER TIES TO NOTHING. Measured on the Best Start run:
+     * 158 calls, each carrying the whole ~124k-token endpoint inventory, about
+     * three edges apiece. A body no claim, part of the policy or assumption of
+     * stage 1 even mentions has nothing for a relationship to run to. Unless
+     * that is every body — then nothing is skipped, and the coverage rule below
+     * still decides.
+     */
+    const linked = linkedToPolicy(input.artefacts);
+    const live = allUnits.filter((u) => u.members.some((m) => linked.has(m.id)));
+    const units = live.length ? live : allUnits;
+    if (units.length < allUnits.length) {
+      output.warnings.push(`${allUnits.length - units.length} of ${allUnits.length} actors are named in the paper but tied to no claim, part of the policy or assumption it states, so no relationships were looked for: ${allUnits.filter((u) => !units.includes(u)).slice(0, 8).map((u) => u.primary.label).join(', ')}${allUnits.length - units.length > 8 ? `, and ${allUnits.length - units.length - 8} more` : ''}.`);
+    }
+    /**
+     * T1: SEVERAL BODIES A CALL, EACH WITH ITS OWN BLOCK AND ITS OWN TARGET.
+     * The endpoints block is shared and sent once per call instead of once per
+     * body; each body's own artefacts still come after it, and the instruction
+     * asks for every body's relationships as if it had the call to itself, so
+     * the output a body gets does not shrink. A busy body — many mentions —
+     * goes alone, because the reply is capped and its edges come first.
+     */
+    const batches: (typeof units)[] = [];
+    let current: typeof units = [];
+    let weight = 0;
+    for (const unit of units) {
+      const w = unit.members.reduce((n, m) => n + Math.max(1, mentionsOf(m)), 0);
+      if (current.length && (current.length >= GRAPH_BATCH || weight + w > GRAPH_BATCH_MENTIONS)) { batches.push(current); current = []; weight = 0; }
+      current.push(unit); weight += w;
+    }
+    if (current.length) batches.push(current);
+    // Every batch's own block, before any call is built: the shared fit has to
+    // leave room for the LARGEST of them, not the first one it happens to see.
+    const graphOwns = batches.map((batch) => [...new Map(batch.flatMap((u) => u.own).map((a) => [a.id, a])).values()]);
+    await fanOut(batches.map((batch, i) => {
+      const primary = batch[0].primary;
+      const many = batch.length > 1;
       return {
         key: primary.id,
-        context: orderedContext(endpoints, own, 'graph', graphOwns),
-        describe: `Relationships for ${primary.label}`,
-        extra: { protect: members.map((m) => m.id) },
+        context: orderedContext(endpoints, graphOwns[i], 'graph', graphOwns),
+        describe: many ? `Relationships for ${batch.length} actors (${batch.slice(0, 3).map((u) => u.primary.label).join(', ')}${batch.length > 3 ? ', …' : ''})` : `Relationships for ${primary.label}`,
+        extra: { protect: batch.flatMap((u) => u.members.map((m) => m.id)), ...(many ? { targetActorId: null, targetActorIds: batch.map((u) => u.primary.id) } : {}) },
       };
     }));
   } else if (stage === 4) {
@@ -902,7 +938,7 @@ export async function executeStage(input: StageInput, deps: PipelineDeps): Promi
     // Insertion order follows `input.artefacts`, which loads ordered by id, so
     // the group sequence — and therefore every `idPrefix` — stays deterministic.
     for (const a of toProfile) {
-      const key = a.label.trim().toLowerCase();
+      const key = actorUnitKey(a);
       const bucket = groups.get(key);
       if (bucket) bucket.push(a); else groups.set(key, [a]);
     }
@@ -938,7 +974,25 @@ export async function executeStage(input: StageInput, deps: PipelineDeps): Promi
      */
     const ranking = orderActors(input.artefacts, bodies.map((b) => b.primary)).actors;
     const fullIds = new Set(ranking.slice(0, FULL_PROFILES).map((a) => a.id));
-    const tail = bodies.filter((b) => !fullIds.has(b.primary.id));
+    /**
+     * T3: A SHORT PROFILE ONLY WHERE IT CAN BE USED. Measured on the Best Start
+     * run: 147 profiles written, 17 cited by anything later. A short profile is
+     * kept for a body the graph wires to a part of the policy — the bodies a
+     * play could be aimed through — and never for a group of people, which has
+     * no dossier to feed. A group central enough to rank in the top
+     * `FULL_PROFILES` still gets its full profile: "Parents and families"
+     * carried five ways to beat that policy.
+     */
+    const mechanisms = new Set(input.artefacts.filter((a) => a.kind === 'mechanism').map((a) => a.id));
+    const wired = new Set<string>();
+    for (const e of input.artefacts) {
+      if (e.kind !== 'edge' || !e.fromId || !e.toId) continue;
+      if (mechanisms.has(e.toId)) wired.add(e.fromId);
+      if (mechanisms.has(e.fromId)) wired.add(e.toId);
+    }
+    const candidatesForShort = bodies.filter((b) => !fullIds.has(b.primary.id));
+    const tail = candidatesForShort.filter((b) => !isGroupOfPeople(b.primary) && b.members.some((m) => wired.has(m.id)));
+    const unwritten = candidatesForShort.length - tail.length;
     // The public record about each body profiled in full, as this stage's own
     // retrieved sources — appended AFTER the body's own context, per call.
     const record = await publicRecord(bodies.filter((b) => fullIds.has(b.primary.id)).map((b) => b.primary));
@@ -1004,6 +1058,7 @@ export async function executeStage(input: StageInput, deps: PipelineDeps): Promi
       if (result) for (const body of batch) if (!done.has(body.primary.id)) unprofiled.push(body.primary.label);
     });
     if (tail.length) output.warnings.push(`${tail.length} of ${bodies.length} bodies were not assessed in full: each has a short profile — its role, what it wants and what it controls — because the policy graph runs less of the policy through them than through the ${fullUnits.length} profiled in full.`);
+    if (unwritten) output.warnings.push(`${unwritten} of ${bodies.length} actors were not profiled: each is a group of people, or a body the policy graph ties to no part of the policy, outside the ${fullUnits.length} profiled in full.`);
     if (strays) output.warnings.push(`${strays} short profile${strays === 1 ? '' : 's'} named a body the call was not about, or one it had already profiled, and ${strays === 1 ? 'was' : 'were'} discarded.`);
     if (unprofiled.length) output.warnings.push(`${unprofiled.length} of ${bodies.length} bodies have no incentive profile in this assessment: ${unprofiled.slice(0, 8).join(', ')}${unprofiled.length > 8 ? `, and ${unprofiled.length - 8} more` : ''}. The model answered and wrote none, so their motivations were not modelled.`);
   } else if (stage === 7 || stage === 9) {
@@ -2029,10 +2084,14 @@ export function graphUncovered(all: Artefact[]): number {
     if (edge.kind !== 'edge') continue;
     for (const end of [edge.fromId, edge.toId]) if (end) reached.add(end);
   }
-  // The same key the stage groups its fan-out by, so the two cannot drift.
+  // The same key the stage groups its fan-out by, and the same population —
+  // the actors it looked for relationships for (phase 23) — so the two cannot
+  // drift: a body skipped as tied to nothing is not a gap in the graph.
+  const linked = linkedToPolicy(all);
+  const population = actors.some((a) => linked.has(a.id)) ? actors.filter((a) => linked.has(a.id)) : actors;
   const groups = new Map<string, boolean>();
-  for (const actor of actors) {
-    const key = actor.label.trim().toLowerCase();
+  for (const actor of population) {
+    const key = actorUnitKey(actor);
     groups.set(key, (groups.get(key) ?? false) || reached.has(actor.id));
   }
   const covered = [...groups.values()].filter(Boolean).length;
@@ -2041,4 +2100,34 @@ export function graphUncovered(all: Artefact[]): number {
 
 export function priority(a: Artefact): number {
   return Number(a.data.importance) * Number(a.data.uncertainty) * Number(a.data.consequence);
+}
+
+/**
+ * What a stage fans out over, per actor (phase 23): its master actor where
+ * stage 2 placed it on the list, its label otherwise — which is every
+ * assessment written before the list existed, so those still group as they did.
+ */
+export function actorUnitKey(actor: Artefact): string {
+  const master = actor.data.master as { key?: unknown } | undefined;
+  return typeof master?.key === 'string' && master.key ? `master:${master.key}` : actor.label.trim().toLowerCase();
+}
+
+/**
+ * The resolved actors the paper ties to something: an actor, or one of its
+ * source mentions, that a stage-1 claim, mechanism or assumption names in its
+ * refs. Stage 3 looks for relationships only for these (T1).
+ */
+export function linkedToPolicy(all: Artefact[]): Set<string> {
+  // Only refs that name an ACTOR count: every extraction cites its passage too,
+  // and a passage is not a tie to the body it happens to mention.
+  const actors = new Set(all.filter((a) => a.kind === 'actor').map((a) => a.id));
+  const cited = new Set<string>();
+  for (const a of all) if (a.kind === 'claim' || a.kind === 'mechanism' || a.kind === 'assumption') for (const r of a.refs) if (actors.has(r)) cited.add(r);
+  const out = new Set<string>();
+  for (const a of all) {
+    if (a.kind !== 'actor' || !a.id.startsWith('s2_')) continue;
+    const mentions = Array.isArray(a.data.mentions) ? (a.data.mentions as unknown[]).map(String) : [];
+    if (cited.has(a.id) || mentions.some((m) => cited.has(m))) out.add(a.id);
+  }
+  return out;
 }

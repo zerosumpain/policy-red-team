@@ -114,8 +114,15 @@ describe('complete fixture policy pipeline', () => {
     expect(all.filter((a) => a.kind === 'test')).toHaveLength(12);
     expect(all.filter((a) => a.kind === 'model')).toHaveLength(PATTERNS.length);
     expect(all.filter((a) => a.kind === 'scenario')).toHaveLength(SCENARIOS.length);
-    expect(all.filter((a) => a.kind === 'exploit')).toHaveLength(1);
+    // Three bodies since phase 23 — the council (named twice, one actor), the
+    // department and the providers — and a play for each. The programme is not
+    // an actor, and the named resident is no actor at all.
+    expect(all.filter((a) => a.kind === 'exploit')).toHaveLength(3);
     expect(all.find((a) => a.kind === 'exploit')!.data.band).toBe('significant');
+    const cast = all.filter((a) => a.kind === 'actor' && a.id.startsWith('s2_'));
+    expect(cast.map((a) => a.label).sort()).toEqual(['Council', 'Department for Education', 'Providers']);
+    expect(cast.find((a) => a.label === 'Council')!.data.programmes).toEqual(['Shared access programme']);
+    expect(JSON.stringify(cast)).not.toContain('Jane Smith');
     const map = new Map(all.map((a) => [a.id, a]));
     for (const finding of all.filter((a) => a.kind === 'finding')) expect(hasSource(finding.id, map)).toBe(true);
     const final = all.filter((a) => ['finding', 'recommendation'].includes(a.kind));
@@ -156,18 +163,40 @@ describe('stage 3 — the graph fans out instead of asking for the whole policy 
    * returned 10 nodes and 8 edges for 347 actors — not because it was shown too
    * little, but because one response cannot carry a policy's structure.
    */
-  it('makes a call per body rather than a single call for everything', async () => {
-    const { seen } = await run([
+  it('asks per body, several bodies a call, never a single call for everything', async () => {
+    const { seen, result } = await run([
       actorRow('s2_001', 'Skills England', 9),
       actorRow('s2_002', 'Skills England', 2),
       actorRow('s2_003', 'Ofsted', 4),
       actorRow('s2_004', 'UCAS', 1),
     ]);
-    // Four rows, three bodies — three calls, and emphatically not one 'main'.
-    expect(seen).toHaveLength(3);
+    // Four rows, three bodies — ONE call naming all three (T1, phase 23), and
+    // emphatically not one 'main' asking for the whole policy.
+    expect(seen).toEqual(['s2_001']);
     expect(seen).not.toContain('main');
-    // The best-evidenced row of a group speaks for it.
-    expect(seen).toContain('s2_001');
+    // Each body keeps its own target: an edge for each of the three.
+    expect(result.artefacts.filter((a) => a.kind === 'edge').map((a) => a.fromId).sort()).toEqual(['s2_001', 's2_003', 's2_004']);
+  });
+
+  it('sends a busy body alone, and packs at most six to a call', async () => {
+    const rows = [actorRow('s2_001', 'Busy', 45), ...Array.from({ length: 7 }, (_, i) => actorRow(`s2_1${i}`, `Quiet ${i}`, 1))];
+    const { seen } = await run(rows);
+    expect(seen).toEqual(['s2_001', 's2_10', 's2_16']);
+  });
+
+  it('skips a body the paper ties to no claim, part of the policy or assumption', async () => {
+    const linked = { ...actorRow('s2_001', 'Ofsted', 2), data: { ...actorRow('s2_001', 'Ofsted', 2).data, mentions: ['s1_000_actor'] } };
+    const loose = actorRow('s2_002', 'UCAS', 1);
+    const passage = artefact('passage_0001', 'passage', 'Page 1', QUOTE, {}, { origin: 'extracted_fact', confidence: 1 });
+    const mention = artefact('s1_000_actor', 'actor', 'Ofsted', 'Ofsted inspects.', { entityType: 'agency', aliases: [], mentions: ['passage_0001'], ambiguity: '', dates: [], parent: null }, { refs: ['passage_0001'] });
+    const mechanism = artefact('s1_000_mechanism', 'mechanism', 'Inspection', QUOTE, { intervention: 'x', implementation: 'y', notes: 'z' }, { origin: 'extracted_fact', confidence: 1, sourceId: 'passage_0001', sourceQuote: QUOTE, refs: ['passage_0001', 's1_000_actor'] });
+    const seen: unknown[] = [];
+    const result = await executeStage(
+      { stage: 3, title: 'Synthetic', jurisdiction: null, policyArea: null, context: null, artefacts: [passage, mention, mechanism, linked, loose] },
+      { model: async (...args) => { seen.push((args[2] as { targetActorId?: string }).targetActorId); return fixtureModel(...args); }, research: neverResearch, signal: new AbortController().signal },
+    );
+    expect(seen).toEqual(['s2_001']);
+    expect(result.warnings.join(' ')).toMatch(/1 of 2 actors are named in the paper but tied to no claim/);
   });
 
   it('gives every call the endpoints an edge needs at both ends', async () => {
@@ -294,7 +323,11 @@ describe('stage 4 — full profiles for the most connected bodies, short ones fo
   const bodies = Array.from({ length: FULL_PROFILES + 6 }, (_, i) => body(i));
   const mechanism = artefact('s1_000_mechanism', 'mechanism', 'A mechanism', QUOTE, { intervention: 'x', implementation: 'y', notes: 'z' },
     { origin: 'extracted_fact', confidence: 1, sourceId: 'passage_0001', sourceQuote: QUOTE, refs: ['passage_0001'] });
-  const edges = bodies.slice(6).map((b, i) => ({ ...artefact(`s3_${String(i).padStart(3, '0')}_edge`, 'edge', 'accountable', 'x', { notes: 'x' }, { refs: [b.id, mechanism.id] }), fromId: b.id, toId: mechanism.id, relation: 'is_accountable_for' as const, temporal: 'current' as const }));
+  // Every body is wired to the mechanism, so each one may have a short profile
+  // (phase 23 writes none for a body wired to nothing); the last twenty-four
+  // twice, so connectivity — not id order — decides who is in the top K.
+  const edge = (b: Artefact, i: number) => ({ ...artefact(`s3_${String(i).padStart(3, '0')}_edge`, 'edge', 'accountable', 'x', { notes: 'x' }, { refs: [b.id, mechanism.id] }), fromId: b.id, toId: mechanism.id, relation: 'is_accountable_for' as const, temporal: 'current' as const });
+  const edges = [...bodies.map((b, i) => edge(b, i)), ...bodies.slice(6).map((b, i) => edge(b, 100 + i))];
   const input: StageInput = { stage: 4, title: 'T', jurisdiction: null, policyArea: null, context: null, artefacts: [passage, mechanism, ...bodies, ...edges] };
 
   const run = async (model: Parameters<typeof executeStage>[1]['model'] = async (...a) => fixtureModel(...a)) => {
@@ -347,6 +380,17 @@ describe('stage 4 — full profiles for the most connected bodies, short ones fo
     expect(stageFacts(result.warnings).some((f) => f.kind === 'open')).toBe(false);
     expect(result.warnings.join(' ')).toMatch(/1 short profile named a body the call was not about/);
     expect(result.artefacts.filter((a) => a.kind === 'profile' && a.data.actorId === bodies[29].id)).toHaveLength(1);
+  });
+
+  it('writes no short profile for a body wired to no part of the policy, or for a group of people', async () => {
+    const loose = artefact('s2_900', 'actor', 'Loose body', 'Synthetic actor row.', { entityType: 'agency', aliases: [], mentions: ['passage_0001'], ambiguity: '', dates: [], parent: null }, { origin: 'extracted_fact', confidence: 1, sourceId: 'passage_0001', sourceQuote: QUOTE, refs: ['passage_0001'] });
+    const group = artefact('s2_901', 'actor', 'Parents', 'Synthetic actor row.', { entityType: 'user_group', aliases: [], mentions: ['passage_0001'], ambiguity: '', dates: [], parent: null }, { origin: 'extracted_fact', confidence: 1, sourceId: 'passage_0001', sourceQuote: QUOTE, refs: ['passage_0001'] });
+    const groupEdge = edge(group, 300);
+    const result = await executeStage({ ...input, artefacts: [...input.artefacts, loose, group, groupEdge] }, { model: async (...a) => fixtureModel(...a), research: neverResearch, signal: new AbortController().signal });
+    const profiled = new Set(result.artefacts.filter((a) => a.kind === 'profile').map((p) => p.data.actorId));
+    expect(profiled.has('s2_900')).toBe(false);
+    expect(profiled.has('s2_901')).toBe(false);
+    expect(result.warnings.join(' ')).toMatch(/2 of 32 actors were not profiled/);
   });
 
   it('gives the red team and the persona library full profiles to choose from', () => {
@@ -740,15 +784,23 @@ describe('a later stage may ask', () => {
     throw new Error('unreachable');
   };
 
-  /** `fixtureModel`, plus one research question from the stage under test. */
-  const alsoAsks = (stage: number) => async (...a: Parameters<typeof fixtureModel>) => {
+  /**
+   * `fixtureModel`, plus one research question from the stage under test — from
+   * its FIRST call only. The fixture red-teams three bodies since phase 23, and
+   * the question is the stage's, not each body's.
+   */
+  const alsoAsks = (stage: number) => {
+    let asked = false;
+    return async (...a: Parameters<typeof fixtureModel>) => {
     const out = fixtureModel(...a);
-    if (a[0] !== stage) return out;
+    if (a[0] !== stage || asked) return out;
+    asked = true;
     const prefix = (a[2] as { idPrefix: string }).idPrefix;
     return { ...out, artefacts: [...out.artefacts, artefact(`${prefix}followup`, 'research_question',
       'Comparable reform outcome', 'What happened when this was tried elsewhere?',
       { importance: 0.9, uncertainty: 0.8, consequence: 0.9, rationale: 'The playbook rests on it.', searchStrategy: 'comparable reform published evaluation', gap: 'Untested.' },
       { refs: [(a[2] as { artefacts: Artefact[] }).artefacts.find((x) => x.kind === 'assumption')!.id], confidence: 0.5 })] };
+    };
   };
 
   it('retrieves what the exploitation playbook asks, and keeps it in the stage output', async () => {
@@ -843,8 +895,9 @@ describe('a later stage may ask', () => {
     const research = async () => ({ artefacts: [], warnings: [] });
     // The fan-out asks once per red-teamed actor; `followUps` is 2 on a standard
     // run, so a stage that raises more than that must say which it left.
+    const asks = alsoAsks(10);
     const manyAsks = async (...a: Parameters<typeof fixtureModel>) => {
-      const out = await alsoAsks(10)(...a);
+      const out = await asks(...a);
       if (a[0] !== 10) return out;
       const prefix = (a[2] as { idPrefix: string }).idPrefix;
       const ref = (a[2] as { artefacts: Artefact[] }).artefacts.find((x) => x.kind === 'assumption')!.id;
