@@ -305,6 +305,10 @@ export async function executeStage(input: StageInput, deps: PipelineDeps): Promi
   const gap = (describe: string, err: unknown, event = -1) => {
     deps.signal.throwIfAborted();
     if (!(err instanceof PolicyError)) throw err;
+    // An account out of allowance refuses every call until it resets, so the
+    // first refusal ends the stage: dispatching the rest of a fan-out only
+    // adds failed calls (phase 27 logged 127 of them) to say the same thing.
+    if (err.code === 'quota') throw err;
     fault.last = err;
     // One transport event that took down every lane in flight counts ONCE. The
     // unit is still recorded as missing below — what changes is only whether the

@@ -521,6 +521,36 @@ export function isLegitimateSilence(accepted: number, rejected: Rejection[], had
  */
 const TRANSPORT_RETRY_BACKOFF_MS = [5_000, 15_000, 30_000];
 
+/**
+ * A MODEL ACCOUNT THAT HAS USED ITS ALLOWANCE IS NOT AN UNREACHABLE PROVIDER.
+ *
+ * Phase 27: four real runs in an afternoon spent the Codex Plus account's
+ * five-hour window. The bridge answered every call within a second with a 502
+ * wrapping `codex responses 429: {"type":"usage_limit_reached", ...,
+ * "resets_at": ...}`, and this service reported each as "the configured model
+ * provider could not be reached … check site connections" — the wrong cause
+ * and the wrong remedy, and 127 failed calls before the stage gave up.
+ *
+ * Read from the error's text because that is all that survives the bridge:
+ * the 429 arrives as the body of a 502. `resets_at` is epoch SECONDS;
+ * `resets_in_seconds` is the fallback. Null when it is not a quota refusal.
+ */
+export function quotaFault(err: unknown, model: string, now = new Date()): PolicyError | null {
+  const text = [(err as { message?: unknown })?.message, (err as { error?: unknown })?.error, (err as { body?: unknown })?.body]
+    .map((part) => (typeof part === 'string' ? part : part == null ? '' : JSON.stringify(part))).join(' ');
+  const status = (err as { status?: unknown })?.status;
+  if (!/usage_limit_reached|insufficient_quota|usage limit has been reached/i.test(text) && !(status === 429 && /quota|usage limit/i.test(text))) return null;
+  const at = text.match(/resets_at\\?"?\s*:\s*(\d{9,})/)?.[1];
+  const inSeconds = text.match(/resets_in_seconds\\?"?\s*:\s*(\d+)/)?.[1];
+  const resets = at ? new Date(Number(at) * 1000) : inSeconds ? new Date(now.getTime() + Number(inSeconds) * 1000) : null;
+  const zone = 'Europe/London';
+  const day = (d: Date) => d.toLocaleDateString('en-GB', { timeZone: zone });
+  const when = resets
+    ? ` It resets at ${resets.toLocaleTimeString('en-GB', { timeZone: zone, hour: '2-digit', minute: '2-digit' })}${day(resets) === day(now) ? '' : ` on ${resets.toLocaleDateString('en-GB', { timeZone: zone, weekday: 'long', day: 'numeric', month: 'long' })}`} (UK time).`
+    : '';
+  return new PolicyError('quota', `The account behind “${model}” has used up its allowance: the provider refused the call because its usage limit was reached.${when} Add credits to the account, or resume after it resets. Nothing already completed is lost.`);
+}
+
 export function transportRetryDelayMs(code: string, attemptsSoFar: number): number | null {
   if (code !== 'provider') return null;
   return TRANSPORT_RETRY_BACKOFF_MS[attemptsSoFar] ?? null;

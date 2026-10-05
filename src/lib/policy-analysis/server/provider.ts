@@ -11,7 +11,7 @@ import { coerceModelContext, DEFAULT_NODE_MAX_TOKENS } from '$lib/constants/defa
 import { CONTEXT_LIMIT, FIT_LIMIT, PROMPT_VERSION, WORKFLOW_ID, type Artefact, type Extraction, type PassKind, type StageOutput } from '../contracts';
 import { expandIndexed, type IndexedPassage } from '../sentences';
 import { fitToBudget } from '../budget';
-import { isLegitimateSilence, malformedRetryDelayMs, PolicyError, stampProfileForm, transportRetryDelayMs, triageOutput, type Rejection } from '../validation';
+import { isLegitimateSilence, malformedRetryDelayMs, PolicyError, quotaFault, stampProfileForm, transportRetryDelayMs, triageOutput, type Rejection } from '../validation';
 import { repairPrompt, systemPrompt } from '../prompts';
 import { graftPlain } from '../plain';
 
@@ -345,7 +345,8 @@ export function modelCaller(executionId: string, runId: string, runSignal: Abort
         const timedOut = deadline.aborted && !signal.aborted;
         const withdrawn = !runSignal.aborted && Boolean(options?.signal?.aborted);
         const elapsed = Math.round((Date.now() - startedAt) / 1000);
-        const fault = err instanceof PolicyError ? err : withdrawn
+        const quota = err instanceof PolicyError || withdrawn || timedOut ? null : quotaFault(err, model);
+        const fault = err instanceof PolicyError ? err : quota ? quota : withdrawn
           ? new PolicyError('cancelled', `This call was withdrawn after ${elapsed}s because the stage it belonged to had already failed.`)
           : timedOut
           ? new PolicyError('timeout', `“${model}” did not answer within ${Math.round(callTimeoutMs(context.provider) / 1000)} seconds on this call (gave up after ${elapsed}s). This is a per-call deadline, not a provider outage — the run needs a model that answers inside it, and resuming on the same one will stop here again.`)

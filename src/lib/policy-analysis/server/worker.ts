@@ -433,7 +433,7 @@ export async function executePolicyRun(claimed: { id: string; input: Record<stri
       // A deadline is deterministic: the same model on the same page will run out
       // of time again. Retrying it twice more cost the first white-paper run two
       // hours and told the reader nothing new.
-      const retry = attempts < 3 && !(err instanceof PolicyError && ['budget', 'extraction', 'timeout'].includes(err.code));
+      const retry = attempts < 3 && !(err instanceof PolicyError && ['budget', 'extraction', 'timeout', 'quota'].includes(err.code));
       // A FAILURE MESSAGE CAN QUOTE THE PAPER — a triage rejection names the
       // artefact labels it discarded — so on a sealed run it is encrypted into the
       // three policy tables and NEVER written to `workflow_runs`. That table is
