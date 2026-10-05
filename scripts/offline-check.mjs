@@ -143,6 +143,21 @@ try {
   }
   if (body.length < 500) failures.push(`offline page rendered only ${body.length} characters`);
 
+  // Phase 23: plain words first, the paper's names defined — and the term is
+  // a button React drives, so it must work from file:// with nothing fetched.
+  for (const expected of ['What this report says, in plain words', 'What goes wrong', 'Who it happens to', "What the paper's own names mean"]) {
+    if (!body.includes(expected)) failures.push(`offline page missing "${expected}"`);
+  }
+  {
+    const term = page.locator('.prt-play .prt-term__name').first();
+    if (!(await term.count())) failures.push('offline: no definable term on a play card');
+    else {
+      await term.click();
+      const shown = await page.locator('.prt-play .prt-term__definition').first().isVisible();
+      if (!shown || (await term.getAttribute('aria-expanded')) !== 'true') failures.push('offline: pressing a term does not show its definition');
+    }
+  }
+
   // It must LOOK right too: GOV.UK 6 styles nothing without its shell classes,
   // and an unstyled pack is a pack nobody reads.
   const background = await page.evaluate(() => getComputedStyle(document.body).backgroundColor);

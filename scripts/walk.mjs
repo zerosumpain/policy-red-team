@@ -215,6 +215,68 @@ try {
   }
 
   /*
+   * PLAIN WORDS FIRST, AND THE PAPER'S NAMES DEFINED ON TAP (phase 23). The
+   * fixture writes a plain block on every play, scenario and key judgement and
+   * an everyday line on its part of the policy, whose name ("Shared access
+   * programme") the play's "who" line uses — so the Summary leads with a
+   * plain-words card, a play card shows its block before its detail, and the
+   * name is a button that discloses its definition from the keyboard.
+   */
+  {
+    const report = `http://127.0.0.1:${PORT}/assessments/${id}`;
+    await page.goto(report, { waitUntil: 'networkidle' });
+    await page.getByRole('heading', { name: 'What this report says, in plain words' }).waitFor({ timeout: 20000 }).catch(() => failures.push('summary: no "What this report says, in plain words" card'));
+    const plainFirst = await page.evaluate(() => {
+      const card = document.querySelector('.prt-plainwords');
+      const kpis = document.querySelector('.prt-kpis');
+      return !!card && !!kpis && Boolean(card.compareDocumentPosition(kpis) & Node.DOCUMENT_POSITION_FOLLOWING);
+    });
+    if (!plainFirst) failures.push('summary: the plain-words card is not the first thing on the Summary');
+
+    await page.goto(`${report}/threats/weights`, { waitUntil: 'networkidle' });
+    const card = page.locator('.prt-play').first();
+    await card.waitFor({ timeout: 20000 });
+    const order = await card.evaluate((el) => {
+      const plain = el.querySelector('.prt-plain');
+      const detail = el.querySelector('.prt-play__closing');
+      return {
+        plain: !!plain,
+        labels: [...el.querySelectorAll('.prt-plain__label')].map((d) => d.textContent?.trim()),
+        before: !!plain && !!detail && Boolean(plain.compareDocumentPosition(detail) & Node.DOCUMENT_POSITION_FOLLOWING),
+      };
+    });
+    if (!order.plain) failures.push('play card: no plain-words block');
+    else {
+      for (const label of ['Who', 'What they do', 'What goes wrong', 'It is like', 'Why it matters']) {
+        if (!order.labels.includes(label)) failures.push(`play card: the plain block has no "${label}" line`);
+      }
+      if (!order.before) failures.push('play card: the plain block is not drawn before the detail');
+    }
+    if (!(await card.locator('.prt-play__closing').getByText('How it runs').count())) {
+      await card.locator('.prt-play__closing summary').click();
+      if (!(await card.locator('.prt-play__closing').getByText('How it runs').isVisible())) failures.push('play card: the detail under the plain block does not carry the play itself');
+    }
+
+    const term = card.locator('.prt-term__name').first();
+    if (!(await term.count())) failures.push('play card: the part of the policy it names is not a definable term');
+    else {
+      const definition = card.locator('.prt-term__definition').first();
+      if ((await term.getAttribute('aria-expanded')) !== 'false' || (await definition.isVisible())) failures.push('term: the definition shows before it is asked for');
+      // KEYBOARD, NOT A POINTER: the accessibility statement promises nothing here appears on hover.
+      await term.focus();
+      await page.keyboard.press('Enter');
+      if ((await term.getAttribute('aria-expanded')) !== 'true' || !(await definition.isVisible())) failures.push('term: Enter does not show the definition');
+      else if (!/one place to ask for help/.test(await definition.innerText())) failures.push(`term: the definition reads "${await definition.innerText()}"`);
+      await term.hover();
+      await page.keyboard.press('Space');
+      if (await definition.isVisible()) failures.push('term: pressing again does not hide the definition');
+      await page.keyboard.press('Enter');
+      await audit('ways to beat it, a term opened');
+    }
+    note('plain words lead the Summary and every play card; a term opens and closes from the keyboard');
+  }
+
+  /*
    * EVERY VIEW IS VISITED, because a section silently assigned to the wrong one
    * still renders — just never where the reader looking for it will be. A
    * landing page names its sections on cards, so a section's title is on its
