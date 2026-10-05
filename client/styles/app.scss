@@ -72,6 +72,7 @@
 @use "./parts/pages";
 @use "./parts/home";
 @use "./parts/hub";
+@use "./parts/register";
 
 // LAST, because it lifts every width the parts above set on text.
 @use "./parts/fullwidth";

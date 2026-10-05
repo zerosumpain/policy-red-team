@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState, type ReactNode } from 'react';
 import { Link, useNavigate, useParams } from 'react-router';
 import { dossier, type Sighting } from '$lib/persona-view';
 import type { PaperAsks } from '$lib/policy-analysis/intel';
-import { api, type BodyFacts, type BodyIntel, type PersonaDossier } from '../api';
+import { api, type BodyFacts, type BodyIntel, type PersonaDossier, type RegisterEntryView } from '../api';
 import { Button, ButtonGroup, Details, InsetText, SummaryList, Table, WarningText } from '../govuk';
 import { selectionParam } from '../report/selection';
 import { BandMark } from '../BandMark';
@@ -10,6 +10,7 @@ import { usePageTitle } from '../layout/Template';
 import { viewPath } from '../moves';
 import { bodyPath, hubPath, seenIn } from '../places';
 import { AskGroups, longDate, PublicRecord, WhereItSits } from './PersonaIntel';
+import { ListBreadcrumb, ListPlace } from './ListPlace';
 
 /**
  * ONE BODY, ACROSS EVERY PAPER THAT NAMED IT — IN THREE BANDS (phase 24).
@@ -42,6 +43,8 @@ export function Persona() {
   const [detail, setDetail] = useState<PersonaDossier | null>(null);
   const [intel, setIntel] = useState<BodyIntel | null>(null);
   const [intelError, setIntelError] = useState<string | null>(null);
+  /** Its place on the master list (phase 24b). Null until read, or on a server without the list. */
+  const [place, setPlace] = useState<RegisterEntryView | null>(null);
   /** The page could not be loaded. This one is allowed to replace the page. */
   const [error, setError] = useState<string | null>(null);
   /**
@@ -83,6 +86,11 @@ export function Persona() {
     api.personaIntel(id)
       .then((data) => { if (live) setIntel(data); })
       .catch((err: Error) => { if (live) setIntelError(err.message); });
+    // A courtesy: the page stands without it, so a failure draws nothing.
+    setPlace(null);
+    api.registerEntry(id)
+      .then((data) => { if (live) setPlace(data); })
+      .catch(() => undefined);
     return () => { live = false; };
   }, [id]);
 
@@ -193,6 +201,7 @@ export function Persona() {
         <div className="govuk-grid-column-full">
           <span className="govuk-caption-l">Body</span>
           <h1 className="govuk-heading-l">{persona.name}</h1>
+          {place ? <ListBreadcrumb place={place} /> : null}
           <p className="govuk-body-s prt-meta">
             {persona.entityType.replaceAll('_', ' ') || 'kind not recorded'} · {seenIn(persona.sightings)}
             {persona.aliases.length ? ` · also as ${persona.aliases.join(', ')}` : ''}
@@ -202,6 +211,7 @@ export function Persona() {
           <nav aria-label="On this page" className="prt-onpage">
             <ol className="govuk-list prt-onpage__list">
               <li><a className="govuk-link" href="#band-register">What the register says</a> <span className="prt-meta">— fact</span></li>
+              {place ? <li><a className="govuk-link" href="#band-list">Where it sits on your master list</a> <span className="prt-meta">— your record</span></li> : null}
               <li><a className="govuk-link" href="#band-papers">What papers ask of it</a> <span className="prt-meta">— context</span></li>
               <li><a className="govuk-link" href="#band-record">What public records show</a> <span className="prt-meta">— evidence</span></li>
               <li><a className="govuk-link" href="#band-record-right">Is this the right record?</a></li>
@@ -232,6 +242,9 @@ export function Persona() {
         ) : null}
         {intel ? <WhereItSits intel={intel} /> : null}
       </Band>
+
+      {/* ── YOUR RECORD: the master list (phase 24b) ─────────────────────── */}
+      {place ? <ListPlace place={place} /> : null}
 
       {/* ── 2. CONTEXT ──────────────────────────────────────────────────── */}
       <Band id="band-papers" kind="context" title={`What papers ask of it — ${papers.length}`}

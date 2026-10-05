@@ -50,6 +50,10 @@ const BodiesList = lazy(() => import('./pages/Bodies').then((m) => ({ default: m
 const BodiesAcross = lazy(() => import('./pages/Bodies').then((m) => ({ default: m.BodiesAcross })));
 const BodiesClashes = lazy(() => import('./pages/Bodies').then((m) => ({ default: m.BodiesClashes })));
 const BodiesGroups = lazy(() => import('./pages/Bodies').then((m) => ({ default: m.BodiesGroups })));
+const BodiesRegister = lazy(() => import('./pages/Register').then((m) => ({ default: m.BodiesRegister })));
+const BodiesReview = lazy(() => import('./pages/Register').then((m) => ({ default: m.BodiesReview })));
+const ReviewActor = lazy(() => import('./pages/Register').then((m) => ({ default: m.ReviewActor })));
+const ReviewDecision = lazy(() => import('./pages/Register').then((m) => ({ default: m.ReviewDecision })));
 const Guide = lazy(() => import('./pages/Guide').then((m) => ({ default: m.Guide })));
 const PersonaRegister = lazy(() => import('./pages/PersonaIdentity').then((m) => ({ default: m.PersonaRegister })));
 const PersonaMerge = lazy(() => import('./pages/PersonaIdentity').then((m) => ({ default: m.PersonaMerge })));
@@ -125,6 +129,13 @@ export function App() {
       <Route path="/bodies/across" element={<Template wide><BodiesAcross /></Template>} />
       <Route path="/bodies/clashes" element={<Template wide><BodiesClashes /></Template>} />
       <Route path="/bodies/groups" element={<Template wide><BodiesGroups /></Template>} />
+      {/* Phase 24b: the master list of actors and the queue of what to review
+          on it. One actor and each decision about it are pages, never dialogs.
+          `review` is a static segment, so it outranks `/bodies/:id`. */}
+      <Route path="/bodies/register" element={<Template wide><BodiesRegister /></Template>} />
+      <Route path="/bodies/review" element={<Template wide><BodiesReview /></Template>} />
+      <Route path="/bodies/review/:id" element={<Template backLink={{ href: `${HUB}/review`, text: 'Back to the actors to review' }}><ReviewActor /></Template>} />
+      <Route path="/bodies/review/:id/:decision" element={<Template backLink={{ href: `${HUB}/review`, text: 'Back to the actors to review' }}><ReviewDecision /></Template>} />
       <Route path="/bodies/:id" element={<Template wide backLink={{ href: HUB, text: 'Back to bodies across policies' }}><Persona /></Template>} />
       {/* Phase 19: a reader's rulings on who a body is. Routes, never dialogs. */}
       <Route path="/bodies/:id/register" element={<Template backLink={{ href: HUB, text: 'Back to bodies across policies' }}><PersonaRegister /></Template>} />

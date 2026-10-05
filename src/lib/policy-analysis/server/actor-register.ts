@@ -502,6 +502,7 @@ export async function registerEntry(owner: string, id: string) {
   const ref = (parent: string | null) => (parent && byId.get(parent) ? { id: parent, name: byId.get(parent)!.name } : null);
   return {
     entry: node,
+    wordings: (await wordingsOf(owner, [id])).get(id) ?? [],
     partOf: ref(node.partOf),
     kindOf: ref(node.kindOf),
     children: { partOf: named(tree.partOf.children[id]), kindOf: named(tree.kindOf.children[id]) },
