@@ -9,7 +9,7 @@ import { createAnalysis } from './server/store';
 import { ingest } from './server/ingest';
 import { modelCaller } from './server/provider';
 import { fixtureModel } from '../../../tests/fixtures/policy-analysis/model';
-const mock = vi.hoisted(() => ({ count: 0, malformed: false, repairable: false, plainless: false, asks: [] as string[] }));
+const mock = vi.hoisted(() => ({ count: 0, malformed: false, repairable: false, plainless: false, extraRef: null as string | null, asks: [] as string[] }));
 vi.mock('$lib/server/models/workload-settings', () => ({ resolveResearchDeepModel: async () => ({ modelId: 'synthetic/test-model', provider: 'openrouter' }) }));
 vi.mock('$lib/llm/client', () => ({ getLLMClient: async () => ({ model: 'synthetic/test-model', client: { chat: { completions: { create: async (request: { messages: { content: string }[] }) => {
   mock.count++;
@@ -29,6 +29,12 @@ vi.mock('$lib/llm/client', () => ({ getLLMClient: async () => ({ model: 'synthet
     return { model: 'synthetic/test-model', choices: [{ message: { content: JSON.stringify({ artefacts: [bare], warnings: [] }) } }] };
   }
   let output = fixtureModel(1, 'fixture', input);
+  // A REF TO SOMETHING NOT SENT (phase 27): an earlier part of stage 17 wrote
+  // it, and the call was told its id. Only `citable` can make it known.
+  if (mock.extraRef) {
+    output = structuredClone(output);
+    output.artefacts[0].refs = [...output.artefacts[0].refs, mock.extraRef];
+  }
   if (mock.repairable) {
     if (request.messages.at(-1)?.content.includes('Fix and resend ONLY the discarded items')) {
       const corrected = structuredClone(output.artefacts[0]);
@@ -70,6 +76,34 @@ describe.skipIf(!local)('persisted model audit and stage checkpoints', () => {
     } finally {
       mock.malformed = false;
       mock.repairable = false;
+      await db.delete(policyAnalyses).where(eq(policyAnalyses.id, a.id));
+      await db.execute(sql`delete from workflow_runs where input_data->>'analysisId' = ${a.id}`);
+    }
+  });
+
+  it('lets a call cite what it was told an earlier part wrote, without sending it', async () => {
+    const bytes = readFileSync('tests/fixtures/policy-analysis/policy.txt');
+    const a = await createAnalysis('preview@example.test', { title: 'Synthetic citable fixture', jurisdiction: null, policyArea: null, context: null, depth: 'standard' as const, model: null, thinkingLevel: null, concurrency: null, extraction: null, sharedContextFirst: false, sealed: false, sealedResearch: false, filename: 'fixture.txt', mimeType: 'text/plain', bytes });
+    try {
+      const [stage] = await db.select().from(policyStages).where(eq(policyStages.analysisId, a.id)).orderBy(asc(policyStages.ordinal)).limit(1);
+      const prior = (await ingest(bytes, 'fixture.txt', 'text/plain')).artefacts;
+      const earlier = { ...structuredClone(prior[0]), id: 's17_000_finding_a' };
+      mock.extraRef = earlier.id;
+      const refsOf = async (citable: unknown[] | undefined, prefix: string) => {
+        const [execution] = await db.insert(policyExecutions).values({ stageId: stage.id, runId: stage.runId! }).returning();
+        const call = modelCaller(execution.id, stage.runId!, new AbortController().signal, prior);
+        const out = await call(1, prefix, { stage: 1, artefacts: prior, idPrefix: prefix, ...(citable ? { citable } : {}) });
+        const [stored] = await db.select().from(policyModelCalls).where(eq(policyModelCalls.executionId, execution.id));
+        return { refs: out.artefacts.flatMap((x) => x.refs), sent: JSON.stringify(stored.input) };
+      };
+      const told = await refsOf([earlier], 's1_told_');
+      expect(told.refs).toContain(earlier.id);
+      // Never sent and never hashed: it is for triage alone.
+      expect(told.sent).not.toContain('citable');
+      const untold = await refsOf(undefined, 's1_untold_');
+      expect(untold.refs).not.toContain(earlier.id);
+    } finally {
+      mock.extraRef = null;
       await db.delete(policyAnalyses).where(eq(policyAnalyses.id, a.id));
       await db.execute(sql`delete from workflow_runs where input_data->>'analysisId' = ${a.id}`);
     }

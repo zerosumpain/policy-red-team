@@ -136,7 +136,13 @@ export function modelCaller(executionId: string, runId: string, runSignal: Abort
     // `indexed` rides alongside `protect`: both are execution concerns, both are
     // destructured out here, and so neither reaches the hashed payload or the
     // model. `sentences.ts` says why that matters for the response cache.
-    const { protect: pinned, indexed, ...payload } = input as { artefacts?: Artefact[]; protect?: string[]; indexed?: IndexedPassage };
+    // `citable` likewise (phase 27): what an earlier part of stage 17 wrote,
+    // which this call may cite by the ids its payload lists but is not sent.
+    // Triage below must know them, or a recommendation citing the findings it
+    // was told to cite has "no supporting evidence links" — every one of them,
+    // on gpt-5.6, through two repair rounds and the second ask.
+    const { protect: pinned, indexed, citable = [], ...payload } = input as { artefacts?: Artefact[]; protect?: string[]; indexed?: IndexedPassage; citable?: Artefact[] };
+    const known = citable.length ? [...prior, ...citable] : prior;
     const fitted = Array.isArray(payload.artefacts)
       ? fitToBudget(payload.artefacts, (artefacts) => ({ ...payload, artefacts }), FIT_LIMIT, new Set(pinned ?? []))
       : { artefacts: [], notes: [] };
@@ -186,7 +192,7 @@ export function modelCaller(executionId: string, runId: string, runSignal: Abort
       // Several attempts of the same stage can leave more than one match; take the
       // most recent rather than whatever the planner happens to hand back first.
       .orderBy(desc(policyModelCalls.completedAt)).limit(1);
-    const cachedResult = cached?.output == null ? null : accept(triageOutput(asEnvelope(cached.output), stage, prior, commission?.passKind), prefix);
+    const cachedResult = cached?.output == null ? null : accept(triageOutput(asEnvelope(cached.output), stage, known, commission?.passKind), prefix);
     if (cachedResult && !cachedResult.rejected.length && !cachedResult.incomplete.length) {
       return { artefacts: cachedResult.output.artefacts, warnings: [...fitted.notes, ...cachedResult.output.warnings], notes: cachedResult.output.notes };
     }
@@ -298,7 +304,7 @@ export function modelCaller(executionId: string, runId: string, runSignal: Abort
         if (!sealed) await db.update(policyModelCalls).set({ output }).where(eq(policyModelCalls.id, call.id));
 
         const reply = round ? graftPlain(output, accepted, asked).raw : output;
-        const { output: round1, rejected: refused, incomplete } = accept(triageOutput(asEnvelope(reply), stage, [...prior, ...accepted], commission?.passKind), prefix);
+        const { output: round1, rejected: refused, incomplete } = accept(triageOutput(asEnvelope(reply), stage, [...known, ...accepted], commission?.passKind), prefix);
         // A refusal and a missing plain block are both worth a corrective ask;
         // only the first is lost work, and only it is ever counted as such.
         const rejected = [...refused, ...incomplete];

@@ -1435,8 +1435,11 @@ export async function executeStage(input: StageInput, deps: PipelineDeps): Promi
         const before = output.artefacts.length;
         const written = output.artefacts.filter((a) => ASSURED_REPORT_KINDS.includes(a.kind))
           .map((a) => ({ id: a.id, kind: a.kind, label: a.label, ...(a.kind === 'finding' ? { section: a.data.section } : {}) }));
+        // `citable` is the earlier parts' artefacts themselves, for the
+        // provider's triage only: it never reaches the model or the hash.
+        const earlier = output.artefacts.filter((a) => ASSURED_REPORT_KINDS.includes(a.kind));
         await attempt(part.key, context, `The ${part.label} part of the revised assessment`, {
-          ...extra, assuredPart: { name: part.key, kinds: part.kinds, sections: part.sections }, ...(written.length ? { assuredWritten: written } : {}),
+          ...extra, assuredPart: { name: part.key, kinds: part.kinds, sections: part.sections }, ...(written.length ? { assuredWritten: written, citable: earlier } : {}),
         });
         const added = output.artefacts.slice(before);
         const byId = new Map(added.map((a) => [a.id, a]));
@@ -1570,7 +1573,7 @@ export async function executeStage(input: StageInput, deps: PipelineDeps): Promi
         const sofar = stage === ASSURED_SYNTHESIS_STAGE
           ? { assuredWritten: output.artefacts.filter((a) => ASSURED_REPORT_KINDS.includes(a.kind)).map((a) => ({ id: a.id, kind: a.kind, label: a.label, ...(a.kind === 'finding' ? { section: a.data.section } : {}) })) }
           : {};
-        await request('topup', context, { ...extra, ...written, ...sofar, coverageGap: gap });
+        await request('topup', context, { ...extra, ...written, ...sofar, ...(stage === ASSURED_SYNTHESIS_STAGE ? { citable: output.artefacts.filter((a) => ASSURED_REPORT_KINDS.includes(a.kind)) } : {}), coverageGap: gap });
       } catch (err) {
         deps.signal.throwIfAborted();
         if (!(err instanceof PolicyError)) throw err;

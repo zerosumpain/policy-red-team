@@ -35,7 +35,7 @@ export function modelCaller(executionId?: string, _runId?: string, _signal?: Abo
     const output = fixtureModel(stage, key, input);
     if (!executionId) return output;
     const sealed = commission?.sealed === true;
-    const { protect: _protect, indexed: _indexed, ...payload } = (input ?? {}) as Record<string, unknown>;
+    const { protect: _protect, indexed: _indexed, citable: _citable, ...payload } = (input ?? {}) as Record<string, unknown>;
     const [call] = await db.insert(policyModelCalls).values({
       executionId, callKey: key, promptVersion: `${PROMPT_VERSION}#fixture`,
       inputHash: createHash('sha256').update(JSON.stringify(payload)).digest('hex'),
