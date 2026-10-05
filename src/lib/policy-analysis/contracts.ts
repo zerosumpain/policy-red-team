@@ -1,5 +1,6 @@
 import { isSelfHost } from '$lib/server/identity';
 import { z } from 'zod';
+import { PLAIN_SCHEMAS, WHAT_IT_IS } from './plain-schema';
 
 export const STAGES = [
   'Document ingestion', 'Document decomposition', 'Entity resolution', 'Policy knowledge graph',
@@ -496,7 +497,10 @@ const personaTraits = z.array(z.object({ key: z.string().max(60), label: z.strin
 export const dataSchemas = {
   passage: z.object({ documentHash: text }),
   claim: z.object({ category: z.enum(['objective', 'problem', 'responsibility', 'decision_right', 'funding', 'dependency', 'data_flow', 'measure', 'constraint', 'risk', 'benefit', 'claim', 'cited_evidence']), notes: text }),
-  mechanism: z.object({ intervention: text, implementation: text, notes: text }),
+  // `whatItIs` (phase 23): this part of the policy in everyday words, one line.
+  // Optional in the shape so every older row parses; the prompt shows it as
+  // required (`plain.ts`, `promptSchema`) and a missing one is a warning.
+  mechanism: z.object({ intervention: text, implementation: text, notes: text, whatItIs: WHAT_IT_IS.optional() }),
   assumption: z.object({ importance: unit, uncertainty: unit, consequence: unit, priority: unit.optional(), notes: text }),
   actor: z.object({ entityType: z.enum(['person', 'department', 'agency', 'local_authority', 'provider', 'contractor', 'programme', 'dataset', 'legislation', 'committee', 'user_group', 'geography', 'concept']), aliases: strings, mentions: ids, ambiguity: text, dates: strings, parent: z.string().nullable() }),
   alias: z.object({ actorId: text }),
@@ -542,7 +546,7 @@ export const dataSchemas = {
   // the run could not make because its own graph did not link what the paper
   // states is an EXTRACTION GAP, and says which relation and how many items.
   test: z.object({ testId: text, rationale: text, inputs: ids, rule: text, reasoning: text, result: z.enum(['low_risk', 'moderate_risk', 'high_risk', 'indeterminate']), severity: z.enum(['low', 'moderate', 'high', 'unknown']), actors: ids, mitigation: text, basis: z.literal('extraction_gap').optional(), extracted: z.object({ relation: text, what: text, count: z.number().int().positive() }).optional() }),
-  scenario: z.object({ scenario: z.enum(SCENARIOS), changedConditions: text, firstActor: z.string().nullable(), strategy: text, downstreamEffects: strings, affectedOutcomes: ids, detectability: text, correction: text, weaknesses: strings, assumptions: ids.min(1), sensitivity: strings.min(1) }),
+  scenario: z.object({ scenario: z.enum(SCENARIOS), changedConditions: text, firstActor: z.string().nullable(), strategy: text, downstreamEffects: strings, affectedOutcomes: ids, detectability: text, correction: text, weaknesses: strings, assumptions: ids.min(1), sensitivity: strings.min(1), plain: PLAIN_SCHEMAS.scenario.optional() }),
   exploit: z.object({
     actorId: text, motivation: text, play: text, legality: z.enum(LEGALITY),
     targets: ids.min(1), preconditions: ids.min(1), payoff: text, costToPolicy: text,
@@ -568,6 +572,13 @@ export const dataSchemas = {
      * their wording.
      */
     cleared: z.boolean().optional(),
+    /*
+     * THE PLAY IN PLAIN WORDS (phase 23): who, what they do, what goes wrong
+     * and for whom, an everyday comparison, and why it matters — what the
+     * report shows FIRST. Optional in the shape so older rows parse and a
+     * missing block costs a corrective ask, never the play (`plain.ts`).
+     */
+    plain: PLAIN_SCHEMAS.exploit.optional(),
   }).strict(),
   cross_policy: z.object({
     pattern: z.enum(CROSS_PATTERNS), otherAnalysisId: z.string().max(100), otherAnalysisTitle: text,
@@ -662,6 +673,8 @@ export const dataSchemas = {
     mechanismId: text, playIds: ids.min(1), assumptionId: text,
     wouldChangeIf: text, decision: text, action: text, owner: text,
     findingIds: ids.default([]),
+    // Who it happens to and why it matters, in everyday words (phase 23).
+    plain: PLAIN_SCHEMAS.key_judgement.optional(),
   }).strict(),
   finding: z.object({
     section: z.enum(['executive_assessment', 'scope_methodology', 'objectives', 'actors', 'mechanisms', 'theory_of_change', 'options_appraisal', 'evaluation_plan', 'assurance', 'high_risk_assumptions', 'test_results', 'strategic_responses', 'scenarios', 'exploitation', 'cross_policy', 'evidence_gaps', 'confidence_uncertainty', 'distribution', 'unresolved_questions']),

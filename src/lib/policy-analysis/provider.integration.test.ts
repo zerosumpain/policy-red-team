@@ -9,12 +9,25 @@ import { createAnalysis } from './server/store';
 import { ingest } from './server/ingest';
 import { modelCaller } from './server/provider';
 import { fixtureModel } from '../../../tests/fixtures/policy-analysis/model';
-const mock = vi.hoisted(() => ({ count: 0, malformed: false, repairable: false }));
+const mock = vi.hoisted(() => ({ count: 0, malformed: false, repairable: false, plainless: false, asks: [] as string[] }));
 vi.mock('$lib/server/models/workload-settings', () => ({ resolveResearchDeepModel: async () => ({ modelId: 'synthetic/test-model', provider: 'openrouter' }) }));
 vi.mock('$lib/llm/client', () => ({ getLLMClient: async () => ({ model: 'synthetic/test-model', client: { chat: { completions: { create: async (request: { messages: { content: string }[] }) => {
   mock.count++;
   recordLLMCall({ provider: 'synthetic', model: 'synthetic/test-model', tokensInput: 100, tokensOutput: 200, costUsd: null, cacheReadTokens: null, reasoningTokens: null, priceSnapshot: null });
   const input = JSON.parse(request.messages[1].content);
+  // A PLAY WITH NO PLAIN BLOCK (phase 23): round 0 leaves it off; the ask that
+  // follows is answered with the block alone, as `repairPrompt` asks.
+  if (mock.plainless) {
+    const play = fixtureModel(10, 'fixture', input).artefacts[0];
+    const last = request.messages.at(-1)?.content ?? '';
+    if (last.includes('KEPT but have no plain-words block')) {
+      mock.asks.push(last);
+      return { model: 'synthetic/test-model', choices: [{ message: { content: JSON.stringify({ artefacts: [{ id: play.id, kind: 'exploit', data: { plain: play.data.plain } }], warnings: [] }) } }] };
+    }
+    const bare = structuredClone(play);
+    delete bare.data.plain;
+    return { model: 'synthetic/test-model', choices: [{ message: { content: JSON.stringify({ artefacts: [bare], warnings: [] }) } }] };
+  }
   let output = fixtureModel(1, 'fixture', input);
   if (mock.repairable) {
     if (request.messages.at(-1)?.content.includes('Fix and resend ONLY the discarded items')) {
@@ -95,6 +108,34 @@ describe.skipIf(!local)('persisted model audit and stage checkpoints', () => {
       expect(retryCalls).toMatchObject([{ callKey: 'cached#repair1', status: 'completed' }]);
     } finally {
       mock.repairable = false;
+      await db.delete(policyAnalyses).where(eq(policyAnalyses.id, a.id));
+      await db.execute(sql`delete from workflow_runs where input_data->>'analysisId' = ${a.id}`);
+    }
+  });
+
+  it('keeps a play that forgot its plain block, asks for the block alone, and puts the answer on the kept play', async () => {
+    const bytes = readFileSync('tests/fixtures/policy-analysis/policy.txt');
+    const a = await createAnalysis('preview@example.test', { title: 'Synthetic plain-block fixture', jurisdiction: null, policyArea: null, context: null, depth: 'standard' as const, model: null, thinkingLevel: null, concurrency: null, extraction: null, sharedContextFirst: false, sealed: false, sealedResearch: false, filename: 'fixture.txt', mimeType: 'text/plain', bytes });
+    try {
+      mock.plainless = true;
+      const [stage] = await db.select().from(policyStages).where(eq(policyStages.analysisId, a.id)).orderBy(asc(policyStages.ordinal)).limit(1);
+      const passages = (await ingest(bytes, 'fixture.txt', 'text/plain')).artefacts;
+      const one = fixtureModel(1, 'k', { stage: 1, artefacts: passages, idPrefix: 's1_p_' } as never).artefacts;
+      const two = fixtureModel(2, 'k', { stage: 2, artefacts: [...passages, ...one], idPrefix: 's2_p_' } as never).artefacts;
+      const four = fixtureModel(4, 'k', { stage: 4, artefacts: [...passages, ...one, ...two], idPrefix: 's4_p_', targetActorId: two[0].id } as never).artefacts;
+      const prior = [...passages, ...one, ...two, ...four];
+      const [execution] = await db.insert(policyExecutions).values({ stageId: stage.id, runId: stage.runId! }).returning();
+      const out = await modelCaller(execution.id, stage.runId!, new AbortController().signal, prior)(10, 'plain', { stage: 10, artefacts: prior, idPrefix: 's10_p_', targetActorId: two[0].id });
+      // Kept from round 0, never discarded, and the block arrived on it.
+      expect(out.artefacts).toHaveLength(1);
+      expect(out.artefacts[0].data.plain).toMatchObject({ who: expect.any(String), likeWhen: expect.any(String) });
+      expect(out.warnings.join(' ')).not.toMatch(/discarded/);
+      expect(mock.asks).toHaveLength(1);
+      expect(mock.asks[0]).not.toMatch(/Fix and resend ONLY the discarded items/);
+      const calls = await db.select().from(policyModelCalls).where(eq(policyModelCalls.executionId, execution.id)).orderBy(asc(policyModelCalls.startedAt));
+      expect(calls.map((c) => c.callKey)).toEqual(['plain', 'plain#repair1']);
+    } finally {
+      mock.plainless = false;
       await db.delete(policyAnalyses).where(eq(policyAnalyses.id, a.id));
       await db.execute(sql`delete from workflow_runs where input_data->>'analysisId' = ${a.id}`);
     }

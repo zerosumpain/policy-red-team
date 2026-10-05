@@ -5,6 +5,7 @@ import { consumedSources, encodedSize, fitToBudget } from './budget';
 import { scoreExploits } from './exposure';
 import { isPlay } from './cleared';
 import { clampWarnings, PolicyError, stampProfileForm, triageArtefacts, triageOutput } from './validation';
+import { plainChecks } from './plain';
 import { modelApplicability } from './models';
 import { crossIdentityHints, preserveAmbiguity } from './entities';
 import { runPolicyTests } from './tests';
@@ -1710,6 +1711,9 @@ export async function executeStage(input: StageInput, deps: PipelineDeps): Promi
     warnings.push(`“${a.label}” cited ${a.refs.length} sources; only the first ${MAX_REFS} are recorded.`);
     a.refs = a.refs.slice(0, MAX_REFS);
   }
+  // The plain-English checks on what this stage KEPT (phase 23): machine
+  // warnings, never refusals, one per kind of slip — see `plainChecks`.
+  warnings.push(...plainChecks(kept));
   if (stage === ASSURED_SYNTHESIS_STAGE || (isPassStage(stage) && deps.passKind === 'restatement')) {
     // Renumbered on what SURVIVED, so a judgement the final triage took leaves
     // no hole in the ranks ("1, 3").

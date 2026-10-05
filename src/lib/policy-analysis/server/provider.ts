@@ -13,6 +13,7 @@ import { expandIndexed, type IndexedPassage } from '../sentences';
 import { fitToBudget } from '../budget';
 import { isLegitimateSilence, malformedRetryDelayMs, PolicyError, stampProfileForm, transportRetryDelayMs, triageOutput, type Rejection } from '../validation';
 import { repairPrompt, systemPrompt } from '../prompts';
+import { graftPlain } from '../plain';
 
 /**
  * `options.signal` withdraws ONE call — a fan-out whose stage has already
@@ -186,7 +187,7 @@ export function modelCaller(executionId: string, runId: string, runSignal: Abort
       // most recent rather than whatever the planner happens to hand back first.
       .orderBy(desc(policyModelCalls.completedAt)).limit(1);
     const cachedResult = cached?.output == null ? null : accept(triageOutput(asEnvelope(cached.output), stage, prior, commission?.passKind), prefix);
-    if (cachedResult && !cachedResult.rejected.length) {
+    if (cachedResult && !cachedResult.rejected.length && !cachedResult.incomplete.length) {
       return { artefacts: cachedResult.output.artefacts, warnings: [...fitted.notes, ...cachedResult.output.warnings] };
     }
 
@@ -218,9 +219,12 @@ export function modelCaller(executionId: string, runId: string, runSignal: Abort
       ? new PolicyError(cachedResult.rejected[0].code, cachedResult.rejected[0].reason)
       : null;
     let firstRound = 0;
-    if (cachedResult?.rejected.length) {
+    // KEPT ITEMS STILL OWING A PLAIN BLOCK (phase 23), asked for beside the
+    // refusals and grafted on when the answer comes back — see `graftPlain`.
+    let asked = new Set<string>(cachedResult?.incomplete.map((r) => r.id) ?? []);
+    if (cachedResult && (cachedResult.rejected.length || cachedResult.incomplete.length)) {
       const cachedContent = JSON.stringify(cached.output);
-      const instruction = repairPrompt(cachedResult.rejected, prefix, false, !!indexed);
+      const instruction = repairPrompt([...cachedResult.rejected, ...cachedResult.incomplete], prefix, false, !!indexed);
       const sent = messages.reduce((n, m) => n + m.content.length, 0);
       const room = CONTEXT_LIMIT - sent - instruction.length - 2_000;
       if (room < 0) {
@@ -290,7 +294,12 @@ export function modelCaller(executionId: string, runId: string, runSignal: Abort
         if (truncated) warnings.push('The model reached its output limit on this call, so its list may be incomplete.');
         if (!sealed) await db.update(policyModelCalls).set({ output }).where(eq(policyModelCalls.id, call.id));
 
-        const { output: round1, rejected } = accept(triageOutput(asEnvelope(output), stage, [...prior, ...accepted], commission?.passKind), prefix);
+        const reply = round ? graftPlain(output, accepted, asked).raw : output;
+        const { output: round1, rejected: refused, incomplete } = accept(triageOutput(asEnvelope(reply), stage, [...prior, ...accepted], commission?.passKind), prefix);
+        // A refusal and a missing plain block are both worth a corrective ask;
+        // only the first is lost work, and only it is ever counted as such.
+        const rejected = [...refused, ...incomplete];
+        asked = new Set(incomplete.map((r) => r.id));
         accepted.push(...round1.artefacts);
         warnings.push(...round1.warnings);
         await db.update(policyModelCalls).set({ status: 'completed', output: sealed ? null : output, usage: llmCalls, provider: llmCalls.at(-1)?.provider ?? null, model: llmCalls.at(-1)?.model ?? result.model, completedAt: new Date() }).where(eq(policyModelCalls.id, call.id));
@@ -363,8 +372,9 @@ export function modelCaller(executionId: string, runId: string, runSignal: Abort
  * other faulty artefact rather than failing the whole response — the repair
  * round then gets told exactly what the prefix is.
  */
-function accept(triaged: { artefacts: Artefact[]; warnings: string[]; rejected: Rejection[] }, prefix: string) {
-  if (!prefix) return { output: { artefacts: triaged.artefacts, warnings: triaged.warnings }, rejected: triaged.rejected };
+function accept(triaged: { artefacts: Artefact[]; warnings: string[]; rejected: Rejection[]; incomplete?: Rejection[] }, prefix: string) {
+  const asks = triaged.incomplete ?? [];
+  if (!prefix) return { output: { artefacts: triaged.artefacts, warnings: triaged.warnings }, rejected: triaged.rejected, incomplete: asks };
   const rejected = [...triaged.rejected];
   const kept = triaged.artefacts.filter((a) => {
     if (a.id.startsWith(prefix)) return true;
@@ -374,5 +384,6 @@ function accept(triaged: { artefacts: Artefact[]; warnings: string[]; rejected: 
   const warnings = [...triaged.warnings];
   const strays = rejected.length - triaged.rejected.length;
   if (strays) warnings.push(`${strays} model output${strays === 1 ? '' : 's'} used identifiers outside this call's namespace and could not be linked into the assessment.`);
-  return { output: { artefacts: kept, warnings }, rejected };
+  const keptIds = new Set(kept.map((a) => a.id));
+  return { output: { artefacts: kept, warnings }, rejected, incomplete: asks.filter((r) => keptIds.has(r.id)) };
 }
