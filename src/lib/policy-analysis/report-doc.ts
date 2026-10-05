@@ -162,7 +162,7 @@ function itemMarkdown(item: BriefItem, full: boolean): string {
     `### ${item.rank}. ${clean(item.title)}`,
     `**${clean(item.statement)}**`,
     plainMarkdown(item.artefact),
-    item.quote ? `> “${clean(item.quote.text)}”${item.quote.page ? ` (page ${item.quote.page})` : ''}` : null,
+    item.quote ? `> “${clean(item.quote.text)}”${item.quote.document || item.quote.page ? ` (${[item.quote.document, item.quote.page ? `page ${item.quote.page}` : null].filter(Boolean).join(', ')})` : ''}` : null,
     [
       item.about && `- **Part of the policy.** ${clean(item.about.label)}`,
       play && `- **The way to beat it.** ${clean(play.artefact.label)} — ${BAND_LABEL[play.band].toLowerCase()}, ${play.pattern.toLowerCase()}.${item.morePlays ? ` It names ${item.morePlays} more.` : ''}`,

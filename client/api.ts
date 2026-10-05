@@ -447,8 +447,30 @@ function heldDetail(id: string, view?: DetailView): Promise<Detail> {
   return pending;
 }
 
+/** A policy: what drafts and re-runs share, and what its grounding library hangs off (phase 25). */
+export interface PolicyRow { id: string; name: string; createdAt: string; items: number; runs: number }
+/** One item in a policy's grounding library, as the pages see it: never its bytes or its text. */
+export interface GroundingItemRow {
+  id: string; role: string; roleLabel: string; title: string; publisher: string | null; publishedOn: string | null;
+  url: string | null; filename: string | null; size: number | null; characters: number | null;
+  fetchedAt: string | null; error: string | null; createdAt: string;
+}
+export interface PolicyDetail {
+  policy: { id: string; name: string; createdAt: string };
+  items: GroundingItemRow[];
+  runs: { id: string; title: string; status: string; createdAt: string }[];
+}
+
 export const api = {
   landing: () => request<Landing>('/api/policy-analysis'),
+  /** Phase 25: policies and their grounding libraries. Nothing here spends. */
+  policies: () => request<{ policies: PolicyRow[] }>('/api/policy-analysis/policies'),
+  policy: (id: string) => request<PolicyDetail>(`/api/policy-analysis/policies/${id}`),
+  createPolicy: (name: string) => request<{ id: string; name: string }>('/api/policy-analysis/policies', {
+    method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ name }),
+  }),
+  addGrounding: (policyId: string, form: FormData) => request<GroundingItemRow>(`/api/policy-analysis/policies/${policyId}/grounding`, { method: 'POST', body: form }),
+  removeGrounding: (policyId: string, itemId: string) => request<{ removed: boolean }>(`/api/policy-analysis/policies/${policyId}/grounding/${itemId}`, { method: 'DELETE' }),
   recurringBodies: () => request<RecurringBodies>('/api/policy-analysis/bodies/recurring'),
   /**
    * Everything, including the kinds only the drill renders.

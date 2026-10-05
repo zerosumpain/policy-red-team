@@ -31,7 +31,12 @@ import { STAGES, type Artefact } from './contracts';
 // OTHER assessments, which is the thing this module's own header says must not
 // leave the account. Upstream withholds stage 13's warnings on that ground and
 // ships its output.
-export const WITHHELD_KINDS = ['passage', 'cross_policy', 'persona_link'] as const;
+//
+// `grounding_passage` (phase 25) is the reader's grounding material in full —
+// an impact assessment in draft, consultation responses they were sent — on
+// the attachment rule of phase 10: a document the recipient was never given.
+// The report cites it in short, checked spans, as it cites the paper.
+export const WITHHELD_KINDS = ['passage', 'cross_policy', 'persona_link', 'grounding_passage'] as const;
 
 /**
  * Stages whose WARNINGS are withheld along with their output.
@@ -176,6 +181,7 @@ export function withheldPhrases(withheld: { kind: string; count: number }[]): st
     passage: 'the policy document itself, which is quoted in short spans',
     cross_policy: 'comparisons with the author’s other assessments',
     persona_link: 'records drawn from the author’s other assessments',
+    grounding_passage: 'the grounding material it was judged against, which is quoted in short spans',
   };
   return withheld.filter((w) => w.count > 0).map((w) => PHRASE[w.kind] ?? w.kind.replaceAll('_', ' '));
 }
@@ -186,6 +192,7 @@ export function withheldNote(withheld: { kind: string; count: number }[]): strin
   const cross = withheld.find((w) => w.kind === 'cross_policy');
   if (cross) parts.push(`${cross.count} cross-policy ${cross.count === 1 ? 'exposure' : 'exposures'}, which name other assessments in the author's account`);
   if (withheld.some((w) => w.kind === 'passage')) parts.push('the policy document itself, which is quoted here in short spans rather than reproduced');
+  if (withheld.some((w) => w.kind === 'grounding_passage' && w.count > 0)) parts.push('the grounding material it was judged against, quoted the same way');
   if (!parts.length) return null;
   return `This shared copy leaves out ${parts.join(', and ')}. Everything else is the assessment as written.`;
 }

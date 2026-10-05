@@ -13,6 +13,8 @@ import { registerIndex } from './register';
 import { mintKey, openSeal, readKey, sealRow, sealWithKey, shredKey, unsealRow, type Seal } from './seal';
 import { createPolicy, ownedPolicy, runGroundingSummary, snapshotGrounding } from './grounding';
 import { samePaper } from './paper';
+import { documentSetHash } from './set-hash';
+export { documentSetHash };
 
 /**
  * The codec for one analysis, read from its `sealed` flag.
@@ -55,7 +57,9 @@ export async function createAnalysis(owner: string, input: Submission) {
        * so its passages are minted exactly as every paper's always were.
        */
       const documents = [
-        { filename: input.filename, mimeType: input.mimeType, bytes: input.bytes, title: input.documentTitle ?? null },
+        // The main paper is called what the assessment is called, unless the
+        // reader named it — it is how a citation names it among several.
+        { filename: input.filename, mimeType: input.mimeType, bytes: input.bytes, title: input.documentTitle ?? input.title },
         ...(input.parts ?? []),
       ].map((d) => ({ ...d, sha256: createHash('sha256').update(d.bytes).digest('hex') }));
       const setHash = documentSetHash(documents.map((d) => d.sha256));
@@ -111,16 +115,6 @@ export async function createAnalysis(owner: string, input: Submission) {
     }
   });
 }
-/**
- * WHICH SET OF DOCUMENTS (phase 25): the hash of the sorted member digests.
- * A one-document set is that document's own digest, so every run before this
- * phase — and every one-paper run after it — keeps the identity it had.
- */
-export function documentSetHash(shas: string[]): string {
-  if (shas.length === 1) return shas[0];
-  return createHash('sha256').update([...shas].sort().join('\n')).digest('hex');
-}
-
 /**
  * WHICH PAPER THIS IS, for sightings, neighbours and the bodies grid.
  *

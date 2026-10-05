@@ -59,11 +59,13 @@ describe('a shared copy carries the report and nothing around it', () => {
     expect(said).toContain('Document ingestion');
   });
 
-  it('withholds exactly two kinds, so a new one is a deliberate decision', () => {
+  it('withholds exactly these kinds, so a new one is a deliberate decision', () => {
     // If a future kind must not be shared, it goes in WITHHELD_KINDS and this
     // test changes with it. The failure mode this guards is the opposite one: a
     // kind added to the contract and silently shipped to anonymous readers.
-    expect([...WITHHELD_KINDS]).toEqual(['passage', 'cross_policy', 'persona_link']);
+    // Phase 25 added `grounding_passage`: the reader's grounding material in
+    // full is a document the recipient was never given, like the paper.
+    expect([...WITHHELD_KINDS]).toEqual(['passage', 'cross_policy', 'persona_link', 'grounding_passage']);
     for (const kind of WITHHELD_KINDS) expect(KINDS).toContain(kind);
   });
 

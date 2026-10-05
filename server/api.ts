@@ -332,6 +332,63 @@ export async function handleApi(
    * The owner's own pages: built from the library and the papers' mentions,
    * which no share or export reads. A sealed paper wrote no mention.
    */
+  /*
+   * POLICIES AND THEIR GROUNDING LIBRARIES (phase 25). Before the /:id routes,
+   * or "policies" is read as an assessment id.
+   *
+   *   GET    /policies                       every policy, with its counts
+   *   POST   /policies                       { name } — a new policy
+   *   GET    /policies/:id                   one policy, its library and its runs
+   *   POST   /policies/:id/grounding         multipart: one item (file or url)
+   *   DELETE /policies/:id/grounding/:item   remove one item
+   *
+   * A library item never carries its bytes or its text out of here. Adding a
+   * page fetches it NOW, through the SSRF-guarded reader, under the same brake
+   * as material added by address — unless the install is set not to reach the
+   * open web, in which case it is kept and fetched by nothing.
+   */
+  if (segments[0] === 'policies') {
+    const grounding = await import('$lib/policy-analysis/server/grounding');
+    if (segments.length === 1 && method === 'GET') {
+      sendJson(res, 200, { policies: await grounding.listPolicies(owner()) });
+      return true;
+    }
+    if (segments.length === 1 && method === 'POST') {
+      const body = await readJson(req);
+      const created = await grounding.createPolicy(owner(), typeof body.name === 'string' ? body.name : '');
+      sendJson(res, 201, created);
+      return true;
+    }
+    const detail = segments[1] ? await grounding.policyDetail(owner(), segments[1]) : null;
+    if (!detail) throw new HttpError(404, 'No such policy.');
+    if (segments.length === 2 && method === 'GET') {
+      sendJson(res, 200, detail);
+      return true;
+    }
+    if (segments.length === 3 && segments[2] === 'grounding' && method === 'POST') {
+      const form = await readMultipart(req);
+      const { readGroundingItem } = await import('$lib/policy-analysis/server/ingest');
+      const item = await readGroundingItem(asRequest(form.fields, form.file));
+      const { chosenEngine } = await import('$lib/server/search');
+      const fetchNow = item.kind === 'page' && chosenEngine() !== 'none';
+      if (fetchNow) {
+        const limit = rateLimit(`material-fetch:${owner()}`, { capacity: 6, refillPerSecond: 1 / 60 });
+        if (!limit.allowed) throw new HttpError(429, `That is enough for now. Try again in ${Math.max(1, Math.ceil(limit.retryAfterMs / 60000))} minutes.`);
+      }
+      const controller = new AbortController();
+      res.on('close', () => { if (!res.writableFinished) controller.abort(); });
+      const added = await grounding.addLibraryItem(owner(), segments[1], item, { fetchNow, signal: controller.signal });
+      sendJson(res, 201, added);
+      return true;
+    }
+    if (segments.length === 4 && segments[2] === 'grounding' && method === 'DELETE') {
+      if (!(await grounding.removeLibraryItem(owner(), segments[1], segments[3]))) throw new HttpError(404, 'No such item.');
+      sendJson(res, 200, { removed: true });
+      return true;
+    }
+    return false;
+  }
+
   if (segments[0] === 'register') {
     const registry = await import('$lib/policy-analysis/server/actor-register');
     if (segments.length === 1 && method === 'GET') {
@@ -772,7 +829,9 @@ export async function handleApi(
         : ownerPayload({
             ...meta,
             sealed: result.analysis.sealed,
-            documentSha256: result.documents?.[0]?.sha256 ?? null,
+            // The SET's digest (phase 25): for one paper, its own sha256 as
+            // before; for several, the hash of their sorted digests.
+            documentSha256: result.analysis.documentSetHash ?? result.documents?.[0]?.sha256 ?? null,
             artefacts,
             stages: result.stages,
           })),

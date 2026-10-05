@@ -25,6 +25,7 @@
  */
 import type { Artefact } from '$lib/policy-analysis/contracts';
 import { stageOfId } from '$lib/policy-analysis/view';
+import { documentOrder, isGroundingId } from '$lib/policy-analysis/document-set';
 
 /**
  * The paper's own wording, as this artefact carries it.
@@ -37,9 +38,19 @@ import { stageOfId } from '$lib/policy-analysis/view';
  * the walk exists to find.
  */
 export function paperWording(artefact: Artefact): string | null {
+  // A QUOTATION OF GROUNDING MATERIAL IS NOT THE PAPER'S WORDING (phase 25):
+  // it is the reader's evidence, quoted and checked, and `groundingWording`
+  // answers for it. Before this, any `sourceQuote` was read as the paper.
+  if (isGroundingId(artefact.sourceId)) return null;
   const value = artefact.kind === 'passage' ? artefact.statement : artefact.sourceQuote;
   // Trimmed for the EMPTINESS TEST only; the original is what is returned,
   // because the point of this field is that it reads as the document has it.
+  return value && value.trim() ? value : null;
+}
+
+/** The grounding material's own words, as a grounding passage holds them or a row quotes them (phase 25). */
+export function groundingWording(artefact: Artefact): string | null {
+  const value = artefact.kind === 'grounding_passage' ? artefact.statement : isGroundingId(artefact.sourceId) ? artefact.sourceQuote : null;
   return value && value.trim() ? value : null;
 }
 
@@ -152,8 +163,10 @@ export function provenance(
   // Ordered by where they sit in the DOCUMENT, not by where they sit in the
   // pipeline: this section is the reader checking the assessment against the
   // paper, and they read the paper front to back.
+  // Several documents (phase 25): the main paper first, then each further
+  // document, each by page — not every "page 3" of every document together.
   const sources = subsume(hops.flatMap((hop) => hop.items).filter((a) => paperWording(a)))
-    .sort((a, b) => (a.page ?? Infinity) - (b.page ?? Infinity) || a.label.localeCompare(b.label));
+    .sort((a, b) => documentOrder(a, byId) - documentOrder(b, byId) || (a.page ?? Infinity) - (b.page ?? Infinity) || a.label.localeCompare(b.label));
 
   return { hops, sources, reached, stoppedBy, unresolved };
 }

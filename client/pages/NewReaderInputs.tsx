@@ -6,6 +6,12 @@ import { MAX_LOOK_UPS, MAX_READER_SOURCES } from '$lib/policy-analysis/reader-in
  * "SOURCES IT SHOULD USE" AND "THINGS TO LOOK UP", ON THE SUBMISSION FORM
  * (phase 22 part 2).
  *
+ * BESIDE GROUNDING, NOT REPLACED BY IT (phase 25). A source here is for THIS
+ * run: read as a research result (10,000 characters, at stage 5, after the
+ * planner), graded like one. Supporting material under Documents is the
+ * policy's: read in full before research is planned and kept in its grounding
+ * library for every later run. The hint says which is which.
+ *
  * GOV.UK's add-another, done the simple way: a fieldset per entry, an "Add
  * another" button under the list, and a "Remove" button on every entry but a
  * lone one. No JavaScript-free fallback is needed — this form is already one
@@ -50,8 +56,12 @@ export function SourcesItShouldUse({ sealed }: { sealed: boolean }) {
       <fieldset className="govuk-fieldset" aria-describedby="sources-hint">
         <legend className="govuk-fieldset__legend govuk-fieldset__legend--s">Sources it should use (optional)</legend>
         <div id="sources-hint" className="govuk-hint">
-          An evaluation, a report or a page you already know bears on this paper. Each is read in
-          full and graded like any other source — supplying it makes it relevant, not strong.
+          An evaluation, a report or a page you already know bears on this paper, for this
+          assessment only. Each is read like a research result — its first 10,000 characters — and
+          graded like any other source: supplying it makes it relevant, not strong. Material every
+          assessment of this policy should be judged against belongs under Documents as supporting
+          material instead: it is read in full, before research is planned, and kept in the
+          policy&rsquo;s grounding library.
           {sealed ? ' This assessment is sealed, so a web address is not fetched: attach the file instead.' : ''}
         </div>
         {rows.map((key, i) => (

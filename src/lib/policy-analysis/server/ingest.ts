@@ -574,3 +574,43 @@ export async function ingest(bytes: Buffer, filename: string, mimeType: string, 
   }
   return { artefacts, warnings, text: canonical, metadata };
 }
+
+/**
+ * ONE ITEM FOR A POLICY'S GROUNDING LIBRARY (phase 25), from the library page:
+ * a file or a public web address, its role, and what the reader knows of it.
+ * The role does not degrade, for `readMaterial`'s reason: it tells the model
+ * how to read the document, and a consultation response read as an
+ * evaluation is graded as one.
+ */
+export async function readGroundingItem(request: Request): Promise<GroundingInput> {
+  const limit = MAX_GROUNDING_FILE_BYTES + 200_000;
+  if (Number(request.headers.get('content-length')) > limit) throw new PolicyError('size', `A grounding file must be at most ${MAX_GROUNDING_FILE_BYTES / 1024 / 1024} MB.`);
+  let form: FormData;
+  try { form = await request.formData(); }
+  catch { throw new PolicyError('input', 'Use the grounding library form.'); }
+  const str = (key: string, max: number) => {
+    const v = form.get(key);
+    if (v != null && typeof v !== 'string') throw new PolicyError('input', 'Invalid form field.');
+    const value = (v ?? '').trim();
+    if (value.length > max) throw new PolicyError('input', `${key} exceeds its length limit.`);
+    return value;
+  };
+  const role = str('role', 40);
+  if (!GROUNDING_ROLES.some(([key]) => key === role)) throw new PolicyError('input', 'Say which kind of material this is.');
+  const common = { role: role as GroundingRole, title: str('title', 300) || null, publisher: str('publisher', 300) || null, publishedOn: str('publishedOn', 60) || null };
+  const address = str('url', 2000);
+  const file = form.get('file');
+  const uploaded = file && typeof file !== 'string' && file.size > 0 ? file : null;
+  if (address && uploaded) throw new PolicyError('input', 'Give a file or a web address, not both.');
+  if (address) {
+    const url = safeSourceUrl(address);
+    if (!url) throw new PolicyError('input', 'Give a public web address starting https:// or http://.');
+    return { ...common, kind: 'page', url };
+  }
+  if (!uploaded) throw new PolicyError('input', 'Attach a file or give its web address.');
+  if (uploaded.size > MAX_GROUNDING_FILE_BYTES) throw new PolicyError('size', `A grounding file must be at most ${MAX_GROUNDING_FILE_BYTES / 1024 / 1024} MB.`);
+  const filename = uploaded.name.replace(/^.*[\\/]/, '').slice(0, 200);
+  const bytes = Buffer.from(await uploaded.arrayBuffer());
+  const mimeType = validateBytes(bytes, filename, uploaded.type);
+  return { ...common, kind: 'file', filename, mimeType, bytes };
+}

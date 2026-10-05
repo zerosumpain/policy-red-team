@@ -36,6 +36,7 @@
  */
 export const DRAWN: Record<string, string> = {
   passage: 'The paper itself',
+  grounding_passage: 'What it was judged against',
   claim: 'What the paper is made of',
   mechanism: 'How each part is meant to work',
   assumption: 'What rests on what',

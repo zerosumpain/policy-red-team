@@ -58,6 +58,9 @@ import { CheckLedger } from './CheckLedger';
 import { Assurance } from './Assurance';
 import { Rival } from './Rival';
 import { CheckedOutside } from './CheckedOutside';
+import { GroundingUsed, WhatItRead } from './Grounding';
+import { documentCount, documentName, documentOf, documentSet, setPassagesInOrder } from '$lib/policy-analysis/document-set';
+import { groundingItems, hasGrounding } from '$lib/policy-analysis/grounding';
 import { ReaderActions } from './ReaderActions';
 import { Cleared } from './Cleared';
 import { rivalExplanations } from '$lib/assurance-view';
@@ -173,6 +176,9 @@ const SECTION_NOTES: Record<string, string> = {
   howyoudknow: 'The measures that would show whether it is working.',
   rests: 'The assumptions the most conclusions depend on.',
   outside: 'What was looked up, what came back, and what is still open.',
+  grounding: 'The material you supplied to judge it by, and what leaned on it.',
+  read: 'The documents of the paper, and the grounding read beside them.',
+  groundingtext: 'The grounding material, as the assessment read it.',
   writeup: 'Every finding, grouped by what it is about.',
   checks: 'Twelve fixed tests of how the policy is wired.',
   patterns: 'Which kinds of idea, aimed at which parts.',
@@ -211,7 +217,7 @@ const SECTION_NOTES: Record<string, string> = {
 const READING_ORDER: Partial<Record<Move, string[]>> = {
   verdict: [
     'main-findings', 'exposure-profile', 'rival', 'legality',
-    'suggests', 'howyoudknow', 'rests', 'outside',
+    'suggests', 'howyoudknow', 'rests', 'outside', 'grounding',
     'writeup', 'checks',
   ],
   threats: [
@@ -219,7 +225,7 @@ const READING_ORDER: Partial<Record<Move, string[]>> = {
   ],
   causality: ['mechanisms', 'change', 'network'],
   provenance: [
-    'machine', 'discarded', 'provenance', 'value', 'withheld', 'gaps', 'composition', 'evidence', 'assurance', 'paper',
+    'machine', 'read', 'discarded', 'provenance', 'value', 'withheld', 'gaps', 'composition', 'evidence', 'assurance', 'paper', 'groundingtext',
   ],
 };
 
@@ -822,6 +828,15 @@ function ReportView({ detail, offline, linkTo, onChanged, route, onTitle }: Repo
     />
   ) : null);
   /*
+   * WHAT IT WAS JUDGED AGAINST (phase 25): the grounding material the reader
+   * supplied for this policy, how much of each was read, and how many evidence
+   * rows lean on it. Gated on there being any, so a report without grounding
+   * — every report before this phase — draws nothing new.
+   */
+  section('grounding', 'What it was judged against', 'verdict', hasGrounding(artefacts) ? (
+    <GroundingUsed artefacts={artefacts} linkTo={link} />
+  ) : null);
+  /*
    * EVERY SECTION BELOW IS GATED ON ITS OWN INPUT, and six of tonight's were
    * handed over ungated. `section()` keeps any TRUTHY body and a JSX element is
    * always truthy, so a component that returns `null` for a run it has nothing
@@ -923,6 +938,14 @@ function ReportView({ detail, offline, linkTo, onChanged, route, onTitle }: Repo
       ]}
     />
   ));
+  /*
+   * WHAT IT READ (phase 25): the documents of the set and the grounding beside
+   * them. Gated, so one paper with no grounding — every older run — draws
+   * nothing new on this page.
+   */
+  section('read', 'What it read', 'provenance', documentCount(artefacts) > 1 || hasGrounding(artefacts) ? (
+    <WhatItRead artefacts={artefacts} />
+  ) : null);
   lead('discarded', 'What was discarded, and why', 'provenance',
     <>
       {/* The one panel that is about the RUN and not the paper, under a banner
@@ -1313,7 +1336,11 @@ function ReportView({ detail, offline, linkTo, onChanged, route, onTitle }: Repo
    * the handling note already does.
    */
   if (offline) {
-    const passages = artefacts.filter((a) => a.kind === 'passage');
+    // IN DOCUMENT ORDER, under a heading per document when there are several
+    // (phase 25): `d1_` sorts before `passage_`, and a reader checking the
+    // paper reads it front to back, one document at a time.
+    const passages = setPassagesInOrder(artefacts);
+    const documents = documentSet(artefacts);
     if (passages.length) {
       section('paper', 'The paper itself', 'provenance', (
         <>
@@ -1322,13 +1349,46 @@ function ReportView({ detail, offline, linkTo, onChanged, route, onTitle }: Repo
             here so the report can be checked against its source with no network and nothing to
             open — searching this page searches the paper.
           </p>
-          {passages.map((passage) => (
-            <div key={passage.id} className="prt-source">
-              <p className="govuk-body-s prt-source__cite">
-                <strong>{passage.label}</strong>
-                {passage.page ? <span className="prt-meta"> · page {passage.page}</span> : null}
-              </p>
-              <div className="prt-quoted prt-quoted--full">{passage.statement}</div>
+          {documents.map((doc) => (
+            <div key={doc.position}>
+              {documents.length > 1 ? <h3 className="govuk-heading-s">{documentName(doc)}</h3> : null}
+              {passages.filter((passage) => documentOf(passage).position === doc.position).map((passage) => (
+                <div key={passage.id} className="prt-source">
+                  <p className="govuk-body-s prt-source__cite">
+                    <strong>{passage.label}</strong>
+                    {passage.page ? <span className="prt-meta"> · page {passage.page}</span> : null}
+                  </p>
+                  <div className="prt-quoted prt-quoted--full">{passage.statement}</div>
+                </div>
+              ))}
+            </div>
+          ))}
+        </>
+      ));
+    }
+    // THE GROUNDING MATERIAL, IN FULL, FOR THE SAME REASON (phase 25): a
+    // quotation of it can be checked here with nothing to open. An owner's
+    // pack only: a shared copy withholds it, as it withholds the paper.
+    const grounding = groundingItems(artefacts);
+    if (grounding.length) {
+      section('groundingtext', 'The grounding material', 'provenance', (
+        <>
+          <p className="govuk-body">
+            What the assessment was judged against, as it read it — evidence you supplied, never
+            the paper.
+          </p>
+          {grounding.map((item) => (
+            <div key={item.position}>
+              <h3 className="govuk-heading-s">{item.title} <span className="prt-meta">({item.roleLabel})</span></h3>
+              {item.passages.map((passage) => (
+                <div key={passage.id} className="prt-source">
+                  <p className="govuk-body-s prt-source__cite">
+                    <strong>{passage.label}</strong>
+                    {passage.page ? <span className="prt-meta"> · page {passage.page}</span> : null}
+                  </p>
+                  <div className="prt-quoted prt-quoted--full">{passage.statement}</div>
+                </div>
+              ))}
             </div>
           ))}
         </>

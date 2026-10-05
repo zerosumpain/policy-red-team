@@ -51,6 +51,8 @@ const BodiesAcross = lazy(() => import('./pages/Bodies').then((m) => ({ default:
 const BodiesClashes = lazy(() => import('./pages/Bodies').then((m) => ({ default: m.BodiesClashes })));
 const BodiesGroups = lazy(() => import('./pages/Bodies').then((m) => ({ default: m.BodiesGroups })));
 const Guide = lazy(() => import('./pages/Guide').then((m) => ({ default: m.Guide })));
+const GroundingIndex = lazy(() => import('./pages/Grounding').then((m) => ({ default: m.GroundingIndex })));
+const GroundingPolicy = lazy(() => import('./pages/Grounding').then((m) => ({ default: m.GroundingPolicy })));
 const PersonaRegister = lazy(() => import('./pages/PersonaIdentity').then((m) => ({ default: m.PersonaRegister })));
 const PersonaMerge = lazy(() => import('./pages/PersonaIdentity').then((m) => ({ default: m.PersonaMerge })));
 const PersonaMergeConfirm = lazy(() => import('./pages/PersonaIdentity').then((m) => ({ default: m.PersonaMergeConfirm })));
@@ -137,6 +139,9 @@ export function App() {
       <Route path="/personas" element={<Navigate replace to={HUB} />} />
       <Route path="/personas/*" element={<PersonasRedirect />} />
       <Route path="/guide" element={<Template backLink={{ href: '/' }}><Guide /></Template>} />
+      {/* Phase 25: what each policy is judged against, reused by every run of it. */}
+      <Route path="/grounding" element={<Template><GroundingIndex /></Template>} />
+      <Route path="/grounding/:id" element={<Template backLink={{ href: '/grounding', text: 'Back to the grounding library' }}><GroundingPolicy /></Template>} />
       {/* The design system, kept as a route: it is what `npm run a11y` scans and
           the cheapest place to argue about a component before it is spread over
           five pages. */}
