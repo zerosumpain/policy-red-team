@@ -20,7 +20,7 @@
 // `docs/upstream.json` is this build's own and needs no such bookkeeping.
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
-import { artefact, ASSURANCE_CATEGORIES, assuranceCategories, ASSURANCE_STAGE, ASSURED_SYNTHESIS_STAGE, APPRAISAL_STAGE, SYNTHESIS_STAGE, type Artefact, type StageInput } from './contracts';
+import { artefact, ASSURANCE_CATEGORIES, assuranceCategories, ASSURANCE_STAGE, ASSURED_PARTS, ASSURED_SYNTHESIS_STAGE, APPRAISAL_STAGE, REPORT_SECTIONS, SYNTHESIS_STAGE, type Artefact, type StageInput } from './contracts';
 // The remits a run with no reader-supplied source is asked: every one but
 // `supplied_balance`, which has nothing to check there (phase 22 part 2).
 const RUN_CATEGORIES = assuranceCategories([]);
@@ -77,16 +77,15 @@ describe('a coverage gap is asked about before it is fatal', () => {
     const challenges = all.filter((a) => a.kind === 'assurance_challenge');
     expect(challenges.length).toBe(RUN_CATEGORIES.length);
 
-    // The live failure: the first call answers all but one challenge. Before
+    // The live failure: the first ask answers all but one challenge. Before
     // this phase that threw, the cached reply made every retry deterministic,
-    // and nine attempts reached the same place.
+    // and nine attempts reached the same place. The responses are one part of
+    // the report since phase 27, so that is the call that drops one.
     const keys: string[] = [];
-    let first = true;
     const model = async (...args: Parameters<typeof fixtureModel>) => {
       keys.push(args[1]);
       const out = fixtureModel(...args);
-      if (!first) return out;
-      first = false;
+      if (args[1] !== 'responses') return out;
       const omitted = challenges[0].id;
       return { ...out, artefacts: out.artefacts.filter((a) => !(a.kind === 'assurance_response' && a.data.challengeId === omitted)) };
     };
@@ -94,8 +93,7 @@ describe('a coverage gap is asked about before it is fatal', () => {
     const result = await executeStage(base(ASSURED_SYNTHESIS_STAGE, all), { model, research, signal, neighbours: none, personas: none });
     // It asked a second time, under a key of its own so the response cache
     // cannot replay the omission.
-    expect(keys).toHaveLength(2);
-    expect(keys[1]).not.toBe(keys[0]);
+    expect(keys).toEqual(['findings_a', 'findings_b', 'responses', 'close', 'topup']);
     const responses = result.artefacts.filter((a) => a.kind === 'assurance_response');
     expect(new Set(responses.map((a) => a.data.challengeId)).size).toBe(challenges.length);
     // A gap the second ask CLOSED is not a limit, so it writes no warning: the
@@ -182,11 +180,9 @@ describe('a coverage gap is asked about before it is fatal', () => {
     // stage that was one response short.
     const all = await inventory();
     const omitted = all.filter((a) => a.kind === 'assurance_challenge')[0].id;
-    let first = true;
     const model = async (...args: Parameters<typeof fixtureModel>) => {
       const out = fixtureModel(...args);
-      if (!first) return out;
-      first = false;
+      if (args[1] !== 'responses') return out;
       return { ...out, artefacts: out.artefacts.filter((a) => !(a.kind === 'assurance_response' && a.data.challengeId === omitted)) };
     };
     const result = await executeStage(base(ASSURED_SYNTHESIS_STAGE, all), { model, research, signal, neighbours: none, personas: none });
@@ -206,8 +202,9 @@ describe('a coverage gap is asked about before it is fatal', () => {
       return { ...out, artefacts: out.artefacts.filter((a) => !(a.kind === 'assurance_response' && a.data.challengeId === omitted)) };
     };
     const result = await executeStage(base(ASSURED_SYNTHESIS_STAGE, all), { model, research, signal, neighbours: none, personas: none });
-    // Two calls, not nine: one ask, one top-up, then the gate decides.
-    expect(keys).toHaveLength(2);
+    // Five calls, not nine asks: one ask in its four parts, one top-up, then
+    // the gate decides.
+    expect(keys).toHaveLength(5);
     expect(result.warnings.join(' ')).toContain('no response');
     expect(result.warnings.join(' ')).toContain('asked a second time');
   });
@@ -465,5 +462,67 @@ describe('a surplus summing-up is the correction arriving twice, not a shortfall
     };
     await expect(executeStage(base(ASSURED_SYNTHESIS_STAGE, all), { model, research, signal, neighbours: none, personas: none }))
       .rejects.toThrow(PolicyError);
+  });
+});
+
+describe('the revised report is written in parts (phase 27)', () => {
+  // gpt-6-luna refused stage 17 as one call on the Best Start paper, twice:
+  // "too large to reproduce a complete assured replacement within this
+  // response". Four smaller asks, each told what the earlier ones wrote.
+  it('splits every report section between the finding parts, once each', () => {
+    const sections = ASSURED_PARTS.flatMap((p) => [...p.sections]);
+    expect([...sections].sort()).toEqual([...REPORT_SECTIONS].sort());
+    expect(new Set(sections).size).toBe(sections.length);
+  });
+
+  it('tells each later part what the earlier ones wrote, so it can cite them', async () => {
+    const all = await inventory();
+    const asked: { key: string; written: { id: string; kind: string }[] }[] = [];
+    const model = async (...args: Parameters<typeof fixtureModel>) => {
+      asked.push({ key: args[1], written: (args[2] as { assuredWritten?: { id: string; kind: string }[] }).assuredWritten ?? [] });
+      return fixtureModel(...args);
+    };
+    const result = await executeStage(base(ASSURED_SYNTHESIS_STAGE, all), { model, research, signal, neighbours: none, personas: none });
+    expect(asked.map((a) => a.key)).toEqual(ASSURED_PARTS.map((p) => p.key));
+    expect(asked[0].written).toHaveLength(0);
+    const fromA = asked[1].written.filter((w) => w.kind === 'finding').map((w) => w.id);
+    expect(fromA.length).toBe(ASSURED_PARTS[0].sections.length);
+    // The recommendation, written last, cites a finding a part before it wrote.
+    const [recommendation] = result.artefacts.filter((a) => a.kind === 'recommendation');
+    expect(fromA).toContain((recommendation.data.findingIds as string[])[0]);
+    expect(result.artefacts.filter((a) => a.kind === 'review_summary')).toHaveLength(1);
+  });
+
+  it('keeps only its own part from a model that writes the whole report every time', async () => {
+    const all = await inventory();
+    // The fixture without `assuredPart`: what a model that skims the
+    // instruction would send, four times over.
+    const model = async (...args: Parameters<typeof fixtureModel>) => {
+      const { assuredPart: _ignored, ...rest } = args[2] as Record<string, unknown>;
+      return fixtureModel(args[0], args[1], rest as Parameters<typeof fixtureModel>[2]);
+    };
+    const result = await executeStage(base(ASSURED_SYNTHESIS_STAGE, all), { model, research, signal, neighbours: none, personas: none });
+    const findings = result.artefacts.filter((a) => a.kind === 'finding' && a.data.revision === 'assured');
+    expect(findings).toHaveLength(REPORT_SECTIONS.length);
+    expect(new Set(findings.map((a) => a.data.section)).size).toBe(REPORT_SECTIONS.length);
+    expect(result.artefacts.filter((a) => a.kind === 'review_summary')).toHaveLength(1);
+    expect(result.artefacts.filter((a) => a.kind === 'recommendation')).toHaveLength(1);
+    expect(result.warnings.join(' ')).toContain('belonging to another part');
+  });
+
+  it('asks once more for a load-bearing chapter a part left out', async () => {
+    // Run 2's second failure: the report came back without options appraisal,
+    // assurance and exploitation, and nothing asked for them.
+    const all = await inventory();
+    const gaps: unknown[] = [];
+    const model = async (...args: Parameters<typeof fixtureModel>) => {
+      gaps.push((args[2] as { coverageGap?: unknown }).coverageGap);
+      const out = fixtureModel(...args);
+      if (args[1] !== 'findings_b') return out;
+      return { ...out, artefacts: out.artefacts.filter((a) => a.data.section !== 'options_appraisal') };
+    };
+    const result = await executeStage(base(ASSURED_SYNTHESIS_STAGE, all), { model, research, signal, neighbours: none, personas: none });
+    expect(gaps.at(-1)).toEqual(['options_appraisal']);
+    expect(result.artefacts.filter((a) => a.data.section === 'options_appraisal')).toHaveLength(1);
   });
 });

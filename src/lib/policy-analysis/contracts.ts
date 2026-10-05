@@ -905,6 +905,28 @@ export const KEY_JUDGEMENT_FLOOR = 3;
 export const RESULT_KINDS = ['test', 'model', 'scenario', 'exploit', 'cross_policy', 'causal_chain', 'logic_model', 'option_appraisal', 'evaluation_plan'] as const;
 
 export const REPORT_SECTIONS = ['executive_assessment', 'scope_methodology', 'objectives', 'actors', 'mechanisms', 'theory_of_change', 'options_appraisal', 'evaluation_plan', 'assurance', 'high_risk_assumptions', 'test_results', 'strategic_responses', 'scenarios', 'exploitation', 'cross_policy', 'evidence_gaps', 'confidence_uncertainty', 'distribution', 'unresolved_questions'] as const;
+/**
+ * STAGE 17 IS WRITTEN IN PARTS (phase 27), one call each, in this order.
+ *
+ * It used to be one call asked for a complete replacement report: nineteen
+ * sections of findings, a response to every challenge, the key judgements,
+ * the recommendations and a review summary. gpt-6-luna refused that outright
+ * on the Best Start paper ("too large to reproduce a complete assured
+ * replacement within this response") and returned nothing, twice; gpt-5.6
+ * wrote it. Stage 2 failed the same way on the same model until it was cut
+ * into chunks, and the cure is the same here. In ORDER because the later parts
+ * cite what the earlier ones wrote: a key judgement and a recommendation name
+ * assured findings, and only a call that has been told their identifiers can.
+ * The two finding parts together are every section, which a test asserts.
+ */
+export const ASSURED_PARTS = [
+  { key: 'findings_a', label: 'headline and analysis', kinds: ['finding'], sections: ['executive_assessment', 'scope_methodology', 'objectives', 'actors', 'mechanisms', 'high_risk_assumptions', 'test_results', 'strategic_responses', 'scenarios', 'exploitation'] },
+  { key: 'findings_b', label: 'appraisal and limits', kinds: ['finding'], sections: ['theory_of_change', 'options_appraisal', 'evaluation_plan', 'assurance', 'cross_policy', 'evidence_gaps', 'confidence_uncertainty', 'distribution', 'unresolved_questions'] },
+  { key: 'responses', label: 'challenge responses and key judgements', kinds: ['assurance_response', 'key_judgement'], sections: [] },
+  { key: 'close', label: 'recommendations and review summary', kinds: ['recommendation', 'review_summary'], sections: [] },
+] as const satisfies readonly { key: string; label: string; kinds: readonly string[]; sections: readonly (typeof REPORT_SECTIONS)[number][] }[];
+/** What a part of stage 17 writes; anything else it cites is kept only if it is not one of these. */
+export const ASSURED_REPORT_KINDS: readonly string[] = ['finding', 'assurance_response', 'key_judgement', 'recommendation', 'review_summary'];
 export type Kind = keyof typeof dataSchemas;
 export const KINDS = Object.keys(dataSchemas) as [Kind, ...Kind[]];
 // Every nullable field also DEFAULTS to null. A model that omits `toId` on an

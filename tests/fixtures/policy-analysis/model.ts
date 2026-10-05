@@ -246,7 +246,11 @@ export function fixtureModel(stage: number, _key: string, raw: unknown, _options
     } : {
       challengeId: challenge.id, disposition: challenge.data.finding === 'issue' ? 'accepted' : 'rejected', response: 'The revised report addresses the challenge.', changes: 'The conclusion is qualified.', remainingLimit: 'Human review remains outside scope.',
     }, [challenge.id])));
-    items.push({ ...make('redesign', 'recommendation', { findingIds: [items[0].id], change: 'Commit resources and review authority.', tradeoffs: 'Additional public expenditure.', beneficiaries: ['Service users'], burdenBearers: ['Department'], validationNeeded: 'Verify capacity and legal powers.', revision: 'assured', challengeIds: challenges.map((c) => c.id), judgement: 'supported_with_limits' }, [items[0].id, ...challenges.map((c) => c.id)]), origin: 'normative_judgement' });
+    // Written in parts since phase 27: a later part cites the findings an
+    // earlier one wrote, which `assuredWritten` names, and never its own copy.
+    const parted = input as unknown as { assuredPart?: { kinds: string[]; sections: string[] }; assuredWritten?: { id: string; kind: string }[] };
+    const cite = parted.assuredWritten?.find((w) => w.kind === 'finding')?.id ?? items[0].id;
+    items.push({ ...make('redesign', 'recommendation', { findingIds: [cite], change: 'Commit resources and review authority.', tradeoffs: 'Additional public expenditure.', beneficiaries: ['Service users'], burdenBearers: ['Department'], validationNeeded: 'Verify capacity and legal powers.', revision: 'assured', challengeIds: challenges.map((c) => c.id), judgement: 'supported_with_limits' }, [cite, ...challenges.map((c) => c.id)]), origin: 'normative_judgement' });
     items.push(make('summary', 'review_summary', { decisionUse: 'independently_challenged', judgement: 'supported_with_limits', openChallenges: 0, acceptedChallenges: 0, unresolvedMaterialChallenges: 0, scope: 'Automated independent challenge.', limitations: ['No human sign-off.'] }, challenges.map((c) => c.id)));
     // The main call writes `KEY_JUDGEMENT_FLOOR`; a top-up asked for more
     // (phase 23) writes the rest, each about a combination the ones already
@@ -254,7 +258,11 @@ export function fixtureModel(stage: number, _key: string, raw: unknown, _options
     const asking = input as unknown as { coverageGap?: unknown; keyJudgementsWritten?: { mechanismId?: unknown; playIds?: unknown }[] };
     const asked = Array.isArray(asking.coverageGap) && asking.coverageGap.includes('key_judgements');
     const written = asking.keyJudgementsWritten ?? [];
-    items.push(...keyJudgements(input, [items[0].id], asked ? MAX_KEY_JUDGEMENTS - written.length : KEY_JUDGEMENT_FLOOR, written));
+    items.push(...keyJudgements(input, [cite], asked ? MAX_KEY_JUDGEMENTS - written.length : KEY_JUDGEMENT_FLOOR, written));
+    // A part writes only its own kinds and sections, as a model that follows
+    // the instruction would; the pipeline's own cut is tested separately.
+    const part = parted.assuredPart;
+    if (part) items = items.filter((a) => (a.kind === 'assumption' || part.kinds.includes(a.kind)) && (a.kind !== 'finding' || part.sections.includes(String(a.data.section))));
   }
   // ONE NOTE ABOUT THE PAPER, from decomposition (phase 23): what the provider
   // hands back as `notes` when a model's reply says, in its own `warnings`,

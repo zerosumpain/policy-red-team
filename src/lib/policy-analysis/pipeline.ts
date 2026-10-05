@@ -1,6 +1,6 @@
 import { capForRival } from './decision-use';
 import { readerArtefacts, researchRank, type LookUp, type SuppliedSource } from './reader-inputs';
-import { APPRAISAL_STAGE, assuranceCategories, ASSURANCE_STAGE, ASSURED_SYNTHESIS_STAGE, CONCURRENCY_OPTIONS, DEEP_CHAINS, DEFAULT_CONCURRENCY, DEFAULT_EXTRACTION, DEPTH_LIMITS, FIT_LIMIT, FOLLOW_UP_STAGES, FULL_PROFILES, GROUNDING_ROLE_NOTES, KEY_JUDGEMENT_FLOOR, MAX_KEY_JUDGEMENTS, isPassStage, passOf, passOrdinal, passStep, PATTERNS, PERSONA_STAGE, REPORT_SECTIONS, RESULT_KINDS, REVISION_STATUSES, SCENARIOS, SHORT_PROFILE_BATCH, STAGE_CONTEXT, SYNTHESIS_STAGE, THEORY_STAGE, type Artefact, type Concurrency, type Extraction, type PassKind, type StageInput, type StageOutput } from './contracts';
+import { APPRAISAL_STAGE, ASSURED_PARTS, ASSURED_REPORT_KINDS, assuranceCategories, ASSURANCE_STAGE, ASSURED_SYNTHESIS_STAGE, CONCURRENCY_OPTIONS, DEEP_CHAINS, DEFAULT_CONCURRENCY, DEFAULT_EXTRACTION, DEPTH_LIMITS, FIT_LIMIT, FOLLOW_UP_STAGES, FULL_PROFILES, GROUNDING_ROLE_NOTES, KEY_JUDGEMENT_FLOOR, MAX_KEY_JUDGEMENTS, isPassStage, passOf, passOrdinal, passStep, PATTERNS, PERSONA_STAGE, REPORT_SECTIONS, RESULT_KINDS, REVISION_STATUSES, SCENARIOS, SHORT_PROFILE_BATCH, STAGE_CONTEXT, SYNTHESIS_STAGE, THEORY_STAGE, type Artefact, type Concurrency, type Extraction, type PassKind, type StageInput, type StageOutput } from './contracts';
 import { consumedSources, encodedSize, fitToBudget } from './budget';
 import { scoreExploits } from './exposure';
 import { isPlay } from './cleared';
@@ -1420,7 +1420,45 @@ export async function executeStage(input: StageInput, deps: PipelineDeps): Promi
     // number written into the prompt — and raising `questions` in the contract then
     // changed nothing at all, which is the whole of what stage 5 does.
     const extra = { ...(protect.length ? { protect } : {}), ...(stage === 5 ? { remainingQuestions: limits.questions } : {}), ...patterns, ...supportsFor(context) };
-    await request('main', context, extra);
+    if (stage === ASSURED_SYNTHESIS_STAGE) {
+      /*
+       * IN PARTS, each told what the earlier ones wrote (phase 27; see
+       * `ASSURED_PARTS`). Each response is cut to its part — what the part was
+       * asked for, and anything outside the report it cites from the same call,
+       * such as a new assumption — exactly as the top-up below is cut to its
+       * gap, because a model that skims the instruction hands back the whole
+       * report again and the copies would collide with nothing. `attempt`, not
+       * `request`: a part that fails is a named gap, and the coverage rules at
+       * the bottom decide whether the report stands without it.
+       */
+      for (const part of ASSURED_PARTS) {
+        const before = output.artefacts.length;
+        const written = output.artefacts.filter((a) => ASSURED_REPORT_KINDS.includes(a.kind))
+          .map((a) => ({ id: a.id, kind: a.kind, label: a.label, ...(a.kind === 'finding' ? { section: a.data.section } : {}) }));
+        await attempt(part.key, context, `The ${part.label} part of the revised assessment`, {
+          ...extra, assuredPart: { name: part.key, kinds: part.kinds, sections: part.sections }, ...(written.length ? { assuredWritten: written } : {}),
+        });
+        const added = output.artefacts.slice(before);
+        const byId = new Map(added.map((a) => [a.id, a]));
+        const keep = new Set(added.filter((a) => (part.kinds as readonly string[]).includes(a.kind) && (a.kind !== 'finding' || (part.sections as readonly string[]).includes(String(a.data.section)))).map((a) => a.id));
+        for (let settled = false; !settled;) {
+          settled = true;
+          for (const id of [...keep]) {
+            for (const ref of byId.get(id)?.refs ?? []) {
+              const cited = byId.get(ref);
+              if (cited && !keep.has(ref) && !ASSURED_REPORT_KINDS.includes(cited.kind)) { keep.add(ref); settled = false; }
+            }
+          }
+        }
+        const unwanted = added.filter((a) => !keep.has(a.id));
+        if (unwanted.length) {
+          output.artefacts = output.artefacts.filter((a) => keep.has(a.id) || !byId.has(a.id));
+          output.warnings.push(`The ${part.label} part of the revised assessment also wrote ${unwanted.length} item${unwanted.length === 1 ? '' : 's'} belonging to another part; ${unwanted.length === 1 ? 'it was' : 'they were'} discarded rather than recorded twice.`);
+        }
+      }
+    } else {
+      await request('main', context, extra);
+    }
     /**
      * DIVERGENCE: ONE MORE ASK FOR EXACTLY WHAT IS MISSING.
      *
@@ -1463,7 +1501,12 @@ export async function executeStage(input: StageInput, deps: PipelineDeps): Promi
       ? [...input.artefacts.filter((a) => a.kind === 'assurance_challenge')
         .filter((c) => !output.artefacts.some((a) => a.kind === 'assurance_response' && a.data.challengeId === c.id))
         .map((a) => a.id),
-      ...(judged.length >= KEY_JUDGEMENT_FLOOR ? [] : [KEY_JUDGEMENT_GAP])]
+      ...(judged.length >= KEY_JUDGEMENT_FLOOR ? [] : [KEY_JUDGEMENT_GAP]),
+      // And, since the report is written in parts (phase 27), a load-bearing
+      // chapter or the recommendations a part left out — the stage-12 ask.
+      ...['executive_assessment', 'high_risk_assumptions', 'exploitation', 'theory_of_change', 'options_appraisal', 'evaluation_plan', 'assurance']
+        .filter((section) => !output.artefacts.some((a) => a.data.section === section)),
+      ...(output.artefacts.some((a) => a.kind === 'recommendation') ? [] : ['recommendations'])]
       : stage === APPRAISAL_STAGE
         // Mirrors the appraisal rule below. Written out rather than shared with it
         // because the two sit 120 lines apart and this is a recorded divergence:
@@ -1522,7 +1565,12 @@ export async function executeStage(input: StageInput, deps: PipelineDeps): Promi
         ? { keyJudgementsWritten: judged.map((a) => ({ id: a.id, label: a.label, rank: a.data.rank, mechanismId: a.data.mechanismId, playIds: a.data.playIds })) }
         : {};
       try {
-        await request('topup', context, { ...extra, ...written, coverageGap: gap });
+        // Stage 17's parts each saw what came before; its second ask must too,
+        // or a recommendation it is asked for has no finding it can cite.
+        const sofar = stage === ASSURED_SYNTHESIS_STAGE
+          ? { assuredWritten: output.artefacts.filter((a) => ASSURED_REPORT_KINDS.includes(a.kind)).map((a) => ({ id: a.id, kind: a.kind, label: a.label, ...(a.kind === 'finding' ? { section: a.data.section } : {}) })) }
+          : {};
+        await request('topup', context, { ...extra, ...written, ...sofar, coverageGap: gap });
       } catch (err) {
         deps.signal.throwIfAborted();
         if (!(err instanceof PolicyError)) throw err;
@@ -1555,6 +1603,7 @@ export async function executeStage(input: StageInput, deps: PipelineDeps): Promi
       const wanted = new Set(gap);
       const answers = (a: Artefact) => stage === ASSURED_SYNTHESIS_STAGE
         ? (a.kind === 'assurance_response' && wanted.has(String(a.data.challengeId))) || (a.kind === 'key_judgement' && wanted.has(KEY_JUDGEMENT_GAP))
+          || (a.kind === 'finding' && wanted.has(String(a.data.section))) || (a.kind === 'recommendation' && wanted.has('recommendations'))
         : stage === SYNTHESIS_STAGE
           ? (a.kind === 'finding' && wanted.has(String(a.data.section))) || (a.kind === 'recommendation' && wanted.has('recommendations'))
           : (a.kind === 'option_appraisal' && wanted.has(String(a.data.optionType))) || (a.kind === 'evaluation_plan' && wanted.has('evaluation_plan'));
