@@ -241,7 +241,19 @@ export async function executeStage(input: StageInput, deps: PipelineDeps): Promi
     }
     // The call's own signal rides OUTSIDE the payload: the payload is hashed for
     // the response cache, and how a call may be withdrawn is not what it asks.
-    return deps.model(stage, key, { ...input, artefacts: context, idPrefix: `s${stage}_${slot}_`, targetActorId: stage === 3 || stage === 4 || stage === 10 || stage === PERSONA_STAGE ? key : null, targetPattern: stage === 7 ? key : null, targetScenario: stage === 9 ? key : null, targetMechanismId: stage === THEORY_STAGE ? key : null, targetCategory: stage === ASSURANCE_STAGE ? key : null, modelLibrary: stage === 7 ? modelApplicability(input.artefacts) : undefined, ...extra }, callSignal ? { signal: callSignal } : undefined);
+    /*
+     * THE REPORT STAGES NAME THEIR ID PREFIX FIRST (phase 27). Each is one call
+     * over a megabyte of artefacts, and `idPrefix` used to follow all of it.
+     * gpt-6-luna, handed 242k tokens at stage 17 on the Best Start paper, said
+     * no idPrefix "appears outside the truncated content" and returned nothing
+     * rather than invent identifiers — the whole assured report, lost to where
+     * one field sat. gpt-5.6 never minded. Only these three: a fan-out stage's
+     * calls share everything up to their artefacts as a cacheable prefix, and a
+     * per-call field ahead of them would throw that away. The key keeps its
+     * first position when the spread below assigns it again.
+     */
+    const early = [SYNTHESIS_STAGE, APPRAISAL_STAGE, ASSURED_SYNTHESIS_STAGE].includes(stage) ? { idPrefix: `s${stage}_${slot}_` } : {};
+    return deps.model(stage, key, { ...early, ...input, artefacts: context, idPrefix: `s${stage}_${slot}_`, targetActorId: stage === 3 || stage === 4 || stage === 10 || stage === PERSONA_STAGE ? key : null, targetPattern: stage === 7 ? key : null, targetScenario: stage === 9 ? key : null, targetMechanismId: stage === THEORY_STAGE ? key : null, targetCategory: stage === ASSURANCE_STAGE ? key : null, modelLibrary: stage === 7 ? modelApplicability(input.artefacts) : undefined, ...extra }, callSignal ? { signal: callSignal } : undefined);
   };
 
   /**

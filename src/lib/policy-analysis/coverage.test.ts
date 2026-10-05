@@ -137,6 +137,23 @@ describe('a coverage gap is asked about before it is fatal', () => {
       .rejects.toThrow(/high risk assumptions/);
   });
 
+  it('names the id prefix before the artefacts on a report stage, and after them on a fan-out', async () => {
+    // Phase 27: gpt-6-luna lost an idPrefix that followed 242k tokens of
+    // artefacts at stage 17 and returned an empty report.
+    const all = await inventory();
+    const order = new Map<number, string[]>();
+    const model = async (...args: Parameters<typeof fixtureModel>) => {
+      if (!order.has(args[0])) order.set(args[0], Object.keys(args[2] as object));
+      return fixtureModel(...args);
+    };
+    await executeStage(base(SYNTHESIS_STAGE, without(all, SYNTHESIS_STAGE)), { model, research, signal, neighbours: none, personas: none });
+    await executeStage(base(ASSURANCE_STAGE, without(all, ASSURANCE_STAGE)), { model, research, signal, neighbours: none, personas: none });
+    const report = order.get(SYNTHESIS_STAGE)!;
+    expect(report.indexOf('idPrefix')).toBeLessThan(report.indexOf('artefacts'));
+    const fan = order.get(ASSURANCE_STAGE)!;
+    expect(fan.indexOf('idPrefix')).toBeGreaterThan(fan.indexOf('artefacts'));
+  });
+
   it('re-dispatches the units of a fan-out that produced nothing', async () => {
     const all = await inventory();
     const skip = RUN_CATEGORIES[2];
