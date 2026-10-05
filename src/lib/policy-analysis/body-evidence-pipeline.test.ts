@@ -149,6 +149,24 @@ describe('stage 11 decides identity across papers by register body', () => {
     expect(hints).toEqual([]);
   });
 
+  it('the same MASTER actor is the same actor, whatever each paper called it (phase 24b)', () => {
+    const here = artefact('s2_reg_000', 'actor', 'Early years workforce', 'x', { entityType: 'user_group', aliases: [], mentions: [], master: { id: 'm-workforce', key: 'e:m-workforce' } });
+    const hints = crossIdentityHints([here], [{ id: 'other', artefacts: [{ id: 's2_reg_004', kind: 'actor', label: 'Early years educators', entityType: 'user_group', masterId: 'm-workforce' }] }]);
+    expect(hints).toEqual([expect.objectContaining({ actorId: here.id, otherArtefactId: 's2_reg_004', verdict: 'same_body', basis: 'master' })]);
+  });
+
+  it('a different master id is not a refusal: an unreviewed list may still hold one actor twice', () => {
+    const here = artefact('s2_reg_000', 'actor', 'Barchester Council', 'x', { entityType: 'local_authority', aliases: [], mentions: [], master: { id: 'm-1', key: 'e:m-1' } });
+    const hints = crossIdentityHints([here], [{ id: 'other', artefacts: [{ id: 'n1', kind: 'actor', label: 'Barchester Council', entityType: 'local_authority', masterId: 'm-2' }] }]);
+    expect(hints[0]).toMatchObject({ basis: 'name', verdict: 'same_body' });
+  });
+
+  it('the master list outranks the GOV.UK body only by deciding first; it never links two register bodies the other way', () => {
+    const here = artefact('s2_reg_000', 'actor', 'DfE', 'x', { entityType: 'department', aliases: [], mentions: [], master: { id: 'm-dfe', key: 'e:m-dfe' } });
+    const hints = crossIdentityHints([here], [{ id: 'other', artefacts: [{ id: 'n1', kind: 'actor', label: 'Ofsted', entityType: 'agency', bodyId: 'govuk:ofsted', masterId: 'm-ofsted' }] }], new Map([[here.id, 'govuk:department-for-education']]));
+    expect(hints).toEqual([]);
+  });
+
   it('falls back to the name rules where either side has no body, as before', () => {
     const here = actor('s2_000_c', 'Barchester Council', 'local_authority');
     const hints = crossIdentityHints([here], [{ id: 'other', artefacts: [{ id: 'n1', kind: 'actor', label: 'Barchester Council', entityType: 'local_authority' }] }]);

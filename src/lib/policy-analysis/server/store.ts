@@ -9,6 +9,7 @@ import { withNotes, type NotedStage } from '../notes';
 import type { Material, Submission } from './ingest';
 import { rebuildPersonas } from './personas';
 import { actorBodies } from './body-evidence';
+import { masterIdOf } from '../actor-register';
 import { registerIndex } from './register';
 import { mintKey, openSeal, readKey, sealRow, sealWithKey, shredKey, unsealRow, type Seal } from './seal';
 
@@ -523,6 +524,36 @@ export async function neighbourSummaries(owner: string, exclude: string): Promis
   const unfiled = rows.filter((r) => r.kind === 'actor' && !bodyOfActor.has(`${r.analysisId}|${r.id}`));
   const resolved = await actorBodies(unfiled.map((r) => ({ ...r, id: `${r.analysisId}|${r.id}` })));
   for (const [key, body] of resolved) bodyOfActor.set(key, body.id);
+  /*
+   * EACH ACTOR'S MASTER ID (phase 24b), so stage 11 decides "same actor" by the
+   * owner's master list before the GOV.UK body or the name. Read from the
+   * MENTIONS, not only the artefact's stamp: a reader's merge re-points the
+   * mentions and never rewrites an old run's artefacts, so the stamp can name a
+   * row the merge deleted. The stamp is the fallback for a run older than the
+   * mentions table. One actor is one master; where a split left it two, the
+   * commonest wins and the name rules still run on the rest.
+   */
+  const masterOf = new Map<string, string>();
+  const actorRows = rows.filter((r) => r.kind === 'actor');
+  if (actorRows.length) {
+    const filedMasters = await db.select({ analysisId: policyActorMentions.analysisId, actorId: policyActorMentions.actorId, masterId: policyActorMentions.masterId })
+      .from(policyActorMentions)
+      .where(and(eq(policyActorMentions.owner, owner), inArray(policyActorMentions.analysisId, shortlist.map((o) => o.id))));
+    const tally = new Map<string, Map<string, number>>();
+    for (const m of filedMasters) {
+      if (!m.actorId) continue;
+      const key = `${m.analysisId}|${m.actorId}`;
+      const counts = tally.get(key) ?? new Map<string, number>();
+      counts.set(m.masterId, (counts.get(m.masterId) ?? 0) + 1);
+      tally.set(key, counts);
+    }
+    for (const [key, counts] of tally) masterOf.set(key, [...counts].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))[0][0]);
+    for (const r of actorRows) {
+      const key = `${r.analysisId}|${r.id}`;
+      const stamped = masterIdOf({ data: r.data as Record<string, unknown> });
+      if (!masterOf.has(key) && stamped) masterOf.set(key, stamped);
+    }
+  }
   const index = await registerIndex();
   return shortlist.map((o) => ({
     id: o.id, title: o.title, policyArea: o.policyArea, jurisdiction: o.jurisdiction,
@@ -532,7 +563,7 @@ export async function neighbourSummaries(owner: string, exclude: string): Promis
       // Actors carry their type and aliases so identity can be judged on more
       // than a matching label - see `crossIdentityHints` — and their register
       // body where there is one, which decides it outright.
-      .map((r) => ({ id: r.id, kind: r.kind, label: r.label, statement: r.statement.slice(0, 600), entityType: r.kind === 'actor' ? String(r.data.entityType ?? '') : undefined, aliases: r.kind === 'actor' && Array.isArray(r.data.aliases) ? (r.data.aliases as string[]).slice(0, 12) : undefined, bodyId: r.kind === 'actor' ? bodyOfActor.get(`${o.id}|${r.id}`) : undefined })),
+      .map((r) => ({ id: r.id, kind: r.kind, label: r.label, statement: r.statement.slice(0, 600), entityType: r.kind === 'actor' ? String(r.data.entityType ?? '') : undefined, aliases: r.kind === 'actor' && Array.isArray(r.data.aliases) ? (r.data.aliases as string[]).slice(0, 12) : undefined, bodyId: r.kind === 'actor' ? bodyOfActor.get(`${o.id}|${r.id}`) : undefined, ...(r.kind === 'actor' && masterOf.has(`${o.id}|${r.id}`) ? { masterId: masterOf.get(`${o.id}|${r.id}`) } : {}) })),
   }));
 }
 
