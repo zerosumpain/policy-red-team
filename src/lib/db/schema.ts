@@ -196,7 +196,7 @@ export const policyPersonas = pgTable('policy_personas', {
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   /**
    * PHASE 23: THE PERSONA LIBRARY IS THE MASTER LIST OF ACTORS
-   * (`migrations/0006-actor-register.sql`). organisation, office_or_role,
+   * (`migrations/0007-actor-register.sql`). organisation, office_or_role,
    * sector_or_category, group_of_people or not_an_actor.
    */
   kind: text('kind').notNull().default('organisation'),

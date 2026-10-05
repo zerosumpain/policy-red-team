@@ -18,7 +18,7 @@
  * longer prompt.
  *
  * So a run now matches into ONE owner-wide list (the persona library,
- * extended — see `migrations/0006-actor-register.sql`):
+ * extended — see `migrations/0007-actor-register.sql`):
  *
  *   1. DETERMINISTIC FIRST. Exact name, alias, the GOV.UK register, and every
  *      ruling the reader has made. No model call. Groups of people, offices and
@@ -152,8 +152,6 @@ export function isNamedPerson(label: string, entityType: string): boolean {
 
 /** A label that names a service or a body, even when stage 1 typed it a programme: "Family hubs", "Maths Hubs". */
 const ORG_WORD = /\b(hubs?|services?|centres?|centers?|teams?|units?|panels?|taskforces?|boards?|commissions?|networks?|agenc(?:y|ies)|authorit(?:y|ies)|councils?|trusts?|foundations?|alliances?|offices?|departments?|institutes?|bodies|body|organisations?|providers?|schools?|nurseries|nursery|colleges?)\b/i;
-/** A label that names a scheme, benefit, app, plan or measure: never an actor. */
-const SCHEME_WORD = /\b(programmes?|programs?|schemes?|credits?|allowances?|grants?|app|apps|plans?|strateg(?:y|ies)|funds?|funding|entitlements?|initiatives?|pilots?|offers?|frameworks?|guarantees?|campaigns?|missions?|reforms?|polic(?:y|ies)|acts?|bills?|regulations?|profiles?|assessments?|curriculum|standards?|tests?|measures?|targets?|indicators?|returns?|data|datasets?|registers?|portal|website|platform)\b/i;
 const ASSESSMENT_WORD = /\b(profiles?|assessments?|curriculum|standards?|tests?|measures?|targets?|indicators?|frameworks?|returns?|data|datasets?)\b/i;
 
 export type MentionClass =
@@ -172,7 +170,12 @@ export function classifyMention(mention: { label: string; data: Record<string, u
   if (type === 'geography') return { is: 'not_actor', reason: 'place' };
   if (type === 'dataset' || type === 'legislation') return { is: 'not_actor', reason: type === 'dataset' ? 'assessment' : 'other' };
   if (type === 'person' && !ROLE_WORD.test(label)) return { is: 'unsure', hint: 'person' };
-  if (type === 'programme' && !ORG_WORD.test(label)) return { is: 'unsure', hint: 'programme' };
+  // A programme-typed label is someone who acts when its LAST word says so — a
+  // hub, a team, a service, a role: "Early Years Improvement Advisers" and
+  // "Regional Improvement for Standards and Excellence teams" were both typed a
+  // programme on the Best Start run. Otherwise it is asked about as a scheme.
+  const last = label.trim().split(/\s+/).at(-1) ?? '';
+  if (type === 'programme' && !(ORG_WORD.test(last) || ROLE_WORD.test(last))) return { is: 'unsure', hint: 'programme' };
   // By the LAST word: "Early Years Foundation Stage Profile assessment" is an
   // assessment although "Foundation" names a body elsewhere.
   if (type === 'concept' && ASSESSMENT_WORD.test(label.trim().split(/\s+/).at(-1) ?? '')) return { is: 'not_actor', reason: 'assessment' };

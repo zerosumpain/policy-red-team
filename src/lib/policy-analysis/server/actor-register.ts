@@ -15,7 +15,7 @@ import { registerIndex, syncRegister } from './register';
 /**
  * THE MASTER LIST OF ACTORS' STORE — phase 23.
  *
- * The list is `policy_personas`, extended (`migrations/0006-actor-register.sql`):
+ * The list is `policy_personas`, extended (`migrations/0007-actor-register.sql`):
  * one identity system, so a body's GOV.UK link, its aliases, the reader's
  * rulings and its dossier stay one row. This module reads the list for a run,
  * writes what an UNSEALED run proposed inside that run's own commit, serves the
@@ -585,7 +585,7 @@ async function createProposal(tx: DbExecutor, owner: string, analysisId: string,
  * tables the pipeline owns.
  */
 const ledger = pgTable('_migrations', { name: pgText('name').primaryKey(), appliedAt: timestamp('applied_at', { withTimezone: true }).notNull().defaultNow() });
-export const BACKFILL_MARK = 'backfill:0006-actor-register';
+export const BACKFILL_MARK = 'backfill:0007-actor-register';
 
 export async function backfillRegisterOnce(tx: DbExecutor = db): Promise<BackfillReport | null> {
   const [done] = await tx.select({ name: ledger.name }).from(ledger).where(eq(ledger.name, BACKFILL_MARK));

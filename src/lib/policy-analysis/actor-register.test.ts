@@ -49,6 +49,10 @@ describe('what a mention is', () => {
     expect(classifyMention(mention('m', 'Universal Credit', 'programme'))).toEqual({ is: 'unsure', hint: 'programme' });
     // A hub or a service typed as a programme is a body that delivers.
     expect(classifyMention(mention('m', 'Family hubs', 'programme'))).toEqual({ is: 'actor' });
+    expect(classifyMention(mention('m', 'Early Years Improvement Advisers', 'programme'))).toEqual({ is: 'actor' });
+    expect(classifyMention(mention('m', 'Regional Improvement for Standards and Excellence teams', 'programme'))).toEqual({ is: 'actor' });
+    expect(classifyMention(mention('m', 'Families First Partnership programme', 'programme'))).toEqual({ is: 'unsure', hint: 'programme' });
+    expect(classifyMention(mention('m', 'Maths Champions programme', 'programme'))).toEqual({ is: 'unsure', hint: 'programme' });
   });
 
   it('splits a composite on a comma, "and" or "&"', () => {
