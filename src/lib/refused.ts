@@ -1,5 +1,5 @@
 import { PASS_BASE, type Artefact } from '$lib/policy-analysis/contracts';
-import { partitionFrontMatter } from '$lib/policy-analysis/front-matter';
+import { partitionSet, setPassagesInOrder } from '$lib/policy-analysis/document-set';
 
 /**
  * WHAT A REFUSED ITEM WAS, IN WORDS A READER CAN USE.
@@ -104,13 +104,17 @@ const STAGE_ONE = /^s1_(\d+)_/;
  * rules and why the slot is never read as a page number.
  */
 export function stageOnePlaces(artefacts: Artefact[]): Map<string, Place> {
-  const passages = artefacts.filter((a) => a.kind === 'passage').sort((a, b) => a.id.localeCompare(b.id));
+  // DOCUMENT ORDER, NOT ID ORDER (phase 25): `d1_passage_0001` sorts before
+  // `passage_0001`, and the pipeline numbers its slots main paper first. An
+  // addendum's `m<n>_` passages were never stage 1's, and grounding is not a
+  // `passage` at all.
+  const passages = setPassagesInOrder(artefacts);
   const byId = new Map(passages.map((p) => [p.id, p]));
   const votes = new Map<string, Map<string, { n: number; page: number | null; passage: Artefact | null }>>();
   for (const a of artefacts) {
     const slot = STAGE_ONE.exec(a.id)?.[1];
     if (!slot) continue;
-    const cited = [a.sourceId, ...a.refs].find((id): id is string => !!id && (byId.has(id) || id.startsWith('passage_')));
+    const cited = [a.sourceId, ...a.refs].find((id): id is string => !!id && (byId.has(id) || /^(?:d\d+_)?passage_/.test(id)));
     const passage = cited ? byId.get(cited) ?? null : null;
     const page = passage?.page ?? a.page ?? null;
     if (!cited && page === null) continue;
@@ -127,7 +131,7 @@ export function stageOnePlaces(artefacts: Artefact[]): Map<string, Place> {
     places.set(slot, { page: best.page, passage: best.passage });
   }
   // The partition, for a slot none of whose items survived to say where it was.
-  const { analyse } = partitionFrontMatter(passages);
+  const { analyse } = partitionSet(passages);
   analyse.forEach((passage, index) => {
     const slot = String(index).padStart(3, '0');
     if (!places.has(slot)) places.set(slot, { page: passage.page ?? null, passage });

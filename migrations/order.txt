@@ -22,3 +22,4 @@
 0005-reader-inputs.sql
 0006-stage-notes.sql
 0007-actor-register.sql
+0008-documents-grounding.sql

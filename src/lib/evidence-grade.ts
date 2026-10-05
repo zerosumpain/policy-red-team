@@ -77,13 +77,16 @@ function sourcesOf(row: Artefact, byId: Map<string, Artefact>): Artefact[] {
   const out: Artefact[] = [];
   for (const id of ids) {
     const found = id ? byId.get(id) : undefined;
-    if (found && (found.kind === 'passage' || found.kind === 'research_source')) out.push(found);
+    if (found && (found.kind === 'passage' || found.kind === 'research_source' || found.kind === 'grounding_passage')) out.push(found);
   }
   return out;
 }
 
 /** Was this document read in full — a full-text research source? The paper itself is not "outside". */
-const readInFull = (source: Artefact) => source.kind === 'research_source' && source.data?.retrieval === 'full_text';
+// Grounding material is read in full by construction (phase 25): the evidence
+// step is handed the whole item, up to its stated cap. It is graded on what it
+// IS, so it may carry moderate or strong; it is never capped as a snippet is.
+const readInFull = (source: Artefact) => (source.kind === 'research_source' && source.data?.retrieval === 'full_text') || source.kind === 'grounding_passage';
 
 /**
  * THE MOST A ROW'S SOURCES CAN CARRY. Anything read in full: no cap. Only the
@@ -164,7 +167,9 @@ export const NOTHING_READ = 'Nothing outside the paper was read; these judgement
  */
 export function evidenceReadLine(artefacts: Artefact[]): string | null {
   const { fullText, excerpts } = researchRead(artefacts);
-  if (fullText) return null;
+  // Grounding the reader supplied was read in full (phase 25), so "nothing
+  // outside the paper was read in full" would be false.
+  if (fullText || artefacts.some((a) => a.kind === 'grounding_passage')) return null;
   return excerpts ? NOTHING_READ_IN_FULL : NOTHING_READ;
 }
 

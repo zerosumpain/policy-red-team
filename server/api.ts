@@ -158,8 +158,12 @@ function asRequest(fields: Record<string, string>, file?: { field: string; filen
   for (const [key, value] of Object.entries(fields)) form.set(key, value);
   // Every file under its own name: the paper, and each source the reader
   // supplied beside it (phase 22 part 2).
+  //
+  // APPENDED, NEVER SET (phase 25). `set` replaces every earlier entry of the
+  // same name, so two files a client sent under one name arrived as the last
+  // of them — a second document silently dropped before any reader saw it.
   for (const one of Array.isArray(file) ? file : file ? [file] : []) {
-    form.set(one.field || 'document', new Blob([new Uint8Array(one.bytes)], { type: one.mimeType }), one.filename);
+    form.append(one.field || 'document', new Blob([new Uint8Array(one.bytes)], { type: one.mimeType }), one.filename);
   }
   return new Request('http://localhost/api/policy-analysis', { method: 'POST', body: form });
 }

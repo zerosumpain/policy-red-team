@@ -25,11 +25,16 @@ function shingles(text: string, window: number): Set<string> {
   return out;
 }
 
-/** Everything a query may not contain, built once per stage from the passages. */
+/**
+ * Everything a query may not contain, built once per stage from the passages —
+ * and, since phase 25, from the grounding material too. An impact assessment
+ * in draft or a consultation response the reader was sent is as unpublished as
+ * the paper, and a quotation of it belongs in nobody's query log either.
+ */
 export function documentShingles(artefacts: Artefact[]): Set<string> {
   const out = new Set<string>();
   for (const passage of artefacts) {
-    if (passage.kind !== 'passage') continue;
+    if (passage.kind !== 'passage' && passage.kind !== 'grounding_passage') continue;
     for (const s of shingles(passage.statement, WINDOW)) out.add(s);
   }
   return out;

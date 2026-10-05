@@ -1,6 +1,6 @@
 import { capForRival } from './decision-use';
 import { readerArtefacts, researchRank, type LookUp, type SuppliedSource } from './reader-inputs';
-import { APPRAISAL_STAGE, assuranceCategories, ASSURANCE_STAGE, ASSURED_SYNTHESIS_STAGE, CONCURRENCY_OPTIONS, DEEP_CHAINS, DEFAULT_CONCURRENCY, DEFAULT_EXTRACTION, DEPTH_LIMITS, FIT_LIMIT, FOLLOW_UP_STAGES, FULL_PROFILES, KEY_JUDGEMENT_FLOOR, MAX_KEY_JUDGEMENTS, isPassStage, passOf, passOrdinal, passStep, PATTERNS, PERSONA_STAGE, REPORT_SECTIONS, RESULT_KINDS, REVISION_STATUSES, SCENARIOS, SHORT_PROFILE_BATCH, STAGE_CONTEXT, SYNTHESIS_STAGE, THEORY_STAGE, type Artefact, type Concurrency, type Extraction, type PassKind, type StageInput, type StageOutput } from './contracts';
+import { APPRAISAL_STAGE, assuranceCategories, ASSURANCE_STAGE, ASSURED_SYNTHESIS_STAGE, CONCURRENCY_OPTIONS, DEEP_CHAINS, DEFAULT_CONCURRENCY, DEFAULT_EXTRACTION, DEPTH_LIMITS, FIT_LIMIT, FOLLOW_UP_STAGES, FULL_PROFILES, GROUNDING_ROLE_NOTES, KEY_JUDGEMENT_FLOOR, MAX_KEY_JUDGEMENTS, isPassStage, passOf, passOrdinal, passStep, PATTERNS, PERSONA_STAGE, REPORT_SECTIONS, RESULT_KINDS, REVISION_STATUSES, SCENARIOS, SHORT_PROFILE_BATCH, STAGE_CONTEXT, SYNTHESIS_STAGE, THEORY_STAGE, type Artefact, type Concurrency, type Extraction, type PassKind, type StageInput, type StageOutput } from './contracts';
 import { consumedSources, encodedSize, fitToBudget } from './budget';
 import { scoreExploits } from './exposure';
 import { isPlay } from './cleared';
@@ -10,7 +10,9 @@ import { modelApplicability } from './models';
 import { crossIdentityHints } from './entities';
 import { runPolicyTests } from './tests';
 import { documentShingles, quotesDocument } from './query-guard';
-import { partitionFrontMatter, skippedNote } from './front-matter';
+import { skippedNote } from './front-matter';
+import { partitionSet } from './document-set';
+import { groundingDigests, groundingItems } from './grounding';
 import { numbered, sentences } from './sentences';
 import type { ModelCall } from './server/provider';
 import type { Research } from './server/research';
@@ -262,6 +264,8 @@ export async function executeStage(input: StageInput, deps: PipelineDeps): Promi
     // kind is permitted at this stage so the server's own rows validate, which
     // would otherwise let a model hand back a source — and a URL — of its own.
     rejected += result.rejected.length;
+    // Grounding passages likewise (phase 25): the server ingests them at stage 0.
+    result.artefacts = result.artefacts.filter((a) => a.kind !== 'grounding_passage');
     const authored = result.artefacts.filter((a) => a.kind === 'research_source');
     if (authored.length) {
       result.artefacts = result.artefacts.filter((a) => a.kind !== 'research_source');
@@ -609,9 +613,19 @@ export async function executeStage(input: StageInput, deps: PipelineDeps): Promi
    * resting on it, which the report may need to follow to its source.
    */
   const bodyRecordCited = [SYNTHESIS_STAGE, ASSURED_SYNTHESIS_STAGE].includes(stage) ? citedIds(input.artefacts.filter((a) => !isBodyEvidence(a))) : new Set<string>();
-  const scoped = (artefacts: Artefact[]) => (declared
-    ? artefacts.filter((a) => (declared as readonly string[]).includes(a.kind) && (!isBodyEvidence(a) || stage === 10 || bodyRecordCited.has(a.id)))
-    : artefacts);
+  /*
+   * GROUNDING IS NEVER SENT WHOLE INTO A SHARED BLOCK (phase 25). A stage that
+   * declares `grounding_passage` is given ONE DIGEST PER ITEM in its place —
+   * a few hundred characters, the same on every call of the stage, and the id
+   * of the item's first passage to cite. Only stage 6 reads an item in full,
+   * in a call of its own (below). A stage that declares nothing never sees it.
+   */
+  const scoped = (artefacts: Artefact[]) => {
+    if (!declared) return artefacts.filter((a) => a.kind !== 'grounding_passage');
+    const kept = artefacts.filter((a) => a.kind !== 'grounding_passage' && (declared as readonly string[]).includes(a.kind) && (!isBodyEvidence(a) || stage === 10 || bodyRecordCited.has(a.id)));
+    if ((declared as readonly string[]).includes('grounding_passage')) kept.push(...groundingDigests(artefacts.filter((a) => a.kind === 'grounding_passage')));
+    return kept;
+  };
   /**
    * A single call's context, scoped and fitted ONCE, here, in declared order.
    *
@@ -801,7 +815,7 @@ export async function executeStage(input: StageInput, deps: PipelineDeps): Promi
       // the same way stage 17 pins, with the revisions added: a restatement that
       // could not see what an addendum overturned would restate the overturned
       // conclusion, which is the one thing it exists not to do.
-      const context = input.artefacts.filter((a) => a.kind !== 'passage' && (a.kind !== 'actor' || a.id.startsWith('s2_')) && !supersededSource(a));
+      const context = input.artefacts.filter((a) => a.kind !== 'passage' && a.kind !== 'grounding_passage' && (a.kind !== 'actor' || a.id.startsWith('s2_')) && !supersededSource(a));
       const protect = [
         ...context.filter((a) => ['finding', 'recommendation', 'causal_chain', 'option_appraisal', 'evaluation_plan', 'assurance_challenge', 'revision', 'reconciliation', 'addendum_summary'].includes(a.kind) || (RESULT_KINDS as readonly string[]).includes(a.kind)).map((a) => a.id),
         ...hypotheses,
@@ -830,7 +844,7 @@ export async function executeStage(input: StageInput, deps: PipelineDeps): Promi
       // what the material itself yielded. Passages stay OUT except the material's
       // own: an extracted fact must be locatable in its passage, and the
       // reconciliation's evidence rows cite material passages as their source.
-      const context = input.artefacts.filter((a) => (a.kind !== 'passage' || a.id.startsWith(`m${pass}_`)) && !['alias', 'node'].includes(a.kind) && (a.kind !== 'actor' || a.id.startsWith('s2_') || a.id.startsWith(`s${passOrdinal(pass, 1)}_`)));
+      const context = input.artefacts.filter((a) => (a.kind !== 'passage' || a.id.startsWith(`m${pass}_`)) && !['alias', 'node', 'grounding_passage'].includes(a.kind) && (a.kind !== 'actor' || a.id.startsWith('s2_') || a.id.startsWith(`s${passOrdinal(pass, 1)}_`)));
       // Pinned: what the stage's own output is obliged to name. A reconciliation
       // names an existing claim, mechanism, assumption or actor in `targetId`,
       // and an evidence row names a material passage in `sourceId`. Both are
@@ -845,7 +859,7 @@ export async function executeStage(input: StageInput, deps: PipelineDeps): Promi
       ];
       await request('main', context, { ...material, protect });
     } else if (step === 3) {
-      const context = input.artefacts.filter((a) => (a.kind !== 'passage' || a.id.startsWith(`m${pass}_`)) && !['alias', 'node'].includes(a.kind) && (a.kind !== 'actor' || a.id.startsWith('s2_')));
+      const context = input.artefacts.filter((a) => (a.kind !== 'passage' || a.id.startsWith(`m${pass}_`)) && !['alias', 'node', 'grounding_passage'].includes(a.kind) && (a.kind !== 'actor' || a.id.startsWith('s2_')));
       // A revision judges a finding, a recommendation or a play, and must rest on
       // a reconciliation or an evidence row from THIS pass. All four are pinned,
       // for the reason the previous two branches give.
@@ -857,14 +871,18 @@ export async function executeStage(input: StageInput, deps: PipelineDeps): Promi
       await request('main', context, { ...material, protect });
     }
   } else if (stage === 1) {
-    const passages = input.artefacts.filter((a) => a.kind === 'passage');
     // A cover, a copyright notice and a contents list are not policy, and asking
     // this stage's contract of them is what ended the first real white-paper
     // assessment. They stay in the document record; they are simply not sent,
     // and every one of them is named below.
-    const { analyse, skipped, distrusted } = partitionFrontMatter(passages);
-    if (skipped.length) output.warnings.push(skippedNote(skipped, passages.length));
-    if (distrusted) output.warnings.push('Almost every page looked like front matter, which is far more likely to be a fault in the extraction than a document with no policy in it, so every page was analysed.');
+    //
+    // PER DOCUMENT, IN DOCUMENT ORDER (phase 25): an annex has front matter of
+    // its own, and its passages come after the main paper's whatever their ids
+    // sort as — `d1_` sorts before `passage_`, and the call slots below are
+    // numbered in this order, which `stageOnePlaces` reads back.
+    const { analyse, skipped, distrusted, total } = partitionSet(input.artefacts);
+    if (skipped.length) output.warnings.push(skippedNote(skipped, total));
+    if (distrusted.length) output.warnings.push(`Almost every page${distrusted.length > 1 || analyse.length < total ? ` of ${distrusted.join(', ')}` : ''} looked like front matter, which is far more likely to be a fault in the extraction than a document with no policy in it, so every page was analysed.`);
     /**
      * The indexed path shows the model a NUMBERED copy of the passage and takes
      * a sentence number back. The numbered copy exists only inside the call:
@@ -1140,7 +1158,7 @@ export async function executeStage(input: StageInput, deps: PipelineDeps): Promi
     // against the question they answer rather than all at once. Both the depth
     // and the size of a single call improve; the shipped code sent everything in
     // one request and hit the context ceiling as soon as research succeeded.
-    const inventory = input.artefacts.filter((a) => !['passage', 'research_source', 'alias', 'node'].includes(a.kind) && (a.kind !== 'actor' || a.id.startsWith('s2_')));
+    const inventory = input.artefacts.filter((a) => !['passage', 'grounding_passage', 'research_source', 'alias', 'node'].includes(a.kind) && (a.kind !== 'actor' || a.id.startsWith('s2_')));
     // Evidence is evidence FOR OR AGAINST a claim, so this is the one stage whose
     // output is about the material the shed order calls superseded. Shed the
     // claims and the model, asked for evidence and shown none of them, emits the
@@ -1153,8 +1171,17 @@ export async function executeStage(input: StageInput, deps: PipelineDeps): Promi
     // A research question carries every source retrieved for it, so THIS is the
     // fan-out whose per-call block is big and uneven. Measured 2026-09-18: a flat
     // allowance put these payloads over `FIT_LIMIT` and the stage cached 0.0%.
-    const evidenceOwns = answerable.map(({ question, sources }) => [question, ...sources]);
-    await fanOut(answerable.map(({ question, sources }) => ({ key: question.id, context: orderedContext(inventory, [question, ...sources], 'evidence', evidenceOwns), describe: `Evidence for “${question.label}”`, extra: { protect: [question.id, ...sources.map((a) => a.id), ...claims] } })));
+    //
+    // GROUNDING, ONE CALL PER ITEM, IN FULL (phase 25): the reader's material
+    // is read the way a research question is read with its sources — as the
+    // call's own block beside the shared inventory, never shed — and after the
+    // questions, so every slot the questions held before is held still.
+    const grounding = groundingItems(input.artefacts);
+    const evidenceOwns = [...answerable.map(({ question, sources }) => [question, ...sources]), ...grounding.map((item) => item.passages)];
+    await fanOut([
+      ...answerable.map(({ question, sources }) => ({ key: question.id, context: orderedContext(inventory, [question, ...sources], 'evidence', evidenceOwns), describe: `Evidence for “${question.label}”`, extra: { protect: [question.id, ...sources.map((a) => a.id), ...claims] } })),
+      ...grounding.map((item) => ({ key: `grounding_${item.position}`, context: orderedContext(inventory, item.passages, 'evidence', evidenceOwns), describe: `Evidence from “${item.title}”`, extra: { protect: [...item.passages.map((a) => a.id), ...claims], groundingItem: { title: item.title, role: item.role, kind: item.roleLabel, guidance: GROUNDING_ROLE_NOTES[item.role] ?? GROUNDING_ROLE_NOTES.other, publisher: item.publisher, publishedOn: item.publishedOn, truncated: item.truncated } } })),
+    ]);
     // The document's own evidence pass runs last and alone: its key is `main`, so
     // it takes no sequence number and cannot be reordered by the fan-out above.
     await attempt('main', fitOnce(inventory, claims), 'Evidence drawn from the policy document itself', { protect: claims });

@@ -1,7 +1,7 @@
 import { and, eq, inArray, sql } from 'drizzle-orm';
 import { pgTable, text as pgText, timestamp } from 'drizzle-orm/pg-core';
 import { db, type DbExecutor } from '$lib/db';
-import { policyActorMentions, policyAnalyses, policyArtefacts, policyDocuments, policyPersonaDecisions, policyPersonaObservations, policyPersonas } from '$lib/db/schema';
+import { policyActorMentions, policyAnalyses, policyArtefacts, policyPersonaDecisions, policyPersonaObservations, policyPersonas } from '$lib/db/schema';
 import { normaliseName } from '$lib/jkai/intel/resolve/match';
 import type { Artefact } from '../contracts';
 import {
@@ -214,7 +214,10 @@ export async function registerTreeFor(owner: string): Promise<RegisterTree> {
   const mentions = ids.length ? await db.select({ masterId: policyActorMentions.masterId, analysisId: policyActorMentions.analysisId, capacity: policyActorMentions.capacity }).from(policyActorMentions).where(eq(policyActorMentions.owner, owner)) : [];
   const observations = ids.length ? await db.select({ personaId: policyPersonaObservations.personaId, analysisId: policyPersonaObservations.analysisId, kind: policyPersonaObservations.kind, plays: policyPersonaObservations.plays }).from(policyPersonaObservations).where(inArray(policyPersonaObservations.personaId, ids)) : [];
   const analysisIds = [...new Set([...mentions.map((m) => m.analysisId), ...observations.map((o) => o.analysisId).filter((a): a is string => Boolean(a))])];
-  const analyses = analysisIds.length ? await db.select({ id: policyAnalyses.id, title: policyAnalyses.title, sealed: policyAnalyses.sealed, sha: policyDocuments.sha256 }).from(policyAnalyses).leftJoin(policyDocuments, eq(policyDocuments.analysisId, policyAnalyses.id)).where(and(eq(policyAnalyses.owner, owner), inArray(policyAnalyses.id, analysisIds))) : [];
+  // `sha` is the PAPER key (phase 25): one per document set, shared by a
+  // re-run with an annex added — never a join on `policy_documents`, which is
+  // one row per document and would list a two-document paper twice.
+  const analyses = analysisIds.length ? await db.select({ id: policyAnalyses.id, title: policyAnalyses.title, sealed: policyAnalyses.sealed, sha: policyAnalyses.paperKey }).from(policyAnalyses).where(and(eq(policyAnalyses.owner, owner), inArray(policyAnalyses.id, analysisIds))) : [];
   const paper = new Map(analyses.filter((a) => !a.sealed).map((a) => [a.id, a]));
   const proposedIds = rows.map((r) => r.proposedIn).filter((a): a is string => Boolean(a));
   const proposers = proposedIds.length ? new Map((await db.select({ id: policyAnalyses.id, title: policyAnalyses.title, sealed: policyAnalyses.sealed }).from(policyAnalyses).where(inArray(policyAnalyses.id, proposedIds))).filter((a) => !a.sealed).map((a) => [a.id, a.title])) : new Map<string, string>();

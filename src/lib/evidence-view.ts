@@ -106,7 +106,8 @@ export function evidenceShape(artefacts: Artefact[]): EvidenceShape {
    * resting on retrieved search excerpts — directly above the grade tally
    * saying they were snippets. The row's own source decides it now.
    */
-  const outside = (id: string) => byId.get(id)?.kind === 'research_source';
+  // Grounding the reader supplied is outside the paper too (phase 25).
+  const outside = (id: string) => ['research_source', 'grounding_passage'].includes(byId.get(id)?.kind ?? '');
   const external = evidence.filter((row) => row.url || outside(str(row.sourceId)) || outside(str(row.data.sourceId))).length;
   const internal = rows.length - external;
 
