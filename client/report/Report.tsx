@@ -77,6 +77,7 @@ import { RunProfile } from './RunProfile';
 import { Withheld } from './Withheld';
 import { Limits } from './Limits';
 import { DownloadGrid } from './DownloadGrid';
+import { BodyPages, type BodyPageRender } from './body-pages';
 
 /**
  * The report.
@@ -281,10 +282,16 @@ export type ArtefactLink = (artefact: Artefact, label?: string, at?: string) => 
  * reader the very file they are already reading. Found by looking at a real pack
  * rather than by any test, which is the argument for looking at real output.
  */
-export function Report({ detail, offline, linkTo, onChanged, route, onTitle }: {
+type ReportProps = {
   detail: Detail;
   offline?: boolean;
   linkTo?: ArtefactLink;
+  /**
+   * How a body's page across policies is linked (phase 24). The service's is
+   * a router `Link`; the pack passes none and every body stays plain text —
+   * see `body-pages.tsx`.
+   */
+  bodyLink?: BodyPageRender;
   /** The service only. Absent, the report is the pack's one cascading document. */
   route?: ReportRoute;
   /** What this page is, for the document title — "Ways to beat it — Threats". Null on the Summary. */
@@ -295,7 +302,22 @@ export function Report({ detail, offline, linkTo, onChanged, route, onTitle }: {
    * longer the thing to show — the progress list is.
    */
   onChanged?: () => void;
-}) {
+};
+
+/**
+ * The report, with the bodies it names linked to their pages across policies.
+ * The index is built from the raw artefacts once here, at the root, so every
+ * table, card and grid below asks one question of one lookup.
+ */
+export function Report(props: ReportProps) {
+  return (
+    <BodyPages personas={props.detail.personas} artefacts={props.detail.artefacts} render={props.bodyLink}>
+      <ReportView {...props} />
+    </BodyPages>
+  );
+}
+
+function ReportView({ detail, offline, linkTo, onChanged, route, onTitle }: ReportProps) {
   const { analysis, stages } = detail;
   /*
    * THE JUDGEMENTS THE EVIDENCE WILL CARRY, ONCE, AT THE ROOT (phase 22). A

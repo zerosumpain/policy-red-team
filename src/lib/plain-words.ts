@@ -64,6 +64,10 @@ export const VOCABULARY: readonly Word[] = [
   { was: 'move / tab (of the report)', now: 'section, or the section\'s name ("under Causes")' },
   { was: 'artefact (in a refusal reason)', now: 'item — swapped at display, the stored reason is untouched' },
   { was: 'an N-stage assessment / stages done', now: 'an N-step assessment / steps done' },
+  // Phase 24: one word for one thing. `persona` stays in code, routes of the
+  // API and the database; the pages say "body" and the place is one name.
+  { was: 'persona / persona library / dossier', now: 'body / Bodies across policies / what the papers said about it' },
+  { was: 'seen in N papers (on a link to a body)', now: 'seen in N policies' },
 ];
 
 export type GlossaryEntry = { term: string; meaning: string };
@@ -71,6 +75,7 @@ export type GlossaryEntry = { term: string; meaning: string };
 /** The words that stay, with what they mean here. Alphabetical. */
 export const GLOSSARY: readonly GlossaryEntry[] = [
   { term: 'Assumption', meaning: 'Something the policy needs to be true but does not prove. If it turns out false, whatever rests on it is weaker.' },
+  { term: 'Body', meaning: 'An organisation or office a paper gives something to do — a department, a regulator, a council, a group of providers. Bodies across policies shows each one against every paper that named it.' },
   { term: 'Final review', meaning: 'The last step of the assessment. An independent challenge attacks the draft findings, and the findings shown here are what survived it.' },
   { term: 'Finding', meaning: 'A conclusion the assessment reached, with how well supported the final review judged it.' },
   { term: 'How exposed', meaning: 'How badly a way to beat the policy could hurt it: severe, significant, moderate or limited. It combines how much someone would want to do it, how easy it is, how much damage it does and how hard it is to see.' },

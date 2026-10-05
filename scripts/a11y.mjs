@@ -164,6 +164,32 @@ const API_STUBS = {
     personaOf: { 'govuk:department-for-education': '00000000-0000-4000-8000-00000000000a' },
     readOnly: false,
   },
+  // Phase 24: the landing page's "Bodies that turn up again", with one body
+  // seen in two papers, so the audit sees the strip and its links.
+  '/api/policy-analysis/bodies/recurring': {
+    papers: 2, repeating: 1,
+    bodies: [{
+      personaId: '00000000-0000-4000-8000-00000000000a', name: 'Department for Education', entityType: 'department', sightings: 2,
+      papers: [
+        { id: '00000000-0000-4000-8000-000000000001', title: 'Schools white paper: opportunity for every child', completedAt: '2026-09-01T00:00:00Z', worstBand: 'moderate', plays: 1, ask: 'commissions Ofsted' },
+        { id: '00000000-0000-4000-8000-000000000002', title: 'Inspection reform', completedAt: '2026-09-20T00:00:00Z', worstBand: 'severe', plays: 2, ask: null },
+      ],
+    }],
+  },
+  // Phase 24: the hub's list and its groups view.
+  '/api/policy-analysis/personas': {
+    personas: [{
+      id: '00000000-0000-4000-8000-00000000000a', name: 'Department for Education', entityType: 'department', aliases: [], summary: null, dossier: [],
+      sightings: 2, researchedAt: null, updatedAt: '2026-09-20T00:00:00Z', bodyId: 'govuk:department-for-education',
+      lastSeen: '2026-09-20T00:00:00Z', worstBand: 'severe', plays: 3, researchNotes: 0, body: { id: 'govuk:department-for-education', name: 'Department for Education' },
+    }],
+    groups: [{ name: 'Parents', papers: 2, analyses: [
+      { id: '00000000-0000-4000-8000-000000000001', title: 'Schools white paper: opportunity for every child' },
+      { id: '00000000-0000-4000-8000-000000000002', title: 'Inspection reform' },
+    ] }],
+    duplicates: [],
+    readOnly: false,
+  },
 };
 
 async function listFiles(dir) {

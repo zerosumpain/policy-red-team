@@ -1,0 +1,121 @@
+@use "../govuk" as govuk;
+@use "../tokens" as *;
+
+// ── Phase 24: the service's navigation, the bodies hub, a body's page ──────
+
+// ── The sections of one thing, inside the page ────────────────────────────
+//
+// `ServiceNavigation sections`: the framework's service navigation, drawn
+// under a page's own title rather than full bleed under the header — which
+// is where the SERVICE's navigation is now, on every page. So it loses the
+// band of colour and the full-bleed rule that mark the service bar, keeps
+// the link colour, the active underline and the Menu toggle below tablet,
+// and sits a size smaller: it is the second level, and reads as one.
+.prt-subnav {
+  @include govuk.govuk-font($size: 16);
+  background: transparent;
+  margin-bottom: govuk.govuk-spacing(6);
+
+  .govuk-service-navigation__item {
+    @include govuk.govuk-media-query($from: tablet) {
+      padding: govuk.govuk-spacing(2) 0;
+      line-height: 1.5;
+    }
+  }
+
+  .govuk-service-navigation__item--active {
+    @include govuk.govuk-media-query($from: tablet) {
+      padding-bottom: govuk.govuk-spacing(2) - govuk.govuk-spacing(1);
+    }
+  }
+
+  .govuk-service-navigation__toggle {
+    @include govuk.govuk-font($size: 16, $weight: bold);
+  }
+}
+
+// ── A body's page: three bands, each saying what kind of thing it holds ──
+.prt-onpage__list {
+  @include govuk.govuk-font($size: 16);
+  margin-bottom: govuk.govuk-spacing(6);
+}
+
+.prt-kindband {
+  border-top: 2px solid govuk.govuk-colour("black");
+  padding-top: govuk.govuk-spacing(4);
+  margin-bottom: govuk.govuk-spacing(8);
+
+  > .govuk-caption-m {
+    @include govuk.govuk-font($size: 16, $weight: bold);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+  }
+}
+
+// One paper, walked once: its name, its figures, what it asks, what it said.
+.prt-paperwalk {
+  border-left: 3px solid govuk.govuk-colour("black", $variant: "tint-80");
+  padding-left: govuk.govuk-spacing(3);
+  margin-bottom: govuk.govuk-spacing(6);
+}
+
+// ── The landing page's second feature: bodies that turn up again ─────────
+.prt-recurring {
+  border-top: 5px solid govuk.govuk-colour("black");
+  background: govuk.govuk-colour("black", $variant: "tint-95");
+  padding: govuk.govuk-spacing(4);
+
+  @include govuk.govuk-media-query($from: tablet) {
+    padding: govuk.govuk-spacing(6);
+  }
+
+  &__list {
+    list-style: none;
+    margin: 0 0 govuk.govuk-spacing(4);
+    padding: 0;
+  }
+
+  &__body {
+    padding: govuk.govuk-spacing(3) 0;
+    border-bottom: 1px solid govuk.govuk-colour("black", $variant: "tint-80");
+  }
+
+  &__name {
+    @include govuk.govuk-font($size: 19, $weight: bold);
+    margin: 0 0 govuk.govuk-spacing(1);
+  }
+
+  &__asks {
+    @include govuk.govuk-font($size: 16);
+    margin: govuk.govuk-spacing(1) 0 0;
+    padding: 0;
+    list-style: none;
+  }
+}
+
+// THE SMALL MULTIPLES STRIP: one square per paper, painted with that paper's
+// worst band from the report's own ramp. The words are in the label and in
+// the paper list under it; the square is never the only carrier.
+.prt-papermarks {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 3px;
+  vertical-align: middle;
+  margin-right: govuk.govuk-spacing(2);
+
+  &__mark {
+    display: inline-block;
+    width: 18px;
+    height: 18px;
+    border: 1px solid govuk.govuk-colour("black", $variant: "tint-50");
+
+    // A paper that found no way for the body to beat it: an empty square.
+    // Only then — `.prt-band--*` paints the rest, and an unconditional
+    // background here won the specificity tie and painted every mark white.
+    &:not([class*="prt-band--"]) { background: govuk.govuk-colour("white"); }
+  }
+}
+
+@media print {
+  .prt-papermarks__mark { print-color-adjust: exact; -webkit-print-color-adjust: exact; }
+}
