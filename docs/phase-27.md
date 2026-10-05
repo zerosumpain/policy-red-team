@@ -64,3 +64,30 @@ Each fix has a test that reproduces the failure; it fails without the fix and pa
 4. **Deploy:** production is still on `43febcd`. The batch (phases 23–27) is ready for a PR when you want it.
 
 Offline packs of the three reports are in the owner Drive under `Architecture/phase-27-reports/`.
+## Addendum, evening: gpt-5.6 on the new build, and what caused the drop in threats
+
+John asked whether the fall in threats came from our token savings rather than from the model. A fourth run put the new build on gpt-5.6-luna, with the same paper and settings as run 2.
+
+| Same new build | gpt-6-luna (run 2) | gpt-5.6-luna (check) | Sept 5.6, old build |
+|---|---|---|---|
+| Graph links (step 3) | 62 | 188 | 455 |
+| Live threats / cleared bodies | 8 / 5 | 37 / 1 | 46 / – |
+| Threats per real body | ~1 | 3–4 | 4–5 (but ~6 distinct bodies under 12 names) |
+| Input tokens | ≈23.5M without retries | 30.3M (≈25M without the broken step-17 attempts) | 57.5M |
+
+- **The model is the bigger factor.** On identical code, luna writes about a third of the graph links per call and about one threat per body, while 5.6 fills the space. Token cost is about the same on both models.
+- **The token savings also played a part.** Batching step 3 thinned the graph even on 5.6, from 455 links to 188. Step 10 ranked bodies by graph links, so on luna's 62-link graph the ranking broke: Maths Hubs and the IFS took red-team slots from Parents, and luna correctly cleared both.
+- **September's 46 were inflated.** About 6 distinct bodies were red-teamed under 12 duplicate names.
+
+### Fixes after the check (local commits on `phase-23-batch`)
+
+- **`b0a29e7`:**
+  - bodies are ranked by how often the paper names them, with graph links as a tie-break;
+  - step 3 is told to be exhaustive for every body;
+  - step 10 asks for three to five distinct plays where a body has room;
+  - prompt version 3.7.
+- **`0c5292c`: a part of step 17 may cite what an earlier part wrote.** On 5.6, every recommendation was rejected for having "no supporting evidence links": the provider validated each part against its own payload only. The earlier parts now go to the validator only; they're never sent to the model or hashed. There is a new integration test through the real provider.
+
+The 5.6 check finished after resuming step 17 on the fixed build: 10 recommendations, 5 key judgements, and plain blocks on all 38 threats.
+
+**Next:** one luna run on the fixed build (about 24M tokens), to confirm the ranking and prompt fixes recover the threats.
