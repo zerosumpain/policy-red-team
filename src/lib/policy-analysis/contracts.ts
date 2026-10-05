@@ -107,8 +107,14 @@ export function passOrdinal(pass: number, step: number): number { return PASS_BA
  * 3.5 is phase 22 part 2: sources and look-ups the reader supplied, cited at 6
  * like any other and never weighted for who supplied them; a `supplied_balance`
  * remit at 16 on a run that has any; and material aimed at one item.
+ * 3.6 is phase 23: a writing rule for a reader who has never seen the policy,
+ * `plain` blocks at 9, 10 and 17 and `whatItIs` at 1; stage 2 matching into the
+ * owner's actor register (one `actor_match` call over a cached register tree);
+ * stage 3 asked several master actors to a call; the rules replies broke most,
+ * stated in the first instruction at 1, 12 and 17; and five key judgements asked
+ * for. The model's own reply warnings are notes and no longer reach later calls.
  */
-export const PROMPT_VERSION = 'policy-analysis/3.5';
+export const PROMPT_VERSION = 'policy-analysis/3.6';
 export const MAX_BYTES = 10 * 1024 * 1024;
 export const MAX_CHARACTERS = 600_000;
 export const MAX_PAGES = 400;
