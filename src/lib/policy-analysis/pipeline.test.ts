@@ -85,7 +85,10 @@ describe('policy ingestion and untrusted contracts', () => {
   });
   it('rejects malformed model output, fake quotes, missing provenance and invalid confidence', async () => {
     const source = (await ingest(fixture, 'policy.txt', 'text/plain')).artefacts;
-    const good = fixtureModel(1, '', { artefacts: source, idPrefix: 's1_' });
+    // The fixture stands in for the PROVIDER, which parts a reply's own warnings
+    // into `notes` (phase 23); as the model's reply they are its `warnings`.
+    const { notes, ...provided } = fixtureModel(1, '', { artefacts: source, idPrefix: 's1_' });
+    const good = { ...provided, warnings: [...provided.warnings, ...(notes ?? [])] };
     expect(() => validateOutput('not JSON', 1, source)).toThrow('invalid structured');
     const fake = structuredClone(good); fake.artefacts[0].sourceQuote = 'invented quote';
     expect(() => validateOutput(fake, 1, source)).toThrow('could not be located');

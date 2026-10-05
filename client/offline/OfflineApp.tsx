@@ -37,8 +37,13 @@ export function OfflineApp({ payload }: { payload: PackPayload }) {
    */
   const run = payload.run;
   const byStage = new Map<string, string[]>();
+  // The model's notes about the paper, marked in the payload since phase 23 so
+  // the pack parts them from the run's limits as the service does. A pack made
+  // before then marks none, and reads as it always did.
+  const notesBy = new Map<string, string[]>();
   for (const warning of payload.warnings) {
     byStage.set(warning.stage, [...(byStage.get(warning.stage) ?? []), warning.text]);
+    if (warning.note) notesBy.set(warning.stage, [...(notesBy.get(warning.stage) ?? []), warning.text]);
   }
 
   /*
@@ -58,6 +63,7 @@ export function OfflineApp({ payload }: { payload: PackPayload }) {
         name: stage.name,
         status: stage.status,
         warnings: byStage.get(stage.name) ?? [],
+        notes: notesBy.get(stage.name) ?? [],
         startedAt: stage.startedAt ?? null,
         completedAt: stage.completedAt ?? null,
         error: stage.error,
@@ -68,6 +74,7 @@ export function OfflineApp({ payload }: { payload: PackPayload }) {
         name: warning.stage,
         status: 'unknown',
         warnings: [warning.text],
+        notes: warning.note ? [warning.text] : [],
         startedAt: null,
         completedAt: null,
         error: null,

@@ -350,7 +350,12 @@ export async function executePolicyRun(claimed: { id: string; input: Record<stri
       // `output` is identifiers the pipeline minted and stays in the clear — the
       // structural checks read it, and it holds no words from the paper. The
       // WARNINGS do: they quote artefact labels.
-      await tx.update(policyStages).set({ status: 'completed', completedAt: new Date(), ...sealRow(seal, 'stage', { warnings: output.warnings }), output: { artefactIds: output.artefacts.map((a) => a.id), contractVersion: 1, rejected: 'rejected' in output ? output.rejected : 0 } }).where(eq(policyStages.id, stageId));
+      // `notes` beside `warnings`, never inside them (phase 23): the model's
+      // remarks about the paper are read by the report and NOT carried into a
+      // later stage's prompt, which reads `warnings` alone (`previousStages`
+      // above). `contractVersion: 2` says the split was made here, so a reader
+      // never has to guess which of an older stage's warnings were the model's.
+      await tx.update(policyStages).set({ status: 'completed', completedAt: new Date(), ...sealRow(seal, 'stage', { warnings: output.warnings, notes: output.notes ?? [] }), output: { artefactIds: output.artefacts.map((a) => a.id), contractVersion: 2, rejected: 'rejected' in output ? output.rejected : 0 } }).where(eq(policyStages.id, stageId));
       await tx.update(workflowRuns).set({ status: 'completed', completedAt: new Date() }).where(eq(workflowRuns.id, claimed.id));
       const [next] = await tx.select().from(policyStages).where(and(eq(policyStages.analysisId, analysisId), eq(policyStages.ordinal, started.stage.ordinal + 1)));
       if (next) {
@@ -363,7 +368,9 @@ export async function executePolicyRun(claimed: { id: string; input: Record<stri
         // here, and the analysis is complete when every stage it holds is.
         const stages = await tx.select().from(policyStages).where(eq(policyStages.analysisId, analysisId));
         if (stages.some((s) => s.status !== 'completed')) throw new PolicyError('incomplete', 'Cannot complete an analysis with unfinished stages.');
-        const gaps = stages.some((s) => s.warnings.length > 0);
+        // A model's note about the paper is a gap in the assessment as much as
+        // a refused output is, so it still decides `completed_with_gaps`.
+        const gaps = stages.some((s) => s.warnings.length > 0 || s.notes.length > 0);
         if (inPass) await tx.update(policyPasses).set({ status: 'completed', completedAt: new Date(), error: null }).where(and(eq(policyPasses.analysisId, analysisId), eq(policyPasses.pass, passNumber)));
         await tx.update(policyAnalyses).set({ status: gaps ? 'completed_with_gaps' : 'completed', completedAt: new Date(), updatedAt: new Date() }).where(eq(policyAnalyses.id, analysisId));
       }

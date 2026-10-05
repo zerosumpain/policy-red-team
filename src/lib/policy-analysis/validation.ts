@@ -632,12 +632,18 @@ export function triageOutput(raw: unknown, stage: number, prior: Artefact[], pas
       ...(typeof said.sourceQuote === 'string' ? { quote: said.sourceQuote } : {}),
     });
   }
-  const warnings = (envelope.data.warnings ?? []).filter((w): w is string => typeof w === 'string').slice(0, 100);
-  const triaged = triageArtefacts({ artefacts, warnings }, stage, prior, passKind);
+  // THE MODEL'S OWN WARNINGS ARE NOTES, NOT THE RUN'S STATE (phase 23). What a
+  // model writes in its envelope's `warnings` is a remark about the paper — "the
+  // passage does not specify funding amounts" — and travels as `notes`, apart
+  // from what triage itself records about the reply. Only the second kind is
+  // carried into later prompts; see `StageOutput`.
+  const notes = (envelope.data.warnings ?? []).filter((w): w is string => typeof w === 'string').map((w) => w.trim()).filter(Boolean).slice(0, 100);
+  const triaged = { ...triageArtefacts({ artefacts, warnings: [] }, stage, prior, passKind), notes };
   if (!malformed.length) return triaged;
   return {
     artefacts: triaged.artefacts,
     warnings: clampWarnings([...triaged.warnings, discardWarning(malformed)]),
+    notes,
     rejected: [...malformed, ...triaged.rejected],
   };
 }

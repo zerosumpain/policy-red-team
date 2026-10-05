@@ -809,7 +809,17 @@ export type Artefact = z.infer<typeof artefactSchema>;
  * the safer way round if the flag ever goes missing.
  */
 export type StageInput = { stage: number; title: string; depth?: Depth; graphLoss?: number; sealed?: boolean; searches?: boolean; jurisdiction: string | null; policyArea: string | null; context: string | null; priorWarnings?: string[]; artefacts: Artefact[] };
-export type StageOutput = { artefacts: Artefact[]; warnings: string[] };
+/**
+ * `notes` (phase 23) are what the MODEL wrote in its reply's `warnings` — almost
+ * always about the paper: "the passage does not specify funding amounts". They
+ * are kept apart from `warnings`, which are the RUN's own state (context clipped,
+ * output refused, references dropped), because only the run's state is carried
+ * forward into later stages' prompts under `WARNING_BUDGET`. On the Post-16 run
+ * 103 of 256 warnings were model notes, competing for that budget in every later
+ * call with the machine facts it exists to carry. Optional: an older caller, or
+ * a stage that ran before the split, simply has none.
+ */
+export type StageOutput = { artefacts: Artefact[]; warnings: string[]; notes?: string[] };
 export const stageOutputSchema = z.object({ artefacts: z.array(artefactSchema).max(2000), warnings: z.array(z.string().max(1000)).max(100) }).strict();
 /**
  * The envelope as the INDEXED decomposition is shown it. Display only.

@@ -190,8 +190,17 @@ export function fixtureModel(stage: number, _key: string, raw: unknown, _options
     items.push(make('summary', 'review_summary', { decisionUse: 'independently_challenged', judgement: 'supported_with_limits', openChallenges: 0, acceptedChallenges: 0, unresolvedMaterialChallenges: 0, scope: 'Automated independent challenge.', limitations: ['No human sign-off.'] }, challenges.map((c) => c.id)));
     items.push(...keyJudgements(input, [items[0].id]));
   }
-  return { artefacts: items, warnings: [] };
+  // ONE NOTE ABOUT THE PAPER, from decomposition (phase 23): what the provider
+  // hands back as `notes` when a model's reply says, in its own `warnings`,
+  // what the passage leaves out. The walk then sees it stored apart from the
+  // run's limits, listed under "What the paper does not say", and absent from
+  // every later stage's `priorWarnings`.
+  const notes = stage === 1 && items.length ? [FIXTURE_NOTE] : [];
+  return { artefacts: items, warnings: [], notes };
 }
+
+/** The fixture's one remark about the paper; tests look for it by value. */
+export const FIXTURE_NOTE = 'The passage does not say how the shared access programme will be funded after its first year.';
 
 /**
  * The key judgements a revised report leads with: one, quoting the mechanism

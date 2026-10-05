@@ -237,7 +237,8 @@ export const SEALED_FIELDS = {
    * or a look-up is the reader's own words about an unpublished paper.
    */
   readerInput: { text: ['url', 'filename', 'content', 'about', 'note', 'wording'], json: [] },
-  stage: { text: ['error'], json: ['warnings'] },
+  // `notes` (phase 23) are the model's remarks about the paper: its words.
+  stage: { text: ['error'], json: ['warnings', 'notes'] },
   execution: { text: ['error'], json: [] },
 } as const;
 

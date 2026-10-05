@@ -1,3 +1,4 @@
+import { flagNotes } from './notes';
 import { STAGES, type Artefact } from './contracts';
 
 /**
@@ -50,10 +51,11 @@ export type SharedReport = {
   artefacts: Artefact[];
   /** What was left out, in figures, so the shared page can say so rather than look complete. */
   withheld: { kind: string; count: number }[];
-  warnings: { stage: string; text: string }[];
+  /** `note` marks the model's remark about the paper, as against the run's own state (phase 23). */
+  warnings: { stage: string; text: string; note?: true }[];
 };
 
-export function shareableReport(input: { artefacts: Artefact[]; stages: { ordinal: number; name: string; warnings: string[] }[] }): SharedReport {
+export function shareableReport(input: { artefacts: Artefact[]; stages: { ordinal: number; name: string; warnings: string[]; notes?: string[] }[] }): SharedReport {
   const withheldKinds = new Set<string>(WITHHELD_KINDS);
   const kept = input.artefacts.filter((a) => !withheldKinds.has(a.kind));
   const alive = new Set(kept.map((a) => a.id));
@@ -99,7 +101,7 @@ export function shareableReport(input: { artefacts: Artefact[]; stages: { ordina
 
   const warnings = input.stages
     .filter((s) => !WITHHELD_STAGES.has(s.ordinal))
-    .flatMap((s) => s.warnings.map((text) => ({ stage: s.name, text })));
+    .flatMap((s) => flagNotes(s).map((w) => ({ stage: s.name, ...w })));
 
   return { artefacts, withheld, warnings };
 }

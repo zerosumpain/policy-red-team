@@ -155,6 +155,8 @@ export const WARM_FIRST_STAGES: ReadonlySet<number> = new Set([3, 6, 7, 9, 10, 1
 
 /** Ceilings on a stage's assembled output, which no envelope bounds. */
 const MAX_STAGE_ARTEFACTS = 4000;
+/** The model's notes a stage keeps (phase 23). One reply may carry 100; a stage is many replies. */
+const MAX_NOTES = 200;
 const MAX_REFS = 200;
 
 export async function executeStage(input: StageInput, deps: PipelineDeps): Promise<StageOutput & { rejected: number }> {
@@ -176,7 +178,7 @@ export async function executeStage(input: StageInput, deps: PipelineDeps): Promi
   // A concurrency nobody offers is a request the run cannot honour; take the
   // default rather than failing a stage over it, exactly as model and effort do.
   const lanes: number = (CONCURRENCY_OPTIONS as readonly number[]).includes(deps.concurrency as Concurrency) ? (deps.concurrency as Concurrency) : DEFAULT_CONCURRENCY;
-  const output: StageOutput = { artefacts: [], warnings: [] };
+  const output: StageOutput & { notes: string[] } = { artefacts: [], warnings: [], notes: [] };
   let consecutive = 0;
   // The failure immediately before this one, so a fan-out can tell "three lanes
   // died together" from "three units failed one after another". Cleared by any
@@ -220,7 +222,15 @@ export async function executeStage(input: StageInput, deps: PipelineDeps): Promi
    * order or they change which artefacts are quarantined.
    */
   const absorb = (raw: unknown) => {
-    const result = triageOutput(raw, stage, [...input.artefacts, ...output.artefacts], deps.passKind);
+    // WHAT ARRIVES HERE IS THE PROVIDER'S OUTPUT, NOT THE MODEL'S REPLY: its
+    // `warnings` are already the run's own (the provider's triage, its budget
+    // notes), and the model's remarks have already been parted from them into
+    // `notes`. Re-reading `warnings` as an envelope would file every one of
+    // them as a model note, so both are taken off before the second triage
+    // and put back in their own channels, in the order they always had.
+    const { warnings: carried = [], notes: remarks = [], ...reply } = (raw && typeof raw === 'object' ? raw : {}) as { warnings?: unknown; notes?: unknown };
+    const triaged = triageOutput(reply, stage, [...input.artefacts, ...output.artefacts], deps.passKind);
+    const result = { ...triaged, warnings: [...(Array.isArray(carried) ? carried.filter((w): w is string => typeof w === 'string') : []), ...triaged.warnings], notes: Array.isArray(remarks) ? remarks.filter((w): w is string => typeof w === 'string') : [] };
     // Retrieved sources are minted by the retrieval adapter and nowhere else. The
     // kind is permitted at this stage so the server's own rows validate, which
     // would otherwise let a model hand back a source — and a URL — of its own.
@@ -234,7 +244,7 @@ export async function executeStage(input: StageInput, deps: PipelineDeps): Promi
     // ranks a question above every model question, so a model that wrote it
     // would be promoting its own question over the reader's.
     for (const a of result.artefacts) if (a.kind === 'research_question') { delete a.data.asked; delete a.data.wording; }
-    output.artefacts.push(...result.artefacts); output.warnings.push(...result.warnings);
+    output.artefacts.push(...result.artefacts); output.warnings.push(...result.warnings); output.notes.push(...result.notes);
     return result;
   };
 
@@ -1763,7 +1773,10 @@ export async function executeStage(input: StageInput, deps: PipelineDeps): Promi
       warnings.push('1 of 1 key judgement sections were not assessed: the revised assessment came back with no usable key judgement, after the model was asked a second time for one, so the report leads with its findings instead. This is a limit of this run, not a gap in the paper.');
     }
   }
-  return { artefacts: kept, warnings: clampWarnings(warnings), rejected };
+  // The model's notes, said once each: a fan-out over forty passages repeats
+  // the same remark, and `stageOutputSchema` bounds a reply, not a stage.
+  const notes = [...new Set(output.notes)];
+  return { artefacts: kept, warnings: clampWarnings(warnings), notes: notes.slice(0, MAX_NOTES), rejected };
 }
 
 /**

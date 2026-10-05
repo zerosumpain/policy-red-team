@@ -47,7 +47,13 @@ export interface StageRow {
   ordinal: number;
   name: string;
   status: string;
+  /** EVERYTHING the stage noted, the model's remarks about the paper included. */
   warnings: string[];
+  /**
+   * The model's part of `warnings`: remarks about the paper, not about the run
+   * (phase 23, `$lib/policy-analysis/notes`). Absent on an older server or pack.
+   */
+  notes?: string[];
   startedAt: string | null;
   completedAt: string | null;
   error: string | null;

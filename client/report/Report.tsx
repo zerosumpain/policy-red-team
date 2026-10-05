@@ -14,7 +14,7 @@ import { MOVES, viewPath } from '../moves';
 import {
   filterPlays, mechanismIdsOf, mechanismsOf, narrowExcept, parseSelection, selectionParam, type Selection,
 } from './selection';
-import { byReason, groupLimits, truncations } from './warnings';
+import { byReason, groupLimits, noteRows, partLimits, truncations } from './warnings';
 import { Metrics } from './Metrics';
 import { WriteUp } from './WriteUp';
 import { SelectionBanner } from './moves/SelectionBanner';
@@ -1174,10 +1174,15 @@ export function Report({ detail, offline, linkTo, onChanged, route, onTitle }: {
    * lead sentence and reports 181, so the index reads the same function the
    * section does rather than a number that was true of the block it replaced.
    */
-  const limitGroups = useMemo(() => groupLimits(stages), [stages]);
+  // THE RUN'S LIMITS AND THE MODEL'S NOTES ABOUT THE PAPER, counted as the
+  // section draws them: two lists (phase 23, `partLimits`).
+  const limitGroups = useMemo(() => {
+    const parted = partLimits(stages);
+    return groupLimits(parted.limits).length + noteRows(parted.notes).length;
+  }, [stages]);
   section('gaps', 'What it could not establish', 'provenance',
-    limitGroups.length ? <Limits stages={stages} artefacts={artefacts} /> : null,
-    { count: { n: limitGroups.length, noun: 'different gaps' } });
+    limitGroups ? <Limits stages={stages} artefacts={artefacts} /> : null,
+    { count: { n: limitGroups, noun: 'different gaps' } });
 
   /*
    * ONE SECTION, BECAUSE THE DIFFERENCE BETWEEN SIX DOWNLOADS IS TWO FACTS.
