@@ -996,6 +996,35 @@ try {
   await page.waitForURL('**/assessments/**', { timeout: 20000 });
   await page.getByRole('heading', { name: 'The report at a glance' }).waitFor({ timeout: 120000 });
 
+  // 9a — THE MASTER LIST OF ACTORS (phase 23), through the API the hub will
+  // draw from. Two papers in: the council named as "Council" and "Councils" is
+  // ONE actor seen in two papers; the department is matched through GOV.UK; the
+  // programme is kept as context, not an actor; the named resident is nowhere.
+  // Then a ruling: accept the council, put it inside the department, and have
+  // the opposite move refused as a loop.
+  {
+    const register = await page.evaluate(async () => (await fetch('/api/policy-analysis/register')).json());
+    const named = (name) => register.entries?.find((e) => e.name === name);
+    const council = named('Council');
+    const dfe = named('Department for Education');
+    if (!council || !dfe) failures.push(`register: the master list does not hold the council and the department (${(register.entries ?? []).map((e) => e.name).join(', ')})`);
+    else if (council.papers !== 2) failures.push(`register: the council is seen in ${council.papers} papers, expected 2`);
+    if (named('Shared access programme')?.kind !== 'not_an_actor') failures.push('register: the programme is not kept as "not an actor"');
+    if (JSON.stringify(register).includes('Jane Smith')) failures.push('register: a named private individual reached the master list');
+    const queue = await page.evaluate(async () => (await fetch('/api/policy-analysis/register/proposals')).json());
+    if (!queue.proposals?.length) failures.push('register: the review queue is empty after two papers proposed actors');
+    if (council && dfe) {
+      const post = (url, body) => page.evaluate(async ([u, b]) => (await fetch(u, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(b) })).status, [url, body]);
+      if ((await post(`/api/policy-analysis/register/${council.id}/accept`, {})) !== 200) failures.push('register: accepting a proposal did not answer 200');
+      if ((await post(`/api/policy-analysis/register/${council.id}/parent`, { partOf: dfe.id })) !== 200) failures.push('register: placing the council inside the department did not answer 200');
+      if ((await post(`/api/policy-analysis/register/${dfe.id}/parent`, { partOf: council.id })) !== 400) failures.push('register: a loop in the hierarchy was not refused');
+      const after = await page.evaluate(async () => (await fetch('/api/policy-analysis/register')).json());
+      const placed = after.entries.find((e) => e.id === council.id);
+      if (placed?.status !== 'confirmed' || placed?.partOfPath?.[0] !== 'Department for Education') failures.push('register: the ruling did not stick');
+    }
+    note('the master list holds one council seen in two papers, keeps the programme as context and the named resident out, and takes a ruling while refusing a loop');
+  }
+
   await page.goto(`http://127.0.0.1:${PORT}/personas`, { waitUntil: 'networkidle' });
   await page.getByRole('heading', { name: 'Persona library', level: 1 }).waitFor({ timeout: 20000 });
   const persona = page.locator('#main-content table a').first();
