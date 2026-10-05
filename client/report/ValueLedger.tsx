@@ -46,7 +46,7 @@ export function ValueLedger({ ledger }: { ledger: Ledger }) {
           <li key={row.ordinal} className="prt-ladder__row">
             <span className="prt-ladder__name prt-ladder__name--plain">
               <span className="prt-ladder__ord">{row.ordinal + 1}</span> {row.name}
-              <span className="prt-ladder__status">
+              <span className="prt-meta">
                 {' '}— {row.calls ? `${row.calls.toLocaleString()} ${row.calls === 1 ? 'call' : 'calls'}${row.repairs ? `, ${row.repairs.toLocaleString()} corrective` : ''}` : 'no model call'}
               </span>
             </span>
