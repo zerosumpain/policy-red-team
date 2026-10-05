@@ -1,6 +1,7 @@
 import { and, desc, eq, inArray, sql } from 'drizzle-orm';
 import { db, type DbExecutor } from '$lib/db';
-import { policyActorMentions, policyAffectedGroups, policyAnalyses, policyArtefacts, policyDocuments, policyPersonaDecisions, policyPersonaObservations, policyPersonas } from '$lib/db/schema';
+import { paperKeys, samePaper } from './paper';
+import { policyActorMentions, policyAffectedGroups, policyAnalyses, policyArtefacts, policyPersonaDecisions, policyPersonaObservations, policyPersonas } from '$lib/db/schema';
 import { normaliseName } from '$lib/jkai/intel/resolve/match';
 import { getLLMClient } from '$lib/llm/client';
 import { executionContext, type LLMCallRecord } from '$lib/context/execution';
@@ -103,16 +104,10 @@ export async function loadRulings(owner: string, tx: DbExecutor = db): Promise<I
  * the library: submitting v2 after acting on v1's plays is the intended way to
  * use this tool, and a paper is not "another policy" to its own redraft.
  */
-export async function sameDocument(owner: string, analysisId: string, tx: DbExecutor = db): Promise<Set<string>> {
-  const out = new Set([analysisId]);
-  const [mine] = await tx.select({ sha256: policyDocuments.sha256 }).from(policyDocuments).where(eq(policyDocuments.analysisId, analysisId));
-  if (!mine) return out;
-  const rows = await tx.select({ analysisId: policyDocuments.analysisId })
-    .from(policyDocuments)
-    .innerJoin(policyAnalyses, eq(policyAnalyses.id, policyDocuments.analysisId))
-    .where(and(eq(policyAnalyses.owner, owner), eq(policyDocuments.sha256, mine.sha256)));
-  for (const row of rows) out.add(row.analysisId);
-  return out;
+export async function sameDocument(_owner: string, analysisId: string, tx: DbExecutor = db): Promise<Set<string>> {
+  // Phase 25: the same DOCUMENT SET's paper — one `paper_key`, or any document
+  // in common. See `samePaper`.
+  return samePaper(analysisId, tx);
 }
 
 const actorOf = (actor: Artefact) => ({ id: actor.id, label: actor.label, entityType: String(actor.data.entityType ?? ''), aliases: list<string>(actor.data.aliases) });
@@ -288,15 +283,17 @@ export async function applyPersonaLinks(tx: DbExecutor, owner: string, analysisI
 /**
  * Sightings are a COUNT of PAPERS, recomputed — deleting an assessment must
  * lower it, and two runs of one document are one paper. Counted on the
- * document hash, falling back to the analysis where a document row is missing.
+ * analysis's `paper_key` (phase 25: one per document SET, shared by a re-run
+ * with an annex added), falling back to the analysis where it has none. It
+ * was a join on `policy_documents`, which is one row per document now.
  */
 export async function recountSightings(tx: DbExecutor, personaIds: string[]) {
   if (!personaIds.length) return;
   await tx.execute(sql`
     update policy_personas p
-       set sightings = (select count(distinct coalesce(d.sha256, o.analysis_id::text))
+       set sightings = (select count(distinct coalesce(a.paper_key, o.analysis_id::text))
                           from policy_persona_observations o
-                          left join policy_documents d on d.analysis_id = o.analysis_id
+                          left join policy_analyses a on a.id = o.analysis_id
                          where o.persona_id = p.id and o.analysis_id is not null and o.kind = 'assessment')
      where p.id in (${sql.join(personaIds.map((id) => sql`${id}::uuid`), sql`, `)})`);
 }
@@ -511,10 +508,9 @@ export async function duplicateSuggestions(owner: string, personaId?: string): P
  * Counted in papers, by document, for the same reason sightings are.
  */
 export async function affectedGroups(owner: string): Promise<{ name: string; papers: number; analyses: { id: string; title: string }[] }[]> {
-  const rows = await db.select({ name: policyAffectedGroups.name, analysisId: policyAffectedGroups.analysisId, title: policyAnalyses.title, sha256: policyDocuments.sha256 })
+  const rows = await db.select({ name: policyAffectedGroups.name, analysisId: policyAffectedGroups.analysisId, title: policyAnalyses.title, sha256: policyAnalyses.paperKey })
     .from(policyAffectedGroups)
     .innerJoin(policyAnalyses, eq(policyAnalyses.id, policyAffectedGroups.analysisId))
-    .leftJoin(policyDocuments, eq(policyDocuments.analysisId, policyAffectedGroups.analysisId))
     .where(eq(policyAffectedGroups.owner, owner));
   const byName = new Map<string, { name: string; documents: Set<string>; analyses: Map<string, string> }>();
   for (const row of rows) {
@@ -540,9 +536,7 @@ export async function personaDetail(owner: string, id: string) {
     : [];
   // Each paper's document hash, so the page counts two runs of one document as
   // one paper — the same rule `recountSightings` applies to the figure.
-  const shas = analysisIds.length
-    ? new Map((await db.select({ analysisId: policyDocuments.analysisId, sha256: policyDocuments.sha256 }).from(policyDocuments).where(inArray(policyDocuments.analysisId, analysisIds))).map((d) => [d.analysisId, d.sha256]))
-    : new Map<string, string>();
+  const shas = await paperKeys(analysisIds);
   for (const o of observations) o.documentSha = o.analysisId ? shas.get(o.analysisId) ?? null : null;
   const persona = toRecord(row);
   const index = await registerIndex();

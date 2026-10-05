@@ -103,8 +103,9 @@ export function usePageTitle(title?: string) {
  * and the pages ruling on who it is are inside Bodies across policies. `page`
  * on the exact address, `true` under it: the framework's own distinction.
  *
- * NO "GROUNDING LIBRARY" YET. Phase 25 adds it with the pages behind it; an item
- * that leads nowhere is the dead end this navigation exists to remove.
+ * "GROUNDING LIBRARY" (phase 25): what each policy is judged against. Left out
+ * by phase 24 until the pages behind it existed; an item that leads nowhere is
+ * the dead end this navigation exists to remove.
  *
  * THE SECTIONS OF ONE THING ARE NOT HERE. An assessment's views and the bodies
  * hub's views are drawn inside the page under its title (`ServiceNavigation`'s
@@ -118,6 +119,7 @@ function SiteNavigation({ wide }: { wide?: boolean }) {
   const items: ServiceNavItem[] = [
     { href: '/', text: 'Assessments', current: pathname === '/', active: under('/assessments') },
     { href: HUB, text: 'Bodies across policies', current: pathname === HUB, active: under(HUB) || pathname === '/personas' || under('/personas') },
+    { href: '/grounding', text: 'Grounding library', current: pathname === '/grounding', active: under('/grounding') },
     { href: GUIDE, text: 'How to read a report', current: pathname === GUIDE, active: under(GUIDE) },
     // The read-only copy cannot start anything, and says so on the landing
     // page; a navigation item that opens a form which can only answer 403 is

@@ -1,12 +1,14 @@
 import { and, eq, gt, gte, lt, sql } from 'drizzle-orm';
 import { db, type DbExecutor } from '$lib/db';
-import { policyAnalyses, policyDocuments, policyExecutions, policyModelCalls, policyPasses, policyStages, workflowRuns } from '$lib/db/schema';
+import { policyAnalyses, policyDocuments, policyExecutions, policyGrounding, policyModelCalls, policyPasses, policyRunGrounding, policyStages, workflowRuns } from '$lib/db/schema';
 import { isThinkingLevel } from '$lib/models/thinking';
 import { boundWarnings } from '../budget';
 import { ASSURANCE_CATEGORIES, ASSURANCE_STAGE, DEEP_CHAINS, isPassStage, MATERIAL_ROLE_LABELS, MATERIAL_ROLE_NOTES, PASS_BASE, passOf, passStep, PERSONA_STAGE, THEORY_STAGE, type Concurrency, type Extraction, type PassKind } from '../contracts';
 import { executeStage, graphUncovered } from '../pipeline';
 import { PolicyError } from '../validation';
 import { ingest } from './ingest';
+import { ingestDocumentSet } from './document-set';
+import { ingestGrounding, runGroundingFor } from './grounding';
 import { loadArtefacts, neighbourSummaries, persistArtefacts, queueStage, readerInputsFor, sealOf } from './store';
 import { resolveReaderInputs } from './reader-brought';
 import { sealRow, unsealRow } from './seal';
@@ -71,7 +73,8 @@ export function stageBudgetMs(ordinal: number, all: { kind: string; id: string }
   const units = ordinal === 1 ? count('passage')
     // The graph now makes one call per resolved body, exactly as the profiles do.
     : ordinal === 3 || ordinal === 4 ? Math.max(1, count('actor'))
-    : ordinal === 6 ? count('research_question') + 1
+    // One call per grounding item as well (phase 25), as per research question.
+    : ordinal === 6 ? count('research_question') + new Set(all.filter((a) => a.kind === 'grounding_passage').map((a) => a.id.split('_')[0])).size + 1
     : ordinal === 7 || ordinal === 9 ? 8
     : ordinal === 10 ? Math.max(1, count('profile'))
     // The persona library makes one merge call per profiled actor, exactly as the
@@ -187,7 +190,7 @@ export async function executePolicyRun(claimed: { id: string; input: Record<stri
       .innerJoin(policyExecutions, eq(policyExecutions.id, policyModelCalls.executionId))
       .innerJoin(policyStages, eq(policyStages.id, policyExecutions.stageId))
       .where(and(eq(policyStages.analysisId, analysisId), gte(policyStages.ordinal, block.floor), lt(policyStages.ordinal, block.ceiling)));
-    if (made >= MODEL_CALL_CEILING) throw new PolicyError('budget', `This ${isPassStage(started.stage.ordinal) ? 'addendum' : 'assessment'} has made ${made.toLocaleString()} model calls, past the ${MODEL_CALL_CEILING.toLocaleString()} this implementation allows for one document. Completed stages are retained; submit a shorter document or split it.`);
+    if (made >= MODEL_CALL_CEILING) throw new PolicyError('budget', `This ${isPassStage(started.stage.ordinal) ? 'addendum' : 'assessment'} has made ${made.toLocaleString()} model calls, past the ${MODEL_CALL_CEILING.toLocaleString()} this implementation allows for one assessment. Completed stages are retained; submit fewer or shorter documents, or split them.`);
     const previousStages = (await db.select({ ordinal: policyStages.ordinal, warnings: policyStages.warnings, output: policyStages.output }).from(policyStages).where(eq(policyStages.analysisId, analysisId)))
       .map((r) => unsealRow(seal, 'stage', r));
     // How much of the knowledge graph triage threw away. The deterministic checks
@@ -217,12 +220,19 @@ export async function executePolicyRun(claimed: { id: string; input: Record<stri
     // difference: `policy_artefacts` is keyed on `(analysis_id, id)`, and the
     // policy's `passage_0001` is already taken.
     const ingestsMaterial = passKind === 'addendum' && passStep(started.stage.ordinal) === 0;
-    const extracted = ingestsDocument
-      ? await (async () => {
-          const [row] = await db.select({ content: policyDocuments.content, filename: policyDocuments.filename, mimeType: policyDocuments.mimeType }).from(policyDocuments).where(eq(policyDocuments.analysisId, analysisId));
-          const document = unsealRow(seal, 'document', row);
-          return ingest(Buffer.from(document.content, 'base64'), document.filename, document.mimeType);
-        })()
+    // PHASE 25: the whole SET of documents, then the grounding the run was
+    // given — the second under `g<n>_` as `grounding_passage`, never `passage`.
+    // Grounding is read here, at stage 0, so it is in the inventory before the
+    // research PLANNER runs at stage 5 (phase 22's reader sources arrived after
+    // it). Fetching a page follows the reader-source rule exactly.
+    const set = ingestsDocument ? await ingestDocumentSet(analysisId, seal) : null;
+    const groundingRows = ingestsDocument ? await runGroundingFor(analysisId, seal) : [];
+    const mayFetchGrounding = !analysis.sealed && chosenEngine() !== 'none';
+    const grounded = ingestsDocument && groundingRows.length
+      ? await ingestGrounding(groundingRows, { mayFetch: mayFetchGrounding, why: analysis.sealed ? 'this assessment is sealed, so no page is fetched for it' : 'this install is set not to reach the open web, so no page is fetched', signal })
+      : null;
+    const extracted = set
+      ? { artefacts: [...set.artefacts, ...(grounded?.artefacts ?? [])], warnings: [...set.warnings, ...(grounded?.warnings ?? [])], text: '', metadata: null }
       : ingestsMaterial
         ? await ingest(Buffer.from(String(pass!.content), 'base64'), String(pass!.filename), String(pass!.mimeType), `m${passNumber}_`)
         : null;
@@ -372,7 +382,16 @@ export async function executePolicyRun(claimed: { id: string; input: Record<stri
           output.warnings.push('This assessment could not be written into the persona library. Its own findings are unaffected; the library simply does not have this run.');
         }
       }
-      if (extracted && ingestsDocument) await tx.update(policyDocuments).set(sealRow(seal, 'document', { extractedText: extracted.text, metadata: extracted.metadata })).where(eq(policyDocuments.analysisId, analysisId));
+      if (set) for (const document of set.documents) await tx.update(policyDocuments).set(sealRow(seal, 'document', { extractedText: document.text, metadata: document.metadata })).where(eq(policyDocuments.id, document.id));
+      if (grounded) {
+        for (const update of grounded.updates) {
+          await tx.update(policyRunGrounding).set(sealRow(seal, 'grounding', { extractedText: update.extractedText, error: update.error })).where(eq(policyRunGrounding.id, update.id));
+          // A PAGE FETCHED FOR AN UNSEALED RUN GOES BACK TO THE LIBRARY, so the
+          // next run of the policy reads it rather than fetching it again. A
+          // sealed run's rows carry no library id, so it can never get here.
+          if (update.fetched && update.libraryId && !sealedRun) await tx.update(policyGrounding).set({ extractedText: update.extractedText, fetchedAt: new Date(), error: null }).where(eq(policyGrounding.id, update.libraryId));
+        }
+      }
       if (extracted && ingestsMaterial) await tx.update(policyPasses).set(sealRow(seal, 'pass', { extractedText: extracted.text, metadata: extracted.metadata })).where(and(eq(policyPasses.analysisId, analysisId), eq(policyPasses.pass, passNumber)));
       if (inPass) await tx.update(policyPasses).set({ status: 'running', error: null }).where(and(eq(policyPasses.analysisId, analysisId), eq(policyPasses.pass, passNumber)));
       await tx.update(policyExecutions).set({ status: 'completed', completedAt: new Date() }).where(eq(policyExecutions.id, started.execution.id));

@@ -221,7 +221,7 @@ export const SEALED_FIELDS = {
   // `content` is the uploaded file as base64 and is the largest thing here; the
   // cipher's hex output doubles it, so a 3 MB paper stores about 8 MB. Well
   // inside Postgres' limits, and the alternative is a second binary code path.
-  document: { text: ['filename', 'content', 'extractedText'], json: ['metadata'] },
+  document: { text: ['filename', 'content', 'extractedText', 'title'], json: ['metadata'] },
   artefact: { text: ['label', 'statement', 'sourceQuote', 'section', 'url'], json: ['data'] },
   /**
    * A pass carries a whole second document, so it is sealed exactly as
@@ -237,6 +237,13 @@ export const SEALED_FIELDS = {
    * or a look-up is the reader's own words about an unpublished paper.
    */
   readerInput: { text: ['url', 'filename', 'content', 'about', 'note', 'wording'], json: [] },
+  /**
+   * What a run was grounded on (phase 25): a copy of each item, taken at
+   * submission. On a sealed run the library is never written, so this copy is
+   * the only one — and every free-text column of it is the reader's material
+   * about an unpublished paper, or chosen for one.
+   */
+  grounding: { text: ['title', 'publisher', 'publishedOn', 'url', 'filename', 'content', 'extractedText', 'error'], json: [] },
   // `notes` (phase 23) are the model's remarks about the paper: its words.
   stage: { text: ['error'], json: ['warnings', 'notes'] },
   execution: { text: ['error'], json: [] },

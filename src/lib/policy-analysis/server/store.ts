@@ -1,7 +1,7 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { and, asc, desc, eq, inArray, isNotNull, sql } from 'drizzle-orm';
 import { db, type DbExecutor } from '$lib/db';
-import { policyActorMentions, policyAnalyses, policyArtefacts, policyDocuments, policyExecutions, policyModelCalls, policyPasses, policyPersonaObservations, policyPersonas, policyProvenance, policyReaderInputs, policyStages, workflowRuns, workflows } from '$lib/db/schema';
+import { policyActorMentions, policyAnalyses, policyArtefacts, policyDocuments, policyExecutions, policyModelCalls, policyPasses, policyPersonaObservations, policyPersonas, policyPolicies, policyProvenance, policyReaderInputs, policyStages, workflowRuns, workflows } from '$lib/db/schema';
 import { ADDENDUM_STAGES, passOf, passOrdinal, RESTATEMENT_STAGES, STAGES, TRIGGER, WORKFLOW_ID, type Artefact } from '../contracts';
 import type { Neighbour } from '../pipeline';
 import { PolicyError } from '../validation';
@@ -12,6 +12,10 @@ import { actorBodies } from './body-evidence';
 import { masterIdOf } from '../actor-register';
 import { registerIndex } from './register';
 import { mintKey, openSeal, readKey, sealRow, sealWithKey, shredKey, unsealRow, type Seal } from './seal';
+import { createPolicy, ownedPolicy, runGroundingSummary, snapshotGrounding } from './grounding';
+import { samePaper } from './paper';
+import { documentSetHash } from './set-hash';
+export { documentSetHash };
 
 /**
  * The codec for one analysis, read from its `sealed` flag.
@@ -48,18 +52,44 @@ export async function createAnalysis(owner: string, input: Submission) {
     const key = input.sealed ? await mintKey(id) : null;
     const seal = key ? sealWithKey(key) : openSeal();
     try {
+      /*
+       * THE DOCUMENT SET (phase 25): the main paper, then each further part of
+       * the policy, in the order given. Document 0 keeps the empty id prefix,
+       * so its passages are minted exactly as every paper's always were.
+       */
+      const documents = [
+        // The main paper is called what the assessment is called, unless the
+        // reader named it — it is how a citation names it among several.
+        { filename: input.filename, mimeType: input.mimeType, bytes: input.bytes, title: input.documentTitle ?? input.title },
+        ...(input.parts ?? []),
+      ].map((d) => ({ ...d, sha256: createHash('sha256').update(d.bytes).digest('hex') }));
+      const setHash = documentSetHash(documents.map((d) => d.sha256));
+      const paperKey = input.sealed ? setHash : await inheritedPaperKey(tx, owner, documents.map((d) => d.sha256), setHash);
+      // A POLICY ON AN UNSEALED RUN ONLY: which policy an unpublished paper
+      // belongs to is itself something about it. An unsealed run that named
+      // none starts one named after the paper, so the next draft can find it.
+      const policy = input.sealed
+        ? (input.policyId ? await ownedPolicy(owner, input.policyId, tx) : null)
+        : input.policyId
+          ? await ownedPolicy(owner, input.policyId, tx)
+          : await createPolicy(owner, input.policyName ?? input.title, tx);
+      if (input.policyId && !policy) throw new PolicyError('input', 'That policy is not one of yours. Choose one from the list, or start a new one.');
       const [analysis] = await tx.insert(policyAnalyses).values({
         id, owner, sealed: !!input.sealed, sealedResearch: !!input.sealed && !!input.sealedResearch, depth: input.depth, model: input.model, thinkingLevel: input.thinkingLevel, concurrency: input.concurrency, extraction: input.extraction, sharedContextFirst: !!input.sharedContextFirst,
+        documentSetHash: setHash, paperKey, policyId: input.sealed ? null : policy?.id ?? null,
         ...sealRow(seal, 'analysis', { title: input.title, jurisdiction: input.jurisdiction, policyArea: input.policyArea, context: input.context }),
       }).returning();
-      await tx.insert(policyDocuments).values({
-        analysisId: analysis.id, mimeType: input.mimeType, size: input.bytes.length,
+      await tx.insert(policyDocuments).values(documents.map((d, position) => ({
+        analysisId: analysis.id, mimeType: d.mimeType, size: d.bytes.length, position,
+        role: position === 0 ? 'main' : 'part', idPrefix: position === 0 ? '' : `d${position}_`,
         // The digest stays in the clear: it is the run's own integrity check, it
         // never leaves the owner's session, and the offline pack already withholds
         // it from a shared copy for the confirmation-oracle reason.
-        sha256: createHash('sha256').update(input.bytes).digest('hex'),
-        ...sealRow(seal, 'document', { filename: input.filename, content: input.bytes.toString('base64') }),
-      });
+        sha256: d.sha256,
+        ...sealRow(seal, 'document', { filename: d.filename, content: d.bytes.toString('base64'), title: d.title }),
+      })));
+      // WHAT IT IS JUDGED AGAINST (phase 25): copied in, sealed with the run.
+      await snapshotGrounding(tx, { owner, analysisId: analysis.id, seal, sealed: !!input.sealed, policyId: policy?.id ?? null, useGrounding: input.useGrounding ?? null, brought: input.grounding ?? [] });
       // WHAT THE READER BROUGHT (phase 22 part 2), stored as given and read at
       // stage 5. Sealed with everything else: a supplied file is a document,
       // and an address or a look-up is the reader's words about the paper.
@@ -86,6 +116,31 @@ export async function createAnalysis(owner: string, input: Submission) {
     }
   });
 }
+/**
+ * WHICH PAPER THIS IS, for sightings, neighbours and the bodies grid.
+ *
+ * A run that shares ANY document with an earlier unsealed run of this owner's
+ * is the same paper as that run, and takes its key. That is the rule that
+ * makes a re-run with an annex added — or one dropped — one paper rather than
+ * two: the main paper is the same bytes, so the set hashes differ but the
+ * paper does not. Exact set equality would have counted it twice.
+ *
+ * The earliest such run wins, so the key is stable however many re-runs
+ * follow. Two different papers that happen to share an annex WOULD be joined
+ * by this; an annex identical to the byte across two policies is rare enough,
+ * and over-joining costs a neighbour comparison, where under-joining
+ * double-counts every body in the paper.
+ */
+async function inheritedPaperKey(tx: DbExecutor, owner: string, shas: string[], own: string): Promise<string> {
+  const [earlier] = await tx.select({ key: policyAnalyses.paperKey, set: policyAnalyses.documentSetHash })
+    .from(policyDocuments)
+    .innerJoin(policyAnalyses, eq(policyAnalyses.id, policyDocuments.analysisId))
+    .where(and(eq(policyAnalyses.owner, owner), eq(policyAnalyses.sealed, false), inArray(policyDocuments.sha256, shas)))
+    .orderBy(asc(policyAnalyses.createdAt))
+    .limit(1);
+  return earlier?.key ?? earlier?.set ?? own;
+}
+
 /**
  * Attach material to an assessment that has already reported, and queue the
  * addendum pass that reads it.
@@ -312,7 +367,10 @@ export async function detail(owner: string, id: string) {
   // included, and `notes` as the model's part — see `withNotes`.
   const stages = await stagesWithNotes(id, analysis.updatedAt, (await db.select().from(policyStages).where(eq(policyStages.analysisId, id)).orderBy(asc(policyStages.ordinal)))
     .map((r) => unsealRow(seal, 'stage', r)));
-  const rawDocuments = await db.select({ id: policyDocuments.id, filename: policyDocuments.filename, mimeType: policyDocuments.mimeType, size: policyDocuments.size, sha256: policyDocuments.sha256, metadata: policyDocuments.metadata }).from(policyDocuments).where(eq(policyDocuments.analysisId, id));
+  // In document order (phase 25): the main paper first. `title`, `position`,
+  // `role` and `idPrefix` are additive; a reader of `documents[0]` still finds
+  // the main paper there.
+  const rawDocuments = await db.select({ id: policyDocuments.id, filename: policyDocuments.filename, mimeType: policyDocuments.mimeType, size: policyDocuments.size, sha256: policyDocuments.sha256, metadata: policyDocuments.metadata, title: policyDocuments.title, position: policyDocuments.position, role: policyDocuments.role, idPrefix: policyDocuments.idPrefix }).from(policyDocuments).where(eq(policyDocuments.analysisId, id)).orderBy(asc(policyDocuments.position));
   // `metadata.pages[].text` is a SECOND full copy of the extracted document — up
   // to 600,000 characters — and it rode the response on first load and on every
   // six-second poll while a run was active. The page wants the shape, not the text.
@@ -343,7 +401,11 @@ export async function detail(owner: string, id: string) {
     .where(and(eq(policyPersonaObservations.analysisId, id), eq(policyPersonas.owner, owner)))
     .limit(60);
   const passes = await listPasses(id);
-  return { analysis, stages, documents, passes, artefactMetadata, artefacts, executions: executions.map((e) => unsealRow(seal, 'execution', e.execution)), calls, inbound, personas, heartbeat: run?.heartbeatAt ?? null };
+  // What it was grounded on (phase 25) — never the material's bytes or text —
+  // and the policy it belongs to, by name.
+  const grounding = await runGroundingSummary(id, seal);
+  const [policy] = analysis.policyId ? await db.select({ id: policyPolicies.id, name: policyPolicies.name }).from(policyPolicies).where(eq(policyPolicies.id, analysis.policyId)) : [];
+  return { analysis, stages, documents, grounding, policy: policy ?? null, passes, artefactMetadata, artefacts, executions: executions.map((e) => unsealRow(seal, 'execution', e.execution)), calls, inbound, personas, heartbeat: run?.heartbeatAt ?? null };
 }
 export async function persistArtefacts(tx: DbExecutor, analysisId: string, stage: number, artefacts: Artefact[], seal?: Seal) {
   if (!artefacts.length) return;
@@ -446,7 +508,7 @@ const NEIGHBOUR_ARTEFACTS = 60;
 const NEIGHBOUR_POOL = 200;
 
 export async function neighbourSummaries(owner: string, exclude: string): Promise<Neighbour[]> {
-  const others = await db.select({ id: policyAnalyses.id, title: policyAnalyses.title, policyArea: policyAnalyses.policyArea, jurisdiction: policyAnalyses.jurisdiction, completedAt: policyAnalyses.completedAt })
+  const others = await db.select({ id: policyAnalyses.id, title: policyAnalyses.title, policyArea: policyAnalyses.policyArea, jurisdiction: policyAnalyses.jurisdiction, completedAt: policyAnalyses.completedAt, paperKey: policyAnalyses.paperKey })
     .from(policyAnalyses)
     // A SEALED RUN IS NEVER A NEIGHBOUR. Cross-policy comparison works by putting
     // one assessment's artefacts into another's prompt, and that prompt is stored
@@ -463,9 +525,12 @@ export async function neighbourSummaries(owner: string, exclude: string): Promis
   // A redraft of the SAME paper is not another policy. Submitting v2 after acting
   // on v1's plays is the intended way to use this, and without the hash check the
   // two drafts would be reported as conflicting with each other.
-  const [mine] = await db.select({ sha256: policyDocuments.sha256 }).from(policyDocuments).where(eq(policyDocuments.analysisId, exclude));
-  const shas = await db.select({ analysisId: policyDocuments.analysisId, sha256: policyDocuments.sha256 }).from(policyDocuments).where(inArray(policyDocuments.analysisId, others.map((o) => o.id)));
-  const sameDocument = new Set(shas.filter((d) => mine && d.sha256 === mine.sha256).map((d) => d.analysisId));
+  //
+  // "THE SAME PAPER" IS THE SAME DOCUMENT SET'S PAPER (phase 25): the same
+  // `paper_key`, or ANY document in common — a run of the white paper alone
+  // and a run of it with its annex are drafts of one paper to each other, not
+  // two policies that might conflict.
+  const sameDocument = await samePaper(exclude);
   const candidates = others.filter((o) => o.id !== exclude && !sameDocument.has(o.id));
   if (!candidates.length) return [];
 
@@ -494,11 +559,10 @@ export async function neighbourSummaries(owner: string, exclude: string): Promis
   // as they are one paper everywhere else ("seen in N papers" counts
   // documents). Deduplicated after ranking, so the run that shares the most —
   // and among equals the newest — is the one kept.
-  const shaOf = new Map(shas.map((d) => [d.analysisId, d.sha256]));
   const taken = new Set<string>();
   const shortlist = [...candidates].sort((a, b) => (shared.get(b.id)?.size ?? 0) - (shared.get(a.id)?.size ?? 0))
     .filter((o) => {
-      const sha = shaOf.get(o.id);
+      const sha = o.paperKey;
       if (!sha) return true;
       if (taken.has(sha)) return false;
       taken.add(sha);

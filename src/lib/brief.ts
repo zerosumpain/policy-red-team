@@ -1,4 +1,5 @@
 import type { Artefact } from '$lib/policy-analysis/contracts';
+import { documentCount, documentName, sourceDocument } from '$lib/policy-analysis/document-set';
 import { keyJudgements } from '$lib/policy-analysis/judgements';
 import { isPlay } from '$lib/policy-analysis/cleared';
 import { evidenceReadLine, NOTHING_READ } from '$lib/evidence-grade';
@@ -81,7 +82,8 @@ export type BriefItem = {
   /** The judgement itself, in a sentence or two. */
   statement: string;
   /** The paper's own words, and where. Null when nothing on the chain quotes the paper. */
-  quote: { text: string; page: number | null } | null;
+  /** `document` names which document, when the assessment read several (phase 25). */
+  quote: { text: string; page: number | null; document?: string | null } | null;
   /** The part of the policy it is about. */
   about: Artefact | null;
   /** The way to beat it the judgement rests on — the sharpest, where it names several. */
@@ -163,6 +165,17 @@ function briefPlay(play: Artefact): BriefPlay {
   };
 }
 
+/**
+ * WHICH DOCUMENT A QUOTATION IS FROM, when the paper is several (phase 25);
+ * null for one document, so a single paper's brief reads as it always did.
+ */
+function documentOfQuote(sourceId: string | null, artefacts: Artefact[]): { document?: string } {
+  if (!sourceId || documentCount(artefacts) < 2) return {};
+  const byId = new Map(artefacts.filter((a) => a.kind === 'passage').map((a) => [a.id, a]));
+  const doc = sourceDocument({ sourceId } as Artefact, byId);
+  return doc ? { document: documentName(doc) } : {};
+}
+
 /** The key judgements, as brief items. */
 function fromJudgements(artefacts: Artefact[]): BriefItem[] {
   return keyJudgements(artefacts).slice(0, BRIEF_ITEMS).map((j) => {
@@ -173,7 +186,7 @@ function fromJudgements(artefacts: Artefact[]): BriefItem[] {
       artefact: j.artefact,
       title: clean(j.artefact.label),
       statement: clean(j.judgement),
-      quote: j.quote ? { text: clip(j.quote.text), page: j.quote.page } : null,
+      quote: j.quote ? { text: clip(j.quote.text), page: j.quote.page, ...documentOfQuote(j.quote.sourceId, artefacts) } : null,
       about: j.mechanism,
       play: plays[0] ? briefPlay(plays[0]) : null,
       morePlays: Math.max(0, plays.length - 1),
@@ -243,7 +256,7 @@ function fromFindings(artefacts: Artefact[]): BriefItem[] {
       artefact: finding,
       title: clean(view.title),
       statement: sentences(view.statement, 1),
-      quote: about && clean(about.sourceQuote) ? { text: clip(String(about.sourceQuote)), page: about.page } : null,
+      quote: about && clean(about.sourceQuote) ? { text: clip(String(about.sourceQuote)), page: about.page, ...documentOfQuote(about.sourceId, artefacts) } : null,
       about,
       play: play ? briefPlay(play) : null,
       // A play reached through a part of the policy is not one the finding

@@ -1,6 +1,7 @@
 import { and, count, desc, eq, gte, inArray, isNotNull, max } from 'drizzle-orm';
 import { db } from '$lib/db';
-import { policyAnalyses, policyArtefacts, policyDocuments, policyPersonaObservations, policyPersonas } from '$lib/db/schema';
+import { paperKeys } from './paper';
+import { policyAnalyses, policyArtefacts, policyPersonaObservations, policyPersonas } from '$lib/db/schema';
 import { bodyFacts, resolveBody, type BodyFacts } from '../register';
 import { actorsOfBody, asksOf, buildGrid, findClashes, timeline, type Clash, type Grid, type IntelEdge, type IntelNode, type IntelPaper, type IntelSighting, type PaperAsks } from '../intel';
 import type { BodyEvidenceRecord } from '../body-evidence';
@@ -41,7 +42,8 @@ async function libraryRows(owner: string, bodyIds?: string[]): Promise<Rows> {
     .orderBy(desc(policyAnalyses.completedAt));
   const analysisIds = [...new Set(filed.map((f) => f.analysisId!).filter(Boolean))].slice(0, PAPER_LIMIT);
   if (!analysisIds.length) return { papers: [], sightings: [], edges: [], nodes: [] };
-  const shas = new Map((await db.select({ analysisId: policyDocuments.analysisId, sha256: policyDocuments.sha256 }).from(policyDocuments).where(inArray(policyDocuments.analysisId, analysisIds))).map((d) => [d.analysisId, d.sha256]));
+  // The PAPER key (phase 25), so a run with an annex and one without are one paper.
+  const shas = await paperKeys(analysisIds);
   const papers = new Map<string, IntelPaper>();
   for (const f of filed) {
     if (!f.analysisId || !analysisIds.includes(f.analysisId) || papers.has(f.analysisId)) continue;
@@ -174,9 +176,8 @@ export const RECURRING_PAPERS = 12;
  * `actorsOfBody` / `asksOf` the body page uses, keyed by persona.
  */
 export async function recurringBodies(owner: string): Promise<Recurring> {
-  const finished = await db.select({ id: policyAnalyses.id, sha256: policyDocuments.sha256 })
+  const finished = await db.select({ id: policyAnalyses.id, sha256: policyAnalyses.paperKey })
     .from(policyAnalyses)
-    .leftJoin(policyDocuments, eq(policyDocuments.analysisId, policyAnalyses.id))
     .where(and(eq(policyAnalyses.owner, owner), eq(policyAnalyses.sealed, false), inArray(policyAnalyses.status, ['completed', 'completed_with_gaps'])));
   const papers = new Set(finished.map((f) => f.sha256 ?? f.id)).size;
 
@@ -198,9 +199,7 @@ export async function recurringBodies(owner: string): Promise<Recurring> {
       eq(policyAnalyses.owner, owner), eq(policyAnalyses.sealed, false),
     ));
   const analysisIds = [...new Set(filed.map((f) => f.analysisId!).filter(Boolean))];
-  const shas = analysisIds.length
-    ? new Map((await db.select({ analysisId: policyDocuments.analysisId, sha256: policyDocuments.sha256 }).from(policyDocuments).where(inArray(policyDocuments.analysisId, analysisIds))).map((d) => [d.analysisId, d.sha256]))
-    : new Map<string, string>();
+  const shas = await paperKeys(analysisIds);
   const artefacts = analysisIds.length
     ? await db.select({
       analysisId: policyArtefacts.analysisId, id: policyArtefacts.id, kind: policyArtefacts.kind, label: policyArtefacts.label, statement: policyArtefacts.statement,
@@ -267,7 +266,8 @@ async function personaRows(owner: string, personaId: string): Promise<Rows> {
     .orderBy(desc(policyAnalyses.completedAt));
   const analysisIds = [...new Set(filed.map((f) => f.analysisId!).filter(Boolean))].slice(0, PAPER_LIMIT);
   if (!analysisIds.length) return { papers: [], sightings: [], edges: [], nodes: [] };
-  const shas = new Map((await db.select({ analysisId: policyDocuments.analysisId, sha256: policyDocuments.sha256 }).from(policyDocuments).where(inArray(policyDocuments.analysisId, analysisIds))).map((d) => [d.analysisId, d.sha256]));
+  // The PAPER key (phase 25), so a run with an annex and one without are one paper.
+  const shas = await paperKeys(analysisIds);
   const papers = new Map<string, IntelPaper>();
   for (const f of filed) {
     if (!f.analysisId || papers.has(f.analysisId) || !analysisIds.includes(f.analysisId)) continue;

@@ -182,7 +182,7 @@ describe.skipIf(!local)('a sealed run on isolated Postgres', () => {
     expect(await readKey(a.id)).toBeNull();
 
     const probes = await census(a.id);
-    expect(probes).toHaveLength(15);
+    expect(probes).toHaveLength(16);
     expect(probes.filter((p) => p.rows !== 0)).toEqual([]);
 
     // The queue envelope is gone too — `policy_stages.run_id` has no cascade, so

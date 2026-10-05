@@ -131,10 +131,12 @@ export interface Multipart {
  */
 export function readMultipart(req: IncomingMessage): Promise<Multipart> {
   return new Promise((resolve, reject) => {
-    // Eleven files: the paper and ten supplied sources. Fields for the same
-    // reason — four per source and one per look-up, on top of the form's own.
-    // `readSubmission` holds each supplied file to its own, smaller cap.
-    const parser = busboy({ headers: req.headers, limits: { fileSize: MAX_UPLOAD_BYTES, files: 11, fields: 100 } });
+    // Files: the documents of the set (six), the supporting material brought
+    // with them (eight), and ten supplied sources — phase 25 raised it from
+    // eleven. Fields for the same reason: four per source, six per document
+    // row, one per look-up and per ticked library item, on top of the form's
+    // own. `readSubmission` holds every file and every total to its own cap.
+    const parser = busboy({ headers: req.headers, limits: { fileSize: MAX_UPLOAD_BYTES, files: 24, fields: 400 } });
     const result: Multipart = { fields: {} };
     let truncated = false;
 

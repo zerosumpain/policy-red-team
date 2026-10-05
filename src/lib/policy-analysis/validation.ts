@@ -117,6 +117,23 @@ function semanticFault(a: Artefact, all: Map<string, Artefact>, stage: number, n
     }
     if (located) return located;
   }
+  /*
+   * A QUOTE FROM GROUNDING MATERIAL IS CHECKED AGAINST ITS TEXT, exactly as a
+   * quote from the paper is (phase 25). The reader trusts the material; the
+   * model's copy of it is still a claim until it is found there. Found, its
+   * page, section and offsets are taken from the grounding passage — which
+   * also stops one quote being passed off under another item's name.
+   */
+  if (a.sourceId && all.get(a.sourceId)?.kind === 'grounding_passage' && a.sourceQuote) {
+    const source = all.get(a.sourceId)!;
+    const found = locateQuote(source.statement, a.sourceQuote);
+    if (!found) return fault('span', 'A quotation from the grounding material could not be found in the passage it names. Copy it exactly from that passage, with its id in sourceId.');
+    a.sourceQuote = found.quote;
+    a.page = source.page; a.section = source.section;
+    a.startOffset = (source.startOffset ?? 0) + found.start;
+    a.endOffset = (source.startOffset ?? 0) + found.end;
+    if (!a.refs.includes(source.id)) a.refs = [source.id, ...a.refs];
+  }
   // URLs originate exclusively in trusted research adapter results, never model output.
   if (a.url && a.kind !== 'research_source') return fault('citation', 'Model-authored URLs are not accepted as evidence.');
   if (a.sourceId && !all.has(a.sourceId)) return fault('source', 'The source reference is unavailable.');
@@ -796,7 +813,7 @@ export function triageArtefacts(output: StageOutput, stage: number, prior: Artef
     if (a.kind === 'evidence' && (a.data.grade === 'strong' || a.data.grade === 'moderate')) {
       const sources = [...new Set([a.sourceId, String(a.data.sourceId ?? ''), ...a.refs])]
         .map((id) => (id ? finalById.get(id) : undefined))
-        .filter((s): s is Artefact => s?.kind === 'passage' || s?.kind === 'research_source');
+        .filter((s): s is Artefact => s?.kind === 'passage' || s?.kind === 'research_source' || s?.kind === 'grounding_passage');
       if (sources.length && sources.every((s) => s.kind === 'research_source' && s.data.retrieval === 'search_excerpt')) {
         capped.push(`“${a.label}” (${a.data.grade})`);
         a.data.grade = 'weak';
@@ -1025,7 +1042,7 @@ function checkPrecedent(a: Artefact, all: Map<string, Artefact>): boolean {
     if (a.data.precedentBasis !== 'none') a.data.precedentBasis = 'unverified_recall';
     changed = true;
   }
-  if (a.data.precedentBasis === 'external_evidence' && !a.refs.some((id) => ['research_source', 'evidence'].includes(all.get(id)?.kind ?? ''))) {
+  if (a.data.precedentBasis === 'external_evidence' && !a.refs.some((id) => ['research_source', 'evidence', 'grounding_passage'].includes(all.get(id)?.kind ?? ''))) {
     a.data.precedentBasis = 'unverified_recall';
     changed = true;
   }
@@ -1037,7 +1054,9 @@ export function hasSource(id: string, all: Map<string, Artefact>, seen = new Set
   seen.add(id);
   const a = all.get(id);
   if (!a) return false;
-  if (a.kind === 'passage' || a.kind === 'research_source') return true;
+  // Grounding material is ground (phase 25): evidence the reader supplied and
+  // the run read in full — never the paper, which `locate` alone answers for.
+  if (a.kind === 'passage' || a.kind === 'research_source' || a.kind === 'grounding_passage') return true;
   return a.refs.some((r) => hasSource(r, all, seen));
 }
 

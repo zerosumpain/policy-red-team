@@ -30,6 +30,18 @@ import {
 } from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
 
+/**
+ * A POLICY (phase 25): what drafts and re-runs of one policy share, and what
+ * its grounding library hangs off. See `migrations/0009-documents-grounding.sql`.
+ */
+export const policyPolicies = pgTable('policy_policies', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  owner: text('owner').notNull(),
+  name: text('name').notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [index('policy_policies_owner_idx').on(t.owner, t.name)]);
+
 export const policyAnalyses = pgTable('policy_analyses', {
   id: uuid('id').primaryKey().defaultRandom(),
   owner: text('owner').notNull(),
@@ -45,13 +57,18 @@ export const policyAnalyses = pgTable('policy_analyses', {
   sharedContextFirst: boolean('shared_context_first').notNull().default(false),
   sealed: boolean('sealed').notNull().default(false),
   sealedResearch: boolean('sealed_research').notNull().default(false),
+  // Phase 25 (`0009-documents-grounding.sql`): which set of documents, which
+  // paper it counts as, and which policy it belongs to (never on a sealed run).
+  documentSetHash: text('document_set_hash'),
+  paperKey: text('paper_key'),
+  policyId: uuid('policy_id').references(() => policyPolicies.id, { onDelete: 'set null' }),
   status: text('status').notNull().default('queued'),
   cancelledAt: timestamp('cancelled_at', { withTimezone: true }),
   error: text('error'),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   completedAt: timestamp('completed_at', { withTimezone: true }),
-}, (t) => [index('policy_analyses_owner_idx').on(t.owner, t.createdAt)]);
+}, (t) => [index('policy_analyses_owner_idx').on(t.owner, t.createdAt), index('policy_analyses_paper_idx').on(t.owner, t.paperKey)]);
 
 export const policyDocuments = pgTable('policy_documents', {
   id: uuid('id').primaryKey().defaultRandom(),
@@ -63,7 +80,13 @@ export const policyDocuments = pgTable('policy_documents', {
   content: text('content').notNull(),
   extractedText: text('extracted_text'),
   metadata: jsonb('metadata'),
-}, (t) => [uniqueIndex('policy_documents_analysis_idx').on(t.analysisId)]);
+  // Phase 25: several documents in one assessment. Document 0 keeps the empty
+  // prefix, so every passage id stored before this survives unchanged.
+  position: integer('position').notNull().default(0),
+  role: text('role').notNull().default('main'),
+  title: text('title'),
+  idPrefix: text('id_prefix').notNull().default(''),
+}, (t) => [uniqueIndex('policy_documents_analysis_position_idx').on(t.analysisId, t.position)]);
 
 export const policyStages = pgTable('policy_stages', {
   id: uuid('id').primaryKey().defaultRandom(),
@@ -386,6 +409,48 @@ export const policyReaderInputs = pgTable('policy_reader_inputs', {
   wording: text('wording'),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 }, (t) => [index('policy_reader_inputs_analysis_idx').on(t.analysisId, t.position)]);
+
+/** The grounding library: material trusted to judge a policy by, attached once per policy (phase 25). */
+export const policyGrounding = pgTable('policy_grounding', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  owner: text('owner').notNull(),
+  policyId: uuid('policy_id').notNull().references(() => policyPolicies.id, { onDelete: 'cascade' }),
+  role: text('role').notNull(),
+  title: text('title').notNull(),
+  publisher: text('publisher'),
+  publishedOn: text('published_on'),
+  url: text('url'),
+  filename: text('filename'),
+  mimeType: text('mime_type'),
+  size: integer('size'),
+  sha256: text('sha256'),
+  content: text('content'),
+  extractedText: text('extracted_text'),
+  fetchedAt: timestamp('fetched_at', { withTimezone: true }),
+  error: text('error'),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [index('policy_grounding_policy_idx').on(t.policyId, t.createdAt)]);
+
+/** What one run was grounded on: a copy of each item, taken at submission and sealed with the run (phase 25). */
+export const policyRunGrounding = pgTable('policy_run_grounding', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  analysisId: uuid('analysis_id').notNull().references(() => policyAnalyses.id, { onDelete: 'cascade' }),
+  position: integer('position').notNull(),
+  libraryId: uuid('library_id').references(() => policyGrounding.id, { onDelete: 'set null' }),
+  role: text('role').notNull(),
+  title: text('title').notNull(),
+  publisher: text('publisher'),
+  publishedOn: text('published_on'),
+  url: text('url'),
+  filename: text('filename'),
+  mimeType: text('mime_type'),
+  size: integer('size'),
+  sha256: text('sha256'),
+  content: text('content'),
+  extractedText: text('extracted_text'),
+  error: text('error'),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [uniqueIndex('policy_run_grounding_analysis_idx').on(t.analysisId, t.position)]);
 
 export const policyShares = pgTable('policy_share', {
   id: uuid('id').primaryKey().defaultRandom(),

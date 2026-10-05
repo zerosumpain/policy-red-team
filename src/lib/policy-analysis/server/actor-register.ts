@@ -1,7 +1,7 @@
 import { and, eq, inArray, sql } from 'drizzle-orm';
 import { pgTable, text as pgText, timestamp } from 'drizzle-orm/pg-core';
 import { db, type DbExecutor } from '$lib/db';
-import { policyActorMentions, policyAnalyses, policyArtefacts, policyDocuments, policyPersonaDecisions, policyPersonaObservations, policyPersonas, type AliasOrigin } from '$lib/db/schema';
+import { policyActorMentions, policyAnalyses, policyArtefacts, policyPersonaDecisions, policyPersonaObservations, policyPersonas, type AliasOrigin } from '$lib/db/schema';
 import { normaliseName } from '$lib/jkai/intel/resolve/match';
 import type { Artefact } from '../contracts';
 import {
@@ -228,7 +228,10 @@ export async function registerTreeFor(owner: string): Promise<RegisterTree> {
   const mentions = ids.length ? await db.select({ masterId: policyActorMentions.masterId, analysisId: policyActorMentions.analysisId, capacity: policyActorMentions.capacity }).from(policyActorMentions).where(eq(policyActorMentions.owner, owner)) : [];
   const observations = ids.length ? await db.select({ personaId: policyPersonaObservations.personaId, analysisId: policyPersonaObservations.analysisId, kind: policyPersonaObservations.kind, plays: policyPersonaObservations.plays }).from(policyPersonaObservations).where(inArray(policyPersonaObservations.personaId, ids)) : [];
   const analysisIds = [...new Set([...mentions.map((m) => m.analysisId), ...observations.map((o) => o.analysisId).filter((a): a is string => Boolean(a))])];
-  const analyses = analysisIds.length ? await db.select({ id: policyAnalyses.id, title: policyAnalyses.title, sealed: policyAnalyses.sealed, sha: policyDocuments.sha256 }).from(policyAnalyses).leftJoin(policyDocuments, eq(policyDocuments.analysisId, policyAnalyses.id)).where(and(eq(policyAnalyses.owner, owner), inArray(policyAnalyses.id, analysisIds))) : [];
+  // `sha` is the PAPER key (phase 25): one per document set, shared by a
+  // re-run with an annex added — never a join on `policy_documents`, which is
+  // one row per document and would list a two-document paper twice.
+  const analyses = analysisIds.length ? await db.select({ id: policyAnalyses.id, title: policyAnalyses.title, sealed: policyAnalyses.sealed, sha: policyAnalyses.paperKey }).from(policyAnalyses).where(and(eq(policyAnalyses.owner, owner), inArray(policyAnalyses.id, analysisIds))) : [];
   const paper = new Map(analyses.filter((a) => !a.sealed).map((a) => [a.id, a]));
   const proposedIds = rows.map((r) => r.proposedIn).filter((a): a is string => Boolean(a));
   const proposers = proposedIds.length ? new Map((await db.select({ id: policyAnalyses.id, title: policyAnalyses.title, sealed: policyAnalyses.sealed }).from(policyAnalyses).where(inArray(policyAnalyses.id, proposedIds))).filter((a) => !a.sealed).map((a) => [a.id, a.title])) : new Map<string, string>();
@@ -362,9 +365,10 @@ export type Wording = { wording: string; papers: number; capacities: string[]; b
 async function wordingsOf(owner: string, ids: string[]): Promise<Map<string, Wording[]>> {
   const out = new Map<string, Wording[]>();
   if (!ids.length) return out;
-  const rows = await db.select({ masterId: policyActorMentions.masterId, wording: policyActorMentions.wording, capacity: policyActorMentions.capacity, basis: policyActorMentions.basis, analysisId: policyActorMentions.analysisId, sha: policyDocuments.sha256 })
+  const rows = await db.select({ masterId: policyActorMentions.masterId, wording: policyActorMentions.wording, capacity: policyActorMentions.capacity, basis: policyActorMentions.basis, analysisId: policyActorMentions.analysisId, sha: policyAnalyses.paperKey })
     .from(policyActorMentions)
-    .leftJoin(policyDocuments, eq(policyDocuments.analysisId, policyActorMentions.analysisId))
+    // The PAPER key (phase 25), not a join on documents: one row per mention, not per document.
+    .leftJoin(policyAnalyses, eq(policyAnalyses.id, policyActorMentions.analysisId))
     .where(and(eq(policyActorMentions.owner, owner), inArray(policyActorMentions.masterId, ids)));
   const grouped = new Map<string, Map<string, { wording: string; docs: Set<string>; capacities: Set<string>; basis: Set<string> }>>();
   for (const r of rows) {

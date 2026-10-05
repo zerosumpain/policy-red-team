@@ -81,6 +81,53 @@ export const MATERIAL_ROLES = [
   ['other', 'Something else', 'Read it on its own terms and say plainly what kind of document it turned out to be.'],
 ] as const;
 export type MaterialRole = (typeof MATERIAL_ROLES)[number][0];
+
+/**
+ * WHAT A GROUNDING ITEM IS (phase 25): material the reader trusts to judge the
+ * policy BY — never the policy, and never instruction. `MATERIAL_ROLES` less
+ * the two that are the policy speaking (a later draft) or an argument about it
+ * (a critique stays, as something to weigh), plus statistics, guidance and an
+ * evaluation, which are what a policy professional actually reaches for.
+ */
+export const GROUNDING_ROLES = [
+  ['impact_assessment', 'Impact assessment', 'A formal appraisal of the policy\u2019s effects. Compare what it assesses against what the policy asserts, and note what it does not cover.'],
+  ['consultation_response', 'Consultation response', 'A body responding to the policy, in its own interest: evidence about the respondent at least as much as about the policy.'],
+  ['statistics', 'Statistics', 'Published figures. Use them to test what the policy assumes about scale, take-up, cost or capacity; say which year and which population they describe.'],
+  ['guidance', 'Guidance', 'Statutory or operational guidance the policy works within. Use it to test what bodies are actually required or allowed to do.'],
+  ['evaluation', 'Evaluation', 'An evaluation of this or a comparable programme. Weigh it by its method: what it compared against, and how much it could tell apart.'],
+  ['supporting_evidence', 'Supporting evidence', 'Data, analysis or research offered in support of the policy. Test whether it supports what the paper claims, rather than assuming it does.'],
+  ['related_policy', 'Related policy', 'A different instrument the policy interacts with. Look for what only exists because the two coexist.'],
+  ['critique', 'Critique or rebuttal', 'An argument against the policy. Test it as sceptically as the policy itself.'],
+  ['other', 'Something else', 'Read it on its own terms and say plainly what kind of document it turned out to be.'],
+] as const;
+export type GroundingRole = (typeof GROUNDING_ROLES)[number][0];
+export const GROUNDING_ROLE_LABELS: Record<string, string> = Object.fromEntries(GROUNDING_ROLES.map(([k, label]) => [k, label]));
+export const GROUNDING_ROLE_NOTES: Record<string, string> = Object.fromEntries(GROUNDING_ROLES.map(([k, , note]) => [k, note]));
+/** The roles the submission form offers for "Supporting material", in this order. */
+export const SUBMISSION_GROUNDING_ROLES = ['impact_assessment', 'consultation_response', 'statistics', 'guidance', 'evaluation', 'other'] as const satisfies readonly GroundingRole[];
+
+/**
+ * SEVERAL DOCUMENTS, ONE ASSESSMENT (phase 25). The caps that were per
+ * document are now TOTALS across the set — `MAX_BYTES` of uploads,
+ * `MAX_CHARACTERS` of text and `MAX_PAGES` of pages — because every downstream
+ * budget (stage 1's fan-out, the stage clock, the call ceiling) was sized on
+ * one document of that size and is now sized on the set.
+ */
+export const MAX_DOCUMENTS = 6;
+/**
+ * GROUNDING IS BOUNDED PER ITEM AND PER RUN, in characters read. An item longer
+ * than its share is read from the start and the run says where it stopped.
+ * 60,000 characters is ~15,000 tokens: one stage-6 call per item, carrying the
+ * whole of it beside the inventory, well inside `FIT_LIMIT`'s half.
+ */
+export const MAX_GROUNDING_ITEMS = 8;
+export const MAX_GROUNDING_CHARACTERS_PER_ITEM = 60_000;
+export const MAX_GROUNDING_CHARACTERS = 240_000;
+/** One grounding file, and every new grounding file in one submission together. */
+export const MAX_GROUNDING_FILE_BYTES = 5 * 1024 * 1024;
+export const MAX_GROUNDING_FILES_BYTES = 10 * 1024 * 1024;
+/** The digest of one grounding item that the judging stages carry, in characters. */
+export const GROUNDING_DIGEST_CHARACTERS = 700;
 export const MATERIAL_ROLE_LABELS: Record<string, string> = Object.fromEntries(MATERIAL_ROLES.map(([k, label]) => [k, label]));
 export const MATERIAL_ROLE_NOTES: Record<string, string> = Object.fromEntries(MATERIAL_ROLES.map(([k, , note]) => [k, note]));
 
@@ -529,7 +576,16 @@ const actorMaster = z.object({
 });
 const personaTraits = z.array(z.object({ key: z.string().max(60), label: z.string().max(120), value: text, origin: z.enum(ORIGINS), confidence: confidenceSchema }).strict()).max(30);
 export const dataSchemas = {
-  passage: z.object({ documentHash: text }),
+  // Phase 25: which document of the set it comes from. Optional, so every
+  // passage of a one-document run before this parses as it always did — and
+  // reads as document 0, the main paper.
+  passage: z.object({ documentHash: text, documentTitle: z.string().max(300).optional(), documentRole: z.string().max(40).optional(), documentPosition: z.number().int().min(0).optional(), documentCount: z.number().int().min(1).optional() }),
+  /**
+   * GROUNDING MATERIAL (phase 25): one chunk of an item the reader trusts to
+   * judge the policy by. Never a `passage` — "the paper said" is a passage and
+   * only a passage — and minted by the server at stage 0, never by a model.
+   */
+  grounding_passage: z.object({ documentHash: text, groundingTitle: z.string().max(300), groundingRole: z.string().max(40), groundingPosition: z.number().int().min(1), publisher: z.string().max(300).nullable().optional(), publishedOn: z.string().max(60).nullable().optional(), libraryId: z.string().max(60).nullable().optional(), truncated: z.boolean().optional() }),
   claim: z.object({ category: z.enum(['objective', 'problem', 'responsibility', 'decision_right', 'funding', 'dependency', 'data_flow', 'measure', 'constraint', 'risk', 'benefit', 'claim', 'cited_evidence']), notes: text }),
   // `whatItIs` (phase 23): this part of the policy in everyday words, one line.
   // Optional in the shape so every older row parses; the prompt shows it as
@@ -950,7 +1006,7 @@ export const indexedOutputSchema = z.object({ artefacts: z.array(indexedArtefact
 // the profiles are asked for, so a profile can cite it. `MODEL_KINDS` drops it
 // there as everywhere.
 export const STAGE_KINDS: Kind[][] = [
-  ['passage'], ['claim', 'mechanism', 'assumption', 'actor'], ['actor', 'alias', 'resolution_candidate', 'actor_match'],
+  ['passage', 'grounding_passage'], ['claim', 'mechanism', 'assumption', 'actor'], ['actor', 'alias', 'resolution_candidate', 'actor_match'],
   ['edge'], ['profile', 'research_source'], ['research_question', 'research_source'], ['evidence'], ['model', 'assumption', 'research_question', 'research_source'], ['test'], ['scenario', 'assumption', 'research_question', 'research_source'],
   ['exploit', 'assumption', 'research_question', 'research_source'], ['cross_policy'], ['finding', 'recommendation', 'assumption'], ['persona_link'],
   ['causal_chain', 'logic_model', 'assumption', 'research_question', 'research_source'], ['option_appraisal', 'evaluation_plan', 'assumption', 'research_question', 'research_source'],
@@ -967,7 +1023,7 @@ export const STAGE_KINDS: Kind[][] = [
  */
 // Stage 2's model writes ANSWERS (phase 23); the actors are the server's,
 // built from them, and so are the two kinds the old resolution emitted.
-export const MODEL_KINDS: Kind[][] = STAGE_KINDS.map((kinds, stage) => kinds.filter((kind) => kind !== 'research_source' && (stage !== 2 || kind === 'actor_match')));
+export const MODEL_KINDS: Kind[][] = STAGE_KINDS.map((kinds, stage) => kinds.filter((kind) => kind !== 'research_source' && kind !== 'grounding_passage' && (stage !== 2 || kind === 'actor_match')));
 /**
  * WHAT A STAGE IS GIVEN, AS KINDS, IN THE ORDER IT NEEDS THEM.
  *
@@ -995,16 +1051,22 @@ export const MODEL_KINDS: Kind[][] = STAGE_KINDS.map((kinds, stage) => kinds.fil
  * build a per-unit context of their own, and 8 makes no model call.
  */
 export const STAGE_CONTEXT: Partial<Record<number, readonly Kind[]>> = {
-  5: ['assumption', 'claim', 'mechanism', 'actor', 'edge', 'profile', 'research_question', 'research_source'],
-  6: ['claim', 'assumption', 'mechanism', 'actor'],
+  // `grounding_passage` (phase 25) is the reader's grounding material. Stage 6
+  // reads each item IN FULL in a call of its own (the fan-out's own block, which
+  // is never shed); everywhere else it is named here and arrives as ONE DIGEST
+  // PER ITEM (`groundingDigests`), last in the declared order — a few hundred
+  // characters, constant for the whole run, shed first only if nothing else
+  // fits. Stage 5 has it so the research PLANNER sees it before round one.
+  5: ['assumption', 'claim', 'mechanism', 'actor', 'edge', 'profile', 'research_question', 'research_source', 'grounding_passage'],
+  6: ['claim', 'assumption', 'mechanism', 'actor', 'grounding_passage'],
   7: ['assumption', 'mechanism', 'edge', 'actor', 'evidence', 'profile', 'claim', 'research_source'],
   9: ['assumption', 'model', 'test', 'mechanism', 'edge', 'actor', 'evidence', 'profile', 'claim', 'research_source'],
-  10: ['assumption', 'mechanism', 'model', 'scenario', 'test', 'edge', 'actor', 'evidence', 'claim', 'research_source'],
+  10: ['assumption', 'mechanism', 'model', 'scenario', 'test', 'edge', 'actor', 'evidence', 'claim', 'research_source', 'grounding_passage'],
   11: ['mechanism', 'assumption', 'claim', 'actor', 'exploit', 'test', 'model', 'scenario', 'edge'],
   12: ['test', 'model', 'scenario', 'exploit', 'cross_policy', 'assumption', 'evidence', 'mechanism', 'claim', 'actor', 'profile', 'edge', 'research_question', 'research_source'],
-  14: ['mechanism', 'evidence', 'assumption', 'claim', 'research_source'],
-  15: ['logic_model', 'causal_chain', 'finding', 'recommendation', 'evidence', 'assumption', 'mechanism', 'claim', 'exploit', 'test', 'research_source'],
-  16: ['finding', 'recommendation', 'exploit', 'logic_model', 'causal_chain', 'option_appraisal', 'evaluation_plan', 'test', 'model', 'scenario', 'cross_policy', 'assumption', 'evidence', 'mechanism', 'claim', 'actor', 'research_source'],
+  14: ['mechanism', 'evidence', 'assumption', 'claim', 'research_source', 'grounding_passage'],
+  15: ['logic_model', 'causal_chain', 'finding', 'recommendation', 'evidence', 'assumption', 'mechanism', 'claim', 'exploit', 'test', 'research_source', 'grounding_passage'],
+  16: ['finding', 'recommendation', 'exploit', 'logic_model', 'causal_chain', 'option_appraisal', 'evaluation_plan', 'test', 'model', 'scenario', 'cross_policy', 'assumption', 'evidence', 'mechanism', 'claim', 'actor', 'research_source', 'grounding_passage'],
   17: ['assurance_challenge', 'finding', 'recommendation', 'logic_model', 'causal_chain', 'option_appraisal', 'evaluation_plan', 'exploit', 'test', 'model', 'scenario', 'cross_policy', 'assumption', 'evidence', 'mechanism', 'claim', 'actor', 'research_source'],
 };
 /**

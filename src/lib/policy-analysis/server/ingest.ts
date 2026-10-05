@@ -3,12 +3,40 @@ import { extractPdf } from '$lib/jkai/extract/pdf';
 import { extractDocx } from '$lib/jkai/extract/docx';
 import type { DocxBlock } from '$lib/jkai/extract/types';
 import { lookUpQuery, MAX_ABOUT_CHARACTERS, MAX_LOOK_UPS, MAX_NOTE_CHARACTERS, MAX_READER_SOURCES, MAX_SOURCE_FILE_BYTES, MAX_SOURCE_FILES_BYTES } from '../reader-inputs';
-import { artefact, safeSourceUrl, CONCURRENCY_OPTIONS, DEPTHS, EXTRACTIONS, MATERIAL_ROLES, MAX_BYTES, MAX_CHARACTERS, MAX_PAGES, type Artefact, type Concurrency, type Depth, type Extraction, type MaterialRole, type StageOutput } from '../contracts';
+import { artefact, safeSourceUrl, CONCURRENCY_OPTIONS, DEPTHS, EXTRACTIONS, GROUNDING_ROLES, MATERIAL_ROLES, MAX_BYTES, MAX_CHARACTERS, MAX_DOCUMENTS, MAX_GROUNDING_FILE_BYTES, MAX_GROUNDING_FILES_BYTES, MAX_GROUNDING_ITEMS, MAX_PAGES, type Artefact, type Concurrency, type Depth, type Extraction, type GroundingRole, type MaterialRole, type StageOutput } from '../contracts';
 import { isOfferedModel } from '$lib/server/models/catalogue';
 import { isThinkingLevel, thinkingLevelsFor, type ThinkingLevel } from '$lib/models/thinking';
 import { PolicyError } from '../validation';
 
-export type Submission = { title: string; jurisdiction: string | null; policyArea: string | null; context: string | null; depth: Depth; model: string | null; thinkingLevel: ThinkingLevel | null; concurrency: Concurrency | null; extraction: Extraction | null; sharedContextFirst: boolean; sealed: boolean; sealedResearch: boolean; filename: string; mimeType: string; bytes: Buffer; readerSources?: ReaderSourceInput[]; lookUps?: string[] };
+export type Submission = {
+  title: string; jurisdiction: string | null; policyArea: string | null; context: string | null; depth: Depth; model: string | null; thinkingLevel: ThinkingLevel | null; concurrency: Concurrency | null; extraction: Extraction | null; sharedContextFirst: boolean; sealed: boolean; sealedResearch: boolean;
+  /** Document 0, the main paper — the one document every run has always had. */
+  filename: string; mimeType: string; bytes: Buffer;
+  readerSources?: ReaderSourceInput[]; lookUps?: string[];
+  /**
+   * PHASE 25. The main paper's own title, when the reader gave one; the further
+   * documents of the set (an annex, a technical note), in order; grounding
+   * material brought with this submission; and the policy it belongs to, with
+   * which of that policy's library items to use (null: all of them).
+   */
+  documentTitle?: string | null;
+  parts?: DocumentInput[];
+  grounding?: GroundingInput[];
+  policyId?: string | null;
+  policyName?: string | null;
+  useGrounding?: string[] | null;
+};
+/** A further document of the set under assessment (phase 25). */
+export type DocumentInput = { filename: string; mimeType: string; bytes: Buffer; title: string | null };
+/**
+ * Grounding material brought with a submission (phase 25): a file, or a public
+ * page fetched when the run starts — and on an unsealed run saved into the
+ * policy's library, so the next run of the policy has it too.
+ */
+export type GroundingInput = { role: GroundingRole; title: string | null; publisher: string | null; publishedOn: string | null } & (
+  | { kind: 'file'; filename: string; mimeType: string; bytes: Buffer }
+  | { kind: 'page'; url: string }
+);
 /**
  * A source the reader supplied at submission, as the form sent it (phase 22
  * part 2): a file, or an address to be fetched when stage 5 runs.
@@ -41,8 +69,9 @@ export function validateBytes(bytes: Buffer, filename: string, mimeType: string)
   return expected;
 }
 export async function readSubmission(request: Request): Promise<Submission> {
-  // The paper's own 10 MB, plus what the reader may supply beside it.
-  const limit = MAX_BYTES + MAX_SOURCE_FILES_BYTES + 700_000;
+  // The documents' own 10 MB together, plus what the reader may supply beside
+  // them: sources for this run, and grounding material for the policy.
+  const limit = MAX_BYTES + MAX_SOURCE_FILES_BYTES + MAX_GROUNDING_FILES_BYTES + 900_000;
   if (Number(request.headers.get('content-length')) > limit) throw new PolicyError('size', 'The submission exceeds the upload limit.');
   const reader = request.body?.getReader();
   if (!reader) throw new PolicyError('input', 'No submission was received.');
@@ -67,7 +96,10 @@ export async function readSubmission(request: Request): Promise<Submission> {
   const title = str('title', 240);
   if (!title) throw new PolicyError('input', 'Enter a title.');
   const pasted = str('text', MAX_CHARACTERS);
-  const file = form.get('document');
+  // The main paper arrives as `document` (every caller before phase 25) or as
+  // the first row of the Documents section, `document.0`.
+  const named = form.get('document');
+  const file = named && typeof named !== 'string' && named.size > 0 ? named : form.get('document.0');
   const uploaded = file && typeof file !== 'string' && file.size > 0;
   if (uploaded && pasted) throw new PolicyError('input', 'Supply either a document or pasted text.');
   // Without this, an empty submission fell through to the byte check and was told
@@ -123,7 +155,117 @@ export async function readSubmission(request: Request): Promise<Submission> {
   const extraction = (EXTRACTIONS as readonly string[]).includes(askedExtraction) ? askedExtraction as Extraction : null;
   const sharedContextFirst = str('sharedContextFirst', 10) === 'true';
   const { readerSources, lookUps } = await readerInputs(form, str);
-  return { title, jurisdiction: str('jurisdiction', 200) || null, policyArea: str('policyArea', 200) || null, context: str('context', 5000) || null, depth, model, thinkingLevel, concurrency, extraction, sharedContextFirst, sealed, sealedResearch, filename, mimeType, bytes, readerSources, lookUps };
+  const { parts, grounding } = await documentRows(form, str, bytes.length);
+  const policy = policyChoice(form, str, sealed);
+  return { title, jurisdiction: str('jurisdiction', 200) || null, policyArea: str('policyArea', 200) || null, context: str('context', 5000) || null, depth, model, thinkingLevel, concurrency, extraction, sharedContextFirst, sealed, sealedResearch, filename, mimeType, bytes, readerSources, lookUps, documentTitle: str('documentTitle.0', 300) || null, parts, grounding, ...policy };
+}
+
+const UUID_SHAPE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/**
+ * THE DOCUMENTS SECTION (phase 25): every row after the first, which is the
+ * main paper. Numbered fields, as the reader's sources are — `document.1`,
+ * `documentUrl.1`, `documentRole.1`, `documentTitle.1`, `documentPublisher.1`,
+ * `documentDate.1` — because FormData has no arrays and a multipart reader that
+ * keeps the LAST value of a repeated name (which ours did, for files) would
+ * silently keep one document of three.
+ *
+ * Each row takes a role. `policy` is part of the policy under assessment: a
+ * file, decomposed and attacked as the paper. Anything in `GROUNDING_ROLES` is
+ * supporting material: read in full and cited as evidence, never as the paper.
+ *
+ * REFUSED, NOT NARROWED, for the reason `sealed` is: a row the reader filled
+ * and the server dropped is a document they believe was read.
+ *
+ * Totals are enforced HERE, server-side, whatever the form said: the documents
+ * under assessment together within `MAX_BYTES`, at most `MAX_DOCUMENTS` of
+ * them, and new grounding files within their own per-file and total caps.
+ */
+async function documentRows(form: FormData, str: (key: string, max: number) => string, mainBytes: number): Promise<{ parts: DocumentInput[]; grounding: GroundingInput[] }> {
+  const parts: DocumentInput[] = [];
+  const grounding: GroundingInput[] = [];
+  let partBytes = mainBytes;
+  let groundingBytes = 0;
+  for (let i = 1; i < (MAX_DOCUMENTS + MAX_GROUNDING_ITEMS) * 2; i++) {
+    const file = form.get(`document.${i}`);
+    const uploaded = file && typeof file !== 'string' && file.size > 0 ? file : null;
+    const address = str(`documentUrl.${i}`, 2000);
+    const role = str(`documentRole.${i}`, 40) || 'policy';
+    const title = str(`documentTitle.${i}`, 300) || null;
+    const publisher = str(`documentPublisher.${i}`, 300) || null;
+    const publishedOn = str(`documentDate.${i}`, 60) || null;
+    const n = i + 1;
+    if (!uploaded && !address) {
+      if (title || publisher || publishedOn) throw new PolicyError('input', `Document ${n}: attach a file${role === 'policy' ? '' : ' or give its web address'}, or clear the row.`);
+      continue;
+    }
+    if (uploaded && address) throw new PolicyError('input', `Document ${n}: give a file or a web address, not both.`);
+    if (role === 'policy') {
+      if (!uploaded) throw new PolicyError('input', `Document ${n}: a part of the policy must be a file. A web address can be supporting material.`);
+      if (parts.length + 1 >= MAX_DOCUMENTS) throw new PolicyError('input', `An assessment reads at most ${MAX_DOCUMENTS} documents as part of the policy.`);
+      partBytes += uploaded.size;
+      if (partBytes > MAX_BYTES) throw new PolicyError('size', `Document ${n}: the documents under assessment come to more than ${MAX_BYTES / 1024 / 1024} MB together.`);
+      const filename = uploaded.name.replace(/^.*[\\/]/, '').slice(0, 200);
+      const bytes = Buffer.from(await uploaded.arrayBuffer());
+      let mimeType: string;
+      try { mimeType = validateBytes(bytes, filename, uploaded.type); }
+      catch (err) { throw new PolicyError('type', `Document ${n}: ${(err as Error).message}`); }
+      parts.push({ filename, mimeType, bytes, title });
+      continue;
+    }
+    if (!GROUNDING_ROLES.some(([key]) => key === role)) throw new PolicyError('input', `Document ${n}: say whether it is part of the policy or which kind of supporting material it is.`);
+    if (grounding.length >= MAX_GROUNDING_ITEMS) throw new PolicyError('input', `Bring at most ${MAX_GROUNDING_ITEMS} pieces of supporting material at once.`);
+    const common = { role: role as GroundingRole, title, publisher, publishedOn };
+    if (uploaded) {
+      if (uploaded.size > MAX_GROUNDING_FILE_BYTES) throw new PolicyError('size', `Document ${n}: supporting material must be at most ${MAX_GROUNDING_FILE_BYTES / 1024 / 1024} MB a file.`);
+      groundingBytes += uploaded.size;
+      if (groundingBytes > MAX_GROUNDING_FILES_BYTES) throw new PolicyError('size', `Document ${n}: the supporting material comes to more than ${MAX_GROUNDING_FILES_BYTES / 1024 / 1024} MB together.`);
+      const filename = uploaded.name.replace(/^.*[\\/]/, '').slice(0, 200);
+      const bytes = Buffer.from(await uploaded.arrayBuffer());
+      let mimeType: string;
+      try { mimeType = validateBytes(bytes, filename, uploaded.type); }
+      catch (err) { throw new PolicyError('type', `Document ${n}: ${(err as Error).message}`); }
+      grounding.push({ ...common, kind: 'file', filename, mimeType, bytes });
+    } else {
+      const url = safeSourceUrl(address);
+      if (!url) throw new PolicyError('input', `Document ${n}: give a public web address starting https:// or http://.`);
+      grounding.push({ ...common, kind: 'page', url });
+    }
+  }
+  return { parts, grounding };
+}
+
+/**
+ * WHICH POLICY THIS RUN BELONGS TO, and which of its grounding to use.
+ *
+ * `policy` is an existing policy's id, `new` (with `policyName`), or empty —
+ * which on an unsealed run starts a policy named after the paper. A SEALED run
+ * may READ an existing policy's library at submission, copying what it uses
+ * into its own sealed rows, and may not START one: the name would be stored in
+ * the clear beside every other policy, saying what the unpublished paper is.
+ *
+ * `useGrounding.<n>` are the ticked library items. `groundingListed` says the
+ * form drew the list, so no ticks means "none" rather than "the form did not
+ * ask" — an API caller that sends neither gets the whole library, which is
+ * what "attach it once and every run of that policy uses it" promises.
+ */
+function policyChoice(form: FormData, str: (key: string, max: number) => string, sealed: boolean): Pick<Submission, 'policyId' | 'policyName' | 'useGrounding'> {
+  const asked = str('policy', 60);
+  const name = str('policyName', 200) || null;
+  if (asked && asked !== 'new' && !UUID_SHAPE.test(asked)) throw new PolicyError('input', 'Choose a policy from the list, or start a new one.');
+  if (asked === 'new' && !name) throw new PolicyError('input', 'Give the new policy a name.');
+  if (sealed && asked === 'new') throw new PolicyError('input', 'A sealed assessment cannot start a new policy: its name would be kept in the clear. Choose an existing policy, or none.');
+  const listed = str('groundingListed', 10) === 'true';
+  const ticked: string[] = [];
+  for (let i = 0; i < 200; i++) {
+    const id = str(`useGrounding.${i}`, 60);
+    if (id && UUID_SHAPE.test(id)) ticked.push(id);
+  }
+  return {
+    policyId: asked && asked !== 'new' ? asked : null,
+    policyName: asked === 'new' ? name : null,
+    useGrounding: listed || ticked.length ? ticked : null,
+  };
 }
 
 /**
@@ -317,7 +459,28 @@ function docxSections(blocks: DocxBlock[]): Section[] {
  * byte-for-byte what they have always been. Changing them would orphan every
  * `sourceId` in every assessment already stored.
  */
-export async function ingest(bytes: Buffer, filename: string, mimeType: string, idPrefix = ''): Promise<StageOutput & { text: string; metadata: unknown }> {
+/**
+ * PHASE 25: ONE OF SEVERAL. `options` says what a passage is and where it sits:
+ *
+ *   - a further document of the set under assessment is ingested under `d<n>_`
+ *     with its title, role and position in every passage's data, and — when the
+ *     set has more than one document — the title at the head of every label:
+ *     "Annex A · Page 12 · passage 7". A one-document run labels exactly as it
+ *     always has, so nothing about an ordinary paper changes.
+ *   - grounding material is ingested under `g<n>_` as `grounding_passage`, never
+ *     `passage`: the paper is the only thing "the paper said" can quote.
+ */
+export type IngestOptions = {
+  kind?: 'passage' | 'grounding_passage';
+  /** Merged into every passage's `data`. */
+  data?: Record<string, unknown>;
+  /** Put at the head of every label: the document's title, when the set has several. */
+  labelPrefix?: string | null;
+  url?: string | null;
+  /** What a stretch with no page or heading is called. "Policy text" for the paper. */
+  defaultSection?: string;
+};
+export async function ingest(bytes: Buffer, filename: string, mimeType: string, idPrefix = '', options: IngestOptions = {}): Promise<StageOutput & { text: string; metadata: unknown }> {
   validateBytes(bytes, filename, mimeType);
   let text = ''; let metadata: unknown = {}; const warnings: string[] = [];
   let sections: Section[] = [];
@@ -358,7 +521,7 @@ export async function ingest(bytes: Buffer, filename: string, mimeType: string, 
   // was told its PDF might need OCR.
   if (!text.trim()) throw new PolicyError('extraction', 'No readable text was found. A scanned PDF needs OCR before submission, or paste the policy text instead.');
   if (text.length > MAX_CHARACTERS) throw new PolicyError('extraction', `This document holds ${Math.round(text.length / 1000).toLocaleString()},000 characters of text and the limit is ${MAX_CHARACTERS / 1000},000 — roughly ${Math.round(MAX_CHARACTERS / 3000)} pages. Submit it in parts; the cross-policy stage will compare them against each other.`);
-  if (!sections.length) sections = [{ text, page: null, section: 'Policy text' }];
+  if (!sections.length) sections = [{ text, page: null, section: options.defaultSection ?? 'Policy text' }];
   const hash = createHash('sha256').update(bytes).digest('hex');
   const artefacts: Artefact[] = []; let offset = 0;
   // Bound each passage without dropping text; offsets refer to this canonical extraction.
@@ -369,7 +532,8 @@ export async function ingest(bytes: Buffer, filename: string, mimeType: string, 
     const emit = (passage: string, at: number) => {
       if (!passage.trim()) return;
       const id = `${idPrefix}passage_${String(artefacts.length + 1).padStart(4, '0')}`;
-      artefacts.push(artefact(id, 'passage', `${s.section} · passage ${artefacts.length + 1}`, passage, { documentHash: hash }, { origin: 'extracted_fact', confidence: 1, page: s.page, section: s.section, startOffset: offset + at, endOffset: offset + at + passage.length }));
+      const label = `${options.labelPrefix ? `${options.labelPrefix} · ` : ''}${s.section} · passage ${artefacts.length + 1}`;
+      artefacts.push(artefact(id, options.kind ?? 'passage', label, passage, { documentHash: hash, ...options.data }, { origin: options.kind === 'grounding_passage' ? 'external_evidence' : 'extracted_fact', confidence: 1, page: s.page, section: s.section, startOffset: offset + at, endOffset: offset + at + passage.length, url: options.url ?? null }));
     };
     // Fill a passage with whole blocks where the format knew its own structure.
     // The old loop cut every 7,000 characters regardless, which put half a table
@@ -409,4 +573,44 @@ export async function ingest(bytes: Buffer, filename: string, mimeType: string, 
     offset += s.text.length + 2;
   }
   return { artefacts, warnings, text: canonical, metadata };
+}
+
+/**
+ * ONE ITEM FOR A POLICY'S GROUNDING LIBRARY (phase 25), from the library page:
+ * a file or a public web address, its role, and what the reader knows of it.
+ * The role does not degrade, for `readMaterial`'s reason: it tells the model
+ * how to read the document, and a consultation response read as an
+ * evaluation is graded as one.
+ */
+export async function readGroundingItem(request: Request): Promise<GroundingInput> {
+  const limit = MAX_GROUNDING_FILE_BYTES + 200_000;
+  if (Number(request.headers.get('content-length')) > limit) throw new PolicyError('size', `A grounding file must be at most ${MAX_GROUNDING_FILE_BYTES / 1024 / 1024} MB.`);
+  let form: FormData;
+  try { form = await request.formData(); }
+  catch { throw new PolicyError('input', 'Use the grounding library form.'); }
+  const str = (key: string, max: number) => {
+    const v = form.get(key);
+    if (v != null && typeof v !== 'string') throw new PolicyError('input', 'Invalid form field.');
+    const value = (v ?? '').trim();
+    if (value.length > max) throw new PolicyError('input', `${key} exceeds its length limit.`);
+    return value;
+  };
+  const role = str('role', 40);
+  if (!GROUNDING_ROLES.some(([key]) => key === role)) throw new PolicyError('input', 'Say which kind of material this is.');
+  const common = { role: role as GroundingRole, title: str('title', 300) || null, publisher: str('publisher', 300) || null, publishedOn: str('publishedOn', 60) || null };
+  const address = str('url', 2000);
+  const file = form.get('file');
+  const uploaded = file && typeof file !== 'string' && file.size > 0 ? file : null;
+  if (address && uploaded) throw new PolicyError('input', 'Give a file or a web address, not both.');
+  if (address) {
+    const url = safeSourceUrl(address);
+    if (!url) throw new PolicyError('input', 'Give a public web address starting https:// or http://.');
+    return { ...common, kind: 'page', url };
+  }
+  if (!uploaded) throw new PolicyError('input', 'Attach a file or give its web address.');
+  if (uploaded.size > MAX_GROUNDING_FILE_BYTES) throw new PolicyError('size', `A grounding file must be at most ${MAX_GROUNDING_FILE_BYTES / 1024 / 1024} MB.`);
+  const filename = uploaded.name.replace(/^.*[\\/]/, '').slice(0, 200);
+  const bytes = Buffer.from(await uploaded.arrayBuffer());
+  const mimeType = validateBytes(bytes, filename, uploaded.type);
+  return { ...common, kind: 'file', filename, mimeType, bytes };
 }

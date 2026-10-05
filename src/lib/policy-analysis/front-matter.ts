@@ -84,7 +84,9 @@ export function partitionFrontMatter(passages: Artefact[]): { analyse: Artefact[
 }
 
 /** What the assessment says about the pages it did not read. */
-export function skippedNote(skipped: SkippedPage[], total: number): string {
-  const named = skipped.slice(0, 8).map((s) => `${s.page ? `page ${s.page}` : s.label} (${s.reason})`).join(', ');
+export function skippedNote(skipped: (SkippedPage & { document?: string | null })[], total: number): string {
+  // With several documents a page number alone names a page of every one of
+  // them (phase 25): the document goes first.
+  const named = skipped.slice(0, 8).map((s) => `${s.page ? `${s.document ? `${s.document} ` : ''}page ${s.page}` : s.label} (${s.reason})`).join(', ');
   return `${skipped.length} of ${total} pages carry no policy text and were not analysed: ${named}${skipped.length > 8 ? `, and ${skipped.length - 8} more` : ''}. They remain part of the document record.`;
 }

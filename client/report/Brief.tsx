@@ -142,7 +142,7 @@ function Item({ item, name }: { item: BriefItem; name: (artefact: Artefact | nul
             <p>&ldquo;{item.quote.text}&rdquo;</p>
           </blockquote>
           <figcaption className="prt-meta">
-            The paper&rsquo;s own words{item.quote.page ? `, page ${item.quote.page}` : ''}
+            The paper&rsquo;s own words{item.quote.document ? `, ${item.quote.document}` : ''}{item.quote.page ? `, page ${item.quote.page}` : ''}
           </figcaption>
         </figure>
       ) : null}

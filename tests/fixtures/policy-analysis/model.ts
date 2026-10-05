@@ -66,7 +66,12 @@ export function fixtureModel(stage: number, _key: string, raw: unknown, _options
     }
   } else if (stage === 1) {
     const p = one('passage');
-    const common = { refs: [p.id], origin: 'extracted_fact' as const, sourceId: p.id, sourceQuote: 'The Council is accountable for delivery and bears implementation costs.' };
+    // A FURTHER DOCUMENT OF THE SET (phase 25) does not carry the main paper's
+    // sentence, so the fixture quotes its own first sentence instead — still a
+    // verbatim span, so the quote is located like any other.
+    const canonical = 'The Council is accountable for delivery and bears implementation costs.';
+    const quote = p.statement.includes(canonical) ? canonical : (p.statement.match(/[^.!?]{20,}[.!?]/)?.[0] ?? p.statement.slice(0, 80)).trim();
+    const common = { refs: [p.id], origin: 'extracted_fact' as const, sourceId: p.id, sourceQuote: quote };
     items = [
       { ...make('objective', 'claim', { category: 'objective', notes: 'The policy claims this objective; no evaluation is supplied.' }, [p.id]), ...common },
       { ...make('mechanism', 'mechanism', { intervention: 'Shared access programme', implementation: 'Council delivery', notes: 'Funding unspecified', whatItIs: 'A council scheme that gives residents one place to ask for help.' }, [p.id]), ...common, label: 'Shared access programme' },
@@ -133,6 +138,17 @@ export function fixtureModel(stage: number, _key: string, raw: unknown, _options
     items = [make('profile', 'profile', { actorId: a.id, ...fields }, [a.id])];
   } else if (stage === 5) {
     items = [make('question', 'research_question', { importance: 0.9, uncertainty: 0.9, consequence: 0.9, rationale: 'Capacity changes feasibility.', searchStrategy: 'local authority implementation capacity evaluation', gap: 'Capacity is unverified.' }, [one('assumption').id])];
+  } else if (stage === 6 && input.artefacts.some((a) => a.kind === 'grounding_passage')) {
+    // GROUNDING, read in full in a call of its own (phase 25): one evidence row
+    // quoting the material's first sentence, verbatim, graded on what it is —
+    // statistics read in full, so moderate — against the paper's claim.
+    const g = input.artefacts.find((a) => a.kind === 'grounding_passage')!;
+    const c = one('claim');
+    const quote = (g.statement.match(/[^.!?]{20,}[.!?]/)?.[0] ?? g.statement.slice(0, 80)).trim();
+    items = [{
+      ...make('grounding', 'evidence', { claimId: c.id, mechanismId: null, actorId: null, assumptionId: one('assumption').id, sourceId: g.id, evidenceType: 'grounding material read in full', result: 'mixed', sourceQuality: 'Official statistics read in full.', relevance: 'Direct', freshness: 'Dated by its publisher.', dispute: 'The figures show capacity below what the paper assumes.', grade: 'moderate' }, [c.id, g.id, one('assumption').id]),
+      origin: 'external_evidence' as const, sourceId: g.id, sourceQuote: quote,
+    }];
   } else if (stage === 6) {
     const c = one('claim');
     items = [make('evidence', 'evidence', { claimId: c.id, mechanismId: one('mechanism').id, actorId: one('actor').id, assumptionId: one('assumption').id, sourceId: c.sourceId, evidenceType: 'paper claim', result: 'insufficient', sourceQuality: 'Unverified policy proposal.', relevance: 'Direct', freshness: 'Unknown', dispute: 'No independent evaluation.', grade: 'weak' }, [c.id, one('assumption').id])];

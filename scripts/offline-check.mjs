@@ -45,6 +45,14 @@ try {
   // Phase 22 part 2: a source of the reader's own, so the pack has one to tag.
   form.set('sourceUrl.0', 'https://www.example.org/capacity-review');
   form.set('lookUp.0', 'council delivery capacity evaluation');
+  // Phase 25: an annex as part of the paper, and statistics as grounding, so
+  // the pack has a second document to name and a Grounding section to draw.
+  form.set('document.1', new Blob(['Annex A: costings. The annex sets out how the shared access programme is paid for in its first three years. Councils receive a grant for each resident who uses the service, paid quarterly in arrears.'], { type: 'text/plain' }), 'annex.txt');
+  form.set('documentRole.1', 'policy');
+  form.set('documentTitle.1', 'Annex A: costings');
+  form.set('document.2', new Blob(['Local authority workforce statistics, 2025. Councils reported 1,240 vacancies in the advice posts the programme relies on, a rise of a fifth on the year before.'], { type: 'text/plain' }), 'statistics.txt');
+  form.set('documentRole.2', 'statistics');
+  form.set('documentTitle.2', 'Workforce statistics 2025');
   const created = await fetch(`http://127.0.0.1:${PORT}/api/policy-analysis`, { method: 'POST', body: form });
   if (!created.ok) throw new Error(`submit failed: ${created.status} ${await created.text()}`);
   const { id } = await created.json();
@@ -136,6 +144,11 @@ try {
   // Phase 22 part 2: what was checked outside the paper, and the reader's
   // source tagged as theirs — with neither action, which needs a server.
   for (const expected of ['Offline pack check', 'Ways to beat it', 'How this was produced', 'Another explanation', 'What would tell them apart', 'What the report concluded', 'How strong the evidence is', 'Checked outside the paper', 'Supplied by you', 'Asked by you']) {
+    if (!body.includes(expected)) failures.push(`offline page missing "${expected}"`);
+  }
+  // Phase 25: the annex named among the paper's documents, and the grounding
+  // it was judged against, with its tag — from file://, nothing fetched.
+  for (const expected of ['What it read', 'Annex A: costings', 'What it was judged against', 'Workforce statistics 2025', 'Grounding', 'The grounding material']) {
     if (!body.includes(expected)) failures.push(`offline page missing "${expected}"`);
   }
   for (const absent of ['I have a source for this', 'Look this up']) {

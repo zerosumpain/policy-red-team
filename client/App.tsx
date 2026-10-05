@@ -56,6 +56,8 @@ const ReviewActor = lazy(() => import('./pages/Register').then((m) => ({ default
 const ReviewDecision = lazy(() => import('./pages/Register').then((m) => ({ default: m.ReviewDecision })));
 const Guide = lazy(() => import('./pages/Guide').then((m) => ({ default: m.Guide })));
 const GuideChapter = lazy(() => import('./pages/Guide').then((m) => ({ default: m.GuideChapter })));
+const GroundingIndex = lazy(() => import('./pages/Grounding').then((m) => ({ default: m.GroundingIndex })));
+const GroundingPolicy = lazy(() => import('./pages/Grounding').then((m) => ({ default: m.GroundingPolicy })));
 const PersonaRegister = lazy(() => import('./pages/PersonaIdentity').then((m) => ({ default: m.PersonaRegister })));
 const PersonaMerge = lazy(() => import('./pages/PersonaIdentity').then((m) => ({ default: m.PersonaMerge })));
 const PersonaMergeConfirm = lazy(() => import('./pages/PersonaIdentity').then((m) => ({ default: m.PersonaMergeConfirm })));
@@ -162,6 +164,9 @@ export function App() {
       <Route path="/guide/4" element={<Template wide><GuideChapter n={4} /></Template>} />
       <Route path="/guide/5" element={<Template wide><GuideChapter n={5} /></Template>} />
       <Route path="/guide/6" element={<Template wide><GuideChapter n={6} /></Template>} />
+      {/* Phase 25: what each policy is judged against, reused by every run of it. */}
+      <Route path="/grounding" element={<Template><GroundingIndex /></Template>} />
+      <Route path="/grounding/:id" element={<Template backLink={{ href: '/grounding', text: 'Back to the grounding library' }}><GroundingPolicy /></Template>} />
       {/* The design system, kept as a route: it is what `npm run a11y` scans and
           the cheapest place to argue about a component before it is spread over
           five pages. */}
