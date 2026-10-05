@@ -51,6 +51,7 @@ const BodiesAcross = lazy(() => import('./pages/Bodies').then((m) => ({ default:
 const BodiesClashes = lazy(() => import('./pages/Bodies').then((m) => ({ default: m.BodiesClashes })));
 const BodiesGroups = lazy(() => import('./pages/Bodies').then((m) => ({ default: m.BodiesGroups })));
 const Guide = lazy(() => import('./pages/Guide').then((m) => ({ default: m.Guide })));
+const GuideChapter = lazy(() => import('./pages/Guide').then((m) => ({ default: m.GuideChapter })));
 const PersonaRegister = lazy(() => import('./pages/PersonaIdentity').then((m) => ({ default: m.PersonaRegister })));
 const PersonaMerge = lazy(() => import('./pages/PersonaIdentity').then((m) => ({ default: m.PersonaMerge })));
 const PersonaMergeConfirm = lazy(() => import('./pages/PersonaIdentity').then((m) => ({ default: m.PersonaMergeConfirm })));
@@ -136,7 +137,20 @@ export function App() {
           with the same id, so the redirect is a prefix swap. */}
       <Route path="/personas" element={<Navigate replace to={HUB} />} />
       <Route path="/personas/*" element={<PersonasRedirect />} />
+      {/*
+        HOW TO READ A RED-TEAM REPORT (phase 26): the guide's front page and a
+        route per chapter. WRITTEN OUT, NOT `/guide/:n`, because `npm run a11y`
+        reads its routes off this file and skips parameterised ones — six
+        literal lines are six pages the gate audits, and a chapter number
+        nothing serves is a missing route rather than a blank page.
+      */}
       <Route path="/guide" element={<Template backLink={{ href: '/' }}><Guide /></Template>} />
+      <Route path="/guide/1" element={<Template wide><GuideChapter n={1} /></Template>} />
+      <Route path="/guide/2" element={<Template wide><GuideChapter n={2} /></Template>} />
+      <Route path="/guide/3" element={<Template wide><GuideChapter n={3} /></Template>} />
+      <Route path="/guide/4" element={<Template wide><GuideChapter n={4} /></Template>} />
+      <Route path="/guide/5" element={<Template wide><GuideChapter n={5} /></Template>} />
+      <Route path="/guide/6" element={<Template wide><GuideChapter n={6} /></Template>} />
       {/* The design system, kept as a route: it is what `npm run a11y` scans and
           the cheapest place to argue about a component before it is spread over
           five pages. */}

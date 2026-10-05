@@ -57,10 +57,14 @@ export function hubPath(slug: string, query?: string): string {
 }
 
 /**
- * "How to read a report". A short page today; the guide phase 26 builds takes
- * the same address, so the navigation item never has to move.
+ * "How to read a report": the guide's front page, with a chapter at
+ * `/guide/1` … `/guide/6` (phase 26). Phase 24 put a short page here first so
+ * the navigation item never had to move.
  */
 export const GUIDE = '/guide';
+
+/** One chapter of the guide. Kept here, beside `GUIDE`, so the report's "?" links need no guide module. */
+export const guideChapter = (n: number) => `${GUIDE}/${n}`;
 
 /** "seen in 3 policies" — the figure a link to a body's page carries. */
 export function seenIn(papers: number): string {
