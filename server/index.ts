@@ -34,6 +34,7 @@ import { sendJson } from './http';
 import { client, DATA_DIR, db } from '$lib/db';
 import { syncRegister } from '$lib/policy-analysis/server/register';
 import { upgradePersonaLibrary } from '$lib/policy-analysis/server/personas';
+import { backfillRegisterOnce } from '$lib/policy-analysis/server/actor-register';
 import { migrate } from '../scripts/migrate.mjs';
 import { drain, runWorker } from '$lib/worker';
 import { modelAccessProblem } from '$lib/llm/client';
@@ -293,6 +294,17 @@ try {
   }
 } catch (err) {
   console.warn(`persona library: the upgrade did not run (${(err as Error).message}). Assessments are unaffected.`);
+}
+/*
+ * THE MASTER LIST OF ACTORS, seeded once (phase 23): a kind and a status for
+ * every persona, and the finished runs' actors mapped onto it by rule. No
+ * model. Marked in the migrations ledger, so it never runs twice.
+ */
+try {
+  const seeded = await db.transaction((tx) => backfillRegisterOnce(tx));
+  if (seeded) console.log(`master list of actors: ${seeded.after.entries} entries (${seeded.after.confirmed} confirmed, ${seeded.after.proposed} proposed), ${seeded.after.mentions} mentions from ${seeded.runs.length} finished runs`);
+} catch (err) {
+  console.warn(`master list of actors: the backfill did not run (${(err as Error).message}). Assessments are unaffected.`);
 }
 
 // The long-running loop picks up anything left running by a previous process —
