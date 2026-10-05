@@ -21,7 +21,7 @@ import { fileURLToPath } from 'node:url';
 import JSZip from 'jszip';
 
 const ROOT = path.resolve(fileURLToPath(new URL('..', import.meta.url)));
-const PORT = 5297;
+const PORT = Number(process.env.OFFLINE_PORT ?? 5297); // overridable so parallel worktrees can check at once
 const failures = [];
 const note = (m) => console.log(`  ${m}`);
 

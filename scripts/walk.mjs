@@ -21,7 +21,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const ROOT = path.resolve(fileURLToPath(new URL('..', import.meta.url)));
-const PORT = 5299;
+const PORT = Number(process.env.WALK_PORT ?? 5299); // overridable so parallel worktrees can walk at once
 const failures = [];
 const note = (m) => console.log(`  ${m}`);
 
