@@ -6,7 +6,7 @@ import { scoreExploits } from './exposure';
 import { isPlay } from './cleared';
 import { clampWarnings, PolicyError, stampProfileForm, triageArtefacts, triageOutput } from './validation';
 import { modelApplicability } from './models';
-import { crossIdentityHints, preserveAmbiguity } from './entities';
+import { crossIdentityHints } from './entities';
 import { runPolicyTests } from './tests';
 import { documentShingles, quotesDocument } from './query-guard';
 import { partitionFrontMatter, skippedNote } from './front-matter';
@@ -17,6 +17,7 @@ import { isAffectedGroup, type PersonaPrior } from './personas';
 import { patternBrief } from './patterns';
 import { reconcileKeyJudgements } from './judgements';
 import { evidenceArtefacts, isBodyEvidence, type BodyEvidenceRecord } from './body-evidence';
+import { assemble, fallbackFor, fromModel, isGroupOfPeople, matchDeterministic, registerTree, type RegisterPlan, type RegisterView } from './actor-register';
 
 /**
  * Compact summaries of this reader's OTHER completed assessments, for stage 11.
@@ -36,6 +37,12 @@ export type BodyEvidence = (actors: Artefact[]) => Promise<{ bundles: { actorId:
 /** Which GOV.UK register body each actor is, where the register knows it: actor id → body id. */
 export type RegisterBodies = (actors: Artefact[]) => Promise<Map<string, string>>;
 /**
+ * The reader's MASTER LIST OF ACTORS, read once for stage 2 (phase 23). Read
+ * only: what a run proposes goes back through the worker's commit, and never
+ * at all from a sealed run.
+ */
+export type ActorRegister = () => Promise<RegisterView>;
+/**
  * `concurrency` lives HERE and not on `StageInput`, and that is load-bearing.
  *
  * `StageInput` is spread into the model-call payload, and `provider.ts` hashes
@@ -45,7 +52,7 @@ export type RegisterBodies = (actors: Artefact[]) => Promise<Map<string, string>
  * How many agents a stage uses is how it is EXECUTED, never what the model is
  * asked, so it belongs beside `signal` with the other execution concerns.
  */
-export type PipelineDeps = { model: ModelCall; research: Research; signal: AbortSignal; neighbours?: Neighbours; personas?: Personas; bodyEvidence?: BodyEvidence; registerBodies?: RegisterBodies; concurrency?: Concurrency | null; passKind?: PassKind | null; material?: MaterialBrief | null; reader?: ReaderBrought | null; extraction?: Extraction | null; sharedContextFirst?: boolean | null; onProgress?: (phase: string) => void };
+export type PipelineDeps = { model: ModelCall; research: Research; signal: AbortSignal; neighbours?: Neighbours; personas?: Personas; bodyEvidence?: BodyEvidence; registerBodies?: RegisterBodies; register?: ActorRegister; concurrency?: Concurrency | null; passKind?: PassKind | null; material?: MaterialBrief | null; reader?: ReaderBrought | null; extraction?: Extraction | null; sharedContextFirst?: boolean | null; onProgress?: (phase: string) => void };
 
 /**
  * What the reader brought to the research step at submission (phase 22 part
@@ -133,7 +140,17 @@ const CONCURRENT_EVENT_CODES = new Set(['provider']);
 const MAX_STAGE_ARTEFACTS = 4000;
 const MAX_REFS = 200;
 
-export async function executeStage(input: StageInput, deps: PipelineDeps): Promise<StageOutput & { rejected: number }> {
+/**
+ * How many unmatched names one matching call carries. The Best Start run left
+ * about a hundred after the rules; one call holds them, and a paper twice its
+ * size makes two that share the register tree as their cached prefix.
+ */
+export const MATCH_ITEMS = 120;
+/** T1: at most this many actors share one stage-3 call, and no more than this many mentions between them. */
+export const GRAPH_BATCH = 6;
+export const GRAPH_BATCH_MENTIONS = 40;
+
+export async function executeStage(input: StageInput, deps: PipelineDeps): Promise<StageOutput & { rejected: number; register?: RegisterPlan }> {
   const { stage } = input;
   const limits = DEPTH_LIMITS[input.depth ?? 'standard'];
   /**
@@ -182,6 +199,15 @@ export async function executeStage(input: StageInput, deps: PipelineDeps): Promi
    */
   const send = async (key: string, context: Artefact[], slot: string, extra: Record<string, unknown> = {}, callSignal?: AbortSignal) => {
     deps.signal.throwIfAborted();
+    // `lead` goes BEFORE the artefacts and the call's own id prefix (phase 23):
+    // it is what every call of the stage shares — the register tree — and a
+    // prompt cache only matches a leading prefix. Absent everywhere else, so no
+    // other stage's payload, and no cached reply, changes by a byte.
+    const { lead, ...rest } = extra as { lead?: Record<string, unknown> };
+    if (lead) {
+      const { artefacts: _ignored, ...head } = input;
+      return deps.model(stage, key, { ...head, ...lead, artefacts: context, idPrefix: `s${stage}_${slot}_`, targetActorId: null, ...rest }, callSignal ? { signal: callSignal } : undefined);
+    }
     // The call's own signal rides OUTSIDE the payload: the payload is hashed for
     // the response cache, and how a call may be withdrawn is not what it asks.
     return deps.model(stage, key, { ...input, artefacts: context, idPrefix: `s${stage}_${slot}_`, targetActorId: stage === 3 || stage === 4 || stage === 10 || stage === PERSONA_STAGE ? key : null, targetPattern: stage === 7 ? key : null, targetScenario: stage === 9 ? key : null, targetMechanismId: stage === THEORY_STAGE ? key : null, targetCategory: stage === ASSURANCE_STAGE ? key : null, modelLibrary: stage === 7 ? modelApplicability(input.artefacts) : undefined, ...extra }, callSignal ? { signal: callSignal } : undefined);
@@ -551,6 +577,65 @@ export async function executeStage(input: StageInput, deps: PipelineDeps): Promi
   };
 
   const hypotheses = input.artefacts.filter((a) => a.kind === 'assumption').map((a) => a.id);
+
+  /**
+   * STAGE 2 AGAINST THE MASTER LIST OF ACTORS — phase 23, `actor-register.ts`.
+   *
+   * The rules place what they can; ONE call (more only for a very long paper)
+   * answers for the rest, every call handed the same register tree first so it
+   * caches; one more call asks again for anything left unanswered; and what is
+   * still unanswered keeps its own name as a proposal. Then the server folds
+   * every answer into one actor per master actor — so no call can duplicate
+   * another, which is what three independent calls did on the Best Start run.
+   *
+   * Nothing is written here. The plan rides back to the worker, which writes it
+   * inside the stage's own commit, and only for an unsealed run.
+   */
+  let registerPlan: RegisterPlan | null = null;
+  const matchIntoRegister = async (read: NonNullable<PipelineDeps['register']>): Promise<RegisterPlan> => {
+    let view: RegisterView = { entries: [], rulings: [], bodies: null };
+    try { view = await read(); }
+    catch {
+      deps.signal.throwIfAborted();
+      output.warnings.push('The master list of actors could not be read, so this paper\u2019s actors were matched against each other only.');
+    }
+    const mentions = input.artefacts.filter((a) => a.kind === 'actor');
+    const byId = new Map(mentions.map((m) => [m.id, m]));
+    const found = matchDeterministic(mentions, view);
+    const resolutions = [...found.resolutions];
+    let people = found.people;
+    const answered = new Set(resolutions.map((r) => r.mentionId));
+    if (found.items.length) {
+      const tree = registerTree(view.entries, [...found.proposals.values()]);
+      const ask = async (items: typeof found.items, key: string) => {
+        const before = output.artefacts.length;
+        await attempt(key, [], `Matching ${items.length} name${items.length === 1 ? '' : 's'} to the master list of actors`, { lead: { register: tree.text }, items });
+        const answers = output.artefacts.slice(before).filter((a) => a.kind === 'actor_match');
+        // An answer is not an artefact of the assessment; the actors made from it are.
+        output.artefacts = output.artefacts.slice(0, before).concat(output.artefacts.slice(before).filter((a) => a.kind !== 'actor_match'));
+        const read = fromModel(answers, items, tree.refs, view, found.proposals, byId);
+        people += read.people;
+        resolutions.push(...read.resolutions);
+        for (const r of read.resolutions) answered.add(r.mentionId);
+      };
+      for (let i = 0; i < found.items.length; i += MATCH_ITEMS) {
+        const chunk = found.items.slice(i, i + MATCH_ITEMS);
+        await ask(chunk, found.items.length <= MATCH_ITEMS ? 'match' : `match${i / MATCH_ITEMS + 1}`);
+      }
+      // ONE more ask for exactly what went unanswered, as `unclaimedMentions`
+      // always did — same tree first, so it reads from the cache too.
+      const missed = found.items.filter((item) => item.mentions.some((id) => !answered.has(id)));
+      if (missed.length) await ask(missed, 'unanswered');
+      resolutions.push(...fallbackFor(found.items, answered, byId, found.proposals));
+    }
+    const built = assemble(mentions, resolutions, found.proposals, view);
+    output.artefacts.push(...built.actors);
+    output.warnings.push(...built.notes);
+    if (people) output.warnings.push(`${people} mention${people === 1 ? ' named a private individual and was' : 's named private individuals and were'} left out of the actors. This service keeps no profile of a named person; a public office is kept by its title.`);
+    const fellBack = resolutions.filter((r) => r.basis === 'fallback').length;
+    if (fellBack) output.warnings.push(`${fellBack} of ${mentions.length} source mentions were not matched by the model and were kept under their own names as proposed actors for the reader to review.`);
+    return built.plan;
+  };
   /**
    * THE PLAYS, GROUPED AND RANKED, for the stages that write about them.
    *
@@ -741,6 +826,10 @@ export async function executeStage(input: StageInput, deps: PipelineDeps): Promi
         extra: { protect: [passage.id], indexed: { id: passage.id, text: passage.statement, list } },
       };
     }));
+  } else if (stage === 2) {
+    // A run with no list to read (a test, the CLI with no owner library) still
+    // matches its own mentions against each other, by the same rules.
+    registerPlan = await matchIntoRegister(deps.register ?? (async () => ({ entries: [], rulings: [], bodies: null })));
   } else if (stage === 3) {
     /**
      * ONE CALL PER BODY, not one call for the entire policy.
@@ -1358,24 +1447,6 @@ export async function executeStage(input: StageInput, deps: PipelineDeps): Promi
     const missing = kinds('claim', 'mechanism', 'assumption', 'actor');
     if (missing.length) throw new PolicyError(fault.last?.code ?? 'coverage', `The document did not yield the required claim, mechanism, assumption and actor inventory.${fault.last ? ` Last reason: ${fault.last.message}` : ''}`);
   }
-  if (stage === 2) {
-    // A real 20-page policy yields ~50 source mentions, and asking one call to
-    // claim every last one of them is the all-or-nothing rule again: on
-    // 2026-09-09 a live run reached this stage with 224 artefacts and died here.
-    // So: name what was missed and ask for JUST those, twice, then require a
-    // strict majority and record the rest as a gap the reader can see.
-    const mentions = input.artefacts.filter((a) => a.kind === 'actor');
-    const unclaimed = () => mentions.filter((m) => !output.artefacts.some((a) => a.kind === 'actor' && ((a.data.mentions as string[]) ?? []).includes(m.id)));
-    for (let round = 1; round <= 2; round++) {
-      const missed = unclaimed();
-      if (!missed.length) break;
-      await attempt(`unclaimed${round}`, [...input.artefacts.filter((a) => a.kind === 'actor'), ...output.artefacts.filter((a) => a.kind === 'actor')], `${missed.length} unresolved source mention${missed.length === 1 ? '' : 's'}`, { unclaimedMentions: missed.map((m) => ({ id: m.id, label: m.label })) });
-    }
-    output.artefacts = preserveAmbiguity(output.artefacts, input.artefacts);
-    const missed = unclaimed();
-    if (missed.length * 2 >= mentions.length) throw new PolicyError('coverage', `Entity resolution claimed only ${mentions.length - missed.length} of ${mentions.length} source mentions.${fault.last ? ` Last reason: ${fault.last.message}` : ''}`);
-    if (missed.length) output.warnings.push(`${missed.length} of ${mentions.length} source mentions were never resolved into a named body: ${missed.slice(0, 8).map((m) => m.label).join(', ')}${missed.length > 8 ? `, and ${missed.length - 8} more` : ''}. Those actors are absent from the graph, the profiles and the red team.`);
-  }
   if (stage === 3) {
     if (kinds('edge').length) throw new PolicyError('coverage', 'The graph stage did not produce any inspectable relationships.');
     // "One node and one edge survived" is not a graph. Every later structural
@@ -1723,7 +1794,7 @@ export async function executeStage(input: StageInput, deps: PipelineDeps): Promi
       warnings.push('1 of 1 key judgement sections were not assessed: the revised assessment came back with no usable key judgement, after the model was asked a second time for one, so the report leads with its findings instead. This is a limit of this run, not a gap in the paper.');
     }
   }
-  return { artefacts: kept, warnings: clampWarnings(warnings), rejected };
+  return { artefacts: kept, warnings: clampWarnings(warnings), rejected, ...(registerPlan ? { register: registerPlan } : {}) };
 }
 
 /**

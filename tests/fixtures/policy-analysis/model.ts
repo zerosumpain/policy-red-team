@@ -6,6 +6,7 @@ export function fixtureModel(stage: number, _key: string, raw: unknown, _options
   const one = (kind: Artefact['kind']) => input.artefacts.find((a) => a.kind === kind && (kind !== 'actor' || stage < 3 || a.id.startsWith('s2_')))!;
   const make = (id: string, kind: Artefact['kind'], data: Record<string, unknown>, refs: string[], statement = 'Synthetic fixture assessment; not a real policy conclusion.') => artefact(`${prefix}${id}`, kind, `Synthetic ${kind} ${id}`, statement, data, { refs, confidence: 0.5 });
   let items: Artefact[] = [];
+  const items_: Artefact[] = [];
   /**
    * A PASS. Keyed on the step within the block rather than on the ordinal, so
    * the same fixture serves pass 1, pass 2 and pass 7.
@@ -71,16 +72,47 @@ export function fixtureModel(stage: number, _key: string, raw: unknown, _options
       { ...make('mechanism', 'mechanism', { intervention: 'Shared access programme', implementation: 'Council delivery', notes: 'Funding unspecified' }, [p.id]), ...common },
       make('assumption', 'assumption', { importance: 0.9, uncertainty: 0.9, consequence: 0.9, notes: 'Sufficient capacity is assumed.' }, [p.id, `${prefix}mechanism`, `${prefix}actor`]),
       { ...make('actor', 'actor', { entityType: 'local_authority', aliases: ['Council'], mentions: [p.id], ambiguity: 'None within this synthetic fixture.', dates: [], parent: null }, [p.id]), ...common, label: 'Council' },
+      // PHASE 23: enough of a cast to exercise the master list of actors — a
+      // body the GOV.UK register knows, the same council named twice, a
+      // category, a programme that is not an actor, and a named private
+      // individual who must never become one.
+      ...[
+        ['actor_dfe', 'Department for Education', 'department', 'The Department for Education commissions the Council.'],
+        ['actor_councils', 'Councils', 'local_authority', 'Councils deliver the shared access programme.'],
+        ['actor_providers', 'Providers', 'provider', 'Providers supply data to the Council.'],
+        ['actor_programme', 'Shared access programme', 'programme', 'The shared access programme is delivered by the Council.'],
+        ['actor_person', 'Jane Smith', 'person', 'Jane Smith is a resident who uses the service.'],
+      ].map(([id, label, entityType, statement]) => ({ ...make(id, 'actor', { entityType, aliases: [], mentions: [p.id], ambiguity: 'None within this synthetic fixture.', dates: [], parent: null }, [p.id], statement), ...common, label })),
     ];
+  } else if (stage === 2 && Array.isArray((raw as { items?: unknown }).items)) {
+    // THE MASTER-LIST MATCH (phase 23): the answers a model would give for the
+    // names the rules could not place. A name already on the register tree is
+    // that entry; a programme is not an actor, run by the first other name; a
+    // person with no role is a named individual; anything else is new.
+    const asked = (raw as { items: { item: string; mentions: string[]; said: string; type: string; hint?: string }[] }).items;
+    const tree = String((raw as { register?: unknown }).register ?? '');
+    const onTree = (said: string) => tree.split('\n').map((line) => /^([rn]\d+) (.*?) \[/.exec(line)).find((m) => m && m[2].toLowerCase().replace(/s$/, '') === said.toLowerCase().replace(/s$/, ''))?.[1] ?? null;
+    const runner = asked.find((i) => i.hint !== 'programme' && i.hint !== 'person');
+    asked.forEach((item, i) => {
+      const capacities = item.mentions.map((mentionId) => ({ mentionId, capacity: item.type === 'provider' ? 'delivers' : 'decides' }));
+      const answer = (data: Record<string, unknown>, label = item.said) => ({ ...make(`match_${i}`, 'actor_match', { mentions: item.mentions, capacities, partOf: null, kindOf: null, runBy: null, matchId: null, kind: null, whatItIs: null, notActor: null, ...data }, item.mentions, `What the paper calls ${item.said}.`), label });
+      const known = onTree(item.said);
+      if (known) items_.push(answer({ answer: 'existing', matchId: known }));
+      else if (item.hint === 'programme') items_.push(answer({ answer: 'not_actor', notActor: 'programme', runBy: runner?.said ?? null }));
+      else if (item.hint === 'person') items_.push(answer({ answer: 'not_actor', notActor: 'named_person' }));
+      else items_.push(answer({ answer: 'new', kind: item.type === 'provider' ? 'sector_or_category' : 'organisation', whatItIs: `A synthetic ${item.type.replaceAll('_', ' ')} used only by automated tests.` }));
+    });
+    items = items_;
   } else if (stage === 2) {
     const a = one('actor');
     items = [make('council', 'actor', { ...a.data, mentions: [a.id] }, [a.id])];
   } else if (stage === 3) {
-    const a = input.artefacts.find((a) => a.kind === 'actor' && a.id.startsWith('s2_'))!;
     const m = one('mechanism');
     // Edges only: the `node` kind the graph stage used to emit alongside them was
-    // rendered by nothing and is retired.
-    items = [{ ...make('edge', 'edge', { notes: 'Paper assigns responsibility; authority not documented.' }, [a.id, m.id]), fromId: a.id, toId: m.id, relation: 'is_accountable_for', temporal: 'proposed' }];
+    // rendered by nothing and is retired. A batched call (phase 23) names
+    // several bodies, and each gets its own edge.
+    const targets = input.targetActorIds?.length ? input.targetActorIds : [input.targetActorId ?? input.artefacts.find((a) => a.kind === 'actor' && a.id.startsWith('s2_'))!.id];
+    items = targets.map((id, i) => ({ ...make(i ? `edge_${i}` : 'edge', 'edge', { notes: 'Paper assigns responsibility; authority not documented.' }, [id, m.id]), fromId: id, toId: m.id, relation: 'is_accountable_for' as const, temporal: 'proposed' as const }));
   } else if (stage === 4 && input.targetActorIds?.length) {
     // A SHORT call: one five-field profile per listed body, as instruction 4 asks.
     items = input.targetActorIds.map((id, i) => {

@@ -728,7 +728,7 @@ describe('an identifier that names nothing costs the mention, not the artefact',
   });
 });
 
-describe('entity resolution asks again for what it missed', () => {
+describe('matching into the master list asks again for what it missed, and never drops a name', () => {
   const source = passage('passage_0001');
   const mention = (n: number, label: string) =>
     artefact(`s1_000_actor_${n}`, 'actor', label, `${label} is named in the policy.`, { entityType: 'provider', aliases: [], mentions: [source.id], ambiguity: 'none', dates: [], parent: null }, { refs: [source.id], origin: 'extracted_fact', sourceId: source.id, sourceQuote: 'what landlords achieve' });
@@ -736,42 +736,49 @@ describe('entity resolution asks again for what it missed', () => {
   const input = { stage: 2, title: 'A policy', jurisdiction: null, policyArea: null, context: null, artefacts: [source, ...mentions] };
   const research = async () => ({ artefacts: [], warnings: [] });
   const signal = new AbortController().signal;
+  type Item = { item: string; mentions: string[]; said: string };
 
-  /** Resolve exactly the mentions named, as a real second pass would. */
-  const resolve = (prefix: string, claim: Artefact[]) => ({
-    artefacts: claim.map((m, i) => artefact(`${prefix}canonical_${i}`, 'actor', `Canonical ${m.label}`, 'A named body.', { entityType: 'provider', aliases: [], mentions: [m.id], ambiguity: 'none', dates: [], parent: null }, { refs: [m.id] })),
+  /** Answer "new" for exactly the items named, as a real model would. */
+  const answer = (prefix: string, items: Item[]) => ({
+    artefacts: items.map((item, i) => artefact(`${prefix}match_${i}`, 'actor_match', item.said, 'A named body.', { mentions: item.mentions, answer: 'new', kind: 'organisation' }, { refs: item.mentions })),
     warnings: [],
   });
 
-  it('claims every mention across a main call and a top-up', async () => {
+  it('answers every mention across one call and one more ask', async () => {
     const model = vi.fn(async (_stage: number, key: string, raw: unknown) => {
-      const payload = raw as { idPrefix: string; unclaimedMentions?: { id: string; label: string }[] };
-      if (payload.unclaimedMentions) {
-        expect(payload.unclaimedMentions).toHaveLength(3);
-        return resolve(payload.idPrefix, mentions.filter((m) => payload.unclaimedMentions!.some((u) => u.id === m.id)));
+      const payload = raw as { idPrefix: string; items: Item[]; register: string };
+      expect(typeof payload.register).toBe('string');
+      if (key === 'unanswered') {
+        expect(payload.items).toHaveLength(3);
+        return answer(payload.idPrefix, payload.items);
       }
-      return resolve(payload.idPrefix, mentions.slice(0, 3));
+      return answer(payload.idPrefix, payload.items.slice(0, 3));
     });
     const output = await executeStage(input, { model, research, signal });
     expect(model).toHaveBeenCalledTimes(2);
+    expect(model.mock.calls.map((c) => c[1])).toEqual(['match', 'unanswered']);
     expect(output.artefacts.filter((a) => a.kind === 'actor')).toHaveLength(6);
-    expect(output.warnings.filter((w) => w.includes('never resolved'))).toEqual([]);
+    expect(output.artefacts.some((a) => a.kind === 'actor_match')).toBe(false);
+    expect(output.warnings.filter((w) => w.includes('not matched by the model'))).toEqual([]);
   });
 
-  it('records the stragglers as a gap rather than failing over them', async () => {
+  it('keeps a name nobody answered for as a proposed actor rather than dropping it', async () => {
     const model = async (_stage: number, _key: string, raw: unknown) => {
-      const payload = raw as { idPrefix: string; unclaimedMentions?: { id: string; label: string }[] };
+      const payload = raw as { idPrefix: string; items: Item[] };
       // Never manages the last one, however many times it is asked.
-      return resolve(payload.idPrefix, mentions.slice(0, 5).filter((m) => !payload.unclaimedMentions || payload.unclaimedMentions.some((u) => u.id === m.id)));
+      return answer(payload.idPrefix, payload.items.filter((i) => i.said !== 'Stakeholders'));
     };
     const output = await executeStage(input, { model, research, signal });
-    expect(output.warnings.join(' ')).toContain('1 of 6 source mentions were never resolved');
-    expect(output.warnings.join(' ')).toContain('Stakeholders');
+    const stakeholders = output.artefacts.find((a) => a.kind === 'actor' && a.label === 'Stakeholders');
+    expect(stakeholders?.data.master).toMatchObject({ id: null, status: 'new' });
+    expect(output.warnings.join(' ')).toContain('1 of 6 source mentions were not matched by the model');
   });
 
-  it('still fails when it cannot claim a majority', async () => {
-    const model = async (_stage: number, _key: string, raw: unknown) => resolve((raw as { idPrefix: string }).idPrefix, mentions.slice(0, 2));
-    await expect(executeStage(input, { model, research, signal })).rejects.toThrow('claimed only 2 of 6 source mentions');
+  it('never fails the stage for want of an answer', async () => {
+    const model = async () => ({ artefacts: [], warnings: [] });
+    const output = await executeStage(input, { model, research, signal });
+    expect(output.artefacts.filter((a) => a.kind === 'actor')).toHaveLength(6);
+    expect(output.warnings.join(' ')).toContain('6 of 6 source mentions were not matched by the model');
   });
 });
 

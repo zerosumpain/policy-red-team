@@ -11,6 +11,7 @@ import { loadArtefacts, neighbourSummaries, persistArtefacts, queueStage, reader
 import { resolveReaderInputs } from './reader-brought';
 import { sealRow, unsealRow } from './seal';
 import { applyPersonaLinks, priorsFor } from './personas';
+import { applyRegisterPlan, loadRegisterView, stampMasterIds } from './actor-register';
 import { actorBodies, evidenceForActors } from './body-evidence';
 import { documentShingles } from '../query-guard';
 import { chosenEngine } from '$lib/server/search';
@@ -317,11 +318,39 @@ export async function executePolicyRun(claimed: { id: string; input: Record<stri
           lookUp: pass.lookUp ? String(pass.lookUp) : null,
         }
       : null;
-    const output = extracted ?? await executeStage({ stage: started.stage.ordinal, title: analysis.title, jurisdiction: analysis.jurisdiction, policyArea: analysis.policyArea, context: analysis.context, depth: analysis.depth as 'standard' | 'deep', sealed: sealedRun, searches: searches && !inPass, graphLoss, priorWarnings: boundWarnings(previousStages.flatMap((s) => s.warnings)), artefacts: all }, { model: modelCaller(started.execution.id, claimed.id, signal, all, { model: analysis.model, thinkingLevel: isThinkingLevel(analysis.thinkingLevel) ? analysis.thinkingLevel : null, sealed: sealedRun, passKind, extraction: analysis.extraction as Extraction | null }), research: searches && !inPass ? researchWithPages : noResearch, signal, concurrency: analysis.concurrency as Concurrency | null, passKind, material, reader, extraction: analysis.extraction as Extraction | null, sharedContextFirst: analysis.sharedContextFirst, onProgress: (phase) => beat?.(`${stagePhase} · ${phase}`), neighbours: sealedRun || inPass ? async () => [] : () => neighbourSummaries(analysis.owner, analysisId), personas: sealedRun || inPass ? async () => [] : (actors) => priorsFor(analysis.owner, actors, analysisId), bodyEvidence, registerBodies });
+    /*
+     * THE MASTER LIST OF ACTORS (phase 23), read for stage 2. A SEALED RUN READS
+     * IT TOO — matching writes nothing — but what it proposes never goes back:
+     * see the commit below. A pass resolves no actors of its own.
+     */
+    const register = inPass || started.stage.ordinal !== 2 ? undefined : () => loadRegisterView(analysis.owner);
+    const output = extracted ?? await executeStage({ stage: started.stage.ordinal, title: analysis.title, jurisdiction: analysis.jurisdiction, policyArea: analysis.policyArea, context: analysis.context, depth: analysis.depth as 'standard' | 'deep', sealed: sealedRun, searches: searches && !inPass, graphLoss, priorWarnings: boundWarnings(previousStages.flatMap((s) => s.warnings)), artefacts: all }, { model: modelCaller(started.execution.id, claimed.id, signal, all, { model: analysis.model, thinkingLevel: isThinkingLevel(analysis.thinkingLevel) ? analysis.thinkingLevel : null, sealed: sealedRun, passKind, extraction: analysis.extraction as Extraction | null }), research: searches && !inPass ? researchWithPages : noResearch, signal, concurrency: analysis.concurrency as Concurrency | null, passKind, material, reader, extraction: analysis.extraction as Extraction | null, sharedContextFirst: analysis.sharedContextFirst, onProgress: (phase) => beat?.(`${stagePhase} · ${phase}`), neighbours: sealedRun || inPass ? async () => [] : () => neighbourSummaries(analysis.owner, analysisId), personas: sealedRun || inPass ? async () => [] : (actors) => priorsFor(analysis.owner, actors, analysisId), bodyEvidence, registerBodies, register });
     signal.throwIfAborted();
     await db.transaction(async (tx) => {
       const locked = await lockLease(tx, analysisId, stageId, claimed.id, workerId);
       if (!locked) return;
+      /*
+       * WHAT STAGE 2 PROPOSED GOES ON THE MASTER LIST HERE, in the stage's own
+       * commit and BEFORE its artefacts are stored, so each new actor's row id
+       * is on the artefact a later stage reads. In a savepoint: a list that
+       * cannot be written must not cost the run its actors, which are complete
+       * without the ids. Stamped only once the savepoint has committed, so no
+       * artefact names a row that was rolled back.
+       *
+       * NEVER FROM A SEALED RUN. Its proposals, its mentions and the paper's
+       * wording as aliases would all outlive the run and survive its purge. Its
+       * actors stay run-local: matched to what was already on the list, and
+       * otherwise carrying no id at all.
+       */
+      if (started.stage.ordinal === 2 && !sealedRun && 'register' in output && output.register) {
+        const plan = output.register;
+        try {
+          const written = await tx.transaction((inner) => applyRegisterPlan(inner, analysis.owner, analysisId, plan));
+          stampMasterIds(output.artefacts, written.ids);
+        } catch {
+          output.warnings.push('This paper\u2019s actors could not be written to the master list of actors. The assessment is unaffected; the list simply does not have this paper.');
+        }
+      }
       await persistArtefacts(tx, analysisId, started.stage.ordinal, output.artefacts, seal);
       // The persona library is written here, not by the pipeline: a rolled-back
       // stage must leave no rows behind, and a re-run must replace its own

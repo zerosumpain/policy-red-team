@@ -77,7 +77,9 @@ describe.skipIf(!local)('persisted model audit and stage checkpoints', () => {
       // this call used to return the incomplete three. It asks once and gets the
       // fourth back. See the divergence note in sync-core.mjs.
       const partial = await modelCaller(firstExecution.id, stage.runId!, new AbortController().signal, prior)(1, 'cached', input);
-      expect(partial.artefacts).toHaveLength(4);
+      // Nine: the fixture's four, and since phase 23 five more actor mentions
+      // that exercise the master list of actors.
+      expect(partial.artefacts).toHaveLength(9);
       // ONE round, not two: the second round is what a mostly-unusable response
       // gets, and this response was mostly fine.
       const firstCalls = await db.select().from(policyModelCalls).where(eq(policyModelCalls.executionId, firstExecution.id)).orderBy(asc(policyModelCalls.startedAt));
@@ -85,7 +87,7 @@ describe.skipIf(!local)('persisted model audit and stage checkpoints', () => {
 
       const [retryExecution] = await db.insert(policyExecutions).values({ stageId: stage.id, runId: stage.runId! }).returning();
       const repaired = await modelCaller(retryExecution.id, stage.runId!, new AbortController().signal, prior)(1, 'cached', input);
-      expect(repaired.artefacts).toHaveLength(4);
+      expect(repaired.artefacts).toHaveLength(9);
       expect(repaired.artefacts.some((item) => item.id === 's1_cached_objective_repaired')).toBe(true);
       // Three: the fresh call's round 0 and its repair, then the replay's repair.
       // The replay still has something to fix because round 0's stored output is
