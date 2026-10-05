@@ -148,6 +148,15 @@ try {
   for (const expected of ['What this report says, in plain words', 'What goes wrong', 'Who it happens to', "What the paper's own names mean"]) {
     if (!body.includes(expected)) failures.push(`offline page missing "${expected}"`);
   }
+  // Phase 26: the pack has no guide, so it carries what the guide teaches —
+  // every chapter's words and the band key — and no "?" pointing at a guide
+  // a file:// page cannot open.
+  for (const expected of ['How to read this report', 'It finds weak points; it is not a prediction', 'Severe', 'from 0.7']) {
+    if (!body.includes(expected)) failures.push(`offline page missing "${expected}"`);
+  }
+  if (!(await page.locator('.prt-howto .prt-bandscale svg').count())) failures.push('offline: the "How to read this report" section has no band key');
+  if (await page.locator('.prt-guidehelp, .prt-guidebanner').count()) failures.push('offline: the pack draws a link into the guide, which a file:// page cannot open');
+  if (body.includes('How do I read this?')) failures.push('offline: the pack carries the service header\'s guide link');
   {
     const term = page.locator('.prt-play .prt-term__name').first();
     if (!(await term.count())) failures.push('offline: no definable term on a play card');
