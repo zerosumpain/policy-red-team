@@ -477,15 +477,6 @@ $guide-blue: govuk.govuk-colour("blue");
 
 // ── Chapter 5: the stress lab in miniature ─────────────────────────────────
 
-// `parts/_fullwidth.scss` lifts `max-width` off every `.govuk-label` inside
-// `#main-content`, which also lifts the checkbox label's own cap — so a label
-// longer than its column wraps UNDER its box instead of beside it. Restored
-// here for the guide; the same rule bites the report's Stress lab (noted in
-// docs/phase-26-guide.md for whoever owns `_fullwidth`).
-#main-content .prt-ministress .govuk-checkboxes__label {
-  max-width: calc(100% - 74px);
-}
-
 .prt-ministress {
   @include govuk.govuk-media-query($from: tablet) {
     display: grid;
