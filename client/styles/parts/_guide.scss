@@ -1,0 +1,690 @@
+@use "../govuk" as govuk;
+@use "../tokens" as *;
+
+// ── How to read a red-team report (phase 26) ───────────────────────────────
+//
+// THE GUIDE IS AN EXPLAINER LAYER over GOV.UK, not a second design system.
+// Forms, buttons, navigation and pagination are the framework's own; the
+// figures here have their own shapes and motion, but they are drawn in the
+// report's band ramp (`--band-*`), its black and its link blue, and set in the
+// framework's type scale, so a reader moving from a chapter into a report
+// meets the same colours meaning the same things.
+//
+// EVERY ANIMATION'S RESTING STATE IS ITS END STATE. A rule below that animates
+// something always pairs it with the static styles of where it finishes, so
+// `prefers-reduced-motion` (`parts/_motion.scss`) and a paused figure both
+// leave a complete picture.
+
+$guide-ink: govuk.govuk-colour("black");
+$guide-rule: govuk.govuk-colour("black", $variant: "tint-80");
+$guide-wash: govuk.govuk-colour("black", $variant: "tint-95");
+$guide-blue: govuk.govuk-colour("blue");
+
+// ── Page furniture ──────────────────────────────────────────────────────────
+
+.prt-guidepage {
+  &__layout {
+    @include govuk.govuk-media-query($from: desktop) {
+      display: grid;
+      grid-template-columns: minmax(12rem, 15rem) minmax(0, 1fr);
+      gap: govuk.govuk-spacing(6);
+      align-items: start;
+    }
+  }
+
+  // The words keep a reading measure; the figures may use the full column.
+  &__main {
+    min-width: 0;
+    max-width: 52rem;
+  }
+
+  &__prompt {
+    border-left: 5px solid $guide-blue;
+    padding-left: govuk.govuk-spacing(3);
+  }
+
+  &__figure {
+    margin: govuk.govuk-spacing(4) 0 govuk.govuk-spacing(6);
+  }
+
+  // A link-shaped button takes its font from its parent, and a button group
+  // sets none: without this "Show it all" fell back to the browser's serif.
+  .prt-linkbutton { @include govuk.govuk-font($size: 19); }
+}
+
+// The contents: GOV.UK's guide pattern — numbered, the current one marked and
+// not a link — drawn like the report's side menu so the two read as one idea.
+.prt-guidenav {
+  margin-bottom: govuk.govuk-spacing(6);
+
+  &__title { margin-bottom: govuk.govuk-spacing(2); }
+
+  &__list {
+    @include govuk.govuk-font($size: 16);
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    border-left: 1px solid $guide-rule;
+  }
+
+  &__item {
+    display: flex;
+    gap: govuk.govuk-spacing(2);
+    align-items: baseline;
+    margin: 0 0 0 -1px;
+    padding: govuk.govuk-spacing(1) 0 govuk.govuk-spacing(1) govuk.govuk-spacing(3);
+    min-height: 24px;
+    border-left: 4px solid transparent;
+  }
+
+  &__item--current {
+    border-left-color: govuk.govuk-functional-colour("link");
+    font-weight: 700;
+  }
+
+  // The chapter's number, in a small circle: the same mark the front page's
+  // list uses, so "chapter 4" is one shape wherever it appears.
+  &__n {
+    flex: none;
+    display: inline-grid;
+    place-items: center;
+    width: 1.6em;
+    height: 1.6em;
+    border-radius: 50%;
+    border: 2px solid $guide-ink;
+    font-weight: 700;
+    @include govuk.govuk-font($size: 16, $weight: bold, $tabular: true);
+  }
+}
+
+.prt-guideindex {
+  margin-bottom: govuk.govuk-spacing(6);
+
+  &__item {
+    display: flex;
+    gap: govuk.govuk-spacing(3);
+    align-items: baseline;
+  }
+}
+
+// A figure with its caption and, where it moves for long enough, its control.
+.prt-figure-guide {
+  margin: 0;
+
+  svg {
+    display: block;
+    width: 100%;
+    max-width: 34rem;
+    height: auto;
+  }
+
+  &__caption {
+    margin-top: govuk.govuk-spacing(2);
+    color: govuk.govuk-colour("black", $variant: "tint-25");
+  }
+
+  &__control { margin-bottom: 0; }
+}
+
+// ── The "?" beside a report figure ─────────────────────────────────────────
+//
+// Small, and worded: a bare "?" is a mystery to anyone who has not been told
+// what it is, so the mark carries "How to read this" beside it from tablet up,
+// and the link's accessible name always says which chapter it opens.
+.prt-guidehelp {
+  float: right;
+  margin: 0 0 govuk.govuk-spacing(2) govuk.govuk-spacing(3);
+  @include govuk.govuk-font($size: 16);
+
+  &__link {
+    display: inline-flex;
+    gap: govuk.govuk-spacing(1);
+    align-items: center;
+    min-height: 24px;
+  }
+
+  &__mark {
+    display: inline-grid;
+    place-items: center;
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    border: 2px solid currentColor;
+    font-weight: 700;
+    text-decoration: none;
+  }
+
+  &__text {
+    @include govuk.govuk-media-query($until: tablet) {
+      @include govuk.govuk-visually-hidden;
+    }
+  }
+}
+
+// ── Chapter 1: the machine ─────────────────────────────────────────────────
+
+.prt-machine {
+  text { @include govuk.govuk-font($size: 16); font-size: 13px; fill: $guide-ink; }
+
+  &__io { font-weight: 700; }
+  &__name { font-weight: 700; }
+
+  &__body { fill: govuk.govuk-colour("white"); stroke: $guide-ink; stroke-width: 3; }
+  &__lever { fill: $guide-wash; stroke: $guide-rule; stroke-width: 1; }
+  &__knob { fill: $guide-ink; }
+
+  // The weak point, at rest LIT — the end state. Only the playing figure
+  // hides it until the walker arrives.
+  &__gap {
+    fill: none;
+    stroke: var(--band-significant);
+    stroke-width: 4;
+    stroke-dasharray: 8 5;
+  }
+
+  // At rest the walker stands at the gap, lens raised: the end of the walk.
+  &__walker { transform: translate(338px, 188px); }
+
+  &.is-playing &__walker {
+    animation: prt-machine-walk 10s var(--motion-ease-standard) infinite;
+  }
+
+  &.is-playing &__gap {
+    animation: prt-machine-gap 10s linear infinite;
+  }
+}
+
+@keyframes prt-machine-walk {
+  0% { transform: translate(52px, 236px); }
+  20% { transform: translate(52px, 40px); }
+  45% { transform: translate(338px, 40px); }
+  60%, 100% { transform: translate(338px, 188px); }
+}
+
+@keyframes prt-machine-gap {
+  0%, 58% { opacity: 0; }
+  64%, 96% { opacity: 1; }
+  100% { opacity: 0; }
+}
+
+// ── Chapter 2: from paper to parts ─────────────────────────────────────────
+
+.prt-parts {
+  @include govuk.govuk-media-query($from: tablet) {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    gap: govuk.govuk-spacing(6);
+    align-items: start;
+  }
+
+  &__sentences {
+    @include govuk.govuk-font($size: 19);
+    margin: 0 0 govuk.govuk-spacing(4);
+    padding-left: govuk.govuk-spacing(5);
+  }
+
+  &__sentence {
+    margin-bottom: govuk.govuk-spacing(2);
+    padding: 2px govuk.govuk-spacing(1);
+    color: govuk.govuk-colour("black", $variant: "tint-25");
+    transition: background-color var(--motion-duration-medium) var(--motion-ease-standard);
+
+    &.is-read { color: $guide-ink; }
+
+    // The sentence being read, highlighted the way a reader's pen would.
+    &.is-current {
+      background: govuk.govuk-colour("yellow");
+      box-shadow: 0 0 0 2px govuk.govuk-colour("yellow");
+    }
+  }
+
+  &__bin {
+    margin-bottom: govuk.govuk-spacing(4);
+    padding: govuk.govuk-spacing(2) govuk.govuk-spacing(3);
+    border-left: 5px solid $guide-rule;
+    background: $guide-wash;
+
+    // Three kinds, three edges — and always the heading's words as well.
+    &--part { border-left-color: $guide-blue; }
+    &--assumption { border-left-color: var(--band-significant); }
+    &--body { border-left-color: $guide-ink; }
+  }
+
+  &__bintitle { margin-bottom: govuk.govuk-spacing(2); }
+
+  &__pieces {
+    @include govuk.govuk-font($size: 16);
+    list-style: none;
+    margin: 0;
+    padding: 0;
+  }
+
+  &__piece {
+    margin-bottom: govuk.govuk-spacing(1);
+    padding: 2px govuk.govuk-spacing(2);
+    background: govuk.govuk-colour("white");
+    border: 1px solid $guide-rule;
+
+    &.is-new {
+      animation: prt-guide-enter var(--motion-duration-long) var(--motion-ease-enter) both;
+    }
+  }
+}
+
+// In from the paper's side, and settled: the end state is the plain piece.
+@keyframes prt-guide-enter {
+  from { opacity: 0; transform: translateX(-24px); background: govuk.govuk-colour("yellow"); }
+  to { opacity: 1; transform: none; background: govuk.govuk-colour("white"); }
+}
+
+// ── Chapter 3: a way to beat it ─────────────────────────────────────────────
+
+.prt-guideplay {
+  padding: govuk.govuk-spacing(3);
+  border: 1px solid $guide-rule;
+  border-left: 6px solid var(--band-severe);
+
+  &__title {
+    @include govuk.govuk-font($size: 19, $weight: bold);
+    margin: 0 0 govuk.govuk-spacing(2);
+  }
+
+  &__detail:not([hidden]) {
+    animation: prt-guide-reveal var(--motion-duration-medium) var(--motion-ease-enter) both;
+  }
+}
+
+@keyframes prt-guide-reveal {
+  from { opacity: 0; transform: translateY(-8px); }
+  to { opacity: 1; transform: none; }
+}
+
+// ── Chapter 4: build the band ───────────────────────────────────────────────
+
+.prt-buildband {
+  @include govuk.govuk-media-query($from: tablet) {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    gap: govuk.govuk-spacing(6);
+    align-items: start;
+  }
+
+  // The answer stays beside the sliders while the reader moves the last one.
+  &__result {
+    padding: govuk.govuk-spacing(3);
+    border: 1px solid $guide-rule;
+    background: govuk.govuk-colour("white");
+
+    @include govuk.govuk-media-query($from: tablet) {
+      position: sticky;
+      top: govuk.govuk-spacing(3);
+    }
+  }
+
+  &__band { margin: 0 0 govuk.govuk-spacing(3); }
+
+  // The band word, at the size of an answer. Its background changes with the
+  // band, so it carries the colour change and the word together.
+  &__mark {
+    @include govuk.govuk-font($size: 27, $weight: bold);
+    transition: background-color var(--motion-duration-medium) var(--motion-ease-standard),
+      color var(--motion-duration-medium) var(--motion-ease-standard);
+  }
+
+  &__score {
+    @include govuk.govuk-font($size: 19, $tabular: true);
+  }
+}
+
+.prt-factor {
+  &__row {
+    display: flex;
+    gap: govuk.govuk-spacing(3);
+    align-items: center;
+  }
+
+  &__number { flex: none; }
+
+  &__ends {
+    display: flex;
+    justify-content: space-between;
+    margin: 2px 0 0;
+    padding-right: 5.5em;
+    @include govuk.govuk-font($size: 16);
+    color: govuk.govuk-colour("black", $variant: "tint-25");
+  }
+}
+
+// GOV.UK HAS NO SLIDER. A native range, restyled only as far as the platform
+// allows: a 4px track, a 28px thumb (over WCAG 2.2's 24px target), and the
+// framework's yellow-and-black focus state.
+.prt-range {
+  flex: 1 1 auto;
+  min-width: 0;
+  height: 32px;
+  margin: 0;
+  background: transparent;
+  -webkit-appearance: none;
+  appearance: none;
+  cursor: pointer;
+
+  &::-webkit-slider-runnable-track { height: 4px; background: $guide-ink; }
+  &::-moz-range-track { height: 4px; background: $guide-ink; }
+
+  &::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 28px;
+    height: 28px;
+    margin-top: -12px;
+    border-radius: 50%;
+    background: govuk.govuk-colour("white");
+    border: 3px solid $guide-ink;
+  }
+
+  &::-moz-range-thumb {
+    width: 22px;
+    height: 22px;
+    border-radius: 50%;
+    background: govuk.govuk-colour("white");
+    border: 3px solid $guide-ink;
+  }
+
+  &:focus { outline: none; }
+
+  &:focus-visible {
+    outline: 3px solid transparent;
+    background: govuk.govuk-colour("yellow");
+    box-shadow: 0 0 0 4px govuk.govuk-colour("yellow");
+  }
+
+  &:focus-visible::-webkit-slider-thumb { box-shadow: 0 0 0 3px govuk.govuk-colour("yellow"); }
+}
+
+// ── The band scale: chapter 4's marker, and the pack's key ──────────────────
+
+.prt-bandscale {
+  margin: govuk.govuk-spacing(2) 0;
+
+  &__track {
+    position: relative;
+    margin: 14px 0 0;
+  }
+
+  &__ramp {
+    display: block;
+    width: 100%;
+    height: 28px;
+  }
+
+  // The marker: a black pointer above the ramp and a line through it. It
+  // slides between scores with the medium duration; reduced motion makes it
+  // jump, which is the same picture.
+  &__marker {
+    position: absolute;
+    top: -12px;
+    bottom: -4px;
+    width: 4px;
+    margin-left: -2px;
+    background: $guide-ink;
+    transition: left var(--motion-duration-medium) var(--motion-ease-standard);
+
+    &::before {
+      content: "";
+      position: absolute;
+      top: 0;
+      left: -6px;
+      border: 8px solid transparent;
+      border-top: 10px solid $guide-ink;
+      border-bottom: 0;
+    }
+  }
+
+  &__ticks {
+    position: relative;
+    height: 1.6em;
+    @include govuk.govuk-font($size: 16, $tabular: true);
+  }
+
+  &__tick {
+    position: absolute;
+    top: 2px;
+    transform: translateX(-50%);
+
+    &:first-child { transform: none; }
+    &:last-child { transform: translateX(-100%); }
+  }
+
+  &__legend {
+    margin: govuk.govuk-spacing(3) 0 0;
+    @include govuk.govuk-font($size: 16);
+  }
+
+  &__row {
+    display: grid;
+    grid-template-columns: 11em minmax(0, 1fr);
+    gap: govuk.govuk-spacing(3);
+    padding: govuk.govuk-spacing(1) 0;
+    border-top: 1px solid $guide-rule;
+
+    @include govuk.govuk-media-query($until: tablet) {
+      grid-template-columns: minmax(0, 1fr);
+    }
+
+    dd { margin: 0; }
+  }
+}
+
+// ── Chapter 5: the stress lab in miniature ─────────────────────────────────
+
+// `parts/_fullwidth.scss` lifts `max-width` off every `.govuk-label` inside
+// `#main-content`, which also lifts the checkbox label's own cap — so a label
+// longer than its column wraps UNDER its box instead of beside it. Restored
+// here for the guide; the same rule bites the report's Stress lab (noted in
+// docs/phase-26-guide.md for whoever owns `_fullwidth`).
+#main-content .prt-ministress .govuk-checkboxes__label {
+  max-width: calc(100% - 74px);
+}
+
+.prt-ministress {
+  @include govuk.govuk-media-query($from: tablet) {
+    display: grid;
+    grid-template-columns: minmax(0, 2fr) minmax(0, 3fr);
+    gap: govuk.govuk-spacing(6);
+    align-items: start;
+  }
+
+  &__list {
+    list-style: none;
+    margin: 0 0 govuk.govuk-spacing(4);
+    padding: 0;
+  }
+
+  &__item {
+    position: relative;
+    margin-bottom: govuk.govuk-spacing(2);
+    padding: govuk.govuk-spacing(2) govuk.govuk-spacing(3);
+    border: 1px solid $guide-rule;
+    border-left: 6px solid $guide-rule;
+    background: govuk.govuk-colour("white");
+    transition:
+      color var(--motion-duration-long) var(--motion-ease-standard),
+      transform var(--motion-duration-long) var(--motion-ease-standard),
+      background-color var(--motion-duration-long) var(--motion-ease-standard);
+
+    &--severe { border-left-color: var(--band-severe); }
+    &--significant { border-left-color: var(--band-significant); }
+    &--moderate { border-left-color: var(--band-moderate); }
+    &--limited { border-left-color: var(--band-limited); }
+    &--finding { border-left-color: $guide-ink; }
+
+    // TAKEN OFF THE TABLE: it drops back, struck through, and the tag says so
+    // in words.
+    // Greyed in INK, not in opacity: a faded card fails contrast, and the
+    // reader wants to read what went.
+    &.is-off {
+      color: govuk.govuk-colour("black", $variant: "tint-25");
+      transform: translateY(4px);
+      background: $guide-wash;
+      border-left-style: dashed;
+
+      .prt-ministress__title { text-decoration: line-through; }
+    }
+
+    &.is-lost { background: $guide-wash; }
+  }
+
+  &__title {
+    @include govuk.govuk-font($size: 19, $weight: bold);
+    margin: 0 0 govuk.govuk-spacing(1);
+  }
+
+  &__meta { margin: 0; }
+
+  &__tag { margin-top: govuk.govuk-spacing(2); }
+
+  &__sum {
+    grid-column: 1 / -1;
+    padding: govuk.govuk-spacing(2) govuk.govuk-spacing(3);
+    border-left: 5px solid $guide-blue;
+    background: $guide-wash;
+  }
+}
+
+// ── Chapter 6: bodies across policies ──────────────────────────────────────
+
+.prt-clash {
+  &__papers {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: grid;
+    gap: govuk.govuk-spacing(3);
+
+    @include govuk.govuk-media-query($from: tablet) {
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+  }
+
+  &__paper {
+    padding: govuk.govuk-spacing(2) govuk.govuk-spacing(3);
+    border: 1px solid $guide-rule;
+    border-top: 5px solid $guide-rule;
+    background: govuk.govuk-colour("white");
+
+    &.is-named { border-top-color: $guide-ink; }
+  }
+
+  &__title {
+    @include govuk.govuk-font($size: 19, $weight: bold);
+    margin: 0 0 govuk.govuk-spacing(1);
+  }
+
+  &__asks {
+    @include govuk.govuk-font($size: 16);
+    list-style: none;
+    margin: 0;
+    padding: 0;
+  }
+
+  &__ask.is-clash {
+    background: govuk.govuk-colour("yellow");
+    padding: 0 2px;
+    animation: prt-clash-pulse 0.9s var(--motion-ease-standard) 1.4s 2 both;
+  }
+
+  // The connectors, from tablet only: on a phone the papers stack and a line
+  // would have nowhere honest to go.
+  &__lines {
+    display: none;
+
+    @include govuk.govuk-media-query($from: tablet) {
+      display: block;
+      width: 100%;
+      height: 48px;
+    }
+  }
+
+  // Faded in rather than drawn: the SVG is stretched to the row's width,
+  // and a dash length cannot be known for a line whose length is not.
+  &__line {
+    stroke: $guide-ink;
+    stroke-width: 3;
+    animation: prt-clash-draw 1.2s var(--motion-ease-enter) 0.2s both;
+  }
+
+  // Under the gap between the two papers that name it, where both lines meet.
+  &__body {
+    margin: govuk.govuk-spacing(3) auto 0;
+    max-width: 20rem;
+    box-sizing: border-box;
+    padding: govuk.govuk-spacing(2) govuk.govuk-spacing(3);
+    border: 3px solid $guide-ink;
+    text-align: center;
+    background: govuk.govuk-colour("white");
+
+    @include govuk.govuk-media-query($from: tablet) {
+      margin-top: 0;
+      width: 20rem;
+      margin-left: calc(33.333% - 10rem);
+    }
+  }
+
+  &__bodyname {
+    @include govuk.govuk-font($size: 19, $weight: bold);
+    margin: 0;
+  }
+
+  &__verdict {
+    margin-top: govuk.govuk-spacing(4);
+    padding: govuk.govuk-spacing(3);
+    border-left: 5px solid var(--band-significant);
+    background: $guide-wash;
+  }
+
+  &__pair { margin-bottom: govuk.govuk-spacing(2); }
+
+  &__chip {
+    display: inline-block;
+    padding: 0 govuk.govuk-spacing(1);
+    border: 2px solid var(--band-significant);
+    font-weight: 700;
+  }
+
+  // Reduced motion: nothing to draw in, everything already drawn.
+  &.is-still &__ask.is-clash,
+  &.is-still &__line { animation: none; }
+}
+
+@keyframes prt-clash-draw {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes prt-clash-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 transparent; }
+  50% { box-shadow: 0 0 0 6px var(--band-moderate); }
+}
+
+.prt-figure-guide .prt-register {
+  max-width: 26rem;
+
+  text { @include govuk.govuk-font($size: 16); font-size: 13px; fill: $guide-ink; }
+
+  &__head { font-weight: 700; }
+  &__label { font-weight: 400; }
+  &__outer { fill: $guide-wash; stroke: $guide-ink; stroke-width: 2; }
+  &__inner { fill: govuk.govuk-colour("white"); stroke: $guide-ink; stroke-width: 2; }
+  &__cat { fill: govuk.govuk-colour("white"); stroke: $guide-ink; stroke-width: 2; stroke-dasharray: 5 3; }
+}
+
+// ── The offline pack's "How to read this report" ───────────────────────────
+//
+// Static by design: no motion, nothing to press. Printed like the rest of the
+// pack, so each chapter's paragraphs keep together on paper.
+.prt-howto {
+  &__chapter {
+    break-inside: avoid;
+    margin-bottom: govuk.govuk-spacing(4);
+  }
+}

@@ -1531,8 +1531,106 @@ try {
   }
   note('the setup journey lists what is left, and the test step tells the truth');
 
+  /*
+   * HOW TO READ A RED-TEAM REPORT (phase 26). The ways in from a report — the
+   * banner, the header link, a "?" beside a figure — then the six chapters
+   * stepped through from the keyboard, each chapter's one idea pressed once
+   * (a slider moves the band, a switch takes ways to beat it off the table),
+   * and the banner dismissed and still dismissed after a reload.
+   */
+  {
+    await page.goto(`${base}/threats/bands`, { waitUntil: 'networkidle' });
+    await page.locator('.prt-view').first().waitFor({ timeout: 30000 });
+    if (!(await page.getByRole('region', { name: 'New to these reports?' }).isVisible())) failures.push('guide: a report page has no first-visit banner');
+    if (!(await page.locator('.prt-pagehead').getByRole('link', { name: 'How do I read this?' }).isVisible())) failures.push('guide: a report page header has no "How do I read this?" link');
+    const help = page.locator('.prt-guidehelp a');
+    if ((await help.count()) !== 1) failures.push(`guide: ${await help.count()} "?" links on the bands page, expected one`);
+    await help.first().focus();
+    await page.keyboard.press('Enter');
+    await page.waitForURL('**/guide/4', { timeout: 10000 }).catch(() => failures.push(`guide: the "?" beside the bands opened ${page.url()}, not chapter 4`));
+
+    await page.goto(`http://127.0.0.1:${PORT}/guide`, { waitUntil: 'networkidle' });
+    await page.getByRole('heading', { level: 1, name: 'How to read a red-team report' }).waitFor({ timeout: 10000 });
+    await audit('/guide');
+    await page.getByRole('button', { name: 'Start the guide' }).focus();
+    await page.keyboard.press('Enter');
+    const chapters = ['What a red team does', 'From paper to parts', 'A way to beat it, in plain words', 'How exposed? Build the band yourself', 'What if we’re wrong?', 'Bodies across policies'];
+    for (const [i, title] of chapters.entries()) {
+      await page.waitForURL(`**/guide/${i + 1}`, { timeout: 10000 }).catch(() => {});
+      if (!(await page.getByRole('heading', { level: 1, name: title, exact: true }).waitFor({ timeout: 10000 }).then(() => true, () => false))) {
+        failures.push(`guide: chapter ${i + 1} is not "${title}" (at ${page.url()})`);
+        break;
+      }
+      if (i === 0) {
+        const pause = page.getByRole('button', { name: 'Pause the animation' });
+        await pause.focus();
+        await page.keyboard.press('Enter');
+        if (!(await page.getByRole('button', { name: 'Play the animation' }).isVisible())) failures.push('guide 1: the animation has no working pause control');
+      }
+      if (i === 1) {
+        await page.getByRole('button', { name: 'Read the first sentence' }).focus();
+        await page.keyboard.press('Enter');
+        const said = await page.locator('.prt-parts [aria-live]').innerText();
+        if (!/Sentence 1 of 5 gave/.test(said)) failures.push(`guide 2: reading a sentence announced "${said}"`);
+        if (!(await page.locator('.prt-parts__piece').count())) failures.push('guide 2: reading a sentence pulled nothing out of it');
+      }
+      if (i === 2) {
+        await page.getByRole('button', { name: 'Show me the detail' }).focus();
+        await page.keyboard.press('Enter');
+        if (!(await page.locator('.prt-guideplay__detail .prt-play').isVisible())) failures.push('guide 3: "Show me the detail" did not open the report\'s own play card');
+      }
+      if (i === 3) {
+        const mark = page.locator('.prt-buildband__mark');
+        const before = (await mark.innerText()).trim();
+        await page.getByLabel('How much do they gain?', { exact: true }).focus();
+        await page.keyboard.press('Home');
+        const after = (await mark.innerText()).trim();
+        if (before === after) failures.push(`guide 4: moving a slider to 0 left the band at "${after}"`);
+        if (!/now limited/.test(await page.locator('.prt-buildband [aria-live]').innerText())) failures.push('guide 4: the band change was not announced');
+      }
+      if (i === 4) {
+        const play = page.locator('.prt-ministress__item', { hasText: 'Count every early arrival as a breakfast' });
+        if (await play.locator('.prt-ministress__tag').count()) failures.push('guide 5: a way to beat it is off the table before anything is switched off');
+        await page.getByLabel('A yearly sample is all the checking the counts need').focus();
+        await page.keyboard.press('Space');
+        if (!/Taken off the table/.test(await play.innerText())) failures.push('guide 5: switching its assumption off did not take the play off the table');
+        if ((await page.locator('.prt-ministress__item.is-off').count()) !== 2) failures.push('guide 5: switching one assumption off did not take exactly its two plays away');
+      }
+      if (i === 5 && !(await page.getByRole('link', { name: 'See every body in Bodies across policies' }).isVisible())) failures.push('guide 6: no link on to the hub');
+      if (await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth)) failures.push(`guide ${i + 1}: scrolls sideways`);
+      await audit(`/guide/${i + 1}`);
+      if (i < chapters.length - 1) {
+        await page.locator('.govuk-pagination__next a').focus();
+        await page.keyboard.press('Enter');
+      }
+    }
+
+    // Reduced motion: the machine is drawn still, and offers no control that would do nothing.
+    await page.emulateMedia({ reducedMotion: 'reduce' });
+    await page.goto(`http://127.0.0.1:${PORT}/guide/1`, { waitUntil: 'networkidle' });
+    await page.getByRole('heading', { level: 1, name: 'What a red team does' }).waitFor({ timeout: 10000 });
+    if (await page.locator('.prt-machine.is-playing').count()) failures.push('guide 1: the loop plays under reduced motion');
+    if (await page.getByRole('button', { name: /the animation/ }).count()) failures.push('guide 1: reduced motion still offers a play/pause control');
+    await page.emulateMedia({ reducedMotion: 'no-preference' });
+
+    // The banner, hidden for good.
+    await page.goto(`http://127.0.0.1:${PORT}/`, { waitUntil: 'networkidle' });
+    const banner = page.getByRole('region', { name: 'New to these reports?' });
+    if (!(await banner.isVisible())) failures.push('guide: the landing page has no first-visit banner');
+    await banner.getByRole('button', { name: 'Hide this message' }).click();
+    if (await banner.count()) failures.push('guide: "Hide this message" did not hide the banner');
+    if (await page.evaluate(() => document.activeElement?.id) !== 'main-content') failures.push('guide: hiding the banner did not move focus to the main content');
+    await page.reload({ waitUntil: 'networkidle' });
+    await page.getByRole('heading', { name: 'Policy Red Team', level: 1 }).waitFor({ timeout: 10000 });
+    if (await page.getByRole('region', { name: 'New to these reports?' }).count()) failures.push('guide: the banner came back after a reload');
+    await page.goto(base, { waitUntil: 'networkidle' });
+    await page.getByRole('heading', { name: 'The report at a glance' }).waitFor({ timeout: 20000 });
+    if (await page.getByRole('region', { name: 'New to these reports?' }).count()) failures.push('guide: the banner came back on a report page after it was hidden');
+    note('the guide: banner, header link and "?" lead in; six chapters by keyboard; slider, switch and banner memory work');
+  }
+
   // 10 — the rest of the surface
-  for (const [route, heading] of [['/bodies', 'Bodies across policies'], ['/guide', 'How to read a report'], ['/design', 'Design system'], ['/accessibility', 'Accessibility statement'], ['/about', 'About this tool']]) {
+  for (const [route, heading] of [['/bodies', 'Bodies across policies'], ['/guide', 'How to read a red-team report'], ['/design', 'Design system'], ['/accessibility', 'Accessibility statement'], ['/about', 'About this tool']]) {
     await page.goto(`http://127.0.0.1:${PORT}${route}`, { waitUntil: 'networkidle' });
     if (!(await page.getByRole('heading', { name: heading, level: 1 }).waitFor({ timeout: 10000 }).then(() => true, () => false))) failures.push(`${route}: no "${heading}" heading`);
     await audit(route);

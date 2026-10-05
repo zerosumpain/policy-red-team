@@ -7,6 +7,7 @@ import { MOVES } from '../moves';
 import { isFinished, spent, statusLabel, statusColour } from '../status';
 import { usePageTitle } from '../layout/Template';
 import { bodyPath, HUB, seenIn } from '../places';
+import { GuideBanner } from '../guide/GuideBanner';
 
 /**
  * Everything assessed so far.
@@ -57,6 +58,10 @@ export function Home() {
           It is not an assurance review. It will not tell you a policy is fine — a clean report
           means it found nothing, which is not the same thing.
         </p>
+        {/* THE GUIDE, OFFERED ONCE (phase 26): a banner a reader can hide for
+            good, never an overlay that takes the page over. After the two
+            sentences that say what this is, before the first thing to do. */}
+        <GuideBanner />
         {/* Read-only: say it once, plainly, and do not render a button that
             would 403. A disabled control the reader cannot explain is worse than
             no control at all. */}
