@@ -136,13 +136,13 @@ const CONCURRENT_EVENT_CODES = new Set(['provider']);
  * (`orderedContext`), and a prompt cache can only serve a prefix somebody has
  * already sent. Six lanes dispatched in the same millisecond all arrive cold.
  * Measured on every real run in the live database (phase 23): in stages 3 and
- * 14, NOT ONE of the 46 calls that started before any sibling had finished read
+ * 14, NOT ONE of the 51 calls that started before any sibling had finished read
  * anything from the cache, and 72–83% of those that started after one had
  * finished read nearly all of it, however many lanes were busy.
  *
  * Stages 6, 7, 9, 10 and 16 are here on the same reasoning, and the same
  * measurement is honest about them: their calls missed whether a sibling had
- * finished or not (2 of 85), for a reason the call records do not show. The
+ * finished or not (2 of 93 once warm), for a reason the call records do not show. The
  * warm-up removes the one cause the records DO show; the first real run after
  * it says whether the other one is real. `docs/phase-23-tokens.md` has the
  * table, and what to try next if these stages stay cold.
