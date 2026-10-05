@@ -105,6 +105,7 @@ export function OfflineApp({ payload }: { payload: PackPayload }) {
     // And what it spent. A pack made before this travelled says nothing, which
     // is what `null` means everywhere else in this payload.
     cost: run?.cost ?? null,
+    ledger: run?.ledger ?? null,
     artefacts: payload.artefacts,
     // A pack carries no per-row metadata and does not render the drill, which is
     // the only thing that reads it.

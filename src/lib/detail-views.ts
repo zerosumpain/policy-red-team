@@ -1,6 +1,7 @@
 import type { Artefact } from './policy-analysis/contracts';
 import { runCost, type RunCost } from './policy-analysis/view';
 import { stepFlags } from './change-strip';
+import { valueLedger, type ValueLedger } from './value-ledger';
 
 /**
  * TWO NARROWER ANSWERS TO "GIVE ME THIS ASSESSMENT".
@@ -115,7 +116,7 @@ export function stubForReport(artefact: Artefact): Artefact {
  * attempt rather than replacing the first, and `runCost` is the only thing that
  * should know that.
  */
-type Call = { provider: string | null; model: string | null; usage?: unknown };
+type Call = { provider: string | null; model: string | null; usage?: unknown; executionId?: string; callKey?: string; status?: string | null };
 
 /**
  * A STAGE ROW, AS FAR AS THIS FILE NEEDS ONE.
@@ -125,7 +126,7 @@ type Call = { provider: string | null; model: string | null; usage?: unknown };
  * `artefactMetadata` to derive one from, so the count is attached here, once,
  * where both readings get the same number.
  */
-type Stage = { ordinal: number };
+type Stage = { ordinal: number; id?: string; name?: string };
 
 type Full = {
   analysis: unknown;
@@ -136,7 +137,23 @@ type Full = {
   artefactMetadata: { id: string; stage?: number }[];
   artefacts: Artefact[];
   calls?: Call[];
+  executions?: { id: string; stageId: string }[];
 };
+
+/**
+ * The value ledger from a full read (phase 23), or null where it cannot be
+ * built. Computed BEFORE the report view stubs anything: a stubbed kind keeps
+ * its citation keys but not every `refs` entry a ledger counts.
+ */
+export function ledgerOf(result: Pick<Full, 'stages' | 'artefactMetadata' | 'artefacts' | 'calls' | 'executions'>): ValueLedger | null {
+  return valueLedger({
+    stages: result.stages.map((s) => ({ id: s.id, ordinal: s.ordinal, name: s.name ?? `Step ${s.ordinal + 1}` })),
+    executions: result.executions,
+    calls: (result.calls ?? []).filter((c): c is Call & { executionId: string; callKey: string } => typeof c.executionId === 'string' && typeof c.callKey === 'string'),
+    artefacts: result.artefacts,
+    artefactMetadata: result.artefactMetadata,
+  });
+}
 
 /** What a run was actually made of, one entry per distinct provider and model. */
 export type ModelUse = { id: string; calls: number };
@@ -210,6 +227,8 @@ export function forTheReport<T extends Full>(result: T) {
     artefacts: result.artefacts.map(stubForReport),
     models: modelsUsed(result.calls),
     cost: reportCost(result.calls),
+    // What each step spent against what came of it (phase 23, T6).
+    ledger: ledgerOf(result),
   };
 }
 
