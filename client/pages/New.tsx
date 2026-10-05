@@ -4,6 +4,7 @@ import { api, type AnalysisRow, type OfferedModel } from '../api';
 import { Button, ButtonGroup, Details, ErrorSummary, FileUpload, Input, Radios, Select, Textarea, WarningText } from '../govuk';
 import { MEASURED_RUN, MEASURED_STANDARD_HINT } from '../measured';
 import { isFinished, spent } from '../status';
+import { stampSubmission } from '../submission';
 import { usePageTitle } from '../layout/Template';
 import { DEFAULT_CONCURRENCY, OFFERED_CONCURRENCY } from '$lib/policy-analysis/contracts';
 import { readerErrorHref, SourcesItShouldUse, ThingsToLookUp } from './NewReaderInputs';
@@ -74,9 +75,7 @@ export function New() {
     setErrors(found);
     if (found.length) return;
 
-    form.set('depth', depth);
-    form.set('concurrency', lanes);
-    form.set('sealed', sealed ? 'sealed' : '');
+    stampSubmission(form, { depth, lanes, sealed });
     setSubmitting(true);
     try {
       const { id } = await api.submit(form);

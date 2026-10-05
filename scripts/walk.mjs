@@ -124,6 +124,28 @@ try {
   // The lanes question arrives answered. Every browser run before phase 19 went
   // one call at a time because the form had no field and the default was one.
   if (!(await page.getByLabel('Six at once', { exact: true }).isChecked())) failures.push('/new: the lanes question is not answered "Six at once" by default');
+  /*
+   * THE SEALED BOX MUST SEAL (phase 23). From phase 4 the form sent
+   * `sealed=sealed` and the server, correctly strict, read it as unsealed. So
+   * tick it, catch the real request in flight, read the field, refuse the
+   * request, and untick: the walk's own run stays unsealed because later steps
+   * read its personas, which a sealed run never writes.
+   */
+  await page.getByLabel('Seal this assessment', { exact: true }).check();
+  let sealedSent = null;
+  const catchSubmit = async (route) => {
+    if (route.request().method() !== 'POST') return route.fallback();
+    const body = route.request().postDataBuffer()?.toString('latin1') ?? '';
+    sealedSent = body.match(/name="sealed"\r\n\r\n([^\r]*)/)?.[1] ?? '(absent)';
+    await route.fulfill({ status: 400, contentType: 'application/json', body: JSON.stringify({ message: 'Held by the walk.' }) });
+  };
+  await page.route('**/api/policy-analysis', catchSubmit);
+  await page.getByRole('button', { name: 'Start the assessment' }).click();
+  await page.getByRole('alert').filter({ hasText: 'Held by the walk.' }).waitFor({ timeout: 5000 });
+  await page.unroute('**/api/policy-analysis', catchSubmit);
+  if (sealedSent !== 'true') failures.push(`/new: a ticked "Seal this assessment" sent sealed=${sealedSent}, not sealed=true`);
+  await page.getByLabel('Seal this assessment', { exact: true }).uncheck();
+  note('a ticked sealed box sends sealed=true');
   await page.getByRole('button', { name: 'Start the assessment' }).click();
   await page.waitForURL('**/assessments/**', { timeout: 20000 });
   note('submitted');
