@@ -493,6 +493,34 @@ const profileFields = Object.fromEntries(PROFILE_FIELDS.map((k) => [k, field.opt
  * in another. Averaging that away would be the whole problem: a trait states its
  * epistemic status, and the page shows it.
  */
+/**
+ * THE MASTER LIST OF ACTORS — phase 23. What sort of thing an actor is, the
+ * capacity a passage shows it in, and why a mention is not an actor at all.
+ * The register and its rules live in `actor-register.ts`; the words are here
+ * because the stage contracts need them.
+ */
+export const ENTITY_TYPES = ['person', 'department', 'agency', 'local_authority', 'provider', 'contractor', 'programme', 'dataset', 'legislation', 'committee', 'user_group', 'geography', 'concept'] as const;
+export const ACTOR_KINDS = ['organisation', 'office_or_role', 'sector_or_category', 'group_of_people'] as const;
+/**
+ * PERSPECTIVE IS A PROPERTY OF A MENTION, NOT A NEW ACTOR. Read off the stage-1
+ * mentions of the real Best Start run: "funder of improvements", "named as
+ * partners", "intended beneficiaries", "affected by new schemes". `partners`,
+ * `advises` and `is_affected` were added for what the brief's seven did not
+ * cover; `named_only` is a mention that shows no capacity at all.
+ */
+export const CAPACITIES = ['decides', 'funds', 'commissions', 'regulates', 'delivers', 'partners', 'advises', 'receives', 'is_measured', 'is_affected', 'named_only'] as const;
+export const NOT_ACTOR_REASONS = ['programme', 'place', 'assessment', 'named_person', 'other'] as const;
+const masterRef = z.object({ id: z.string().max(100).nullable(), key: z.string().max(400), name: z.string().max(300) });
+const actorMaster = z.object({
+  id: z.string().max(100).nullable(),
+  key: z.string().max(400),
+  status: z.enum(['confirmed', 'proposed', 'new']),
+  kind: z.enum(ACTOR_KINDS),
+  partOf: masterRef.nullable(),
+  kindOf: masterRef.nullable(),
+  bodyId: z.string().max(200).nullable(),
+  basis: z.string().max(400),
+});
 const personaTraits = z.array(z.object({ key: z.string().max(60), label: z.string().max(120), value: text, origin: z.enum(ORIGINS), confidence: confidenceSchema }).strict()).max(30);
 export const dataSchemas = {
   passage: z.object({ documentHash: text }),
@@ -502,7 +530,34 @@ export const dataSchemas = {
   // required (`plain.ts`, `promptSchema`) and a missing one is a warning.
   mechanism: z.object({ intervention: text, implementation: text, notes: text, whatItIs: WHAT_IT_IS.optional() }),
   assumption: z.object({ importance: unit, uncertainty: unit, consequence: unit, priority: unit.optional(), notes: text }),
-  actor: z.object({ entityType: z.enum(['person', 'department', 'agency', 'local_authority', 'provider', 'contractor', 'programme', 'dataset', 'legislation', 'committee', 'user_group', 'geography', 'concept']), aliases: strings, mentions: ids, ambiguity: text, dates: strings, parent: z.string().nullable() }),
+  actor: z.object({
+    entityType: z.enum(ENTITY_TYPES), aliases: strings, mentions: ids, ambiguity: text, dates: strings, parent: z.string().nullable(),
+    // PHASE 23 — written by the SERVER on a stage-2 actor, never asked of the
+    // model: which master actor this is and where it sits. Optional, so every
+    // actor written before it still validates and renders as it did.
+    master: actorMaster.optional().describe('Written by the server at stage 2. Never write it.'),
+    whatItIs: z.string().max(400).optional().describe('One plain line saying what this body is.'),
+    capacities: z.array(z.object({ mentionId: z.string().max(100), capacity: z.enum(CAPACITIES) })).max(2000).optional().describe('Written by the server at stage 2. Never write it.'),
+    programmes: z.array(z.string().max(300)).max(40).optional().describe('Written by the server at stage 2. Never write it.'),
+  }),
+  /**
+   * ONE ANSWER ABOUT SOURCE MENTIONS, matched into the reader's master list of
+   * actors (phase 23). Stage 2's model writes these and nothing else when it is
+   * given the register; the server turns them into one `actor` per master actor
+   * and never stores the answer itself.
+   */
+  actor_match: z.object({
+    mentions: ids.min(1),
+    answer: z.enum(['existing', 'new', 'not_actor']),
+    matchId: z.string().max(100).nullable().default(null),
+    kind: z.enum(ACTOR_KINDS).nullable().default(null),
+    partOf: z.string().max(300).nullable().default(null),
+    kindOf: z.string().max(300).nullable().default(null),
+    whatItIs: z.string().max(400).nullable().default(null),
+    capacities: z.array(z.object({ mentionId: z.string().max(100), capacity: z.enum(CAPACITIES) })).max(400).default([]),
+    notActor: z.enum(NOT_ACTOR_REASONS).nullable().default(null),
+    runBy: z.string().max(300).nullable().default(null),
+  }),
   alias: z.object({ actorId: text }),
   resolution_candidate: z.object({ candidates: ids.min(2), reason: text, resolved: z.literal(false) }),
   edge: z.object({ notes: text }),
@@ -889,7 +944,7 @@ export const indexedOutputSchema = z.object({ artefacts: z.array(indexedArtefact
 // the profiles are asked for, so a profile can cite it. `MODEL_KINDS` drops it
 // there as everywhere.
 export const STAGE_KINDS: Kind[][] = [
-  ['passage'], ['claim', 'mechanism', 'assumption', 'actor'], ['actor', 'alias', 'resolution_candidate'],
+  ['passage'], ['claim', 'mechanism', 'assumption', 'actor'], ['actor', 'alias', 'resolution_candidate', 'actor_match'],
   ['edge'], ['profile', 'research_source'], ['research_question', 'research_source'], ['evidence'], ['model', 'assumption', 'research_question', 'research_source'], ['test'], ['scenario', 'assumption', 'research_question', 'research_source'],
   ['exploit', 'assumption', 'research_question', 'research_source'], ['cross_policy'], ['finding', 'recommendation', 'assumption'], ['persona_link'],
   ['causal_chain', 'logic_model', 'assumption', 'research_question', 'research_source'], ['option_appraisal', 'evaluation_plan', 'assumption', 'research_question', 'research_source'],
@@ -904,7 +959,9 @@ export const STAGE_KINDS: Kind[][] = [
  * a URL, of its own. Describing a kind the model may not write is the defect;
  * this is the one place the two lists are allowed to differ.
  */
-export const MODEL_KINDS: Kind[][] = STAGE_KINDS.map((kinds) => kinds.filter((kind) => kind !== 'research_source'));
+// Stage 2's model writes ANSWERS (phase 23); the actors are the server's,
+// built from them, and so are the two kinds the old resolution emitted.
+export const MODEL_KINDS: Kind[][] = STAGE_KINDS.map((kinds, stage) => kinds.filter((kind) => kind !== 'research_source' && (stage !== 2 || kind === 'actor_match')));
 /**
  * WHAT A STAGE IS GIVEN, AS KINDS, IN THE ORDER IT NEEDS THEM.
  *

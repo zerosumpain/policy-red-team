@@ -1,7 +1,7 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { and, asc, desc, eq, inArray, isNotNull, sql } from 'drizzle-orm';
 import { db, type DbExecutor } from '$lib/db';
-import { policyAnalyses, policyArtefacts, policyDocuments, policyExecutions, policyModelCalls, policyPasses, policyPersonaObservations, policyPersonas, policyProvenance, policyReaderInputs, policyStages, workflowRuns, workflows } from '$lib/db/schema';
+import { policyActorMentions, policyAnalyses, policyArtefacts, policyDocuments, policyExecutions, policyModelCalls, policyPasses, policyPersonaObservations, policyPersonas, policyProvenance, policyReaderInputs, policyStages, workflowRuns, workflows } from '$lib/db/schema';
 import { ADDENDUM_STAGES, passOf, passOrdinal, RESTATEMENT_STAGES, STAGES, TRIGGER, WORKFLOW_ID, type Artefact } from '../contracts';
 import type { Neighbour } from '../pipeline';
 import { PolicyError } from '../validation';
@@ -574,6 +574,12 @@ export async function remove(owner: string, id: string): Promise<boolean> {
     // used to persist with nothing behind it. It is deleted now. A dossier built
     // from four papers still stands when one is withdrawn — minus that one.
     const contributed = [...new Set((await tx.select({ personaId: policyPersonaObservations.personaId }).from(policyPersonaObservations).where(eq(policyPersonaObservations.analysisId, id))).map((r) => r.personaId))];
+    // THE MASTER LIST TOO (phase 23): every actor this paper named or proposed.
+    // Rebuilt below like a persona — a proposal no paper names any more, and
+    // nobody vouched for, goes with the paper that proposed it.
+    const named = (await tx.select({ masterId: policyActorMentions.masterId }).from(policyActorMentions).where(eq(policyActorMentions.analysisId, id))).map((r) => r.masterId);
+    const proposed = (await tx.select({ id: policyPersonas.id }).from(policyPersonas).where(eq(policyPersonas.proposedIn, id))).map((r) => r.id);
+    contributed.push(...[...new Set([...named, ...proposed])].filter((m) => !contributed.includes(m)));
     // A CROSS-POLICY FINDING ON SOMEBODY ELSE'S ASSESSMENT IS PROSE ABOUT THIS
     // ONE. `otherAnalysisTitle`, `interaction` and `consequence` describe the
     // paper being deleted, and they live on the analysis that FOUND them, which no

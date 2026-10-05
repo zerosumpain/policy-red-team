@@ -26,6 +26,7 @@ import {
   jsonb,
   primaryKey,
   uuid,
+  type AnyPgColumn,
 } from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
 
@@ -196,7 +197,43 @@ export const policyPersonas = pgTable('policy_personas', {
   researchedAt: timestamp('researched_at', { withTimezone: true }),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
-}, (t) => [index('policy_personas_owner_idx').on(t.owner, t.name), index('policy_personas_body_idx').on(t.owner, t.bodyId)]);
+  /**
+   * PHASE 23: THE PERSONA LIBRARY IS THE MASTER LIST OF ACTORS
+   * (`migrations/0007-actor-register.sql`). organisation, office_or_role,
+   * sector_or_category, group_of_people or not_an_actor.
+   */
+  kind: text('kind').notNull().default('organisation'),
+  /** Structure: who it sits inside. For a programme, who runs it. */
+  partOf: uuid('part_of').references((): AnyPgColumn => policyPersonas.id, { onDelete: 'set null' }),
+  /** Category: what sort of thing it is a member of. */
+  kindOf: uuid('kind_of').references((): AnyPgColumn => policyPersonas.id, { onDelete: 'set null' }),
+  /** confirmed or proposed. Both are matched into; proposed ones wait for review. */
+  status: text('status').notNull().default('proposed'),
+  whatItIs: text('what_it_is'),
+  notActorReason: text('not_actor_reason'),
+  proposedIn: uuid('proposed_in').references(() => policyAnalyses.id, { onDelete: 'set null' }),
+}, (t) => [index('policy_personas_owner_idx').on(t.owner, t.name), index('policy_personas_body_idx').on(t.owner, t.bodyId), index('policy_personas_status_idx').on(t.owner, t.status)]);
+
+/**
+ * MATCHING BACK IN (phase 23): each source mention of an unsealed paper, the
+ * master actor it resolved to and the capacity the paper shows it in.
+ */
+export const policyActorMentions = pgTable('policy_actor_mentions', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  owner: text('owner').notNull(),
+  analysisId: uuid('analysis_id').notNull().references(() => policyAnalyses.id, { onDelete: 'cascade' }),
+  actorId: text('actor_id'),
+  mentionId: text('mention_id').notNull(),
+  masterId: uuid('master_id').notNull().references(() => policyPersonas.id, { onDelete: 'cascade' }),
+  capacity: text('capacity'),
+  basis: text('basis').notNull(),
+  wording: text('wording').notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  uniqueIndex('policy_actor_mentions_mention_idx').on(t.analysisId, t.mentionId, t.masterId),
+  index('policy_actor_mentions_master_idx').on(t.masterId),
+  index('policy_actor_mentions_owner_idx').on(t.owner),
+]);
 
 export const policyPersonaObservations = pgTable('policy_persona_observations', {
   id: uuid('id').primaryKey().defaultRandom(),

@@ -55,8 +55,35 @@ export type SharedReport = {
   warnings: { stage: string; text: string; note?: true }[];
 };
 
+/**
+ * THE OWNER'S MASTER LIST OF ACTORS STAYS THEIRS (phase 23). An actor matched
+ * to a row already on the list carries that row's id, its place in the
+ * owner's hierarchy, its name and its one-line description — all of which may
+ * have come from the owner's OTHER papers, which is what this module exists to
+ * keep in. So a shared copy keeps none of `master`; an actor the list already
+ * held is named in this paper's own words and described by nothing the list
+ * wrote. An actor this paper proposed keeps its own description.
+ */
+function listedActor(a: Artefact, data: Record<string, unknown>, byId: Map<string, Artefact>): Partial<Artefact> | null {
+  const master = data.master as { status?: unknown; partOf?: { id?: unknown } | null } | undefined;
+  if (!master) return null;
+  delete data.master;
+  const listed = master.status !== 'new';
+  if (!listed && !master.partOf?.id) return null;
+  data.parent = null;
+  if (!listed) return null;
+  delete data.whatItIs;
+  const words = (Array.isArray(data.mentions) ? data.mentions as unknown[] : [])
+    .map((id) => byId.get(String(id))?.label)
+    .filter((l): l is string => Boolean(l));
+  const fold = (v: string) => v.toLowerCase().replace(/\s+/g, ' ').trim();
+  if (!words.length || words.some((w) => fold(w) === fold(a.label))) return null;
+  return { label: words[0], statement: byId.get(String((data.mentions as unknown[])[0]))?.statement ?? a.statement };
+}
+
 export function shareableReport(input: { artefacts: Artefact[]; stages: { ordinal: number; name: string; warnings: string[]; notes?: string[] }[] }): SharedReport {
   const withheldKinds = new Set<string>(WITHHELD_KINDS);
+  const byId = new Map(input.artefacts.map((a) => [a.id, a]));
   const kept = input.artefacts.filter((a) => !withheldKinds.has(a.kind));
   const alive = new Set(kept.map((a) => a.id));
 
@@ -84,9 +111,11 @@ export function shareableReport(input: { artefacts: Artefact[]; stages: { ordina
     delete data.note;
     delete data.wording;
     const withheldText = a.kind === 'research_source' && a.data.suppliedAs === 'file';
+    const fromList = a.kind === 'actor' ? listedActor(a, data, byId) : null;
     return {
       ...a,
       ...(withheldText ? { statement: '', label: 'A file the owner supplied' } : {}),
+      ...(fromList ?? {}),
       data,
       refs: a.refs.filter((id) => alive.has(id)),
       sourceId: a.sourceId && alive.has(a.sourceId) ? a.sourceId : null,

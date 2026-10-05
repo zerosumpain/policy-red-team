@@ -262,10 +262,14 @@ try {
       if (!(await card.locator('.prt-play__closing').getByText('How it runs').isVisible())) failures.push('play card: the detail under the plain block does not carry the play itself');
     }
 
-    const term = card.locator('.prt-term__name').first();
+    // THE PART OF THE POLICY, not a body: since phase 23 the bodies on a card
+    // are terms too (stage 2 writes each one a line of what it is), and the
+    // fixture names one first.
+    const partTerm = card.locator('.prt-term').filter({ hasNot: page.locator('.prt-term__name', { hasText: /\b(Councils?|Department for Education|Providers)\b/ }) }).first();
+    const term = partTerm.locator('.prt-term__name');
     if (!(await term.count())) failures.push('play card: the part of the policy it names is not a definable term');
     else {
-      const definition = card.locator('.prt-term__definition').first();
+      const definition = partTerm.locator('.prt-term__definition');
       if ((await term.getAttribute('aria-expanded')) !== 'false' || (await definition.isVisible())) failures.push('term: the definition shows before it is asked for');
       // KEYBOARD, NOT A POINTER: the accessibility statement promises nothing here appears on hover.
       await term.focus();
@@ -1065,6 +1069,35 @@ try {
   await page.getByRole('button', { name: 'Start the assessment' }).click();
   await page.waitForURL('**/assessments/**', { timeout: 20000 });
   await page.getByRole('heading', { name: 'The report at a glance' }).waitFor({ timeout: 120000 });
+
+  // 9a — THE MASTER LIST OF ACTORS (phase 23), through the API the hub will
+  // draw from. Two papers in: the council named as "Council" and "Councils" is
+  // ONE actor seen in two papers; the department is matched through GOV.UK; the
+  // programme is kept as context, not an actor; the named resident is nowhere.
+  // Then a ruling: accept the council, put it inside the department, and have
+  // the opposite move refused as a loop.
+  {
+    const register = await page.evaluate(async () => (await fetch('/api/policy-analysis/register')).json());
+    const named = (name) => register.entries?.find((e) => e.name === name);
+    const council = named('Council');
+    const dfe = named('Department for Education');
+    if (!council || !dfe) failures.push(`register: the master list does not hold the council and the department (${(register.entries ?? []).map((e) => e.name).join(', ')})`);
+    else if (council.papers !== 2) failures.push(`register: the council is seen in ${council.papers} papers, expected 2`);
+    if (named('Shared access programme')?.kind !== 'not_an_actor') failures.push('register: the programme is not kept as "not an actor"');
+    if (JSON.stringify(register).includes('Jane Smith')) failures.push('register: a named private individual reached the master list');
+    const queue = await page.evaluate(async () => (await fetch('/api/policy-analysis/register/proposals')).json());
+    if (!queue.proposals?.length) failures.push('register: the review queue is empty after two papers proposed actors');
+    if (council && dfe) {
+      const post = (url, body) => page.evaluate(async ([u, b]) => (await fetch(u, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(b) })).status, [url, body]);
+      if ((await post(`/api/policy-analysis/register/${council.id}/accept`, {})) !== 200) failures.push('register: accepting a proposal did not answer 200');
+      if ((await post(`/api/policy-analysis/register/${council.id}/parent`, { partOf: dfe.id })) !== 200) failures.push('register: placing the council inside the department did not answer 200');
+      if ((await post(`/api/policy-analysis/register/${dfe.id}/parent`, { partOf: council.id })) !== 400) failures.push('register: a loop in the hierarchy was not refused');
+      const after = await page.evaluate(async () => (await fetch('/api/policy-analysis/register')).json());
+      const placed = after.entries.find((e) => e.id === council.id);
+      if (placed?.status !== 'confirmed' || placed?.partOfPath?.[0] !== 'Department for Education') failures.push('register: the ruling did not stick');
+    }
+    note('the master list holds one council seen in two papers, keeps the programme as context and the named resident out, and takes a ruling while refusing a loop');
+  }
 
   /*
    * 9a′ — THE LANDING PAGE NAMES THE BODIES THAT TURN UP AGAIN (phase 24).

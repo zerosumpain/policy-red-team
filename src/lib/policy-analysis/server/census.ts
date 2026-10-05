@@ -1,5 +1,5 @@
 /**
- * THE FOURTEEN PROBES — the SQL half of the purge receipt.
+ * THE FIFTEEN PROBES — the SQL half of the purge receipt.
  *
  * The receipt's shape, wording and file rendering are pure and live in
  * `$lib/policy-analysis/receipt`, which the dashboard imports. This half holds
@@ -33,6 +33,9 @@ const PROBES: { table: string; what: string; query: (id: string) => ReturnType<t
   // Phase 19: the groups of people a paper named. They cascade with the paper,
   // and a name like "care leavers in Kent" is the paper's own words.
   { table: 'policy_affected_groups', what: 'the groups of people it named, kept apart from the persona library', query: (id) => sql`select count(*)::int as n from policy_affected_groups where analysis_id = ${id}::uuid` },
+  // Phase 23: which master actor each of the paper's mentions resolved to,
+  // with the paper's own wording. Cascades with the paper.
+  { table: 'policy_actor_mentions', what: 'which actors on your master list it named, in its own words', query: (id) => sql`select count(*)::int as n from policy_actor_mentions where analysis_id = ${id}::uuid` },
   { table: 'policy_share', what: 'share links minted against it', query: (id) => sql`select count(*)::int as n from policy_share where analysis_id = ${id}::uuid` },
   // The two that no cascade reaches, and that a plain DELETE left behind for two
   // months. They are the reason this census exists rather than a success message.

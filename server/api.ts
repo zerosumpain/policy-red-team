@@ -313,6 +313,56 @@ export async function handleApi(
     return true;
   }
 
+  /*
+   * THE MASTER LIST OF ACTORS — phase 23. Before the /:id routes, or "register"
+   * is read as an id. Its ids ARE persona ids: merge, "not the same", split and
+   * the GOV.UK link stay where they were (`…/personas/:id/merge` and the rest).
+   *
+   *   GET  …/register                           the list, as both trees
+   *   GET  …/register/proposals                 what runs proposed, for review
+   *   POST …/register/:id/accept    { kind? }   the reader vouches for it
+   *   POST …/register/:id/parent    { partOf?, kindOf? }   move it (null = to the top)
+   *   POST …/register/:id/not-actor { reason, runBy? }     a programme, place, assessment
+   *   POST …/register/:id/kind      { kind }    what sort of actor it is (and so an actor again)
+   *
+   * The owner's own pages: built from the library and the papers' mentions,
+   * which no share or export reads. A sealed paper wrote no mention.
+   */
+  if (segments[0] === 'register') {
+    const registry = await import('$lib/policy-analysis/server/actor-register');
+    if (segments.length === 1 && method === 'GET') {
+      sendJson(res, 200, { ...(await registry.registerTreeFor(owner())), readOnly: isReadOnly() });
+      return true;
+    }
+    if (segments.length === 2 && segments[1] === 'proposals' && method === 'GET') {
+      sendJson(res, 200, { proposals: await registry.proposalQueue(owner()), readOnly: isReadOnly() });
+      return true;
+    }
+    if (segments.length === 3 && method === 'POST' && ['accept', 'parent', 'not-actor', 'kind'].includes(segments[2])) {
+      const body = await readJson(req);
+      const text = (key: string) => (typeof body[key] === 'string' ? (body[key] as string).trim().slice(0, 200) : '');
+      // `null` is a value here: it takes an actor out from under its parent.
+      const parent = (key: string) => (body[key] === null ? null : typeof body[key] === 'string' ? (body[key] as string).trim().slice(0, 100) : undefined);
+      const id = segments[1];
+      if (segments[2] === 'accept') { sendJson(res, 200, await registry.acceptEntry(owner(), id, text('kind') || null)); return true; }
+      if (segments[2] === 'parent') {
+        const change = { partOf: parent('partOf'), kindOf: parent('kindOf') };
+        if (change.partOf === undefined && change.kindOf === undefined) throw new HttpError(400, 'Say where it sits: partOf, kindOf or both.');
+        sendJson(res, 200, await registry.reparentEntry(owner(), id, change));
+        return true;
+      }
+      if (segments[2] === 'not-actor') {
+        if (!text('reason')) throw new HttpError(400, 'Say what it is: a programme, a place, an assessment or something else.');
+        sendJson(res, 200, await registry.markNotActor(owner(), id, text('reason'), text('runBy') || null));
+        return true;
+      }
+      if (!text('kind')) throw new HttpError(400, 'Choose what sort of actor it is.');
+      sendJson(res, 200, await registry.acceptEntry(owner(), id, text('kind')));
+      return true;
+    }
+    return false;
+  }
+
   // The persona library. Before the /:id routes, or "personas" is read as an id.
   if (segments[0] === 'personas') {
     const { affectedGroups, duplicateSuggestions, listPersonas, personaDetail, removePersona } = await import('$lib/policy-analysis/server/personas');

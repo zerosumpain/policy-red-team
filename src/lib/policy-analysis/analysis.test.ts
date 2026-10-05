@@ -236,7 +236,9 @@ describe('the assured report leads with key judgements', () => {
     const result = await executeStage(base(ASSURED_SYNTHESIS_STAGE, all), { model, research, signal, neighbours: none, personas: none });
     expect(keys).toEqual(['main', 'topup']);
     expect(gaps[1]).toEqual(['key_judgements']);
-    expect(result.artefacts.filter((a) => a.kind === 'key_judgement')).toHaveLength(1);
+    // Three: the fixture red-teams three bodies since phase 23 (the master list
+    // of actors), so it has three plays to write a judgement about.
+    expect(result.artefacts.filter((a) => a.kind === 'key_judgement')).toHaveLength(3);
     expect(result.artefacts.filter((a) => a.kind === 'review_summary')).toHaveLength(1);
     expect(result.warnings.join(' ')).toContain('already holds');
   });
@@ -282,8 +284,8 @@ describe('the assured report leads with key judgements', () => {
     const chosen = deepChainMechanisms(all).selected;
     expect(chosen.length).toBeGreaterThan(0);
     for (const mechanism of chosen) expect(main.has(mechanism.id)).toBe(true);
-    // And so the report leads with one.
-    expect(result.artefacts.filter((a) => a.kind === 'key_judgement')).toHaveLength(1);
+    // And so the report leads with them — one per play, three since phase 23.
+    expect(result.artefacts.filter((a) => a.kind === 'key_judgement')).toHaveLength(3);
   });
 
   it('reconciles a surplus — every corrective round restating them, and more than five — rather than failing', async () => {
@@ -306,7 +308,8 @@ describe('the assured report leads with key judgements', () => {
     // The last of rank 1 is the revised one.
     expect(kept.find((a) => a.data.rank === 1)!.statement).toBe('The restated judgement.');
     const discarded = stageFacts(result.warnings).find((f) => f.kind === 'discarded')!;
-    expect(discarded.detail.join(' ')).toContain('3 key judgements were discarded');
+    // Ten arrived — the fixture's three, six more and a restated first — and five stay.
+    expect(discarded.detail.join(' ')).toContain('5 key judgements were discarded');
   });
 
   it('tells the model what a key judgement is, in plain words', () => {

@@ -59,6 +59,18 @@ export function stampProfileForm(raw: unknown, form: 'full' | 'short'): unknown 
     if (!data || typeof data !== 'object') continue;
     if (form === 'short') (data as Record<string, unknown>).form = 'short';
     else delete (data as Record<string, unknown>).form;
+    /*
+     * A PROFILE IS A SYNTHESIS, NOT AN EXTRACTION (phase 23, T4). Replayed from
+     * the stored replies of the Best Start run: 82 of 148 profiles came back
+     * with `origin: extracted_fact` on the profile itself and no quote, every
+     * one was refused as "an extracted assertion could not be located", and
+     * that one rule was 83 of the ~90 rejections behind stage 4's 18 repair
+     * calls. Each FIELD carries its own origin and its own refs — that is where
+     * "the paper says so" lives. The profile as a whole is the model's reading,
+     * so where it names no quote it is read as one, before triage.
+     */
+    const profile = item as { origin?: unknown; sourceQuote?: unknown };
+    if (profile.origin === 'extracted_fact' && !profile.sourceQuote) profile.origin = 'structural_inference';
   }
   return raw;
 }

@@ -52,7 +52,7 @@ describe.skipIf(!local)('the schema and the migrations agree', () => {
     expect(drift).toEqual([]);
   });
 
-  it('created all twenty tables', async () => {
+  it('created all twenty-one tables', async () => {
     const tables = (
       await client.query<{ tablename: string }>(
         `select tablename from pg_tables where schemaname = 'public' and tablename not like '\\_%'`
@@ -61,8 +61,9 @@ describe.skipIf(!local)('the schema and the migrations agree', () => {
     // Phase 19 added five: the register of bodies, identity decisions and
     // affected groups (P), and the public record about a body and when each
     // source was last asked (X). Phase 22 part 2 added one: what the reader
-    // supplied beside the paper.
-    expect(tables).toHaveLength(20);
-    expect(tables.filter((t) => t.startsWith('policy_'))).toHaveLength(18);
+    // supplied beside the paper. Phase 23 added one: which master actor each
+    // source mention resolved to.
+    expect(tables).toHaveLength(21);
+    expect(tables.filter((t) => t.startsWith('policy_'))).toHaveLength(19);
   });
 });
