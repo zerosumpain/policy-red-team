@@ -20,7 +20,7 @@
 // `docs/upstream.json` is this build's own and needs no such bookkeeping.
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
-import { artefact, ASSURANCE_CATEGORIES, assuranceCategories, ASSURANCE_STAGE, ASSURED_SYNTHESIS_STAGE, APPRAISAL_STAGE, type Artefact, type StageInput } from './contracts';
+import { artefact, ASSURANCE_CATEGORIES, assuranceCategories, ASSURANCE_STAGE, ASSURED_SYNTHESIS_STAGE, APPRAISAL_STAGE, SYNTHESIS_STAGE, type Artefact, type StageInput } from './contracts';
 // The remits a run with no reader-supplied source is asked: every one but
 // `supplied_balance`, which has nothing to check there (phase 22 part 2).
 const RUN_CATEGORIES = assuranceCategories([]);
@@ -102,6 +102,39 @@ describe('a coverage gap is asked about before it is fatal', () => {
     // stage is complete, and the warning channel is carried into every later
     // call and counted on the report's account of what the run discarded.
     expect(result.warnings.join(' ')).not.toContain('not assessed');
+  });
+
+  it('asks again for a load-bearing chapter the initial report left out', async () => {
+    // Phase 27, live on gpt-6-luna: a complete initial report on the Best Start
+    // paper with no high_risk_assumptions finding. Stage 12 had no second ask,
+    // so all three attempts replayed the one cached answer and the run ended.
+    const all = await inventory();
+    const keys: string[] = [];
+    const asked: unknown[] = [];
+    let first = true;
+    const model = async (...args: Parameters<typeof fixtureModel>) => {
+      keys.push(args[1]);
+      asked.push((args[2] as { coverageGap?: unknown }).coverageGap);
+      const out = fixtureModel(...args);
+      if (!first) return out;
+      first = false;
+      return { ...out, artefacts: out.artefacts.filter((a) => a.data.section !== 'high_risk_assumptions') };
+    };
+    const result = await executeStage(base(SYNTHESIS_STAGE, without(all, SYNTHESIS_STAGE)), { model, research, signal, neighbours: none, personas: none });
+    expect(keys).toHaveLength(2);
+    expect(asked[1]).toEqual(['high_risk_assumptions']);
+    expect(result.artefacts.some((a) => a.data.section === 'high_risk_assumptions')).toBe(true);
+    // The fixture restates the whole report on the second call; only the
+    // missing chapter (and what it rests on) is taken, so nothing is doubled.
+    const heads = result.artefacts.filter((a) => a.data.section === 'executive_assessment');
+    expect(heads).toHaveLength(1);
+  });
+
+  it('still refuses an initial report whose second ask is also short', async () => {
+    const all = await inventory();
+    const model = withhold((a) => a.data.section === 'high_risk_assumptions');
+    await expect(executeStage(base(SYNTHESIS_STAGE, without(all, SYNTHESIS_STAGE)), { model, research, signal, neighbours: none, personas: none }))
+      .rejects.toThrow(/high risk assumptions/);
   });
 
   it('re-dispatches the units of a fan-out that produced nothing', async () => {

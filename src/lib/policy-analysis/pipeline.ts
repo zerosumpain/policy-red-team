@@ -1439,8 +1439,9 @@ export async function executeStage(input: StageInput, deps: PipelineDeps): Promi
      * different question; asking it five times is the loop this replaces.
      *
      * This is stage 2's `unclaimedMentions` loop, which has done exactly this for
-     * source mentions since before the fork, applied to the two stages whose
-     * coverage rule can end a run over a single absence.
+     * source mentions since before the fork, applied to the stages whose
+     * coverage rule can end a run over a single absence (15 and 17; 12 since
+     * phase 27).
      */
     // `KEY_JUDGEMENT_GAP` joins the challenge ids when the report came back with
     // fewer than `KEY_JUDGEMENT_FLOOR` usable key judgements (phase 23; it was
@@ -1458,7 +1459,20 @@ export async function executeStage(input: StageInput, deps: PipelineDeps): Promi
         ? [...['business_as_usual', 'minimum_intervention', 'proposed_policy', 'alternative']
           .filter((type) => !output.artefacts.some((a) => a.kind === 'option_appraisal' && a.data.optionType === type)),
         ...(output.artefacts.some((a) => a.kind === 'evaluation_plan') ? [] : ['evaluation_plan'])]
-        : [];
+        /*
+         * STAGE 12 IS THE THIRD (phase 27). Its rule below throws on a missing
+         * load-bearing chapter, and nothing asked about one first: gpt-6-luna
+         * wrote a complete initial report on the Best Start paper with no
+         * high_risk_assumptions section, all three attempts replayed that one
+         * cached answer, and twelve stages of a real run stopped there. Mirrors
+         * the rule's own core list and its recommendation check, written out for
+         * the reason the appraisal list above is.
+         */
+        : stage === SYNTHESIS_STAGE
+          ? [...['executive_assessment', 'high_risk_assumptions', 'exploitation']
+            .filter((section) => !output.artefacts.some((a) => a.data.section === section)),
+          ...(output.artefacts.some((a) => a.kind === 'recommendation') ? [] : ['recommendations'])]
+          : [];
     if (gap.length) {
       /**
        * A RECOVERY IS NOT A LIMIT, so it writes no warning of its own.
@@ -1529,7 +1543,9 @@ export async function executeStage(input: StageInput, deps: PipelineDeps): Promi
       const wanted = new Set(gap);
       const answers = (a: Artefact) => stage === ASSURED_SYNTHESIS_STAGE
         ? (a.kind === 'assurance_response' && wanted.has(String(a.data.challengeId))) || (a.kind === 'key_judgement' && wanted.has(KEY_JUDGEMENT_GAP))
-        : (a.kind === 'option_appraisal' && wanted.has(String(a.data.optionType))) || (a.kind === 'evaluation_plan' && wanted.has('evaluation_plan'));
+        : stage === SYNTHESIS_STAGE
+          ? (a.kind === 'finding' && wanted.has(String(a.data.section))) || (a.kind === 'recommendation' && wanted.has('recommendations'))
+          : (a.kind === 'option_appraisal' && wanted.has(String(a.data.optionType))) || (a.kind === 'evaluation_plan' && wanted.has('evaluation_plan'));
       const added = output.artefacts.slice(before);
       const byId = new Map(added.map((a) => [a.id, a]));
       const keep = new Set(added.filter(answers).map((a) => a.id));
