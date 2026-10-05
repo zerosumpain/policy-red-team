@@ -1,0 +1,168 @@
+@use "../govuk" as govuk;
+@use "../tokens" as *;
+
+// ── Phase 24b: the master list of actors and the queue of what to review ──
+
+// "Arrange by": two links, the current one marked. Not tabs — each is a URL
+// a reader can bookmark — and not a toggle button, because what changes is
+// the page, not a setting on it.
+.prt-switch {
+  @include govuk.govuk-font($size: 16);
+  margin-bottom: govuk.govuk-spacing(4);
+
+  &__label {
+    display: block;
+    font-weight: bold;
+    margin-bottom: govuk.govuk-spacing(1);
+  }
+
+  &__list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: govuk.govuk-spacing(2) govuk.govuk-spacing(4);
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  &__link[aria-current="true"] {
+    font-weight: bold;
+    text-decoration-thickness: 3px;
+    color: govuk.$govuk-text-colour;
+  }
+}
+
+.prt-register__find {
+  max-width: 30em;
+}
+
+.prt-register__tag {
+  margin-left: govuk.govuk-spacing(2);
+  vertical-align: middle;
+}
+
+// THE TREE: nested lists, each level a small indent and a rule down the left,
+// so depth reads at a glance without pushing text sideways at 320px — six
+// levels at 12px is 72px of a 288px column. Names wrap; nothing is clipped.
+.prt-tree,
+.prt-tree__children {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.prt-tree {
+  margin-bottom: govuk.govuk-spacing(6);
+  border-top: 1px solid govuk.$govuk-border-colour;
+}
+
+.prt-tree__children {
+  margin-left: govuk.govuk-spacing(2);
+  padding-left: govuk.govuk-spacing(2);
+  border-left: 3px solid govuk.govuk-colour("black", $variant: "tint-80");
+
+  @include govuk.govuk-media-query($from: tablet) {
+    margin-left: govuk.govuk-spacing(3);
+    padding-left: govuk.govuk-spacing(4);
+  }
+
+  &[hidden] { display: none; }
+}
+
+.prt-tree__item {
+  border-bottom: 1px solid govuk.$govuk-border-colour;
+
+  .prt-tree__children > &:last-child { border-bottom: 0; }
+}
+
+.prt-tree__row {
+  padding: govuk.govuk-spacing(2) 0;
+}
+
+.prt-tree__name {
+  @include govuk.govuk-font($size: 19, $weight: bold);
+}
+
+.prt-tree__item--match > .prt-tree__row > .prt-tree__name {
+  background: govuk.govuk-colour("yellow", $variant: "tint-50");
+}
+
+.prt-tree__meta {
+  @include govuk.govuk-font($size: 16);
+  color: govuk.$govuk-secondary-text-colour;
+  margin: govuk.govuk-spacing(1) 0 0;
+}
+
+.prt-tree__inherited {
+  font-style: italic;
+}
+
+// A disclosure that reads as a link: GOV.UK's details summary does the same.
+// A real <button>, so Enter and Space both work and `aria-expanded` is heard.
+.prt-tree__toggle {
+  @include govuk.govuk-font($size: 16);
+  display: inline-block;
+  margin-top: govuk.govuk-spacing(1);
+  padding: 0;
+  border: 0;
+  background: none;
+  cursor: pointer;
+  text-align: left;
+
+  &:focus {
+    @include govuk.govuk-focused-text;
+  }
+}
+
+.prt-tree__chevron {
+  display: inline-block;
+  width: 0;
+  height: 0;
+  margin-right: govuk.govuk-spacing(1);
+  border-style: solid;
+  border-color: transparent;
+  border-width: 6px 0 6px 10px;
+  border-left-color: currentcolor;
+  vertical-align: middle;
+
+  [aria-expanded="true"] > & {
+    border-width: 10px 6px 0;
+    border-color: transparent;
+    border-top-color: currentcolor;
+  }
+}
+
+.prt-tree__more {
+  margin: govuk.govuk-spacing(2) 0;
+}
+
+// THE QUEUE: one item per decision, each with its evidence and its answers.
+.prt-review__list {
+  margin-bottom: govuk.govuk-spacing(4);
+}
+
+.prt-review__item {
+  padding: govuk.govuk-spacing(3) 0;
+  border-bottom: 1px solid govuk.$govuk-border-colour;
+
+  .govuk-button-group { margin-bottom: 0; }
+}
+
+.prt-review__facts {
+  @include govuk.govuk-font($size: 16);
+  margin-bottom: govuk.govuk-spacing(3);
+}
+
+// The confirmation takes focus; its own outline would be a box round a banner
+// that already has one.
+.prt-flash:focus { outline: none; }
+
+@media print {
+  .prt-tree__toggle, .prt-tree__more { display: none; }
+}
+
+// A body's place on the list, under its title.
+.prt-place {
+  @include govuk.govuk-font($size: 16);
+  margin-top: govuk.govuk-spacing(-2);
+}

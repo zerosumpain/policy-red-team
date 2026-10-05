@@ -1,7 +1,7 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import { Link, useSearchParams } from 'react-router';
 import { api, type AffectedGroup, type BodiesGrid, type DuplicateSuggestion, type PersonaSummary } from '../api';
-import { ServiceNavigation, Table, WarningText, type Column } from '../govuk';
+import { InsetText, ServiceNavigation, Table, WarningText, type Column } from '../govuk';
 import { BandMark } from '../BandMark';
 import { Bar } from '../report/Metrics';
 import { usePageTitle } from '../layout/Template';
@@ -22,6 +22,8 @@ import { CLASH_RULE, ClashList } from './ClashList';
  *   /bodies           List            every body, the library's table
  *   /bodies/across    Across papers   the register bodies × papers grid
  *   /bodies/clashes   Clashes         two papers pulling one pair of bodies two ways
+ *   /bodies/register  Master list     every actor once, as a part-of or kind-of tree (phase 24b)
+ *   /bodies/review    Actors to review proposals, the model's joins, pairs that may be one body
  *   /bodies/groups    Groups of people
  *
  * Each thing is on exactly one of them. The views are `HUB_VIEWS` in
@@ -30,8 +32,32 @@ import { CLASH_RULE, ClashList } from './ClashList';
  * The owner's own pages. Nothing here leaves: they are built from the persona
  * library and the papers' graphs, which no share or export reads.
  */
-function Hub({ slug, children, intro }: { slug: string; children: ReactNode; intro?: ReactNode }) {
+/**
+ * THE QUEUE'S FIGURE IN THE VIEWS (phase 24b): "Actors to review (12)", asked
+ * by every hub page. Held for the session and refreshed on each mount, so the
+ * bar never flickers from a number to nothing while it asks again; a page that
+ * changes the queue calls `refreshReviewCount` so the figure follows.
+ */
+let heldCount: number | null = null;
+const countListeners = new Set<(n: number | null) => void>();
+export function refreshReviewCount() {
+  api.reviewCount()
+    .then((c) => { heldCount = c.total; countListeners.forEach((f) => f(heldCount)); })
+    .catch(() => undefined);
+}
+function useReviewCount(): number | null {
+  const [count, setCount] = useState<number | null>(heldCount);
+  useEffect(() => {
+    countListeners.add(setCount);
+    refreshReviewCount();
+    return () => { countListeners.delete(setCount); };
+  }, []);
+  return count;
+}
+
+export function Hub({ slug, children, intro, heading }: { slug: string; children: ReactNode; intro?: ReactNode; heading?: string }) {
   const view = HUB_VIEWS.find((v) => v.slug === slug) ?? HUB_VIEWS[0];
+  const count = useReviewCount();
   usePageTitle(view.slug ? `${view.label} — Bodies across policies` : 'Bodies across policies');
   return (
     <>
@@ -44,14 +70,14 @@ function Hub({ slug, children, intro }: { slug: string; children: ReactNode; int
         sections
         label="Bodies across policies"
         toggle="Views of the bodies"
-        items={HUB_VIEWS.map((v) => ({ href: hubPath(v.slug), text: v.label, current: v.slug === view.slug }))}
+        items={HUB_VIEWS.map((v) => ({ href: hubPath(v.slug), text: v.slug === 'review' && count !== null ? `${v.label} (${count})` : v.label, current: v.slug === view.slug }))}
         render={({ href, className, current, children: text }) => (
           <Link to={href} className={className} aria-current={current}>{text}</Link>
         )}
       />
       <div className="govuk-grid-row">
         <div className="govuk-grid-column-full">
-          <h2 className="govuk-heading-l">{view.label === 'List' ? 'Every body' : view.label}</h2>
+          <h2 className="govuk-heading-l">{heading ?? (view.label === 'List' ? 'Every body' : view.label)}</h2>
           <p className="govuk-body-l">{view.hint}.</p>
           {intro}
         </div>
@@ -62,7 +88,7 @@ function Hub({ slug, children, intro }: { slug: string; children: ReactNode; int
 }
 
 /** A failed or pending fetch, said in the same words on every view. */
-function Loading({ error, loading }: { error: string | null; loading: boolean }) {
+export function Loading({ error, loading }: { error: string | null; loading: boolean }) {
   if (error) return <p className="govuk-body govuk-error-message" role="alert">{error}</p>;
   return loading ? <p className="govuk-body">Loading…</p> : null;
 }
@@ -79,7 +105,6 @@ function Loading({ error, loading }: { error: string | null; loading: boolean })
 export function BodiesList() {
   const [rows, setRows] = useState<PersonaSummary[] | null>(null);
   const [duplicates, setDuplicates] = useState<DuplicateSuggestion[]>([]);
-  const [readOnly, setReadOnly] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -87,7 +112,6 @@ export function BodiesList() {
       .then((data) => {
         setRows(data.personas ?? []);
         setDuplicates(data.duplicates ?? []);
-        setReadOnly(data.readOnly);
       })
       .catch((err: Error) => setError(err.message));
   }, []);
@@ -143,32 +167,21 @@ export function BodiesList() {
         </div>
       ) : null}
 
-      {/* ONE BODY RECORDED TWICE, offered and never acted on. The same GOV.UK
-          body is the strong case; a short name and its long form, or two names
-          very alike, the weak one. A pair the reader rules different goes.
-          Phase 24b folds this into the register's review queue. */}
+      {/* ONE BODY RECORDED TWICE: the pairs are offered in the review queue
+          since phase 24b, with the proposals and the model's joins, so there
+          is one place to review who is who. Here, a pointer and a count. */}
       {duplicates.length ? (
-        <section aria-labelledby="library-duplicates" className="govuk-grid-row">
+        <div className="govuk-grid-row">
           <div className="govuk-grid-column-full">
-            <h2 className="govuk-heading-m" id="library-duplicates">These may be the same body — {duplicates.length}</h2>
-            <p className="govuk-body">
-              Each pair may be one body recorded twice. Check them side by side and say whether they
-              are the same.
-            </p>
-            <ul className="govuk-list govuk-list--bullet">
-              {duplicates.map((pair) => (
-                <li key={`${pair.a.id}-${pair.b.id}`}>
-                  {readOnly ? `${pair.a.name} and ${pair.b.name}` : (
-                    <Link className="govuk-link" to={bodyPath(pair.a.id, `merge/${pair.b.id}`)}>
-                      {pair.a.name} and {pair.b.name}
-                    </Link>
-                  )}{' '}
-                  <span className="prt-meta">— {pair.reason}</span>
-                </li>
-              ))}
-            </ul>
+            <InsetText>
+              {duplicates.length} {duplicates.length === 1 ? 'pair of bodies may be' : 'pairs of bodies may be'} one
+              body recorded twice.{' '}
+              <Link className="govuk-link" to={`${hubPath('review')}#review-pairs`}>
+                Check {duplicates.length === 1 ? 'it' : 'them'} with the other actors to review
+              </Link>.
+            </InsetText>
           </div>
-        </section>
+        </div>
       ) : null}
     </Hub>
   );

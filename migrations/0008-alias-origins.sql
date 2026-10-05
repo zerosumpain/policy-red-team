@@ -1,0 +1,18 @@
+-- Phase 24b: WHO ADDED EACH ALIAS of a master actor.
+--
+-- Phase 23's matcher writes a paper's wording onto the master actor it matched,
+-- so the next paper that says it matches by rule. Most of those matches are
+-- deterministic, but the ones the MODEL made are a guess that then becomes a
+-- rule: a wrong merge by the matching call is an alias, and an alias is a
+-- deterministic match on every later run until a reader splits it. The alias
+-- list (`aliases`, jsonb) recorded the words and not who put them there, so the
+-- review queue could not say which joins to check.
+--
+-- One jsonb object beside the list, keyed by the alias's normalised name:
+--   { "<normalised>": { "by": "model" | "rule" | "reader", "analysisId": "…", "at": "…" } }
+-- Additive, defaulted, and written in the same statement as `aliases`, so the
+-- two cannot drift. A key with no entry is an alias written before this
+-- migration (or by the backfill), whose origin is unknown — never read as the
+-- reader's word. The paper id is a plain string, not a foreign key: the alias
+-- outlives the paper that taught it, and so must the note of who taught it.
+ALTER TABLE policy_personas ADD COLUMN IF NOT EXISTS alias_origins jsonb NOT NULL DEFAULT '{}'::jsonb;
