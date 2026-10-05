@@ -161,6 +161,10 @@ const API_STUBS = {
   // `stages` draws the eighteen. A stub missing either renders an empty page
   // that audits clean, which is the failure this whole stub exists to avoid.
   '/api/policy-analysis': { analyses: [], models: [], stages: [], readOnly: false },
+  // Phase 25: the grounding library's list of policies, which the submit form
+  // reads too — one policy with an item, so the audit sees the table, not an
+  // empty state.
+  '/api/policy-analysis/policies': { policies: [{ id: '00000000-0000-4000-8000-000000000025', name: 'Shared access', createdAt: '2026-10-05T10:00:00Z', items: 1, runs: 2 }] },
   // Phase 19, workstream X: the bodies × papers grid. Two bodies, two papers
   // and one clash, so the audit sees the sticky row headers, a scrolling table,
   // a dash for "not named" and the side-by-side quotes — not an empty state.

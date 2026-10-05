@@ -124,14 +124,14 @@ export function PolicyChoice({ sealed }: { sealed: boolean }) {
   const [items, setItems] = useState<GroundingItemRow[] | null>(null);
   const [ticked, setTicked] = useState<Set<string>>(new Set());
 
-  useEffect(() => { api.policies().then((r) => setPolicies(r.policies)).catch(() => setPolicies([])); }, []);
+  useEffect(() => { api.policies().then((r) => setPolicies(r.policies ?? [])).catch(() => setPolicies([])); }, []);
   useEffect(() => {
     if (!chosen) { setItems(null); return; }
     let live = true;
     api.policy(chosen).then((d) => {
       if (!live) return;
-      setItems(d.items);
-      setTicked(new Set(d.items.map((i) => i.id)));
+      setItems(d.items ?? []);
+      setTicked(new Set((d.items ?? []).map((i) => i.id)));
     }).catch(() => live && setItems([]));
     return () => { live = false; };
   }, [chosen]);

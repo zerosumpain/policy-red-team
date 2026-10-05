@@ -34,7 +34,7 @@ export function GroundingIndex() {
   const [name, setName] = useState('');
   const [made, setMade] = useState<{ id: string; name: string } | null>(null);
 
-  const load = () => api.policies().then((r) => setPolicies(r.policies)).catch((e: Error) => setError(e.message));
+  const load = () => api.policies().then((r) => setPolicies(r.policies ?? [])).catch((e: Error) => setError(e.message));
   useEffect(() => { void load(); }, []);
 
   async function onCreate(event: FormEvent) {
