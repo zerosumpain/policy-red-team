@@ -27,6 +27,8 @@ import { returnLabel as returnLabelOf, returnTo } from '../moves';
 import { stageMarks } from '$lib/stage-rail';
 import { Quoted } from '../report/Quoted';
 import { TestResult } from '../report/TestResult';
+import { BodyPages, useBodyPage } from '../report/body-pages';
+import { bodyPath } from '../places';
 
 /**
  * ONE ITEM, AS FOUR PAGES — and the chain back to the paper.
@@ -352,7 +354,26 @@ export function Drill() {
     { part: 'record', count: fields },
   ];
 
+  /*
+   * THE BODY THIS ITEM IS ABOUT, AND ITS PAGE ACROSS POLICIES (phase 24). A
+   * body's own item page always offers it — the page also carries the
+   * register and the public record, worth reading for a body met once; a way
+   * to beat it offers its body's page only where that body has turned up in
+   * another policy, as every card in the report does.
+   */
+  const aboutBody = artefact.kind === 'actor' || artefact.kind === 'profile';
+  const bodyOf = aboutBody ? artefact.id : play?.actor?.id ?? null;
+
   return (
+    <BodyPages
+      personas={detail.personas}
+      artefacts={detail.artefacts}
+      render={({ personaId, name }, words) => (
+        <Link className="govuk-link" to={bodyPath(personaId)}>
+          {aboutBody ? `${name}: ${words}` : `${name} is ${words}`}<span aria-hidden="true"> →</span>
+        </Link>
+      )}
+    >
     <div className="prt-drill">
       {/*
         THE CAPTION NAMES THE PAPER *AND* SAYS WHAT STATE THE RUN IS IN.
@@ -398,6 +419,7 @@ export function Drill() {
         {isSupplied(artefact) ? <Tag colour="purple">Supplied by you</Tag> : null}
         {whereFrom(stage, marksOnScale.sources)}
       </p>
+      <ItemBodyLink actorId={bodyOf} always={aboutBody} />
 
       <ItemParts
         parts={parts}
@@ -505,6 +527,7 @@ export function Drill() {
         <Link className="govuk-link" to={backHref}>{returnLabel}</Link>
       </p>
     </div>
+    </BodyPages>
   );
 }
 
@@ -1539,4 +1562,10 @@ function ProfileSection({ profile }: { profile: Artefact }) {
       <SummaryList rows={rows} />
     </section>
   );
+}
+
+/** The link to the item's body page, on a line of its own, or nothing at all. */
+function ItemBodyLink({ actorId, always }: { actorId: string | null; always: boolean }) {
+  const link = useBodyPage()(actorId, { always });
+  return link ? <p className="govuk-body prt-item__body">{link}</p> : null;
 }

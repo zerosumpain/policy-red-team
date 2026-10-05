@@ -3,6 +3,7 @@ import { BAND_LABEL, precedentOf, type Play } from '$lib/policy-analysis/view';
 import type { Artefact } from '$lib/policy-analysis/contracts';
 import { Details } from '../govuk';
 import { Bar } from './Metrics';
+import { BodyPageLink } from './body-pages';
 
 /**
  * The stored enum, in words. `compliant` is the one a reader must not skim: it
@@ -131,7 +132,7 @@ export function PlayList({ plays, linkTo, rank, trailing, exposureMax, rankValue
           ) : null}
           <div className="prt-play__main">
             <p className="prt-play__title">{linkTo ? linkTo(play.artefact) : play.artefact.label}</p>
-            {play.actor ? <p className="prt-play__who">{play.actor.label}</p> : null}
+            {play.actor ? <p className="prt-play__who">{play.actor.label}<BodyPageLink actorId={play.actor.id} /></p> : null}
           </div>
           <div className="prt-play__figures">
             {/*
