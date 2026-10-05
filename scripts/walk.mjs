@@ -1716,6 +1716,9 @@ try {
     await page.getByRole('heading', { name: 'The report at a glance' }).waitFor({ timeout: 20000 });
     if (await page.getByRole('region', { name: 'New to these reports?' }).count()) failures.push('guide: the banner came back on a report page after it was hidden');
     note('the guide: banner, header link and "?" lead in; six chapters by keyboard; slider, switch and banner memory work');
+  }
+
+  /*
    * 9z — SEVERAL DOCUMENTS AND A GROUNDING LIBRARY (phase 25).
    *
    * A policy is started on the library page and given one piece of grounding
