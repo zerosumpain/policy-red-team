@@ -3,6 +3,7 @@ import { ASSURANCE_CATEGORIES, ASSURANCE_STAGE, ASSURED_SYNTHESIS_STAGE, MAX_KEY
 import { EXPOSURE_FACTORS } from './exposure';
 import { RELATION_FAMILIES } from './glossary';
 import type { Rejection } from './validation';
+import { promptSchema } from './plain';
 /**
  * EVERY RELATIONSHIP TYPE, WITH WHAT IT MEANS, FOR STAGE 3.
  *
@@ -100,6 +101,7 @@ KEY JUDGEMENTS. Lead the report with between one and ${MAX_KEY_JUDGEMENTS} key_j
 - action and owner: who should do what. Name a body or role and give a verb: "The Department for Education should publish completion rates by college before funding the second wave", not "stakeholders should consider monitoring".
 - findingIds: the assured findings it sums up, if any.
 - rank: its place, 1 first.
+- plain: forWhom (who it happens to, in everyday words: "parents of two-year-olds in rural areas") and whyItMatters (what it means for what the policy is trying to achieve), one short sentence each.
 A key judgement that would fit any white paper is not a key judgement. The report sections below still follow, as the appendix.
 `;
 
@@ -122,7 +124,7 @@ const GRADE_RUBRIC = `GRADE. Give every evidence row a grade, judged on the sour
 When in doubt, take the lower grade. sourceQuality still says why, in words.`;
 
 const instructions: Record<number, string> = {
-  1: `Build a structured inventory covering ALL supplied passages: objectives, problem statements, interventions and implementation, named actors, responsibilities, decision rights, funding, dependencies, data flows, measures, legal/institutional constraints, assumptions, risks, expected benefits, claims and cited evidence. Create separate claim, mechanism, assumption and actor rows. At THIS stage a claim, mechanism or actor is a literal extraction: origin must be extracted_fact with a quote from the passage. Anything you infer, including a gap the paper leaves open, belongs in an assumption row instead — never a claim. Extract at least one mechanism and assumption, including an explicit uncertainty when the paper omits implementation details. An actor here is a source mention; entity resolution follows. Exact quotes are mandatory for extracted facts; extract from the supplied passage only. A paper's claim is not verified truth. Link related items with refs. Every assumption must refer to an affected actor or mechanism from this output.`,
+  1: `Build a structured inventory covering ALL supplied passages: objectives, problem statements, interventions and implementation, named actors, responsibilities, decision rights, funding, dependencies, data flows, measures, legal/institutional constraints, assumptions, risks, expected benefits, claims and cited evidence. Create separate claim, mechanism, assumption and actor rows. Give every mechanism data.whatItIs: one line saying what this part of the policy is in everyday words, for someone who has never read the paper — "Family Hubs: local centres where parents of young children can get help in one place". At THIS stage a claim, mechanism or actor is a literal extraction: origin must be extracted_fact with a quote from the passage. Anything you infer, including a gap the paper leaves open, belongs in an assumption row instead — never a claim. Extract at least one mechanism and assumption, including an explicit uncertainty when the paper omits implementation details. An actor here is a source mention; entity resolution follows. Exact quotes are mandatory for extracted facts; extract from the supplied passage only. A paper's claim is not verified truth. Link related items with refs. Every assumption must refer to an affected actor or mechanism from this output.`,
   2: `Resolve source actor mentions into a canonical entity register. Use separate NEW actor IDs, retaining every mention through refs and mentions. Preserve aliases, type, dates, parent organisation and ambiguity. Do not infer identity from a shared name alone. Retain ambiguous identities separately and emit resolution_candidate records with candidate IDs and resolved=false. Create alias records pointing to canonical actors. Do not silently drop entities. If an "unclaimedMentions" list is supplied, those source mentions are the ONLY thing to resolve on this call: every one of them must end up in some actor's mentions, either a new canonical actor or by re-emitting an existing one from the supplied context with its mentions extended. Ignore everything else.`,
   3: `Build the part of the policy's provenance graph that runs through targetActorId. Other actors, mechanisms and claims in the input are CONTEXT and endpoints, not subjects: record the relationships for THIS body, and leave the rest of the graph to the calls covering them. An edge another call has already recorded is not a problem — the same relationship seen twice is far better than a relationship nobody recorded because every call assumed another would.\n\nReturn edges and nothing else. Edges use existing entity IDs as endpoints (fromId is the first, toId the second). Use only these ${RELATIONS.length} relationship types, grouped by what they describe, in their natural direction:
 ${RELATION_GUIDE}
@@ -138,7 +140,8 @@ SHORT PROFILES. If targetActorIds is supplied instead of targetActorId, this cal
 SOURCES THE READER SUPPLIED. A research_source whose data.supplied is "reader" was named by the person who submitted the paper — a file they uploaded or a page they pointed to — and its research_question carries their own words in wording, and in about what they said it concerns. Read it and cite it exactly as you would any other source: link it to the claims, mechanisms, actors and assumptions it actually bears on, starting with those in its aboutIds. Grade it by the rubric below on what it IS — a stakeholder's report is weak however it arrived — and NEVER higher because the reader supplied it: who chose a source says nothing about its quality. Where it contradicts the paper, say so plainly in result and dispute; where it does not bear on anything, emit nothing for it rather than stretching it.
 ${GRADE_RUBRIC}`,
   7: `Assess each of these reusable patterns: ${PATTERNS.join(', ')}. Produce exactly one model for targetPattern from the supplied library, explicitly stating when applicability is weak or indeterminate. The other patterns run as separate durable calls. Define players, strategies, decision order, information, costs, benefits, rewards, sanctions, dependencies, assumptions, likely responses, equilibria/stable behaviour and plain-language explanation. Cite evidence and assumption IDs. Use the supplied modelLibrary definitions and triggerEvidence to assess applicability. Put all assumption IDs in refs as well as assumptions. If the modelling surfaces a hypothesis the inventory does not already hold, emit it as a NEW assumption artefact in this same response and cite that; never cite an assumption id that does not exist. Any NEW assumption must itself carry, in its refs, the ID of the actor or mechanism it is an assumption ABOUT — an assumption that hangs off nothing is discarded, and whatever cited it goes with it. No fabricated payoffs or mathematical precision. These are semi-formal hypotheses, not experimentally established equilibria.`,
-  9: `Assess ALL eight scenarios: ${SCENARIOS.join(', ')}. Produce exactly one scenario for targetScenario; the other conditions run separately. Persist changed conditions, first reacting actor, expected strategy, downstream effects, affected outcomes, detectability, correction, weaknesses and confidence. Cite model/test IDs, and put every assumption ID in BOTH assumptions and refs. If the scenario turns on a hypothesis the inventory does not already hold, emit it as a NEW assumption artefact in this same response and cite that. Any NEW assumption must itself carry, in its refs, the ID of the actor or mechanism it is an assumption ABOUT — an assumption that hangs off nothing is discarded, and whatever cited it goes with it. Perform qualitative sensitivity: explain what changes when each high-impact uncertain assumption is true versus false, and which assumption most changes the conclusion. Do not claim numerical simulation.`,
+  9: `Assess ALL eight scenarios: ${SCENARIOS.join(', ')}. Produce exactly one scenario for targetScenario; the other conditions run separately. Persist changed conditions, first reacting actor, expected strategy, downstream effects, affected outcomes, detectability, correction, weaknesses and confidence. Cite model/test IDs, and put every assumption ID in BOTH assumptions and refs. If the scenario turns on a hypothesis the inventory does not already hold, emit it as a NEW assumption artefact in this same response and cite that. Any NEW assumption must itself carry, in its refs, the ID of the actor or mechanism it is an assumption ABOUT — an assumption that hangs off nothing is discarded, and whatever cited it goes with it. Perform qualitative sensitivity: explain what changes when each high-impact uncertain assumption is true versus false, and which assumption most changes the conclusion. In sensitivity and every other sentence, name an assumption IN WORDS — "If providers can recruit enough staff…" — never by its id; the ids belong in assumptions and refs. Do not claim numerical simulation.
+PLAIN WORDS. Give the scenario data.plain, one short sentence each, for someone who has never read this policy: what (the condition that changes), firstMove (who moves first and what they do, naming the body and what it is), result (what then happens to real people — a parent, a child, a teacher), whyItMatters (what it means for what the policy is trying to achieve).`,
   10: `RED TEAM. You are not assuring this policy; you are looking for how it can be beaten. For targetActorId only, using that actor's own profile — its objectives, resources, legal powers, information control, costs, benefits and institutional motivations — set out the concrete plays that actor can run to serve its own interest at the policy's expense.
 
 A play is specific and operational, not a risk category: who does what, in what order, using which discretion the policy leaves open. Prefer plays that stay COMPLIANT — satisfying the letter of the measure while defeating its purpose — because those are the ones the drafters will not have priced. Cover, where the evidence supports it: gaming or re-basing a measure; reclassifying cases out of scope; timing behaviour around a reporting or funding window; shifting cost or blame onto a weaker actor; withholding, delaying or shaping information the policy depends on; using a veto, appeal or consultation right to run down the clock; coalition with another actor to raise the cost of enforcement; capturing the body that judges it; and doing the minimum that is observable while nothing unobservable changes.
@@ -151,6 +154,14 @@ PRECEDENT. Say where a comparable play has been run before, in one or two plain 
 - unverified_recall: you know of the case yourself, and nothing supplied confirms it. This is allowed and useful — the report shows it as "not checked". Only name a case you actually know of.
 - none: nothing comparable comes to mind. Say so plainly.
 Never write a link, a URL, a report title or a reference you cannot see in the supplied material. A made-up case is worse than none.
+
+PLAIN WORDS. Every play also carries data.plain — what the report shows FIRST, to someone who has never read this policy — one short sentence each:
+- who: the body, and what it is in everyday words ("Family Hubs, the local centres where parents get help").
+- does: what they do, concretely.
+- goesWrong: what goes wrong and for whom — name a real person: a parent, a child, a teacher, a nursery owner.
+- likeWhen: an everyday comparison ("like a shop that counts people through the door, not sales"), or null when no honest comparison fits. Never force one.
+- whyItMatters: what it means for what the policy is trying to achieve.
+A cleared row needs no plain block.
 
 Then judge four factors, each on [0,1]: ${EXPOSURE_FACTORS.map(([k, d]) => `${k} — ${d}`).join('; ')}. Judge them separately and honestly; the server computes the ranking from them and a play that is easy but pointless must score low on incentive. Do not return an overall score of your own.
 
@@ -226,7 +237,7 @@ The supplied \`material\` field is the reader’s own description of what this d
 
 The material is not the policy. Everything you emit here is what the MATERIAL says, and the material may be wrong, partisan or out of date; that is judged at the next stage, not this one.
 
-RE-USE THE CAST. The supplied context holds the bodies this assessment already resolved, with ids beginning s2_. Where the material names a body that is already one of them, put that existing id in the actor mention's refs and say in \`ambiguity\` which resolved body you matched it to. Mint a new actor row only for a body the assessment has genuinely never met — a duplicate of a body already profiled would give one organisation two sets of incentives and is the worst thing this stage can do.`,
+RE-USE THE CAST. The supplied context holds the bodies this assessment already resolved, with ids beginning s2_. Where the material names a body that is already one of them, put that existing id in the actor mention's refs and say in \`ambiguity\` which resolved body you matched it to. Give every mechanism data.whatItIs, one everyday line saying what it is. Mint a new actor row only for a body the assessment has genuinely never met — a duplicate of a body already profiled would give one organisation two sets of incentives and is the worst thing this stage can do.`,
   2: `RECONCILIATION. You are given an assessment that has already reported, and the inventory drawn from new material the reader has since attached. Say what the material does to what the assessment holds. The supplied \`material\` field carries the reader’s description of the document and the \`guidance\` for reading it; follow that guidance, especially where it says a later draft SUPERSEDES rather than contradicts. You are NOT re-writing the assessment and you are not assessing the policy again.
 
 Work through the material's claims and assumptions against the assessment's existing claims, mechanisms, assumptions and actors. For each place the material genuinely bears on one, emit ONE of:
@@ -317,7 +328,7 @@ const PATTERN_STAGES = new Set([SYNTHESIS_STAGE, ASSURANCE_STAGE, ASSURED_SYNTHE
  */
 const INDEXED_EXTRACTION = `
 HOW TO CITE, ON THIS RUN. The passage is supplied with every sentence numbered \`[n]\`. For each claim, mechanism and actor mention, return the field \`sentence\` naming the sentence the extraction comes from — either one number, \`"sentence": 7\`, or an inclusive pair for a run of sentences that belong together, \`"sentence": [7, 9]\`. Use a pair when a bulleted commitment needs the line that introduces it; do NOT reach across a whole page, because a span that covers everything cites nothing.
-DO NOT WRITE \`sourceQuote\`, \`sourceId\`, \`startOffset\` or \`endOffset\`, and do not copy the sentence out. The server takes the quote and the offsets from the number you give, so a number is worth more than a transcription and cannot be mistyped. Omit \`statement\` on a claim or an actor mention — the sentence is the statement. Keep writing \`statement\` on a mechanism, where it is your own account of what the machinery does rather than a copy of the text.
+DO NOT WRITE \`sourceQuote\`, \`sourceId\`, \`startOffset\` or \`endOffset\`, and do not copy the sentence out. The server takes the quote and the offsets from the number you give, so a number is worth more than a transcription and cannot be mistyped. Omit \`statement\` on a claim or an actor mention — the sentence is the statement. Keep writing \`statement\` and \`data.whatItIs\` on a mechanism, where they are your own account of what the machinery does rather than a copy of the text.
 \`label\` is still yours and still required: a short name a reader can scan, not the sentence again.
 An assumption is UNCHANGED. It is your inference, it is not in any one sentence, and it still needs its own \`statement\`. OMIT the \`sentence\` field from it entirely — do not send it as null — and give it no quote; it links to the actor or mechanism it bears on through \`refs\`, as before.`;
 
@@ -334,14 +345,24 @@ An assumption is UNCHANGED. It is your inference, it is not in any one sentence,
  * excluded in as many words: a `sourceQuote` is validated character for
  * character against the paper, and a model that "simplified" one would have
  * its extraction thrown away.
+ *
+ * PHASE 23 CHANGED THE AUDIENCE, not the sentence. Phase 19's rule got the live
+ * Best Start run to 13.7 words a sentence and one acronym in 46 plays, and a
+ * newcomer still could not follow it: the paper's own names were never
+ * explained, "referral completion" stood in for a family not getting help, and
+ * scenarios said "If s1_023_assumption_001 is true" 76 times. So the reader is
+ * now someone who has never read the policy, the paper's names are glossed the
+ * first time, a real person is named, and ids stay out of sentences.
  */
-export const WRITING_RULE = `WRITING. Everything you write in your own words — labels, statements and the text fields in data — is read by busy people who are not specialists. Use plain British English in GOV.UK style: lead with the point; keep sentences short, under 20 words where you can; use common words; use the active voice and name who does what; spell out an acronym the first time you use it and explain any technical term; write "for example", "that is" and "and so on", not Latin abbreviations; cut filler such as "leverage", "robust", "facilitate", "stakeholders", "ecosystem", "in order to" and "going forward". This never applies to sourceQuote or any other quotation, which stays exactly as the source wrote it, nor to identifiers and fixed values.`;
+export const WRITING_RULE = `WRITING. Everything you write in your own words — labels, statements and the text fields in data — is read by someone who has never read this policy. Use plain British English in GOV.UK style: lead with the point; keep sentences under 20 words where you can; use common words and the active voice; name who does what. The first time you name a programme, fund, body, target or phase from the paper, say in a few words what it is. Say what happens to a real person — a parent, a child, a teacher — rather than using delivery terms such as "referral completion". Spell out acronyms. Write "for example", not Latin abbreviations. Cut filler such as "leverage", "robust", "stakeholders" and "in order to". Never put an identifier in a sentence: name the thing in words; ids go only in id and reference fields. This never applies to sourceQuote or any other quotation, which stays exactly as the source wrote it, nor to identifiers and fixed values.`;
 
 export function systemPrompt(stage: number, passKind?: PassKind | null, extraction?: Extraction | null): string {
   const kinds = modelKinds(stage, passKind);
   // `modelKinds`, not `stageKinds`: a stage that may CARRY a retrieved source is
   // not a stage whose model may write one. See contracts.ts.
-  const schemas = Object.fromEntries(kinds.map((kind) => [kind, z.toJSONSchema(dataSchemas[kind])]));
+  // `promptSchema`: the plain block and a mechanism's `whatItIs` are shown as
+  // REQUIRED though they parse as optional — see `plain.ts`.
+  const schemas = Object.fromEntries(kinds.map((kind) => [kind, promptSchema(kind, z.toJSONSchema(dataSchemas[kind]) as Record<string, unknown>)]));
   const pass = isPassStage(stage);
   const step = passStep(stage);
   // Only the MAIN decomposition, not an addendum's. A pass reads material into a
@@ -374,7 +395,14 @@ The data field MUST match the schema for its kind, using exactly these keys — 
  * offending ids and the rule they broke is the difference between a corrective
  * round-trip and a deterministic dead end.
  */
-export function repairPrompt(rejected: Rejection[], prefix: string, truncated = false, indexed = false): string {
+export function repairPrompt(asks: Rejection[], prefix: string, truncated = false, indexed = false): string {
+  // A missing plain block is an ask about a KEPT item (phase 23, `plain.ts`),
+  // answered by the block alone; everything else here was discarded.
+  const plain = asks.filter((r) => r.code === 'plain');
+  const rejected = asks.filter((r) => r.code !== 'plain');
+  const plainAsk = plain.length ? `${rejected.length ? '\n\n' : ''}These items were KEPT but have no plain-words block. For each, return only {"id": <the same id>, "kind": <its kind>, "data": {"plain": {...}}} — one short sentence a field, for someone who has never read this policy — and nothing else about it:
+${plain.slice(0, 40).map((r) => `- ${r.id} (${r.kind}${r.label ? `: “${r.label}”` : ''}): ${r.reason}`).join('\n')}` : '';
+  if (!rejected.length) return `${plainAsk.trim()}\n\nReturn the same JSON envelope containing only these items.`;
   const lines = rejected.slice(0, 40).map((r) => `- ${r.id} (${r.kind}): ${r.reason}${r.hint ? ` ${r.hint}` : ''}`).join('\n');
   return `Part of your response was discarded and is NOT in the assessment. Fix and resend ONLY the discarded items.
 
@@ -387,5 +415,5 @@ ${indexed
   : '- sourceQuote must be copied from the supplied passage text. Copy it exactly as it appears there, including its line breaks; quote the shortest span that supports the point.'}
 - Only emit the artefact kinds this stage permits, and match each kind's data schema exactly.
 - Every artefact needs refs naming supplied artefacts or other artefacts in this response.
-- Do NOT resend anything that was accepted. Return the same JSON envelope containing only the corrected items.${truncated ? '\n- Your last reply was cut off at its output limit. Return FEWER items this time, and keep every field short.' : ''}`;
+- Do NOT resend anything that was accepted. Return the same JSON envelope containing only the corrected items.${truncated ? '\n- Your last reply was cut off at its output limit. Return FEWER items this time, and keep every field short.' : ''}${plainAsk}`;
 }

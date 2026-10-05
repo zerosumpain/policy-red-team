@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { artefactSchema, dataSchemas, looseOutputSchema, PROFILE_FIELDS, RESULT_KINDS, SHORT_PROFILE_FIELDS, stageKinds, stageOutputSchema, type Artefact, type PassKind, type StageOutput } from './contracts';
 import { locateQuote } from './quotes';
 import { clearedByWording, isPlay } from './cleared';
+import { incompleteAsk, plainGap, stripMalformedPlain } from './plain';
 
 export class PolicyError extends Error {
   constructor(public code: string, message: string) { super(message); }
@@ -428,7 +429,12 @@ export function validateOutput(raw: unknown, stage: number, prior: Artefact[], p
  * (claim)`: an identifier for something never stored, so nothing to open.
  */
 export type Rejection = { id: string; kind: string; code: string; reason: string; hint?: string; label?: string; quote?: string };
-export type TriagedOutput = StageOutput & { rejected: Rejection[] };
+/**
+ * `incomplete` (phase 23) is NOT a refusal: items KEPT that still owe their
+ * plain-words block. They ride the corrective round as asks beside `rejected`
+ * (`provider.ts`) and are never counted as discarded.
+ */
+export type TriagedOutput = StageOutput & { rejected: Rejection[]; incomplete?: Rejection[] };
 
 /**
  * Whether a reply that yielded NOTHING is a fault, or a legitimate silence.
@@ -636,7 +642,7 @@ export function triageOutput(raw: unknown, stage: number, prior: Artefact[], pas
   const triaged = triageArtefacts({ artefacts, warnings }, stage, prior, passKind);
   if (!malformed.length) return triaged;
   return {
-    artefacts: triaged.artefacts,
+    ...triaged,
     warnings: clampWarnings([...triaged.warnings, discardWarning(malformed)]),
     rejected: [...malformed, ...triaged.rejected],
   };
@@ -673,7 +679,12 @@ export function triageArtefacts(output: StageOutput, stage: number, prior: Artef
 
   let kept: Artefact[] = [];
   const seen = new Set<string>();
+  // A badly formed plain block costs the block, never the item (phase 23):
+  // taken off BEFORE the shape check, remembered, and asked for again below.
+  const plainIssues = new Map<string, string>();
   for (const a of parsed.artefacts) {
+    const issue = stripMalformedPlain(a);
+    if (issue) plainIssues.set(a.id, issue);
     // Echoing a supplied artefact back is a courtesy, not a contract breach:
     // drop the copy rather than the response.
     if (priorIds.has(a.id) || seen.has(a.id)) { drop(a, fault('duplicate', 'The model repeated an identifier that already exists; the repeat was discarded.')); continue; }
@@ -774,6 +785,9 @@ export function triageArtefacts(output: StageOutput, stage: number, prior: Artef
     }
   }
 
+  // AFTER the clearance stamp: a cleared row owes no plain block.
+  const incomplete = kept.filter((a) => plainGap(a)).map((a) => incompleteAsk(a, plainIssues.get(a.id)));
+
   const warnings = [...parsed.warnings];
   if (stamped.length) warnings.push(`${stamped.length} row${stamped.length === 1 ? '' : 's'} said a body had no material way to beat the policy; ${stamped.length === 1 ? 'it is' : 'they are'} recorded as a cleared check, not counted as a way to beat it. ${stamped.slice(0, 4).join(', ')}${stamped.length > 4 ? `, and ${stamped.length - 4} more` : ''}.`.slice(0, 1000));
   if (capped.length) warnings.push(`${capped.length} evidence row${capped.length === 1 ? '' : 's'} graded ${capped.length === 1 ? 'itself' : 'themselves'} above weak on a search excerpt alone; the grade was lowered to weak and the row kept, because nothing behind ${capped.length === 1 ? 'it' : 'them'} was read in full. ${capped.slice(0, 4).join(', ')}${capped.length > 4 ? `, and ${capped.length - 4} more` : ''}.`.slice(0, 1000));
@@ -789,7 +803,7 @@ export function triageArtefacts(output: StageOutput, stage: number, prior: Artef
     for (const r of rejected) byCode.set(r.code, [...(byCode.get(r.code) ?? []), r]);
     for (const [, group] of byCode) warnings.push(discardWarning(group));
   }
-  return { artefacts: kept, warnings: clampWarnings(warnings), rejected };
+  return { artefacts: kept, warnings: clampWarnings(warnings), rejected, incomplete };
 }
 
 /** The most a stored warning may hold; `stage-facts.ts` and the report read it whole. */

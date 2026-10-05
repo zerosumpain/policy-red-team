@@ -46,6 +46,7 @@ import { PolicyError } from '$lib/policy-analysis/validation';
 import { assessmentDocument, briefDocument, isDownloadFormat, isExportFormat } from '$lib/policy-analysis/server/export';
 import { briefOf } from '$lib/brief';
 import { markDownJudgements } from '$lib/evidence-grade';
+import { withoutIds } from '$lib/policy-analysis/plain';
 import { assessmentBundle } from '$lib/policy-analysis/server/bundle';
 import { ownerPayload, sharedPayload } from '$lib/policy-analysis/offline/payload';
 import { runFacts, type PackPayload } from '$lib/offline-run';
@@ -737,7 +738,8 @@ export async function handleApi(
     // The documents print judgements, so they read them as the page does: marked
     // down where the evidence will not carry them (phase 22). The pack is handed
     // the stored rows and marks them down itself, in `Report`.
-    const judged = markDownJudgements(artefacts);
+    // And with no identifier left in a sentence (phase 23, `withoutIds`).
+    const judged = withoutIds(markDownJudgements(artefacts));
     const response = part === 'brief' && isExportFormat(format)
       ? await briefDocument(judged, redacted ? { ...meta, withheld: withheldPhrases(redacted.withheld) } : meta, format, briefOf(judged, briefStages))
       : isExportFormat(format)

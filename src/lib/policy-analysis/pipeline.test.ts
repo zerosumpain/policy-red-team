@@ -197,7 +197,17 @@ describe('every stage is told to write plainly, and never to touch a quotation',
     for (const prompt of prompts) expect(prompt.split(WRITING_RULE)).toHaveLength(2);
     // The two things the rule must never loosen: quotes stay verbatim, and it is short.
     expect(WRITING_RULE).toMatch(/never applies to sourceQuote/);
-    expect(WRITING_RULE.length).toBeLessThan(900);
+    // Phase 23 changed the audience (P1): a reader who has never read the
+    // policy, the paper's names glossed once, a real person, no ids in prose.
+    expect(WRITING_RULE).toMatch(/never read this policy/);
+    expect(WRITING_RULE).toMatch(/say in a few words what it is/);
+    expect(WRITING_RULE).toMatch(/real person/);
+    expect(WRITING_RULE).toMatch(/Never put an identifier in a sentence/);
+    // 900 → 1,000: those four clauses cost ~210 characters, paid for by cutting
+    // three filler examples and folding "spell out an acronym… explain any
+    // technical term" into the gloss rule. It rides on every call of every
+    // stage (~430 on a real run), so the cap still stops it growing by habit.
+    expect(WRITING_RULE.length).toBeLessThan(1000);
   });
 });
 

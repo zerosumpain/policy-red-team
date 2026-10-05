@@ -29,6 +29,7 @@
  */
 import type { Artefact } from '$lib/policy-analysis/contracts';
 import { of, scenarioBeats, type Beat } from '$lib/policy-analysis/view';
+import { plainField } from '$lib/policy-analysis/plain';
 
 /**
  * One row of the drawn sequence.
@@ -126,7 +127,9 @@ export function scenarioViews(artefacts: Artefact[]): ScenarioView[] {
     return {
       artefact,
       key: typeof data.scenario === 'string' ? data.scenario : artefact.label,
-      gist: openingSentence(String(data.changedConditions ?? '')),
+      // The plain block's "what changes" when the run wrote one (phase 23):
+      // it was written for a reader who has never read the policy.
+      gist: plainField(artefact, 'what') || openingSentence(String(data.changedConditions ?? '')),
       beats,
       segments: segmentBeats(beats),
       firstActor: (firstActorId ? byId.get(firstActorId) : null) ?? null,

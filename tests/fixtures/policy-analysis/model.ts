@@ -22,7 +22,7 @@ export function fixtureModel(stage: number, _key: string, raw: unknown, _options
       const common = { refs: [materialPassage.id], origin: 'extracted_fact' as const, sourceId: materialPassage.id, sourceQuote: materialPassage.statement.slice(0, 40) };
       items = [
         { ...make('claim', 'claim', { category: 'claim', notes: 'A claim the attached material makes.' }, [materialPassage.id]), ...common },
-        { ...make('mech', 'mechanism', { intervention: 'A change the material proposes', implementation: 'Unspecified', notes: 'From the material.' }, [materialPassage.id]), ...common },
+        { ...make('mech', 'mechanism', { intervention: 'A change the material proposes', implementation: 'Unspecified', notes: 'From the material.', whatItIs: 'A change the attached document proposes to how the programme works.' }, [materialPassage.id]), ...common },
         make('assumption', 'assumption', { importance: 0.8, uncertainty: 0.8, consequence: 0.8, notes: 'The material assumes this.' }, [materialPassage.id, `${prefix}mech`]),
       ];
     } else if (step === 2) {
@@ -68,7 +68,7 @@ export function fixtureModel(stage: number, _key: string, raw: unknown, _options
     const common = { refs: [p.id], origin: 'extracted_fact' as const, sourceId: p.id, sourceQuote: 'The Council is accountable for delivery and bears implementation costs.' };
     items = [
       { ...make('objective', 'claim', { category: 'objective', notes: 'The policy claims this objective; no evaluation is supplied.' }, [p.id]), ...common },
-      { ...make('mechanism', 'mechanism', { intervention: 'Shared access programme', implementation: 'Council delivery', notes: 'Funding unspecified' }, [p.id]), ...common },
+      { ...make('mechanism', 'mechanism', { intervention: 'Shared access programme', implementation: 'Council delivery', notes: 'Funding unspecified', whatItIs: 'A council scheme that gives residents one place to ask for help.' }, [p.id]), ...common, label: 'Shared access programme' },
       make('assumption', 'assumption', { importance: 0.9, uncertainty: 0.9, consequence: 0.9, notes: 'Sufficient capacity is assumed.' }, [p.id, `${prefix}mechanism`, `${prefix}actor`]),
       { ...make('actor', 'actor', { entityType: 'local_authority', aliases: ['Council'], mentions: [p.id], ambiguity: 'None within this synthetic fixture.', dates: [], parent: null }, [p.id]), ...common, label: 'Council' },
     ];
@@ -107,10 +107,14 @@ export function fixtureModel(stage: number, _key: string, raw: unknown, _options
   } else if (stage === 7) {
     items = PATTERNS.filter((p) => !input.targetPattern || input.targetPattern === p).map((pattern) => make(pattern, 'model', { pattern, players: [one('actor').id], strategies: ['Cooperate', 'Minimum compliance'], decisionOrder: 'Department commissions; Council responds.', information: 'Capacity is uncertain.', costs: 'Implementation effort.', benefits: 'Access improvements.', rewards: 'Unspecified.', sanctions: 'Unspecified.', dependencies: [one('mechanism').id], assumptions: [one('assumption').id], responses: ['Minimum compliance under capacity pressure.'], equilibria: ['Conditional compliance; qualitative hypothesis.'], explanation: 'Cooperation depends on resources and reciprocal incentives.', applicability: 'Synthetic semi-formal example.' }, [one('evidence').id, one('assumption').id, one('mechanism').id]));
   } else if (stage === 9) {
-    items = SCENARIOS.filter((s) => !input.targetScenario || input.targetScenario === s).map((scenario) => make(scenario, 'scenario', { scenario, changedConditions: 'Capacity and cooperation vary.', firstActor: one('actor').id, strategy: 'Delay delivery when capacity is low.', downstreamEffects: ['Longer waits.'], affectedOutcomes: [one('claim').id], detectability: 'Monthly reports, subject to gaming.', correction: 'Review resourcing.', weaknesses: ['No assured capacity.'], assumptions: [one('assumption').id], sensitivity: ['If capacity is sufficient, cooperation is feasible; if not, minimum compliance becomes more plausible. Capacity most changes this result.'] }, [one('model').id, one('test').id, one('assumption').id]));
+    items = SCENARIOS.filter((s) => !input.targetScenario || input.targetScenario === s).map((scenario) => make(scenario, 'scenario', { scenario, changedConditions: 'Capacity and cooperation vary.', firstActor: one('actor').id, strategy: 'Delay delivery when capacity is low.', downstreamEffects: ['Longer waits.'], affectedOutcomes: [one('claim').id], detectability: 'Monthly reports, subject to gaming.', correction: 'Review resourcing.', weaknesses: ['No assured capacity.'], assumptions: [one('assumption').id], sensitivity: ['If capacity is sufficient, cooperation is feasible; if not, minimum compliance becomes more plausible. Capacity most changes this result.'],
+      plain: { what: 'Councils have fewer staff than the programme expects.', firstMove: 'The Council, which runs the scheme locally, slows down new cases.', result: 'A parent asking for help waits weeks longer for an answer.', whyItMatters: 'The programme promised quicker help, and this is slower help.' } }, [one('model').id, one('test').id, one('assumption').id]));
   } else if (stage === 10) {
     const a = input.artefacts.find((x) => x.id === input.targetActorId)!;
-    items = [make('exploit', 'exploit', { actorId: a.id, motivation: 'Avoids implementation cost while remaining compliant.', play: 'Report against the measure without changing the unobservable practice.', legality: 'compliant', targets: [one('mechanism').id], preconditions: [one('assumption').id], payoff: 'Retains discretion and avoids cost.', costToPolicy: 'The objective is not delivered while the measure reads well.', incentive: 0.6, ease: 0.6, impact: 0.6, concealment: 0.6, earlyWarning: 'Measure improves while complaints do not fall.', counter: 'Add an independent check of the unobservable practice.', precedent: 'None identified in this synthetic fixture.', precedentBasis: 'none' }, [one('profile').id, one('mechanism').id, one('assumption').id])];
+    items = [make('exploit', 'exploit', { actorId: a.id, motivation: 'Avoids implementation cost while remaining compliant.', play: 'Report against the measure without changing the unobservable practice.', legality: 'compliant', targets: [one('mechanism').id], preconditions: [one('assumption').id], payoff: 'Retains discretion and avoids cost.', costToPolicy: 'The objective is not delivered while the measure reads well.', incentive: 0.6, ease: 0.6, impact: 0.6, concealment: 0.6, earlyWarning: 'Measure improves while complaints do not fall.', counter: 'Add an independent check of the unobservable practice.', precedent: 'None identified in this synthetic fixture.', precedentBasis: 'none',
+      // The plain block the report shows first (phase 23); the comparison is
+      // honest here, so it is given — a null would mean there is none.
+      plain: { who: 'The Council, which runs the shared access programme locally.', does: 'It reports good numbers without changing how it treats people.', goesWrong: 'A parent who asks for help is counted as helped but still waits.', likeWhen: 'Like a shop counting people through the door instead of sales.', whyItMatters: 'The programme looks delivered when families are no better off.' } }, [one('profile').id, one('mechanism').id, one('assumption').id])];
   } else if (stage === 11) {
     items = [];
   } else if (stage === 13) {
@@ -208,5 +212,6 @@ function keyJudgements(input: StageInput & { idPrefix: string }, findingIds: str
     decision: 'Whether to fund the programme beyond its first year.',
     action: 'Add an independent check of practice before the second year of funding.', owner: 'The funding department',
     findingIds,
+    plain: { forWhom: 'Parents who ask the council for help.', whyItMatters: 'Money keeps flowing to a programme that is not helping anyone faster.' },
   }, { refs: [mechanism.id, play.id, assumption.id, ...findingIds], sourceId: mechanism.sourceId, sourceQuote: mechanism.sourceQuote, origin: 'structural_inference', confidence: null })];
 }

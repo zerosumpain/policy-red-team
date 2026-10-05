@@ -24,6 +24,9 @@ import { PatternGrid } from './PatternGrid';
 import { briefOf } from '$lib/brief';
 import { overviewOf } from '$lib/overview';
 import { markDownJudgements } from '$lib/evidence-grade';
+import { withoutIds } from '$lib/policy-analysis/plain';
+import { policyTerms, termFinder } from '$lib/policy-terms';
+import { TermsContext } from './Term';
 import { Overview } from './Overview';
 import { WorstPlays } from './moves/WorstPlays';
 import { CausalityLead } from './moves/CausalityLead';
@@ -305,14 +308,29 @@ type ReportProps = {
 };
 
 /**
- * The report, with the bodies it names linked to their pages across policies.
- * The index is built from the raw artefacts once here, at the root, so every
- * table, card and grid below asks one question of one lookup.
+ * THE READINGS EVERY PAGE OF THE REPORT TAKES, ONCE, AT THE ROOT.
+ *
+ * Bodies (phase 24): the bodies it names are linked to their pages across
+ * policies. The index is built from the RAW artefacts, so every table, card and
+ * grid below asks one question of one lookup.
+ *
+ * `withoutIds` (phase 23): an identifier the model wrote into a sentence — the
+ * live run's scenarios say "If s1_023_assumption_001 is true" 76 times — is read
+ * as the name of the item it points to, so no page, the pack included, ever
+ * shows one. The glossary: the paper's own names, defined on tap wherever a
+ * sentence uses them (`Term`). Both here rather than in each component, for the
+ * reason `markDownJudgements` is at the root below.
  */
 export function Report(props: ReportProps) {
+  const { detail } = props;
+  const shown = useMemo(() => withoutIds(detail.artefacts), [detail.artefacts]);
+  const readable = useMemo(() => (shown === detail.artefacts ? detail : { ...detail, artefacts: shown }), [detail, shown]);
+  const finder = useMemo(() => termFinder(policyTerms(shown)), [shown]);
   return (
-    <BodyPages personas={props.detail.personas} artefacts={props.detail.artefacts} render={props.bodyLink}>
-      <ReportView {...props} />
+    <BodyPages personas={detail.personas} artefacts={detail.artefacts} render={props.bodyLink}>
+      <TermsContext.Provider value={finder}>
+        <ReportView {...props} detail={readable} />
+      </TermsContext.Provider>
     </BodyPages>
   );
 }
