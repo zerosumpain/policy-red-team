@@ -461,6 +461,19 @@ describe('rankActors — a tie-break must not become the ranking', () => {
     expect(ranked[0].id).toBe('z_skills_england');
   });
 
+  /**
+   * Phase 27, gpt-6-luna on the Best Start paper: a thin graph let a body with
+   * three edges and two mentions take a red-team slot from one named 21 times.
+   */
+  it('puts how often the paper names a body ahead of a thin graph', () => {
+    const parents = actor('s2_parents', 'Parents', 21);
+    const hubs = actor('s2_maths_hubs', 'Maths Hubs', 2);
+    const all = [parents, hubs, edge('e1', 's2_maths_hubs', 'm1'), edge('e2', 's2_maths_hubs', 'm2'), edge('e3', 's2_maths_hubs', 'm3'), edge('e4', 's2_parents', 'm1')];
+    const { actors: ranked, basis } = rankActors(all, [profileFor(hubs.id), profileFor(parents.id)]);
+    expect(ranked.map((a) => a.label)).toEqual(['Parents', 'Maths Hubs']);
+    expect(basis).toBe('connectivity');
+  });
+
   it('breaks a mention tie on how many rows carry the label', () => {
     const many = [actor('z_one', 'Employers', 2), actor('z_two', 'Employers', 2), actor('z_three', 'Employers', 2)];
     const lone = actor('a_lone', 'Lone Body', 2);

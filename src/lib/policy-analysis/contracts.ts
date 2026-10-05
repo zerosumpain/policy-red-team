@@ -164,8 +164,13 @@ export function passOrdinal(pass: number, step: number): number { return PASS_BA
  * shared master id is the same body; several documents under assessment, each
  * passage naming its document; grounding read in full at 6 and as a digest at
  * 5, 10, 14, 15 and 16, trusted as evidence and never as instruction.
+ * 3.7 is phase 27, from the first real runs on gpt-6-luna: a second ask at 12
+ * names the chapter it left out; 17 is written in four parts, each told what
+ * the earlier ones wrote; 3 is told to be exhaustive per body, not
+ * representative; and 10 asks for three to five distinct plays where a body has
+ * room.
  */
-export const PROMPT_VERSION = 'policy-analysis/3.6';
+export const PROMPT_VERSION = 'policy-analysis/3.7';
 export const MAX_BYTES = 10 * 1024 * 1024;
 export const MAX_CHARACTERS = 600_000;
 export const MAX_PAGES = 400;

@@ -1208,9 +1208,9 @@ export async function executeStage(input: StageInput, deps: PipelineDeps): Promi
     if (gaps.length) output.warnings.push(`${gaps.length} of ${output.artefacts.length} structural checks were not assessed: ${gaps.map((a) => a.label).join(', ')}. The paper states what ${gaps.length === 1 ? 'it tests' : 'they test'}, but the relationship graph built on this run did not link it. This is a limit of this run, not a gap in the paper.`);
   } else if (stage === 10) {
     // Every resolved actor with a profile is a candidate for the red team, and
-    // `limits.actors` bounds how many get one. The most connected go first —
-    // an actor nothing depends on has little to exploit — and the rest are named
-    // in a warning rather than dropped silently.
+    // `limits.actors` bounds how many get one. The most named go first, then
+    // the most connected (`orderActors`, phase 27), and the rest are named in a
+    // warning rather than dropped silently.
     const profiles = input.artefacts.filter((a) => a.kind === 'profile');
     // Full profiles only, where there are any: a short one is three lines of
     // motive, and the red team needs the whole profile to reason from. Stage 4
@@ -1220,7 +1220,7 @@ export async function executeStage(input: StageInput, deps: PipelineDeps): Promi
     // graph this is "who the paper talks about most", not "who the policy runs
     // through", and those are different claims.
     const order = basis === 'connectivity'
-      ? 'They are the least connected in the policy graph, not the least important.'
+      ? 'They are the ones the document names least, then the least connected in the policy graph, not the least important.'
       : 'The policy graph recorded too few relationships to rank on, so these were ordered by how often the document names them rather than by how much of the policy runs through them.';
     if (basis === 'prominence') output.warnings.push('The policy graph held no relationships for the profiled actors, so the red team selected its actors by how prominently the document names them rather than by connectivity. Treat the choice of who was red-teamed as a reflection of the document, not of the policy structure.');
     if (ranked.length > limits.actors) output.warnings.push(`${ranked.length - limits.actors} of ${ranked.length} profiled actors were not red-teamed in this pass: ${ranked.slice(limits.actors).map((a) => a.label).join(', ')}. ${order} A deep run covers more of them.`);
@@ -2123,9 +2123,23 @@ export function orderActors(all: Artefact[], actors: Artefact[]): { actors: Arte
   const mentions = (a: Artefact) => (Array.isArray(a.data.mentions) ? a.data.mentions.length : 0);
   const rows = (a: Artefact) => byLabel.get(a.label.trim().toLowerCase()) ?? 1;
 
+  /*
+   * HOW MUCH OF THE PAPER IS ABOUT IT COMES FIRST, the graph second (phase 27).
+   *
+   * Degree led until gpt-6-luna built the graph. Stage 3 batches its bodies
+   * since phase 23, and luna writes about a third of the relationships per
+   * call that gpt-5.6 does: 62 edges on the Best Start paper, against 188 on
+   * 5.6 and 455 before batching. On a graph that thin, two or three edges
+   * outranked twenty mentions — Maths Hubs (3 edges, named twice) and the
+   * Institute for Fiscal Studies took red-team slots ahead of Parents (named
+   * 21 times), the model rightly found neither had any way to beat the policy,
+   * and the run reported 8 live plays where 5.6 on the same build found 37.
+   * Mentions come from stage 2 and do not depend on how talkative stage 3
+   * was; degree still decides between bodies the paper names equally often.
+   */
   const ordered = [...actors].sort((a, b) =>
-    (degree.get(b.id) ?? 0) - (degree.get(a.id) ?? 0) ||
     mentions(b) - mentions(a) ||
+    (degree.get(b.id) ?? 0) - (degree.get(a.id) ?? 0) ||
     rows(b) - rows(a) ||
     a.id.localeCompare(b.id));
 

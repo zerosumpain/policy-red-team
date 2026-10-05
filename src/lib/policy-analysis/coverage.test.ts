@@ -26,6 +26,7 @@ import { artefact, ASSURANCE_CATEGORIES, assuranceCategories, ASSURANCE_STAGE, A
 const RUN_CATEGORIES = assuranceCategories([]);
 import { PolicyError, triageArtefacts } from './validation';
 import { executeStage } from './pipeline';
+import { systemPrompt } from './prompts';
 import { ingest } from './server/ingest';
 import { stageFacts } from './stage-facts';
 import { fixtureModel } from '../../../tests/fixtures/policy-analysis/model';
@@ -524,5 +525,19 @@ describe('the revised report is written in parts (phase 27)', () => {
     const result = await executeStage(base(ASSURED_SYNTHESIS_STAGE, all), { model, research, signal, neighbours: none, personas: none });
     expect(gaps.at(-1)).toEqual(['options_appraisal']);
     expect(result.artefacts.filter((a) => a.data.section === 'options_appraisal')).toHaveLength(1);
+  });
+});
+
+describe('a terse model is told what a complete answer is (phase 27)', () => {
+  // gpt-6-luna did the minimum each call asked: 62 graph edges where gpt-5.6
+  // wrote 188 on the same build, and about one play per body against three to
+  // five. Neither instruction said how much was enough.
+  it('asks the red team for three to five distinct plays where a body has room', () => {
+    const prompt = systemPrompt(10);
+    expect(prompt).toContain('THREE TO FIVE distinct plays');
+    expect(prompt).toContain('NO MATERIAL WAY TO BEAT IT');
+  });
+  it('asks the graph for every relationship of every body, not a sample', () => {
+    expect(systemPrompt(3)).toContain('BE EXHAUSTIVE, NOT REPRESENTATIVE');
   });
 });
