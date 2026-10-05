@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react';
 import { Checkboxes, Details } from '../govuk';
 import type { Artefact } from '$lib/policy-analysis/contracts';
 import { affectedInWords, stageOnePlaces } from '$lib/refused';
-import { groupLimits } from './warnings';
+import { groupLimits, noteRows, partLimits } from './warnings';
 
 /**
  * WHAT IT COULD NOT ESTABLISH — eight facts, not one fact five times.
@@ -30,10 +30,17 @@ import { groupLimits } from './warnings';
  * nothing to say to a record of how the report was made.
  */
 const LIMITS_SHOWN = 8;
+/**
+ * The model's notes about the paper (phase 23): eight in view, and never more
+ * than `NOTES_CAP` on the page however many a run wrote — they are model text,
+ * and every render of a model-produced list has a ceiling. Counted past it.
+ */
+const NOTES_SHOWN = 8;
+const NOTES_CAP = 120;
 const NONE: Artefact[] = [];
 
-export function Limits({ stages, artefacts = NONE }: {
-  stages: { ordinal: number; name: string; warnings: string[] }[];
+export function Limits({ stages: noted, artefacts = NONE }: {
+  stages: { ordinal: number; name: string; warnings: string[]; notes?: string[] }[];
   /** For saying where a refused item came from; see `affectedInWords`. */
   artefacts?: Artefact[];
 }) {
@@ -46,21 +53,35 @@ export function Limits({ stages, artefacts = NONE }: {
    * kind otherwise. The stage is in bold beside it, so it is not said twice.
    */
   const places = useMemo(() => stageOnePlaces(artefacts), [artefacts]);
+  /*
+   * THE RUN'S LIMITS AND THE MODEL'S NOTES ABOUT THE PAPER ARE TWO LISTS
+   * (phase 23). "The passage does not specify funding amounts" is the model
+   * reading the paper; "18 long items were clipped" is the run. Everything below
+   * that counts or groups a limit reads `stages` — the run's part — and the
+   * notes are their own list at the end.
+   */
+  const { limits: stages, notes: noteStages } = useMemo(() => partLimits(noted), [noted]);
   const ordinalOf = useMemo(() => new Map(stages.map((stage) => [stage.name, stage.ordinal])), [stages]);
 
   /** Every stage that recorded anything, in pipeline order, with its count. */
   const recorded = useMemo(() => stages
     .filter((stage) => (stage.warnings ?? []).length)
     .sort((a, b) => a.ordinal - b.ordinal), [stages]);
+  /** The rail lists every step that noted ANYTHING, limits or notes. */
+  const railed = useMemo(() => noted
+    .filter((stage) => (stage.warnings ?? []).length)
+    .sort((a, b) => a.ordinal - b.ordinal), [noted]);
 
   const shown = only.length ? recorded.filter((stage) => only.includes(stage.name)) : recorded;
+  const notes = useMemo(() => noteRows(only.length ? noteStages.filter((stage) => only.includes(stage.name)) : noteStages), [noteStages, only]);
+  const noteTotal = noteStages.reduce((n, stage) => n + stage.notes.length, 0);
   const groups = useMemo(() => groupLimits(shown), [shown]);
   // The whole run's group count, which is the figure the opening sentence
   // states — it must not move when the reader narrows the list underneath it.
   const all = useMemo(() => groupLimits(recorded).length, [recorded]);
   const recordings = groups.reduce((n, group) => n + group.total, 0);
 
-  if (!recorded.length) return null;
+  if (!railed.length) return null;
 
   const line = (group: ReturnType<typeof groupLimits>[number]) => {
     const tails = group.stages.flatMap((stage) => stage.tails.map((tail) => ({ stage: stage.name, tail })));
@@ -102,9 +123,11 @@ export function Limits({ stages, artefacts = NONE }: {
     <>
       <p className="govuk-body">
         The run noted {recorded.reduce((n, stage) => n + stage.warnings.length, 0).toLocaleString()} gaps
-        across {recorded.length} of its {stages.length} steps. Grouped on the fact each one states, they
-        are {all.toLocaleString()} different gaps. Nothing here is dropped —
+        in its own work across {recorded.length} of its {stages.length} steps. Grouped on the fact each one
+        states, they are {all.toLocaleString()} different gaps. Nothing here is dropped —
         this is the record of what the assessment could not do.
+        {noteTotal ? <> The model also noted {noteTotal.toLocaleString()} {noteTotal === 1 ? 'thing' : 'things'} the
+        paper does not say; they are listed after the gaps.</> : null}
       </p>
 
       {/*
@@ -119,7 +142,7 @@ export function Limits({ stages, artefacts = NONE }: {
         can trust. The `Details` around it prints open for the same reason every
         other disclosure in this report does.
       */}
-      <Details summary={`Show only certain steps (${recorded.length} noted something)`} open>
+      <Details summary={`Show only certain steps (${railed.length} noted something)`} open>
         <div className="prt-stagefilter">
           <Checkboxes
             id="limit-stages"
@@ -127,7 +150,7 @@ export function Limits({ stages, artefacts = NONE }: {
             legend="Steps"
             legendSize="s"
             hint="Leave every box clear to read the whole run."
-            items={recorded.map((stage) => ({
+            items={railed.map((stage) => ({
               value: stage.name,
               text: `${stage.ordinal + 1}. ${stage.name} (${stage.warnings.length})`,
             }))}
@@ -159,8 +182,52 @@ export function Limits({ stages, artefacts = NONE }: {
           ) : null}
         </>
       ) : (
-        <p className="govuk-body">Those steps recorded nothing.</p>
+        <p className="govuk-body">Those steps recorded no gap in the run's own work.</p>
       )}
+
+      {/*
+        WHAT THE PAPER DOES NOT SAY — the model's notes, apart from the run's
+        limits since phase 23. They were the largest single class in the list
+        above (103 of 256 on the Post-16 run) and read as failures of the run,
+        which they are not: "no funding amounts are stated" is a finding about
+        the paper. They are also no longer carried into later steps' prompts.
+      */}
+      {noteTotal ? (
+        <>
+          <h3 className="govuk-heading-s">What the paper does not say</h3>
+          <p className="govuk-body-s prt-meta">
+            {notes.length.toLocaleString()} {notes.length === 1 ? 'note' : 'different notes'} the model made while
+            reading the paper{only.length ? ' in the steps chosen above' : ''}. These are about the paper, not about
+            this run, and were not carried into later steps.
+          </p>
+          {notes.length ? (
+            <>
+              <ul className="prt-gaps">{notes.slice(0, NOTES_SHOWN).map(noteLine)}</ul>
+              {notes.length > NOTES_SHOWN ? (
+                <Details summary={`The other ${Math.min(notes.length, NOTES_CAP) - NOTES_SHOWN}${notes.length > NOTES_CAP ? ` of ${notes.length - NOTES_SHOWN}` : ''}`}>
+                  <ul className="prt-gaps">{notes.slice(NOTES_SHOWN, NOTES_CAP).map(noteLine)}</ul>
+                  {notes.length > NOTES_CAP ? (
+                    <p className="govuk-body-s prt-meta">And {(notes.length - NOTES_CAP).toLocaleString()} more, not listed here.</p>
+                  ) : null}
+                </Details>
+              ) : null}
+            </>
+          ) : (
+            <p className="govuk-body-s">Those steps noted nothing about the paper.</p>
+          )}
+        </>
+      ) : null}
     </>
+  );
+}
+
+function noteLine(row: { text: string; stages: string[] }) {
+  return (
+    <li key={row.text} className="prt-gap">
+      <p className="prt-gap__lead">
+        {row.text}
+        <span className="prt-meta"> — {row.stages.length > 2 ? `${row.stages.length} steps` : row.stages.join(' and ')}</span>
+      </p>
+    </li>
   );
 }

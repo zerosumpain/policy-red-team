@@ -5,6 +5,7 @@ import { policyActorMentions, policyAnalyses, policyArtefacts, policyDocuments, 
 import { ADDENDUM_STAGES, passOf, passOrdinal, RESTATEMENT_STAGES, STAGES, TRIGGER, WORKFLOW_ID, type Artefact } from '../contracts';
 import type { Neighbour } from '../pipeline';
 import { PolicyError } from '../validation';
+import { withNotes, type NotedStage } from '../notes';
 import type { Material, Submission } from './ingest';
 import { rebuildPersonas } from './personas';
 import { actorBodies } from './body-evidence';
@@ -258,14 +259,58 @@ function summariseExtraction(metadata: unknown): unknown {
   };
 }
 
+/**
+ * WHAT THE MODEL WROTE IN ITS REPLIES' `warnings`, BY STAGE — for a stage
+ * written before `policy_stages.notes` existed (phase 23).
+ *
+ * Read from the stored replies, so an older run's notes are told apart from
+ * its machine warnings by who wrote them rather than by how they are worded.
+ * A sealed run stores no reply and so yields nothing, which leaves its older
+ * stages exactly as they read before.
+ *
+ * Measured on the copy of the live database: 48 ms on the Best Start run (450
+ * calls), 87 ms on Post-16. Cached on the analysis's `updatedAt`, because a
+ * finished run's replies never change and the report page asks more than once.
+ */
+const legacyNoteCache = new Map<string, Map<number, Set<string>>>();
+export async function legacyNotes(analysisId: string, stamp: string, tx: DbExecutor = db): Promise<Map<number, Set<string>>> {
+  const key = `${analysisId}:${stamp}`;
+  const hit = legacyNoteCache.get(key);
+  if (hit) return hit;
+  const result = await tx.execute(sql`
+    select distinct s.ordinal as ordinal, w as note
+    from ${policyModelCalls} c
+    join ${policyExecutions} e on e.id = c.execution_id
+    join ${policyStages} s on s.id = e.stage_id,
+    jsonb_array_elements_text(case when jsonb_typeof(c.output -> 'warnings') = 'array' then c.output -> 'warnings' else '[]'::jsonb end) w
+    where s.analysis_id = ${analysisId}::uuid`);
+  const byStage = new Map<number, Set<string>>();
+  for (const row of (result as unknown as { rows: { ordinal: number; note: string }[] }).rows ?? []) {
+    const ordinal = Number(row.ordinal);
+    byStage.set(ordinal, (byStage.get(ordinal) ?? new Set()).add(String(row.note).trim()));
+  }
+  if (legacyNoteCache.size > 50) legacyNoteCache.delete(legacyNoteCache.keys().next().value as string);
+  legacyNoteCache.set(key, byStage);
+  return byStage;
+}
+
+/** Stage rows with the model's notes told apart; see `withNotes`. Only asks the replies when a stage needs it. */
+export async function stagesWithNotes<T extends NotedStage>(analysisId: string, stamp: Date | string | null, rows: T[], tx: DbExecutor = db) {
+  const older = rows.some((r) => !(r.notes ?? []).length && (r.warnings ?? []).length && (r.output as { contractVersion?: number } | null)?.contractVersion !== 2);
+  const fromReplies = older ? await legacyNotes(analysisId, String(stamp instanceof Date ? stamp.toISOString() : stamp ?? ''), tx) : new Map<number, Set<string>>();
+  return withNotes(rows, fromReplies);
+}
+
 export async function detail(owner: string, id: string) {
   const analysis = await ownedAnalysis(owner, id);
   if (!analysis) return null;
   // One codec for the whole page. `ownedAnalysis` above has already used its own
   // to decode this analysis's own row.
   const seal = await sealOf(id);
-  const stages = (await db.select().from(policyStages).where(eq(policyStages.analysisId, id)).orderBy(asc(policyStages.ordinal)))
-    .map((r) => unsealRow(seal, 'stage', r));
+  // `warnings` comes back as EVERYTHING the stage noted, the model's remarks
+  // included, and `notes` as the model's part — see `withNotes`.
+  const stages = await stagesWithNotes(id, analysis.updatedAt, (await db.select().from(policyStages).where(eq(policyStages.analysisId, id)).orderBy(asc(policyStages.ordinal)))
+    .map((r) => unsealRow(seal, 'stage', r)));
   const rawDocuments = await db.select({ id: policyDocuments.id, filename: policyDocuments.filename, mimeType: policyDocuments.mimeType, size: policyDocuments.size, sha256: policyDocuments.sha256, metadata: policyDocuments.metadata }).from(policyDocuments).where(eq(policyDocuments.analysisId, id));
   // `metadata.pages[].text` is a SECOND full copy of the extracted document — up
   // to 600,000 characters — and it rode the response on first load and on every
@@ -369,10 +414,10 @@ export async function control(owner: string, id: string, action: 'cancel' | 'res
  * turning a finished report into a cancelled analysis.
  */
 async function settledStatus(tx: DbExecutor, analysisId: string, exclude: number): Promise<string> {
-  const stages = await tx.select({ ordinal: policyStages.ordinal, status: policyStages.status, warnings: policyStages.warnings }).from(policyStages).where(eq(policyStages.analysisId, analysisId));
+  const stages = await tx.select({ ordinal: policyStages.ordinal, status: policyStages.status, warnings: policyStages.warnings, notes: policyStages.notes }).from(policyStages).where(eq(policyStages.analysisId, analysisId));
   const kept = stages.filter((s) => passOf(s.ordinal) !== exclude);
   if (kept.some((s) => s.status !== 'completed')) return 'failed';
-  return kept.some((s) => s.warnings.length > 0) ? 'completed_with_gaps' : 'completed';
+  return kept.some((s) => s.warnings.length > 0 || s.notes.length > 0) ? 'completed_with_gaps' : 'completed';
 }
 
 /**

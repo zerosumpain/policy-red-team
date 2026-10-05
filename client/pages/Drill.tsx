@@ -6,6 +6,10 @@ import { Link, useParams, useSearchParams } from 'react-router';
 import type { Artefact } from '$lib/policy-analysis/contracts';
 import { explain } from '$lib/policy-analysis/glossary';
 import { GRADE_LABEL, gradeOf, markDownJudgements, markedDown } from '$lib/evidence-grade';
+import { whatItIs, withoutIds } from '$lib/policy-analysis/plain';
+import { policyTerms, termFinder } from '$lib/policy-terms';
+import { PlainBlock } from '../report/Plain';
+import { TermsContext } from '../report/Term';
 import { isCleared } from '$lib/policy-analysis/cleared';
 import { BAND_LABEL, confidenceJudgement, plays, precedentOf, stageOfId } from '$lib/policy-analysis/view';
 import { STAGES, isPassStage } from '$lib/policy-analysis/contracts';
@@ -27,6 +31,8 @@ import { returnLabel as returnLabelOf, returnTo } from '../moves';
 import { stageMarks } from '$lib/stage-rail';
 import { Quoted } from '../report/Quoted';
 import { TestResult } from '../report/TestResult';
+import { BodyPages, useBodyPage } from '../report/body-pages';
+import { bodyPath } from '../places';
 
 /**
  * ONE ITEM, AS FOUR PAGES — and the chain back to the paper.
@@ -122,7 +128,9 @@ export function Drill() {
    * the item itself is read from the marked copy, or its standing would be the
    * one word on the page that disagrees. Above the early returns: a hook.
    */
-  const judged = useMemo(() => (detail ? markDownJudgements(detail.artefacts) : null), [detail]);
+  // And read without ids in its prose (phase 23), as `Report` reads them.
+  const judged = useMemo(() => (detail ? withoutIds(markDownJudgements(detail.artefacts)) : null), [detail]);
+  const finder = useMemo(() => termFinder(policyTerms(judged ?? [])), [judged]);
   const artefact = judged?.find((a) => a.id === artefactId) ?? null;
   usePageTitle(artefact ? (part && part !== 'item' ? `${artefact.label} — ${PART_TITLE[part]}` : artefact.label) : undefined);
   /*
@@ -352,7 +360,27 @@ export function Drill() {
     { part: 'record', count: fields },
   ];
 
+  /*
+   * THE BODY THIS ITEM IS ABOUT, AND ITS PAGE ACROSS POLICIES (phase 24). A
+   * body's own item page always offers it — the page also carries the
+   * register and the public record, worth reading for a body met once; a way
+   * to beat it offers its body's page only where that body has turned up in
+   * another policy, as every card in the report does.
+   */
+  const aboutBody = artefact.kind === 'actor' || artefact.kind === 'profile';
+  const bodyOf = aboutBody ? artefact.id : play?.actor?.id ?? null;
+
   return (
+    <BodyPages
+      personas={detail.personas}
+      artefacts={detail.artefacts}
+      render={({ personaId, name }, words) => (
+        <Link className="govuk-link" to={bodyPath(personaId)}>
+          {aboutBody ? `${name}: ${words}` : `${name} is ${words}`}<span aria-hidden="true"> →</span>
+        </Link>
+      )}
+    >
+      <TermsContext.Provider value={finder}>
     <div className="prt-drill">
       {/*
         THE CAPTION NAMES THE PAPER *AND* SAYS WHAT STATE THE RUN IS IN.
@@ -398,6 +426,7 @@ export function Drill() {
         {isSupplied(artefact) ? <Tag colour="purple">Supplied by you</Tag> : null}
         {whereFrom(stage, marksOnScale.sources)}
       </p>
+      <ItemBodyLink actorId={bodyOf} always={aboutBody} />
 
       <ItemParts
         parts={parts}
@@ -505,6 +534,8 @@ export function Drill() {
         <Link className="govuk-link" to={backHref}>{returnLabel}</Link>
       </p>
     </div>
+      </TermsContext.Provider>
+    </BodyPages>
   );
 }
 
@@ -690,6 +721,13 @@ function ItemPart({
           the quotation it is. Printing both put the same text on the page
           twice. */}
       {artefact.kind === 'passage' ? null : <p className="prt-drill__lead">{artefact.statement}</p>}
+      {/* IN PLAIN WORDS, before the detail (phase 23): a way to beat it, a
+          scenario or a key judgement's block, or what a part of the policy or
+          a body is in everyday words. Nothing on an older item. */}
+      <PlainBlock artefact={artefact} className="prt-drill__plain" />
+      {whatItIs(artefact) ? (
+        <p className="govuk-body prt-drill__whatitis"><strong>In everyday words:</strong> {whatItIs(artefact)}</p>
+      ) : null}
       {artefact.origin === 'behavioural_hypothesis' || artefact.kind === 'profile' ? (
         <WarningText>
           This is a hypothesis about what a body's position rewards. It is not a finding about
@@ -1539,4 +1577,10 @@ function ProfileSection({ profile }: { profile: Artefact }) {
       <SummaryList rows={rows} />
     </section>
   );
+}
+
+/** The link to the item's body page, on a line of its own, or nothing at all. */
+function ItemBodyLink({ actorId, always }: { actorId: string | null; always: boolean }) {
+  const link = useBodyPage()(actorId, { always });
+  return link ? <p className="govuk-body prt-item__body">{link}</p> : null;
 }

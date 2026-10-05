@@ -12,10 +12,10 @@ import { usePageTitle } from '../layout/Template';
  * could do about it — a tie opened a second record and nothing could close it.
  * These pages are how a person puts it right:
  *
- *   /personas/:id/register                which GOV.UK body this is (or is not)
- *   /personas/:id/merge                   which other record is the same body
- *   /personas/:id/merge/:other            are these two the same? yes / no
- *   /personas/:id/sightings/:observation  this paper meant a different body
+ *   /bodies/:id/register                which GOV.UK body this is (or is not)
+ *   /bodies/:id/merge                   which other record is the same body
+ *   /bodies/:id/merge/:other            are these two the same? yes / no
+ *   /bodies/:id/sightings/:observation  this paper meant a different body
  *
  * ROUTES, NOT DIALOGS. GDS has no modal component on purpose: a layer over a
  * page needs its own focus trap, Escape handling and back stack. A page has all
@@ -47,7 +47,7 @@ function Problem({ message }: { message: string }) {
       <div className="govuk-grid-column-full" role="alert">
         <h1 className="govuk-heading-l">There is a problem</h1>
         <p className="govuk-body">{message}</p>
-        <p className="govuk-body"><Link className="govuk-link" to="/personas">Go back to the library</Link></p>
+        <p className="govuk-body"><Link className="govuk-link" to="/bodies">Go back to bodies across policies</Link></p>
       </div>
     </div>
   );
@@ -68,7 +68,7 @@ function ReadOnly({ id }: { id: string }) {
   return (
     <InsetText>
       This copy is read-only, so nothing can be changed from it.{' '}
-      <Link className="govuk-link" to={`/personas/${id}`}>Go back to the record</Link>.
+      <Link className="govuk-link" to={`/bodies/${id}`}>Go back to the record</Link>.
     </InsetText>
   );
 }
@@ -112,8 +112,8 @@ export function PersonaRegister() {
     try {
       const result = await api.linkBody(id, bodyId, verdict);
       // Another record is already this body: ask, rather than merging behind the reader's back.
-      if (verdict === 'same' && result.sameBodyAs.length) void navigate(`/personas/${id}/merge/${result.sameBodyAs[0].id}`);
-      else void navigate(`/personas/${id}`);
+      if (verdict === 'same' && result.sameBodyAs.length) void navigate(`/bodies/${id}/merge/${result.sameBodyAs[0].id}`);
+      else void navigate(`/bodies/${id}`);
     } catch (err) {
       setErrors([{ text: (err as Error).message, href: '#register-body' }]);
       setBusy(false);
@@ -137,7 +137,7 @@ export function PersonaRegister() {
         <h1 className="govuk-heading-l">Which public body is this?</h1>
         <p className="govuk-body">
           GOV.UK keeps a list of about 1,200 public bodies: departments, agencies and the bodies
-          under them. When the library knows which one a record is, it links every paper that names
+          under them. When this service knows which one a record is, it links every paper that names
           that body, whatever each paper called it.
         </p>
         <p className="govuk-body">
@@ -150,7 +150,7 @@ export function PersonaRegister() {
               <>
                 <h2 className="govuk-heading-m">It is linked to {body.name}</h2>
                 <p className="govuk-body">
-                  If that is wrong, say so. The library will unlink it and will not link it to{' '}
+                  If that is wrong, say so. This service will unlink it and will not link it to{' '}
                   {body.name} again.
                 </p>
                 <ButtonGroup>
@@ -187,7 +187,7 @@ export function PersonaRegister() {
                 />
                 <ButtonGroup>
                   <Button type="submit" disabled={busy}>Confirm</Button>
-                  <Link className="govuk-link" to={`/personas/${id}`}>Cancel</Link>
+                  <Link className="govuk-link" to={`/bodies/${id}`}>Cancel</Link>
                 </ButtonGroup>
               </form>
             ) : (
@@ -233,7 +233,7 @@ export function PersonaMerge() {
     e.preventDefault();
     const other = String(new FormData(e.currentTarget).get('other') ?? '');
     if (!other) { setChoiceError('Choose the record that is the same body'); return; }
-    void navigate(`/personas/${id}/merge/${other}`);
+    void navigate(`/bodies/${id}/merge/${other}`);
   }
 
   return (
@@ -250,7 +250,7 @@ export function PersonaMerge() {
           <>
             <h1 className="govuk-heading-l">Combine two records</h1>
             <p className="govuk-body">There is no other record to combine it with.</p>
-            <p className="govuk-body"><Link className="govuk-link" to={`/personas/${id}`}>Go back to the record</Link></p>
+            <p className="govuk-body"><Link className="govuk-link" to={`/bodies/${id}`}>Go back to the record</Link></p>
           </>
         ) : (
           <form onSubmit={next} noValidate>
@@ -269,7 +269,7 @@ export function PersonaMerge() {
             />
             <ButtonGroup>
               <Button type="submit">Continue</Button>
-              <Link className="govuk-link" to={`/personas/${id}`}>Cancel</Link>
+              <Link className="govuk-link" to={`/bodies/${id}`}>Cancel</Link>
             </ButtonGroup>
           </form>
         )}
@@ -308,7 +308,7 @@ export function PersonaMergeConfirm() {
     try {
       if (answer === 'same') await api.mergePersonas(id, other);
       else await api.notSamePersona(id, other);
-      void navigate(`/personas/${id}`);
+      void navigate(`/bodies/${id}`);
     } catch (err) {
       setErrors([{ text: (err as Error).message, href: '#merge-answer' }]);
       setBusy(false);
@@ -340,7 +340,7 @@ export function PersonaMergeConfirm() {
         {a.readOnly ? <ReadOnly id={id} /> : clash ? (
           <WarningText>
             These are two different bodies on GOV.UK, so they cannot be combined. If one of them is
-            linked to the wrong body, <Link className="govuk-link" to={`/personas/${other}/register`}>change that first</Link>.
+            linked to the wrong body, <Link className="govuk-link" to={`/bodies/${other}/register`}>change that first</Link>.
           </WarningText>
         ) : (
           <form onSubmit={(e) => void decide(e)} noValidate>
@@ -356,13 +356,13 @@ export function PersonaMergeConfirm() {
               ]}
             />
             <p className="govuk-body">
-              Combining moves everything recorded about {b.persona.name} to {a.persona.name}, and the
-              library rebuilds what it holds from both. It cannot be undone, but one paper can be
+              Combining moves everything recorded about {b.persona.name} to {a.persona.name}, and
+              rebuilds what it holds from both. It cannot be undone, but one paper can be
               separated again later.
             </p>
             <ButtonGroup>
               <Button type="submit" disabled={busy}>Save</Button>
-              <Link className="govuk-link" to={`/personas/${id}`}>Cancel</Link>
+              <Link className="govuk-link" to={`/bodies/${id}`}>Cancel</Link>
             </ButtonGroup>
           </form>
         )}
@@ -394,7 +394,7 @@ export function PersonaSplit() {
     setProblem(null);
     try {
       const { id: created } = await api.splitSighting(id, observationId);
-      void navigate(`/personas/${created}`);
+      void navigate(`/bodies/${created}`);
     } catch (err) {
       setProblem((err as Error).message);
       setBusy(false);
@@ -408,14 +408,14 @@ export function PersonaSplit() {
         <span className="govuk-caption-l">{detail.persona.name}</span>
         <h1 className="govuk-heading-l">Did this paper mean a different body?</h1>
         <p className="govuk-body">
-          The library linked what <strong>{title}</strong> said to {detail.persona.name}. If that
-          paper meant a different body, the library will move it to a record of its own.
+          This service linked what <strong>{title}</strong> said to {detail.persona.name}. If that
+          paper meant a different body, it will move it to a record of its own.
         </p>
         {sighting.traits.length ? (
           <SummaryList rows={sighting.traits.map((t) => ({ key: t.label, value: t.value }))} />
         ) : null}
         <p className="govuk-body">
-          After this, the library will not link that paper’s name for the body to{' '}
+          After this, this service will not link that paper’s name for the body to{' '}
           {detail.persona.name} again.
         </p>
         {detail.readOnly ? <ReadOnly id={id} /> : (
@@ -423,7 +423,7 @@ export function PersonaSplit() {
             <Button id="split-confirm" disabled={busy} onClick={() => void split()}>
               Yes, move it to its own record
             </Button>
-            <Link className="govuk-link" to={`/personas/${id}`}>No, go back</Link>
+            <Link className="govuk-link" to={`/bodies/${id}`}>No, go back</Link>
           </ButtonGroup>
         )}
       </div>

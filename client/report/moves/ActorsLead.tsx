@@ -6,6 +6,7 @@ import { BandKey, Bar } from '../Metrics';
 import { PressureMatrix } from '../PressureMatrix';
 import { cleanBodies, kindCounts, pressureBoard, pressurePlays, targetLookup, type PressureBody } from '../pressure';
 import { filterPlays, type Selection } from '../selection';
+import { BodyPageLink } from '../body-pages';
 
 /**
  * WHERE A BODY SITS on the master list of actors (phase 23): the actor it is
@@ -155,6 +156,7 @@ export function ActorsLead({ artefacts = [], plays = [], interplay, personas, se
         {onSelect && linkTo && artefact ? (
           <span className="prt-meta prt-actors__open">{linkTo(artefact, 'open')}</span>
         ) : null}
+        <BodyPageLink actorId={body.id} />
       </>
     );
   };
@@ -415,9 +417,9 @@ export function ActorsLead({ artefacts = [], plays = [], interplay, personas, se
         <>
           <h3 className="govuk-heading-m govuk-!-margin-top-6">Bodies this assessment has met before</h3>
           <p className="govuk-body">
-            The persona library holds what earlier assessments recorded about a body across other
-            papers. A prior is context and never evidence — nothing in this report rests on one —
-            but a body you have read about before is one you can read faster.
+            Earlier assessments recorded these bodies in other papers; each one&rsquo;s page across
+            policies says what. That is context and never evidence — nothing in this report rests
+            on it — but a body you have read about before is one you can read faster.
           </p>
           <Table className="prt-table prt-table--zebra" firstCellIsHeader
             caption="Seen in other assessments"
@@ -439,8 +441,9 @@ export function ActorsLead({ artefacts = [], plays = [], interplay, personas, se
               <>
                 {group.here.length && linkTo ? linkTo(group.here[0].actor) : group.here[0]?.actor.label ?? group.name}
                 {group.here[0] && group.here[0].actor.label !== group.name ? (
-                  <span className="prt-meta prt-actors__kind">library: {group.name}</span>
+                  <span className="prt-meta prt-actors__kind">recorded as {group.name}</span>
                 ) : null}
+                <BodyPageLink actorId={group.here[0]?.actor.id} />
               </>,
               papers(group.records.reduce((n, r) => n + r.sightings, 0)),
               String(group.plays.length),
@@ -452,9 +455,9 @@ export function ActorsLead({ artefacts = [], plays = [], interplay, personas, se
         </>
       ) : personas.length ? (
         <p className="govuk-body-s prt-meta">
-          All {personas.length} of these bodies have a record in the persona library and none has
-          been seen in a second paper yet, so nothing here is a prior. A record becomes useful the
-          second time a body turns up.
+          All {personas.length} of these bodies have a page across policies and none has been seen
+          in a second paper yet, so nothing here is a prior. A body&rsquo;s page becomes useful the
+          second time it turns up.
         </p>
       ) : null}
     </section>

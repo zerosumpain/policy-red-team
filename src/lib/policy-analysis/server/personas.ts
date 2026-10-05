@@ -772,7 +772,7 @@ const RESEARCH_QUESTIONS = 3;
 
 export async function researchPersona(owner: string, id: string, signal: AbortSignal): Promise<{ sources: number; traits: number }> {
   const detail = await personaDetail(owner, id);
-  if (!detail) throw new PolicyError('missing', 'Persona not found.');
+  if (!detail) throw new PolicyError('missing', 'No such body.');
   const { persona } = detail;
   const known = persona.dossier.map((t) => `${t.label}: ${t.value}`).join('\n').slice(0, 4000);
 

@@ -1,3 +1,4 @@
+import { isReadOnly } from '$lib/server/read-only';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import {
   ADMIN_COOKIE, clearedCookie, issueSession, passwordMatches, readCookie, sessionCookie, sessionValid,
@@ -82,6 +83,10 @@ export async function handleReader(
       // form can see that much — and the client needs it to decide what to draw.
       gated: mode === 'password',
       signedIn: !(await readerDenied(req)),
+      // Phase 24: the page shell's navigation offers "Assess a paper" only
+      // where a paper can be assessed. Not a secret either — the landing
+      // response has said it to anyone since phase 4.
+      readOnly: isReadOnly(),
     });
     return true;
   }

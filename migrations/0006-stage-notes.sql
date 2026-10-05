@@ -1,0 +1,19 @@
+-- Phase 23: what the MODEL said about the paper, kept apart from what the RUN
+-- recorded about itself.
+--
+-- A model's reply carries a `warnings` list, and it is almost always about the
+-- paper — "the passage does not specify funding amounts". Until now it was
+-- stored in `policy_stages.warnings` beside the run's own state (context
+-- clipped, output refused, references dropped), and every later stage was
+-- handed that list under a 12,000-character budget (`boundWarnings`). On the
+-- Post-16 run 103 of the 256 warnings were the model's, so remarks about the
+-- paper competed in every later prompt with the machine facts the budget exists
+-- to carry.
+--
+-- `notes` holds the model's remarks. The worker carries only `warnings`
+-- forward; the report reads both. Sealed exactly as `warnings` is
+-- (`SEALED_FIELDS.stage`): a remark about an unpublished paper is the paper's
+-- words. Additive only; an older stage has `[]` and its remarks stay where they
+-- were, which `store.ts` reads back apart by matching them to the stored
+-- replies.
+ALTER TABLE policy_stages ADD COLUMN IF NOT EXISTS notes jsonb NOT NULL DEFAULT '[]'::jsonb;

@@ -46,6 +46,7 @@ import { PolicyError } from '$lib/policy-analysis/validation';
 import { assessmentDocument, briefDocument, isDownloadFormat, isExportFormat } from '$lib/policy-analysis/server/export';
 import { briefOf } from '$lib/brief';
 import { markDownJudgements } from '$lib/evidence-grade';
+import { withoutIds } from '$lib/policy-analysis/plain';
 import { assessmentBundle } from '$lib/policy-analysis/server/bundle';
 import { ownerPayload, sharedPayload } from '$lib/policy-analysis/offline/payload';
 import { runFacts, type PackPayload } from '$lib/offline-run';
@@ -83,6 +84,18 @@ async function summaryCard(id: string, updatedAt: Date | string | null): Promise
 }
 
 const owner = () => getOwnerEmails()[0];
+
+/**
+ * The landing page's recurring bodies, held until what they are counted from
+ * moves. A WORKER writes the library mid-run without an HTTP request, so the
+ * write-drop above is not enough on its own: the key is the library's own
+ * size and last change, and the finished-paper count, read in one query.
+ */
+let recurring: { key: string; value: unknown } | null = null;
+async function recurringKey(who: string): Promise<string> {
+  const { recurringSignature } = await import('$lib/policy-analysis/server/intel');
+  return recurringSignature(who);
+}
 
 /**
  * The copied export layer returns a web `Response`; this server speaks
@@ -162,7 +175,7 @@ export async function handleApi(
   // Anything that writes may change what a card summarises — a purge empties
   // a run without touching its `updatedAt` — so every write drops the cache.
   // Writes are rare and a card is one query to rebuild.
-  if (method !== 'GET' && method !== 'HEAD') summaries.clear();
+  if (method !== 'GET' && method !== 'HEAD') { summaries.clear(); recurring = null; }
 
   // One gate for every mutation, rather than a check per handler. A route added
   // later is covered without anyone remembering to cover it — which is the only
@@ -278,6 +291,22 @@ export async function handleApi(
    * library and the papers' graphs, which `share.ts` withholds and no export
    * reads. Sealed papers are not in it at all.
    */
+  /*
+   * GET /api/policy-analysis/bodies/recurring — the landing page's "Bodies
+   * that turn up again" (phase 24): the bodies seen in two or more papers,
+   * one mark per paper, and how many papers there are at all, so an empty
+   * panel can say why. A small endpoint of its own rather than a field on the
+   * landing list: that response also feeds the submit form, and this one
+   * reads graphs. Cached against what it is computed from; any write drops it.
+   */
+  if (segments[0] === 'bodies' && segments[1] === 'recurring' && segments.length === 2 && method === 'GET') {
+    const { recurringBodies } = await import('$lib/policy-analysis/server/intel');
+    const key = await recurringKey(owner());
+    if (!recurring || recurring.key !== key) recurring = { key, value: await recurringBodies(owner()) };
+    sendJson(res, 200, recurring.value);
+    return true;
+  }
+
   if (segments[0] === 'bodies' && segments.length === 1 && method === 'GET') {
     const { bodiesGrid } = await import('$lib/policy-analysis/server/intel');
     sendJson(res, 200, { ...(await bodiesGrid(owner())), readOnly: isReadOnly() });
@@ -370,7 +399,7 @@ export async function handleApi(
     if (segments.length === 3 && segments[2] === 'intel' && method === 'GET') {
       const { bodyIntel } = await import('$lib/policy-analysis/server/intel');
       const intel = await bodyIntel(owner(), segments[1]);
-      if (!intel) throw new HttpError(404, 'No such persona.');
+      if (!intel) throw new HttpError(404, 'No such body.');
       sendJson(res, 200, intel);
       return true;
     }
@@ -385,7 +414,7 @@ export async function handleApi(
      */
     if (segments.length === 3 && segments[2] === 'evidence' && method === 'POST') {
       const persona = (await personaDetail(owner(), segments[1]))?.persona;
-      if (!persona) throw new HttpError(404, 'No such persona.');
+      if (!persona) throw new HttpError(404, 'No such body.');
       if (!persona.bodyId) throw new HttpError(409, 'This body is not matched to the GOV.UK list, so there is no public record to check. Find it on the list first.');
       const limit = rateLimit(`body-evidence:${owner()}`, { capacity: 6, refillPerSecond: 1 / 60 });
       if (!limit.allowed) throw new HttpError(429, `That is enough checks for now. Try again in ${Math.max(1, Math.ceil(limit.retryAfterMs / 60000))} minutes.`);
@@ -402,7 +431,7 @@ export async function handleApi(
     }
     if (segments.length === 2 && method === 'GET') {
       const dossier = await personaDetail(owner(), segments[1]);
-      if (!dossier) throw new HttpError(404, 'No such persona.');
+      if (!dossier) throw new HttpError(404, 'No such body.');
       // `readOnly` rides along so the page can decline to draw a control that
       // would only 403, the same as the assessment detail.
       sendJson(res, 200, { ...dossier, readOnly: isReadOnly() });
@@ -433,7 +462,7 @@ export async function handleApi(
       // VALIDATED BEFORE A TOKEN IS TAKEN. Six requests for an id that does not
       // exist cost nothing and used to lock the reader out of six that would.
       const dossier = await personaDetail(owner(), segments[1]);
-      if (!dossier) throw new HttpError(404, 'No such persona.');
+      if (!dossier) throw new HttpError(404, 'No such body.');
 
       /*
        * FAIL CLOSED WHERE THE DOCUMENT GUARD CANNOT WORK.
@@ -520,7 +549,7 @@ export async function handleApi(
       const body = await readJson(req);
       const text = (key: string) => (typeof body[key] === 'string' ? (body[key] as string).trim().slice(0, 200) : '');
       const id = segments[1];
-      if (!(await personaDetail(owner(), id))) throw new HttpError(404, 'No such persona.');
+      if (!(await personaDetail(owner(), id))) throw new HttpError(404, 'No such body.');
       if (segments[2] === 'merge') {
         if (!text('other')) throw new HttpError(400, 'Choose the body to combine this one with.');
         sendJson(res, 200, await actions.mergePersonas(owner(), id, text('other')));
@@ -544,7 +573,7 @@ export async function handleApi(
       return true;
     }
     if (segments.length === 2 && method === 'DELETE') {
-      if (!(await removePersona(owner(), segments[1]))) throw new HttpError(404, 'No such persona.');
+      if (!(await removePersona(owner(), segments[1]))) throw new HttpError(404, 'No such body.');
       sendJson(res, 200, { removed: true });
       return true;
     }
@@ -759,7 +788,8 @@ export async function handleApi(
     // The documents print judgements, so they read them as the page does: marked
     // down where the evidence will not carry them (phase 22). The pack is handed
     // the stored rows and marks them down itself, in `Report`.
-    const judged = markDownJudgements(artefacts);
+    // And with no identifier left in a sentence (phase 23, `withoutIds`).
+    const judged = withoutIds(markDownJudgements(artefacts));
     const response = part === 'brief' && isExportFormat(format)
       ? await briefDocument(judged, redacted ? { ...meta, withheld: withheldPhrases(redacted.withheld) } : meta, format, briefOf(judged, briefStages))
       : isExportFormat(format)

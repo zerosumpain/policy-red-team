@@ -1,5 +1,6 @@
 import { isSelfHost } from '$lib/server/identity';
 import { z } from 'zod';
+import { PLAIN_SCHEMAS, WHAT_IT_IS } from './plain-schema';
 
 export const STAGES = [
   'Document ingestion', 'Document decomposition', 'Entity resolution', 'Policy knowledge graph',
@@ -524,7 +525,10 @@ const personaTraits = z.array(z.object({ key: z.string().max(60), label: z.strin
 export const dataSchemas = {
   passage: z.object({ documentHash: text }),
   claim: z.object({ category: z.enum(['objective', 'problem', 'responsibility', 'decision_right', 'funding', 'dependency', 'data_flow', 'measure', 'constraint', 'risk', 'benefit', 'claim', 'cited_evidence']), notes: text }),
-  mechanism: z.object({ intervention: text, implementation: text, notes: text }),
+  // `whatItIs` (phase 23): this part of the policy in everyday words, one line.
+  // Optional in the shape so every older row parses; the prompt shows it as
+  // required (`plain.ts`, `promptSchema`) and a missing one is a warning.
+  mechanism: z.object({ intervention: text, implementation: text, notes: text, whatItIs: WHAT_IT_IS.optional() }),
   assumption: z.object({ importance: unit, uncertainty: unit, consequence: unit, priority: unit.optional(), notes: text }),
   actor: z.object({
     entityType: z.enum(ENTITY_TYPES), aliases: strings, mentions: ids, ambiguity: text, dates: strings, parent: z.string().nullable(),
@@ -597,7 +601,7 @@ export const dataSchemas = {
   // the run could not make because its own graph did not link what the paper
   // states is an EXTRACTION GAP, and says which relation and how many items.
   test: z.object({ testId: text, rationale: text, inputs: ids, rule: text, reasoning: text, result: z.enum(['low_risk', 'moderate_risk', 'high_risk', 'indeterminate']), severity: z.enum(['low', 'moderate', 'high', 'unknown']), actors: ids, mitigation: text, basis: z.literal('extraction_gap').optional(), extracted: z.object({ relation: text, what: text, count: z.number().int().positive() }).optional() }),
-  scenario: z.object({ scenario: z.enum(SCENARIOS), changedConditions: text, firstActor: z.string().nullable(), strategy: text, downstreamEffects: strings, affectedOutcomes: ids, detectability: text, correction: text, weaknesses: strings, assumptions: ids.min(1), sensitivity: strings.min(1) }),
+  scenario: z.object({ scenario: z.enum(SCENARIOS), changedConditions: text, firstActor: z.string().nullable(), strategy: text, downstreamEffects: strings, affectedOutcomes: ids, detectability: text, correction: text, weaknesses: strings, assumptions: ids.min(1), sensitivity: strings.min(1), plain: PLAIN_SCHEMAS.scenario.optional() }),
   exploit: z.object({
     actorId: text, motivation: text, play: text, legality: z.enum(LEGALITY),
     targets: ids.min(1), preconditions: ids.min(1), payoff: text, costToPolicy: text,
@@ -623,6 +627,13 @@ export const dataSchemas = {
      * their wording.
      */
     cleared: z.boolean().optional(),
+    /*
+     * THE PLAY IN PLAIN WORDS (phase 23): who, what they do, what goes wrong
+     * and for whom, an everyday comparison, and why it matters — what the
+     * report shows FIRST. Optional in the shape so older rows parse and a
+     * missing block costs a corrective ask, never the play (`plain.ts`).
+     */
+    plain: PLAIN_SCHEMAS.exploit.optional(),
   }).strict(),
   cross_policy: z.object({
     pattern: z.enum(CROSS_PATTERNS), otherAnalysisId: z.string().max(100), otherAnalysisTitle: text,
@@ -717,6 +728,8 @@ export const dataSchemas = {
     mechanismId: text, playIds: ids.min(1), assumptionId: text,
     wouldChangeIf: text, decision: text, action: text, owner: text,
     findingIds: ids.default([]),
+    // Who it happens to and why it matters, in everyday words (phase 23).
+    plain: PLAIN_SCHEMAS.key_judgement.optional(),
   }).strict(),
   finding: z.object({
     section: z.enum(['executive_assessment', 'scope_methodology', 'objectives', 'actors', 'mechanisms', 'theory_of_change', 'options_appraisal', 'evaluation_plan', 'assurance', 'high_risk_assumptions', 'test_results', 'strategic_responses', 'scenarios', 'exploitation', 'cross_policy', 'evidence_gaps', 'confidence_uncertainty', 'distribution', 'unresolved_questions']),
@@ -810,6 +823,19 @@ export const dataSchemas = {
  * failure (see `reconcileKeyJudgements`).
  */
 export const MAX_KEY_JUDGEMENTS = 5;
+/**
+ * The fewest key judgements a final review is asked AGAIN for (phase 23).
+ *
+ * The Best Start run led with 2 of a possible 5. Replayed from its stored
+ * replies, the cause was the context, not the model: the old theory of change
+ * (75 chains, 537k characters) took the call's room, and stage 17 was sent
+ * none of the 75 mechanisms and none of the 365 claims a judgement must name
+ * and quote — so it wrote the two it could. Today's stage 14 (one logic model
+ * and eight chains) leaves room for all 75 quotable items, and the instruction
+ * now asks for five. Below this floor the existing top-up asks once more, for
+ * more, naming the ones already written.
+ */
+export const KEY_JUDGEMENT_FLOOR = 3;
 export const RESULT_KINDS = ['test', 'model', 'scenario', 'exploit', 'cross_policy', 'causal_chain', 'logic_model', 'option_appraisal', 'evaluation_plan'] as const;
 
 export const REPORT_SECTIONS = ['executive_assessment', 'scope_methodology', 'objectives', 'actors', 'mechanisms', 'theory_of_change', 'options_appraisal', 'evaluation_plan', 'assurance', 'high_risk_assumptions', 'test_results', 'strategic_responses', 'scenarios', 'exploitation', 'cross_policy', 'evidence_gaps', 'confidence_uncertainty', 'distribution', 'unresolved_questions'] as const;
@@ -864,7 +890,17 @@ export type Artefact = z.infer<typeof artefactSchema>;
  * the safer way round if the flag ever goes missing.
  */
 export type StageInput = { stage: number; title: string; depth?: Depth; graphLoss?: number; sealed?: boolean; searches?: boolean; jurisdiction: string | null; policyArea: string | null; context: string | null; priorWarnings?: string[]; artefacts: Artefact[] };
-export type StageOutput = { artefacts: Artefact[]; warnings: string[] };
+/**
+ * `notes` (phase 23) are what the MODEL wrote in its reply's `warnings` — almost
+ * always about the paper: "the passage does not specify funding amounts". They
+ * are kept apart from `warnings`, which are the RUN's own state (context clipped,
+ * output refused, references dropped), because only the run's state is carried
+ * forward into later stages' prompts under `WARNING_BUDGET`. On the Post-16 run
+ * 103 of 256 warnings were model notes, competing for that budget in every later
+ * call with the machine facts it exists to carry. Optional: an older caller, or
+ * a stage that ran before the split, simply has none.
+ */
+export type StageOutput = { artefacts: Artefact[]; warnings: string[]; notes?: string[] };
 export const stageOutputSchema = z.object({ artefacts: z.array(artefactSchema).max(2000), warnings: z.array(z.string().max(1000)).max(100) }).strict();
 /**
  * The envelope as the INDEXED decomposition is shown it. Display only.

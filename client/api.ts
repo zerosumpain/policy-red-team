@@ -11,6 +11,7 @@ import type { Artefact } from '$lib/policy-analysis/contracts';
 import type { Clash, Grid, PaperAsks } from '$lib/policy-analysis/intel';
 import type { BodyEvidenceRecord, EvidenceSource } from '$lib/policy-analysis/body-evidence';
 import type { PassRow, RunCost } from '$lib/policy-analysis/view';
+import type { ValueLedger } from '$lib/value-ledger';
 
 export interface OfferedModel {
   id: string;
@@ -47,7 +48,13 @@ export interface StageRow {
   ordinal: number;
   name: string;
   status: string;
+  /** EVERYTHING the stage noted, the model's remarks about the paper included. */
   warnings: string[];
+  /**
+   * The model's part of `warnings`: remarks about the paper, not about the run
+   * (phase 23, `$lib/policy-analysis/notes`). Absent on an older server or pack.
+   */
+  notes?: string[];
   startedAt: string | null;
   completedAt: string | null;
   error: string | null;
@@ -114,6 +121,12 @@ export interface Detail {
    * was written to protect.
    */
   cost?: RunCost | null;
+  /**
+   * What each step spent, against what came of it (phase 23,
+   * `$lib/value-ledger`). Null where the reading cannot say; absent on an
+   * older server or pack.
+   */
+  ledger?: ValueLedger | null;
   /** True when the server refuses every mutation, so the page can decline to draw a control that would 403. */
   readOnly: boolean;
 }
@@ -189,6 +202,25 @@ export interface DuplicateSuggestion {
   b: { id: string; name: string };
   reason: string;
   strong: boolean;
+}
+
+/**
+ * The landing page's "Bodies that turn up again" (phase 24). Mirrors
+ * `Recurring` in `server/intel.ts`, declared here because the client bundle
+ * must not import server code.
+ */
+export interface RecurringBodies {
+  /** Documents with a finished, unsealed assessment — why the panel may be empty. */
+  papers: number;
+  /** Every body seen in two or more papers; `bodies` is the first few. */
+  repeating: number;
+  bodies: {
+    personaId: string;
+    name: string;
+    entityType: string;
+    sightings: number;
+    papers: { id: string; title: string; completedAt: string | null; worstBand: string | null; plays: number; ask: string | null }[];
+  }[];
 }
 
 /** A group of people papers named — kept apart from bodies, because a group has no strategy. */
@@ -417,6 +449,7 @@ function heldDetail(id: string, view?: DetailView): Promise<Detail> {
 
 export const api = {
   landing: () => request<Landing>('/api/policy-analysis'),
+  recurringBodies: () => request<RecurringBodies>('/api/policy-analysis/bodies/recurring'),
   /**
    * Everything, including the kinds only the drill renders.
    *
@@ -485,7 +518,7 @@ function personaAction<T>(id: string, action: string, body: Record<string, strin
  * 401s, with no form anywhere to type the password into. `ReaderGate` is that form.
  */
 export const reader = {
-  status: () => request<{ gated: boolean; signedIn: boolean }>('/api/reader/status'),
+  status: () => request<{ gated: boolean; signedIn: boolean; readOnly?: boolean }>('/api/reader/status'),
   signIn: (password: string) =>
     request<{ signedIn: boolean }>('/api/reader/session', {
       method: 'POST',

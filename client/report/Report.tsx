@@ -14,7 +14,7 @@ import { MOVES, viewPath } from '../moves';
 import {
   filterPlays, mechanismIdsOf, mechanismsOf, narrowExcept, parseSelection, selectionParam, type Selection,
 } from './selection';
-import { byReason, groupLimits, truncations } from './warnings';
+import { byReason, groupLimits, noteRows, partLimits, truncations } from './warnings';
 import { Metrics } from './Metrics';
 import { WriteUp } from './WriteUp';
 import { SelectionBanner } from './moves/SelectionBanner';
@@ -24,6 +24,9 @@ import { PatternGrid } from './PatternGrid';
 import { briefOf } from '$lib/brief';
 import { overviewOf } from '$lib/overview';
 import { markDownJudgements } from '$lib/evidence-grade';
+import { withoutIds } from '$lib/policy-analysis/plain';
+import { policyTerms, termFinder } from '$lib/policy-terms';
+import { TermsContext } from './Term';
 import { Overview } from './Overview';
 import { WorstPlays } from './moves/WorstPlays';
 import { CausalityLead } from './moves/CausalityLead';
@@ -74,9 +77,11 @@ import { Models } from './Models';
 import { Resolution } from './Resolution';
 /* Provenance: the run itself, what it could not see, and what it could not establish. */
 import { RunProfile } from './RunProfile';
+import { ValueLedger } from './ValueLedger';
 import { Withheld } from './Withheld';
 import { Limits } from './Limits';
 import { DownloadGrid } from './DownloadGrid';
+import { BodyPages, type BodyPageRender } from './body-pages';
 
 /**
  * The report.
@@ -188,8 +193,9 @@ const SECTION_NOTES: Record<string, string> = {
   machine: 'How much the run produced.',
   discarded: 'What the model wrote that was thrown out, and why.',
   provenance: 'Which model, how long each step took, what it cost.',
+  value: 'The tokens each step spent, against what a later step or a reader used.',
   withheld: 'Steps where the model saw only part of the assessment.',
-  gaps: 'Every limit a step recorded, each said once.',
+  gaps: 'Every limit a step recorded, each said once, and what the paper does not say.',
   composition: 'The claims and machinery the paper is built from.',
   evidence: 'Which claims have evidence behind them.',
   assurance: 'The challenge round that attacked the findings.',
@@ -213,7 +219,7 @@ const READING_ORDER: Partial<Record<Move, string[]>> = {
   ],
   causality: ['mechanisms', 'change', 'network'],
   provenance: [
-    'machine', 'discarded', 'provenance', 'withheld', 'gaps', 'composition', 'evidence', 'assurance', 'paper',
+    'machine', 'discarded', 'provenance', 'value', 'withheld', 'gaps', 'composition', 'evidence', 'assurance', 'paper',
   ],
 };
 
@@ -281,10 +287,16 @@ export type ArtefactLink = (artefact: Artefact, label?: string, at?: string) => 
  * reader the very file they are already reading. Found by looking at a real pack
  * rather than by any test, which is the argument for looking at real output.
  */
-export function Report({ detail, offline, linkTo, onChanged, route, onTitle }: {
+type ReportProps = {
   detail: Detail;
   offline?: boolean;
   linkTo?: ArtefactLink;
+  /**
+   * How a body's page across policies is linked (phase 24). The service's is
+   * a router `Link`; the pack passes none and every body stays plain text —
+   * see `body-pages.tsx`.
+   */
+  bodyLink?: BodyPageRender;
   /** The service only. Absent, the report is the pack's one cascading document. */
   route?: ReportRoute;
   /** What this page is, for the document title — "Ways to beat it — Threats". Null on the Summary. */
@@ -295,7 +307,37 @@ export function Report({ detail, offline, linkTo, onChanged, route, onTitle }: {
    * longer the thing to show — the progress list is.
    */
   onChanged?: () => void;
-}) {
+};
+
+/**
+ * THE READINGS EVERY PAGE OF THE REPORT TAKES, ONCE, AT THE ROOT.
+ *
+ * Bodies (phase 24): the bodies it names are linked to their pages across
+ * policies. The index is built from the RAW artefacts, so every table, card and
+ * grid below asks one question of one lookup.
+ *
+ * `withoutIds` (phase 23): an identifier the model wrote into a sentence — the
+ * live run's scenarios say "If s1_023_assumption_001 is true" 76 times — is read
+ * as the name of the item it points to, so no page, the pack included, ever
+ * shows one. The glossary: the paper's own names, defined on tap wherever a
+ * sentence uses them (`Term`). Both here rather than in each component, for the
+ * reason `markDownJudgements` is at the root below.
+ */
+export function Report(props: ReportProps) {
+  const { detail } = props;
+  const shown = useMemo(() => withoutIds(detail.artefacts), [detail.artefacts]);
+  const readable = useMemo(() => (shown === detail.artefacts ? detail : { ...detail, artefacts: shown }), [detail, shown]);
+  const finder = useMemo(() => termFinder(policyTerms(shown)), [shown]);
+  return (
+    <BodyPages personas={detail.personas} artefacts={detail.artefacts} render={props.bodyLink}>
+      <TermsContext.Provider value={finder}>
+        <ReportView {...props} detail={readable} />
+      </TermsContext.Provider>
+    </BodyPages>
+  );
+}
+
+function ReportView({ detail, offline, linkTo, onChanged, route, onTitle }: ReportProps) {
   const { analysis, stages } = detail;
   /*
    * THE JUDGEMENTS THE EVIDENCE WILL CARRY, ONCE, AT THE ROOT (phase 22). A
@@ -1174,10 +1216,15 @@ export function Report({ detail, offline, linkTo, onChanged, route, onTitle }: {
    * lead sentence and reports 181, so the index reads the same function the
    * section does rather than a number that was true of the block it replaced.
    */
-  const limitGroups = useMemo(() => groupLimits(stages), [stages]);
+  // THE RUN'S LIMITS AND THE MODEL'S NOTES ABOUT THE PAPER, counted as the
+  // section draws them: two lists (phase 23, `partLimits`).
+  const limitGroups = useMemo(() => {
+    const parted = partLimits(stages);
+    return groupLimits(parted.limits).length + noteRows(parted.notes).length;
+  }, [stages]);
   section('gaps', 'What it could not establish', 'provenance',
-    limitGroups.length ? <Limits stages={stages} artefacts={artefacts} /> : null,
-    { count: { n: limitGroups.length, noun: 'different gaps' } });
+    limitGroups ? <Limits stages={stages} artefacts={artefacts} /> : null,
+    { count: { n: limitGroups, noun: 'different gaps' } });
 
   /*
    * ONE SECTION, BECAUSE THE DIFFERENCE BETWEEN SIX DOWNLOADS IS TWO FACTS.
@@ -1235,6 +1282,15 @@ export function Report({ detail, offline, linkTo, onChanged, route, onTitle }: {
       cost={detail.cost}
       offline={offline}
     />);
+
+  /*
+   * WHAT EACH STEP SPENT, AGAINST WHAT CAME OF IT — under the ladder it reads
+   * beside (phase 23). Computed on the server from stored rows, and carried in
+   * the pack's run facts, so both renderers draw the same figure; an older
+   * reading has no ledger and the section is simply absent.
+   */
+  section('value', 'What each step spent, and what came of it', 'provenance',
+    detail.ledger ? <ValueLedger ledger={detail.ledger} /> : null);
 
   /*
    * THE PAPER ITSELF, IN THE PACK, WHERE A READER CAN FIND IT.
