@@ -195,12 +195,19 @@ that does not declare it (7, 9, 11, 12, 17, the undeclared 1–4 and 13, and
 every pass). At stage 6 the per-item block is part of `evidenceOwns`, so the
 largest item sizes the shared block's allowance (`largest + 40,000`, at most
 half of `FIT_LIMIT`) — a 60,000-character item leaves the inventory ~940,000
-characters, more than the measured 585k average; nothing is shed that was not
-shed before.
+characters, more than the measured 585k average, so on the Best Start run
+nothing is shed that was not shed before.
 
 ## Proved on a copy of the live database
 
-See the table at the end (filled from the capture). Method: the base build
+| check | result |
+|---|---|
+| migrations 0000–0009 (with phase 24b's 0008) on a fresh copy | applied; all 20 analyses keyed (`paper_key` = their document's sha256), every document `position 0, main, ''` |
+| passage ids, all runs | 1,328 passages; md5 of the ordered id list identical before and after (`a404ecc7…`) |
+| report pages + exports, `44dd5420` and `36ebca37` | **81 of 81 identical** — every move and section page's `#main-content` text, the Markdown export, the brief and the shared export; no page errors |
+| papers counted | 2 distinct paper keys, as 2 distinct sha256s before |
+
+Method: the base build
 (`f9a714e`) and this build, each as the fixture server bound to 127.0.0.1, each
 on its own copy of the live database; every report page of both finished runs
 (the five moves and every section page linked from them) rendered in a
