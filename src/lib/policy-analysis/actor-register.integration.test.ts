@@ -14,7 +14,9 @@ import { policyActorMentions, policyAnalyses, policyPersonas, policyStages, work
 import { claimNext } from '$lib/workflows/run-queue';
 import { fixtureModel } from '../../../tests/fixtures/policy-analysis/model';
 import { artefact, STAGES, TRIGGER } from './contracts';
-import { acceptEntry, backfillRegister, markNotActor, proposalQueue, registerTreeFor, reparentEntry } from './server/actor-register';
+import { acceptEntry, backfillRegister, keepWording, loadRegisterView, markNotActor, modelJoins, proposalQueue, registerEntry, registerTreeFor, reopenEntry, reparentEntry, reviewCount, reviewQueue, splitWording } from './server/actor-register';
+import { mergePersonas } from './server/personas';
+import { entryIndex, matchName } from './actor-register';
 import { createAnalysis, loadArtefacts, persistArtefacts, purge, remove, sealOf } from './server/store';
 import { executePolicyRun } from './server/worker';
 
@@ -136,6 +138,53 @@ describe.skipIf(!local)('the master list of actors across runs', () => {
     const four = await run('Register fixture — fourth policy', Buffer.concat([first, Buffer.from('\n\nA fourth paper.\n')]));
     expect((await castOf(four.id)).map((a) => a.label).sort()).toEqual(['Council', 'Department for Education']);
     await remove(owner, four.id);
+  });
+
+  it('lists a join only the model made, splits it off in one step, and merges it back (phase 24b)', async () => {
+    calls.list = [];
+    const five = await run('Register fixture — the local authority', Buffer.concat([first, Buffer.from('\n\nThe local authority runs the scheme day to day.\n')]));
+    expect(calls.list.filter((c) => c.stage === 2).map((c) => c.key)).toEqual(['match']);
+    const council = (await entries()).find((r) => r.name === 'Council')!;
+    // The model's guess is now an alias — a rule on every later run — and says who put it there.
+    expect(council.aliases).toContain('The local authority');
+    expect(council.aliasOrigins['the local authority']).toMatchObject({ by: 'model', analysisId: five.id });
+    const queue = await reviewQueue(owner);
+    expect(queue.joined).toEqual([expect.objectContaining({ id: council.id, wording: 'The local authority', alias: true, analyses: [{ id: five.id, title: 'Register fixture — the local authority' }] })]);
+    expect((await reviewCount(owner)).joined).toBe(1);
+
+    // SPLIT: one step, and the next paper that says it no longer matches the council by rule.
+    const split = await splitWording(owner, council.id, 'The local authority');
+    expect(split).toMatchObject({ name: 'The local authority', created: true, moved: 1 });
+    const after = await entries();
+    expect(after.find((r) => r.id === council.id)!.aliases).not.toContain('The local authority');
+    expect(after.find((r) => r.id === split.id)).toMatchObject({ status: 'proposed', proposedIn: five.id });
+    expect((await mentionsOf(five.id)).filter((m) => m.wording === 'The local authority').map((m) => m.masterId)).toEqual([split.id]);
+    expect(matchName('The local authority', entryIndex(await loadRegisterView(owner)))?.entry.id).toBe(split.id);
+    expect((await modelJoins(owner)).joins.filter((j) => j.id === council.id)).toEqual([]);
+    await expect(splitWording(owner, council.id, 'Councils')).rejects.toThrow(/own name/);
+
+    // ITS UNDO is the merge: the wording comes home and the reader's word now stands for it.
+    await mergePersonas(owner, council.id, split.id);
+    const merged = (await entries()).find((r) => r.id === council.id)!;
+    expect(merged.aliases).toContain('The local authority');
+    expect(merged.aliasOrigins['the local authority']).toMatchObject({ by: 'reader' });
+    expect((await mentionsOf(five.id)).filter((m) => m.wording === 'The local authority').map((m) => m.masterId)).toEqual([council.id]);
+    expect(matchName('The local authority', entryIndex(await loadRegisterView(owner)))).toMatchObject({ entry: { id: council.id }, basis: 'ruling' });
+    expect((await modelJoins(owner)).total).toBe(0);
+    await keepWording(owner, council.id, 'The local authority');
+    expect((await modelJoins(owner)).total).toBe(0);
+
+    // An accept can be taken back; the entry's own page names where it sits and what papers gave it.
+    await reopenEntry(owner, council.id);
+    expect((await entries()).find((r) => r.id === council.id)!.status).toBe('proposed');
+    await acceptEntry(owner, council.id);
+    const page = (await registerEntry(owner, council.id))!;
+    expect(page.partOf?.name).toBe('Department for Education');
+    expect(Object.values(page.entry.capacityPapers).every((n) => n >= 1)).toBe(true);
+    const dfe = (await entries()).find((r) => r.name === 'Department for Education')!;
+    expect((await registerEntry(owner, dfe.id))!.children.partOf.map((c) => c.name)).toContain('Council');
+    expect(await registerEntry(owner, 'not-a-uuid')).toBeNull();
+    await remove(owner, five.id);
   });
 
   it('takes a paper’s proposals with it when it goes, and keeps what the reader confirmed', async () => {

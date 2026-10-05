@@ -579,7 +579,8 @@ async function owned(tx: DbExecutor, owner: string, id: string) {
   return row ?? null;
 }
 
-async function rule(tx: DbExecutor, owner: string, personaId: string, subject: string, verdict: 'same' | 'different') {
+/** A reader's ruling, recorded or overwritten. Exported for the register's own rulings (phase 24b). */
+export async function rule(tx: DbExecutor, owner: string, personaId: string, subject: string, verdict: 'same' | 'different') {
   await tx.insert(policyPersonaDecisions).values({ owner, personaId, subject, verdict, decidedBy: 'human' })
     .onConflictDoUpdate({ target: [policyPersonaDecisions.personaId, policyPersonaDecisions.subject], set: { verdict, createdAt: new Date() } });
 }
@@ -628,8 +629,16 @@ export async function mergePersonas(owner: string, keepId: string, otherId: stri
     for (const name of [other.name, ...list<string>(other.aliases)].slice(0, 12)) {
       if (normaliseName(name)) await rule(tx, owner, keep.id, nameSubject(name), 'same');
     }
+    const mergedAliases = [...new Set([...list<string>(keep.aliases), other.name, ...list<string>(other.aliases)].filter((n) => n && n !== keep.name))].slice(0, 40);
+    // WHO PUT EACH NAME THERE (phase 24b): the other's own name is the reader's
+    // doing now; its aliases keep whatever origin they had, so a guess the
+    // model made about the other row is still listed for checking.
+    const origins = (row: typeof keep) => (row.aliasOrigins && typeof row.aliasOrigins === 'object' && !Array.isArray(row.aliasOrigins) ? row.aliasOrigins : {});
+    const aliasOrigins = { ...origins(other), ...origins(keep), [normaliseName(other.name)]: { by: 'reader' as const, analysisId: null, at: new Date().toISOString() } };
+    for (const key of Object.keys(aliasOrigins)) if (!mergedAliases.some((n) => normaliseName(n) === key)) delete aliasOrigins[key];
     await tx.update(policyPersonas).set({
-      aliases: [...new Set([...list<string>(keep.aliases), other.name, ...list<string>(other.aliases)].filter((n) => n && n !== keep.name))].slice(0, 40),
+      aliases: mergedAliases,
+      aliasOrigins,
       bodyId: keep.bodyId ?? other.bodyId,
       researchedAt: keep.researchedAt ?? other.researchedAt,
       // A reader merging two rows has vouched for the one they kept.

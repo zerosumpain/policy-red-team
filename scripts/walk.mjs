@@ -1064,6 +1064,9 @@ try {
   const secondPaper = Buffer.concat([
     await readFile(path.join(ROOT, 'tests', 'fixtures', 'policy-analysis', 'policy.txt')),
     Buffer.from('\n\nThis note is a separate policy about the same Council.\n'),
+    // PHASE 24B: words for the council no rule can join. The fixture's matching
+    // answer joins them, so the queue has a model-made join to check.
+    Buffer.from('\nThe local authority runs the scheme day to day.\n'),
   ]);
   await page.getByLabel('The paper', { exact: true }).setInputFiles({ name: 'second-policy.txt', mimeType: 'text/plain', buffer: secondPaper });
   await page.getByRole('button', { name: 'Start the assessment' }).click();
@@ -1087,16 +1090,102 @@ try {
     if (JSON.stringify(register).includes('Jane Smith')) failures.push('register: a named private individual reached the master list');
     const queue = await page.evaluate(async () => (await fetch('/api/policy-analysis/register/proposals')).json());
     if (!queue.proposals?.length) failures.push('register: the review queue is empty after two papers proposed actors');
+    if (!queue.joined?.some((j) => j.wording === 'The local authority' && j.name === 'Council')) failures.push('register: the model-made join of "The local authority" to the council is not listed to check');
     if (council && dfe) {
-      const post = (url, body) => page.evaluate(async ([u, b]) => (await fetch(u, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(b) })).status, [url, body]);
-      if ((await post(`/api/policy-analysis/register/${council.id}/accept`, {})) !== 200) failures.push('register: accepting a proposal did not answer 200');
-      if ((await post(`/api/policy-analysis/register/${council.id}/parent`, { partOf: dfe.id })) !== 200) failures.push('register: placing the council inside the department did not answer 200');
-      if ((await post(`/api/policy-analysis/register/${dfe.id}/parent`, { partOf: council.id })) !== 400) failures.push('register: a loop in the hierarchy was not refused');
+      /*
+       * 9a-i — THE QUEUE, IN A BROWSER (phase 24b). Accept the council from
+       * its card; the confirmation takes focus and offers Undo; undo, and
+       * accept again.
+       */
+      const banner = page.locator('.prt-flash');
+      await page.goto(`http://127.0.0.1:${PORT}/bodies/review`, { waitUntil: 'networkidle' });
+      await page.getByRole('heading', { name: /^Proposed for the list/, level: 3 }).waitFor({ timeout: 20000 });
+      if (!/Actors to review \(\d+\)/.test(await page.locator('.prt-subnav').innerText())) failures.push('review: the hub\'s views do not count the actors to review');
+      if (!(await page.getByRole('heading', { name: /^Joined by the model — check/ }).count())) failures.push('review: the model\'s joins are not offered to check');
+      await audit('/bodies/review');
+      const councilCard = page.locator(`#proposal-${council.id}`);
+      if (!(await councilCard.count())) failures.push('review: the council has no card in the queue');
+      else {
+        if (!/Also worded as[\s\S]*Councils/.test(await councilCard.innerText())) failures.push('review: a proposal does not show how the papers worded it');
+        await councilCard.getByRole('button', { name: /^Accept/ }).click();
+        await banner.getByText('Council is confirmed on the list.').waitFor({ timeout: 20000 });
+        if (!(await page.evaluate(() => document.activeElement?.classList.contains('prt-flash')))) failures.push('review: the confirmation does not take focus');
+        await banner.getByRole('button', { name: 'Undo' }).click();
+        await banner.getByText(/^Undone\./).waitFor({ timeout: 20000 });
+        const reopened = (await page.evaluate(async () => (await fetch('/api/policy-analysis/register')).json())).entries.find((e) => e.id === council.id);
+        if (reopened?.status !== 'proposed') failures.push('review: undoing an accept did not put it back in the queue');
+        await page.locator(`#proposal-${council.id}`).getByRole('button', { name: /^Accept/ }).click();
+        await banner.getByText('Council is confirmed on the list.').waitFor({ timeout: 20000 });
+      }
+
+      // 9a-ii — MOVE IT UNDER A PARENT, then have the opposite move refused as a loop, as a GOV.UK error.
+      await page.goto(`http://127.0.0.1:${PORT}/bodies/review/${council.id}/part-of?q=Department`, { waitUntil: 'networkidle' });
+      await page.getByRole('heading', { name: 'What does it sit inside?', level: 1 }).waitFor({ timeout: 20000 });
+      await audit('/bodies/review/:id/part-of');
+      await page.getByLabel(/^Department for Education/).check();
+      await page.getByRole('button', { name: 'Save' }).click();
+      await page.waitForURL(`**/bodies/review/${council.id}`, { timeout: 20000 });
+      await banner.getByText('Council now sits inside Department for Education.').waitFor({ timeout: 20000 });
+      await audit('/bodies/review/:id (after a decision)');
+      await page.goto(`http://127.0.0.1:${PORT}/bodies/review/${dfe.id}/part-of?q=Council`, { waitUntil: 'networkidle' });
+      await page.getByRole('heading', { name: 'What does it sit inside?', level: 1 }).waitFor({ timeout: 20000 });
+      await page.getByLabel(/^Council —/).check();
+      await page.getByRole('button', { name: 'Save' }).click();
+      const summary = page.locator('.govuk-error-summary');
+      await summary.waitFor({ timeout: 20000 });
+      if (!/cannot sit under it/.test(await summary.innerText())) failures.push('review: a loop in the hierarchy was not refused with a GOV.UK error');
+      if (!(await page.evaluate(() => document.activeElement?.classList.contains('govuk-error-summary')))) failures.push('review: the error summary does not take focus');
+      await audit('/bodies/review/:id/part-of (refused loop)');
       const after = await page.evaluate(async () => (await fetch('/api/policy-analysis/register')).json());
       const placed = after.entries.find((e) => e.id === council.id);
       if (placed?.status !== 'confirmed' || placed?.partOfPath?.[0] !== 'Department for Education') failures.push('register: the ruling did not stick');
+      if (after.entries.find((e) => e.id === dfe.id)?.partOf) failures.push('register: the refused loop was written anyway');
+
+      // 9a-iii — THE MODEL'S JOIN, split off in one step and merged back with Undo.
+      await page.goto(`http://127.0.0.1:${PORT}/bodies/review`, { waitUntil: 'networkidle' });
+      await page.getByRole('heading', { name: /^Joined by the model — check/ }).waitFor({ timeout: 20000 });
+      const splitButton = page.getByRole('button', { name: /^Split it off\b.*The local authority/ });
+      await splitButton.waitFor({ timeout: 20000 }).catch(() => undefined);
+      if (!(await splitButton.count())) throw new Error(`review: no way to split off the model's join. The section reads: ${(await page.locator('#main-content').innerText()).slice(0, 1200)}`);
+      await splitButton.click();
+      await banner.getByText(/“The local authority” is now an actor of its own/).waitFor({ timeout: 20000 });
+      const split = await page.evaluate(async () => (await fetch('/api/policy-analysis/register')).json());
+      if (!split.entries.some((e) => e.name === 'The local authority')) failures.push('review: splitting the model\'s join did not make an actor of its own');
+      await banner.getByRole('button', { name: 'Undo' }).click();
+      await banner.getByText(/^Undone\./).waitFor({ timeout: 20000 });
+      const back = await page.evaluate(async () => (await fetch('/api/policy-analysis/register')).json());
+      if (back.entries.some((e) => e.name === 'The local authority') || !back.entries.find((e) => e.id === council.id)?.aliases.includes('The local authority')) failures.push('review: undoing the split did not merge the two again');
+
+      // 9a-iv — THE TREE, in both hierarchies: open the department and find the council inside it.
+      await page.goto(`http://127.0.0.1:${PORT}/bodies/register`, { waitUntil: 'networkidle' });
+      await page.getByRole('heading', { name: 'What each actor sits inside', level: 3 }).waitFor({ timeout: 20000 });
+      const toggle = page.getByRole('button', { name: /inside it — Department for Education$/ });
+      if (!(await toggle.count())) failures.push('register: the department offers no way to open what sits inside it');
+      else {
+        if ((await toggle.getAttribute('aria-expanded')) !== 'false') failures.push('register: a closed actor does not say it is collapsed');
+        await toggle.click();
+        if ((await toggle.getAttribute('aria-expanded')) !== 'true') failures.push('register: opening an actor does not say it is expanded');
+        const inside = page.locator(`#${await toggle.getAttribute('aria-controls')}`);
+        if (!(await inside.getByRole('link', { name: 'Council', exact: true }).count())) failures.push('register: the council is not drawn inside the department');
+        if (!/Inherited from what sits inside it/.test(await page.locator('.prt-tree').first().innerText())) failures.push('register: the department does not show what was found for the council as inherited');
+      }
+      await audit('/bodies/register (opened)');
+      await page.getByRole('link', { name: 'What kind of thing each is' }).click();
+      await page.getByRole('heading', { name: 'What kind of thing each actor is', level: 3 }).waitFor({ timeout: 20000 });
+      if (!new URL(page.url()).searchParams.get('tree')) failures.push('register: the kind-of arrangement is not its own address');
+      await audit('/bodies/register?tree=kind');
+
+      // 9a-v — THE BODY'S PAGE says where it sits and what papers gave it to do.
+      await page.goto(`http://127.0.0.1:${PORT}/bodies/${council.id}`, { waitUntil: 'networkidle' });
+      await page.getByRole('heading', { name: 'Where it sits on your master list', level: 2 }).waitFor({ timeout: 20000 });
+      const councilPage = await page.locator('#main-content').innerText();
+      if (!/Part of Department for Education/.test(councilPage)) failures.push('body: the page has no part-of breadcrumb');
+      if (!/ in \d+ papers?/.test(councilPage)) failures.push('body: the page does not say what papers gave it to do, in papers');
+      if (!/Department for Education/.test(await page.locator('#band-list').locator('..').innerText())) failures.push('body: the master-list section does not name the department');
+      const dfePage = await page.evaluate(async (id) => (await fetch(`/api/policy-analysis/register/${id}`)).json(), dfe.id);
+      if (!dfePage.children?.partOf?.some((c) => c.id === council.id)) failures.push('body: the department\'s entry does not list the council beneath it');
     }
-    note('the master list holds one council seen in two papers, keeps the programme as context and the named resident out, and takes a ruling while refusing a loop');
+    note('the master list holds one council seen in two papers; the queue accepts (and undoes), moves it under the department, refuses a loop as a GOV.UK error, splits the model\'s join and merges it back; the tree opens in both hierarchies');
   }
 
   /*
@@ -1532,6 +1621,101 @@ try {
   note('the setup journey lists what is left, and the test step tells the truth');
 
   /*
+   * HOW TO READ A RED-TEAM REPORT (phase 26). The ways in from a report — the
+   * banner, the header link, a "?" beside a figure — then the six chapters
+   * stepped through from the keyboard, each chapter's one idea pressed once
+   * (a slider moves the band, a switch takes ways to beat it off the table),
+   * and the banner dismissed and still dismissed after a reload.
+   */
+  {
+    await page.goto(`${base}/threats/bands`, { waitUntil: 'networkidle' });
+    await page.locator('.prt-view').first().waitFor({ timeout: 30000 });
+    if (!(await page.getByRole('region', { name: 'New to these reports?' }).isVisible())) failures.push('guide: a report page has no first-visit banner');
+    if (!(await page.locator('.prt-pagehead').getByRole('link', { name: 'How do I read this?' }).isVisible())) failures.push('guide: a report page header has no "How do I read this?" link');
+    const help = page.locator('.prt-guidehelp a');
+    if ((await help.count()) !== 1) failures.push(`guide: ${await help.count()} "?" links on the bands page, expected one`);
+    await help.first().focus();
+    await page.keyboard.press('Enter');
+    await page.waitForURL('**/guide/4', { timeout: 10000 }).catch(() => failures.push(`guide: the "?" beside the bands opened ${page.url()}, not chapter 4`));
+
+    await page.goto(`http://127.0.0.1:${PORT}/guide`, { waitUntil: 'networkidle' });
+    await page.getByRole('heading', { level: 1, name: 'How to read a red-team report' }).waitFor({ timeout: 10000 });
+    await audit('/guide');
+    await page.getByRole('button', { name: 'Start the guide' }).focus();
+    await page.keyboard.press('Enter');
+    const chapters = ['What a red team does', 'From paper to parts', 'A way to beat it, in plain words', 'How exposed? Build the band yourself', 'What if we’re wrong?', 'Bodies across policies'];
+    for (const [i, title] of chapters.entries()) {
+      await page.waitForURL(`**/guide/${i + 1}`, { timeout: 10000 }).catch(() => {});
+      if (!(await page.getByRole('heading', { level: 1, name: title, exact: true }).waitFor({ timeout: 10000 }).then(() => true, () => false))) {
+        failures.push(`guide: chapter ${i + 1} is not "${title}" (at ${page.url()})`);
+        break;
+      }
+      if (i === 0) {
+        const pause = page.getByRole('button', { name: 'Pause the animation' });
+        await pause.focus();
+        await page.keyboard.press('Enter');
+        if (!(await page.getByRole('button', { name: 'Play the animation' }).isVisible())) failures.push('guide 1: the animation has no working pause control');
+      }
+      if (i === 1) {
+        await page.getByRole('button', { name: 'Read the first sentence' }).focus();
+        await page.keyboard.press('Enter');
+        const said = await page.locator('.prt-parts [aria-live]').innerText();
+        if (!/Sentence 1 of 5 gave/.test(said)) failures.push(`guide 2: reading a sentence announced "${said}"`);
+        if (!(await page.locator('.prt-parts__piece').count())) failures.push('guide 2: reading a sentence pulled nothing out of it');
+      }
+      if (i === 2) {
+        await page.getByRole('button', { name: 'Show me the detail' }).focus();
+        await page.keyboard.press('Enter');
+        if (!(await page.locator('.prt-guideplay__detail .prt-play').isVisible())) failures.push('guide 3: "Show me the detail" did not open the report\'s own play card');
+      }
+      if (i === 3) {
+        const mark = page.locator('.prt-buildband__mark');
+        const before = (await mark.innerText()).trim();
+        await page.getByLabel('How much do they gain?', { exact: true }).focus();
+        await page.keyboard.press('Home');
+        const after = (await mark.innerText()).trim();
+        if (before === after) failures.push(`guide 4: moving a slider to 0 left the band at "${after}"`);
+        if (!/now limited/.test(await page.locator('.prt-buildband [aria-live]').innerText())) failures.push('guide 4: the band change was not announced');
+      }
+      if (i === 4) {
+        const play = page.locator('.prt-ministress__item', { hasText: 'Count every early arrival as a breakfast' });
+        if (await play.locator('.prt-ministress__tag').count()) failures.push('guide 5: a way to beat it is off the table before anything is switched off');
+        await page.getByLabel('A yearly sample is all the checking the counts need').focus();
+        await page.keyboard.press('Space');
+        if (!/Taken off the table/.test(await play.innerText())) failures.push('guide 5: switching its assumption off did not take the play off the table');
+        if ((await page.locator('.prt-ministress__item.is-off').count()) !== 2) failures.push('guide 5: switching one assumption off did not take exactly its two plays away');
+      }
+      if (i === 5 && !(await page.getByRole('link', { name: 'See every body in Bodies across policies' }).isVisible())) failures.push('guide 6: no link on to the hub');
+      if (await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth)) failures.push(`guide ${i + 1}: scrolls sideways`);
+      await audit(`/guide/${i + 1}`);
+      if (i < chapters.length - 1) {
+        await page.locator('.govuk-pagination__next a').focus();
+        await page.keyboard.press('Enter');
+      }
+    }
+
+    // Reduced motion: the machine is drawn still, and offers no control that would do nothing.
+    await page.emulateMedia({ reducedMotion: 'reduce' });
+    await page.goto(`http://127.0.0.1:${PORT}/guide/1`, { waitUntil: 'networkidle' });
+    await page.getByRole('heading', { level: 1, name: 'What a red team does' }).waitFor({ timeout: 10000 });
+    if (await page.locator('.prt-machine.is-playing').count()) failures.push('guide 1: the loop plays under reduced motion');
+    if (await page.getByRole('button', { name: /the animation/ }).count()) failures.push('guide 1: reduced motion still offers a play/pause control');
+    await page.emulateMedia({ reducedMotion: 'no-preference' });
+
+    // The banner, hidden for good.
+    await page.goto(`http://127.0.0.1:${PORT}/`, { waitUntil: 'networkidle' });
+    const banner = page.getByRole('region', { name: 'New to these reports?' });
+    if (!(await banner.isVisible())) failures.push('guide: the landing page has no first-visit banner');
+    await banner.getByRole('button', { name: 'Hide this message' }).click();
+    if (await banner.count()) failures.push('guide: "Hide this message" did not hide the banner');
+    if (await page.evaluate(() => document.activeElement?.id) !== 'main-content') failures.push('guide: hiding the banner did not move focus to the main content');
+    await page.reload({ waitUntil: 'networkidle' });
+    await page.getByRole('heading', { name: 'Policy Red Team', level: 1 }).waitFor({ timeout: 10000 });
+    if (await page.getByRole('region', { name: 'New to these reports?' }).count()) failures.push('guide: the banner came back after a reload');
+    await page.goto(base, { waitUntil: 'networkidle' });
+    await page.getByRole('heading', { name: 'The report at a glance' }).waitFor({ timeout: 20000 });
+    if (await page.getByRole('region', { name: 'New to these reports?' }).count()) failures.push('guide: the banner came back on a report page after it was hidden');
+    note('the guide: banner, header link and "?" lead in; six chapters by keyboard; slider, switch and banner memory work');
    * 9z — SEVERAL DOCUMENTS AND A GROUNDING LIBRARY (phase 25).
    *
    * A policy is started on the library page and given one piece of grounding
@@ -1621,7 +1805,7 @@ try {
   }
 
   // 10 — the rest of the surface
-  for (const [route, heading] of [['/bodies', 'Bodies across policies'], ['/guide', 'How to read a report'], ['/design', 'Design system'], ['/accessibility', 'Accessibility statement'], ['/about', 'About this tool']]) {
+  for (const [route, heading] of [['/bodies', 'Bodies across policies'], ['/guide', 'How to read a red-team report'], ['/design', 'Design system'], ['/accessibility', 'Accessibility statement'], ['/about', 'About this tool']]) {
     await page.goto(`http://127.0.0.1:${PORT}${route}`, { waitUntil: 'networkidle' });
     if (!(await page.getByRole('heading', { name: heading, level: 1 }).waitFor({ timeout: 10000 }).then(() => true, () => false))) failures.push(`${route}: no "${heading}" heading`);
     await audit(route);

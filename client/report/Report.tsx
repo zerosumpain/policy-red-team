@@ -38,6 +38,9 @@ import { WatchList } from './WatchList';
 import { ChangeStrips } from './ChangeStrips';
 import { RestsOnWhat } from './RestsOnWhat';
 import { Glossary } from './Glossary';
+import { GuideHelp } from './GuideHelp';
+import { HowToRead } from './HowToRead';
+import { HELP_FOR_SECTION } from '../guide/content';
 import { rankFindings } from '$lib/writeup-view';
 import { changeStrips, programmeStrip } from '$lib/change-strip';
 import { NetworkSection } from './Network';
@@ -706,12 +709,20 @@ function ReportView({ detail, offline, linkTo, onChanged, route, onTitle }: Repo
    * the section cannot drift apart without the body changing too.
    */
   type Index = Pick<ContentsEntry, 'count' | 'anchors'>;
+  /*
+   * THE GUIDE'S "?" (phase 26), at the head of the few sections a chapter of
+   * `/guide` explains — `HELP_FOR_SECTION` says which. The service only: the
+   * pack has no guide to open, and carries "How to read this report" instead.
+   */
+  const helped = (id: string, body: React.ReactNode) => (
+    body && !offline && HELP_FOR_SECTION[id] ? <><GuideHelp section={id} place={follow} />{body}</> : body
+  );
   const section = (id: string, title: string, move: Move, body: React.ReactNode, index?: Index) => {
-    if (body) sections.push({ id, title, body, move, ...index });
+    if (body) sections.push({ id, title, body: helped(id, body), move, ...index });
   };
   /** A lead: same list, same contents entry, but it draws its own heading. */
   const lead = (id: string, title: string, move: Move, body: React.ReactNode, index?: Index) => {
-    if (body) sections.push({ id, title, body, move, bare: true, ...index });
+    if (body) sections.push({ id, title, body: helped(id, body), move, bare: true, ...index });
   };
 
   /*
@@ -1335,6 +1346,15 @@ function ReportView({ detail, offline, linkTo, onChanged, route, onTitle }: Repo
    * document — so this renders nothing there and says nothing about it, because
    * the handling note already does.
    */
+  /*
+   * HOW TO READ THIS REPORT, in the pack only (phase 26). The service links
+   * every report page to the guide at `/guide`; a pack opened from `file://`
+   * cannot follow that link, so it carries what the guide teaches as text and
+   * one static band key — from the guide's own content model, so the two say
+   * the same thing. After the summary, where a first-time reader is.
+   */
+  if (offline) section('howtoread', 'How to read this report', 'overview', <HowToRead />);
+
   if (offline) {
     // IN DOCUMENT ORDER, under a heading per document when there are several
     // (phase 25): `d1_` sorts before `passage_`, and a reader checking the

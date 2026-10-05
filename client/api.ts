@@ -223,6 +223,79 @@ export interface RecurringBodies {
   }[];
 }
 
+/**
+ * THE MASTER LIST OF ACTORS (phase 23's register, drawn in phase 24b). Mirrors
+ * `RegisterNode`/`RegisterTree` in `server/actor-register.ts`, declared here
+ * because the client bundle must not import server code.
+ */
+export type RegisterKind = 'organisation' | 'office_or_role' | 'sector_or_category' | 'group_of_people' | 'not_an_actor';
+export interface RegisterNode {
+  id: string;
+  name: string;
+  kind: RegisterKind;
+  status: 'confirmed' | 'proposed';
+  partOf: string | null;
+  kindOf: string | null;
+  /** Nearest first. */
+  partOfPath: string[];
+  kindOfPath: string[];
+  whatItIs: string | null;
+  notActorReason: string | null;
+  aliases: string[];
+  body: { id: string; name: string } | null;
+  papers: number;
+  analyses: { id: string; title: string }[];
+  capacities: Record<string, number>;
+  /** Papers (by document) per capacity. Absent on a server before phase 24b. */
+  capacityPapers?: Record<string, number>;
+  dossier: boolean;
+  plays: number;
+  worstBand: string | null;
+  rollup: { partOf: { plays: number; worstBand: string | null }; kindOf: { plays: number; worstBand: string | null } };
+  proposedIn: { id: string; title: string } | null;
+}
+export interface RegisterTree {
+  entries: RegisterNode[];
+  partOf: { roots: string[]; children: Record<string, string[]> };
+  kindOf: { roots: string[]; children: Record<string, string[]> };
+  counts: { actors: number; proposed: number; notActors: number; groups: number };
+  readOnly: boolean;
+}
+/** How a set of papers worded a proposal: the evidence a reader rules on. */
+export interface Wording { wording: string; papers: number; capacities: string[]; basis: string[] }
+export interface Proposal extends RegisterNode {
+  similar: { id: string; name: string; reason: string }[];
+  wordings?: Wording[];
+}
+/** A join the matching model made, listed for a reader to check. */
+export interface ModelJoin {
+  id: string;
+  name: string;
+  status: 'confirmed' | 'proposed';
+  kind: RegisterKind;
+  wording: string;
+  analyses: { id: string; title: string }[];
+  alias: boolean;
+  at: string | null;
+}
+export interface ReviewQueue {
+  proposals: Proposal[];
+  joined: ModelJoin[];
+  joinedTotal: number;
+  duplicates: DuplicateSuggestion[];
+  readOnly: boolean;
+}
+export interface ReviewCount { proposed: number; joined: number; duplicates: number; total: number }
+export interface RegisterEntryView {
+  entry: RegisterNode;
+  /** How the papers worded it, most-seen first, capped. */
+  wordings: Wording[];
+  partOf: { id: string; name: string } | null;
+  kindOf: { id: string; name: string } | null;
+  children: { partOf: { id: string; name: string; kind: RegisterKind; status: string }[]; kindOf: { id: string; name: string; kind: RegisterKind; status: string }[] };
+  readOnly: boolean;
+}
+
 /** A group of people papers named — kept apart from bodies, because a group has no strategy. */
 export interface AffectedGroup {
   name: string;
@@ -522,7 +595,35 @@ export const api = {
     personaAction<{ sameBodyAs: { id: string; name: string }[] }>(id, 'body', { bodyId, verdict }),
   /** One paper meant a different body: move its sighting to a row of its own. */
   splitSighting: (id: string, observationId: string) => personaAction<{ id: string }>(id, 'split', { observationId }),
+
+  // ── The master list of actors (phase 24b) ──────────────────────────────
+  register: () => request<RegisterTree>('/api/policy-analysis/register'),
+  reviewQueue: () => request<ReviewQueue>('/api/policy-analysis/register/proposals'),
+  reviewCount: () => request<ReviewCount>('/api/policy-analysis/register/review-count'),
+  registerEntry: (id: string) => request<RegisterEntryView>(`/api/policy-analysis/register/${encodeURIComponent(id)}`),
+  /** The reader vouches for it, optionally with what sort of actor it is. */
+  accept: (id: string, kind?: RegisterKind) => registerAction<{ id: string; status: 'confirmed' }>(id, 'accept', kind ? { kind } : {}),
+  /** Undo an accept: back to the queue. */
+  reopen: (id: string) => registerAction<{ id: string; status: 'proposed' }>(id, 'reopen', {}),
+  /** Move it in either tree; `null` is "to the top". A loop is refused with a 400. */
+  reparent: (id: string, change: { partOf?: string | null; kindOf?: string | null }) =>
+    registerAction<{ id: string; partOf: string | null; kindOf: string | null }>(id, 'parent', change),
+  notActor: (id: string, reason: string, runBy?: string | null) => registerAction<{ id: string }>(id, 'not-actor', runBy ? { reason, runBy } : { reason }),
+  /** What sort of actor it is — and so an actor again, confirmed. */
+  setKind: (id: string, kind: RegisterKind) => registerAction<{ id: string; status: 'confirmed' }>(id, 'kind', { kind }),
+  /** That wording is a different actor: it moves off, and stops matching back in. */
+  splitWording: (id: string, wording: string) => registerAction<{ id: string; name: string; moved: number; created: boolean }>(id, 'split', { wording }),
+  /** The model's join was right. */
+  keepWording: (id: string, wording: string) => registerAction<{ id: string }>(id, 'keep', { wording }),
 };
+
+function registerAction<T>(id: string, action: string, body: Record<string, string | null | undefined>): Promise<T> {
+  return request<T>(`/api/policy-analysis/register/${encodeURIComponent(id)}/${action}`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+}
 
 function personaAction<T>(id: string, action: string, body: Record<string, string>): Promise<T> {
   return request<T>(`/api/policy-analysis/personas/${id}/${action}`, {

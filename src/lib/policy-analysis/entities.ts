@@ -1,5 +1,6 @@
 import { assessIdentity } from '$lib/jkai/intel/resolve/policy';
 import { artefact, type Artefact } from './contracts';
+import { masterIdOf } from './actor-register';
 
 /** Reuse the site's identity policy within this private analysis, without writing
  * submitted entities into the owner's shared intelligence graph. */
@@ -29,7 +30,7 @@ export function preserveAmbiguity(output: Artefact[], prior: Artefact[]): Artefa
  */
 export function crossIdentityHints(
   local: Artefact[],
-  neighbours: { id: string; artefacts: { id: string; kind: string; label: string; entityType?: string; aliases?: string[]; bodyId?: string }[] }[],
+  neighbours: { id: string; artefacts: { id: string; kind: string; label: string; entityType?: string; aliases?: string[]; bodyId?: string; masterId?: string }[] }[],
   /**
    * This paper's actors on the GOV.UK register, actor id to body id (phase 19,
    * workstream X). The register is STRONGER evidence than any name: where both
@@ -42,13 +43,29 @@ export function crossIdentityHints(
 ) {
   const entity = (id: string, name: string, type: string, aliases: string[]) => ({ id, name, typeId: type, typeName: type, degree: 0, noteCount: 1, aliases });
   const here = local.filter((a) => a.kind === 'actor' && a.id.startsWith('s2_'));
-  const hints: { actorId: string; actorLabel: string; otherAnalysisId: string; otherArtefactId: string; otherLabel: string; verdict: 'same_body' | 'possibly_same'; basis: 'register' | 'name' }[] = [];
+  const hints: { actorId: string; actorLabel: string; otherAnalysisId: string; otherArtefactId: string; otherLabel: string; verdict: 'same_body' | 'possibly_same'; basis: 'master' | 'register' | 'name' }[] = [];
   for (const actor of here) {
     const mine = entity(actor.id, actor.label, String(actor.data.entityType ?? ''), (actor.data.aliases as string[]) ?? []);
     const myBody = localBodies.get(actor.id);
+    /*
+     * THE MASTER LIST DECIDES FIRST (phase 24b). Both papers matched into the
+     * owner's one list of actors at stage 2, so the same master id is one
+     * actor whatever each paper called it — "Early years workforce" here and
+     * "early years educators" there, after a reader or the matcher made them
+     * one. Only the SAME id is decisive: two ids may still be one actor the
+     * reader has not reviewed yet (the list holds proposals), so a difference
+     * falls through to the GOV.UK and name rules below rather than forbidding
+     * a link.
+     */
+    const myMaster = masterIdOf(actor);
     for (const neighbour of neighbours) {
       for (const other of neighbour.artefacts) {
         if (other.kind !== 'actor') continue;
+        if (myMaster && other.masterId === myMaster) {
+          hints.push({ actorId: actor.id, actorLabel: actor.label, otherAnalysisId: neighbour.id, otherArtefactId: other.id, otherLabel: other.label, verdict: 'same_body', basis: 'master' });
+          if (hints.length >= 120) return hints;
+          continue;
+        }
         if (myBody && other.bodyId) {
           if (myBody !== other.bodyId) continue;
           hints.push({ actorId: actor.id, actorLabel: actor.label, otherAnalysisId: neighbour.id, otherArtefactId: other.id, otherLabel: other.label, verdict: 'same_body', basis: 'register' });

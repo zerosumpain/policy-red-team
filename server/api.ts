@@ -395,8 +395,43 @@ export async function handleApi(
       sendJson(res, 200, { ...(await registry.registerTreeFor(owner())), readOnly: isReadOnly() });
       return true;
     }
+    /*
+     * PHASE 24B: the queue is the ONE place identity is reviewed, so the same
+     * response also carries the model's joins to check and the "these may be
+     * the same body" pairs the List view used to show. Additive: `proposals`
+     * is what it was.
+     */
     if (segments.length === 2 && segments[1] === 'proposals' && method === 'GET') {
-      sendJson(res, 200, { proposals: await registry.proposalQueue(owner()), readOnly: isReadOnly() });
+      sendJson(res, 200, { ...(await registry.reviewQueue(owner())), readOnly: isReadOnly() });
+      return true;
+    }
+    // The figure beside "Actors to review" in the hub's views, asked on every hub page.
+    if (segments.length === 2 && segments[1] === 'review-count' && method === 'GET') {
+      sendJson(res, 200, await registry.reviewCount(owner()));
+      return true;
+    }
+    // One entry with its place in both trees and its children — a body's page.
+    if (segments.length === 2 && method === 'GET') {
+      const entry = await registry.registerEntry(owner(), segments[1]);
+      if (!entry) throw new HttpError(404, 'That actor is not on the list.');
+      sendJson(res, 200, { ...entry, readOnly: isReadOnly() });
+      return true;
+    }
+    /*
+     *   POST …/register/:id/reopen                 undo an accept: back to the queue
+     *   POST …/register/:id/split  { wording }     that wording is a different actor (undoes a join)
+     *   POST …/register/:id/keep   { wording }     the model's join was right
+     *
+     * Mutations like the rest: the read-only gate at the top of `handleApi`
+     * refuses them, and the reader gate and cross-site check in
+     * `server/index.ts` stand in front.
+     */
+    if (segments.length === 3 && method === 'POST' && ['reopen', 'split', 'keep'].includes(segments[2])) {
+      const body = segments[2] === 'reopen' ? {} : await readJson(req);
+      const wording = typeof body.wording === 'string' ? body.wording.trim().slice(0, 300) : '';
+      if (segments[2] === 'reopen') { sendJson(res, 200, await registry.reopenEntry(owner(), segments[1])); return true; }
+      if (!wording) throw new HttpError(400, segments[2] === 'split' ? 'Choose the name to split off.' : 'Choose the name to keep.');
+      sendJson(res, 200, segments[2] === 'split' ? await registry.splitWording(owner(), segments[1], wording) : await registry.keepWording(owner(), segments[1], wording));
       return true;
     }
     if (segments.length === 3 && method === 'POST' && ['accept', 'parent', 'not-actor', 'kind'].includes(segments[2])) {

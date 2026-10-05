@@ -26,9 +26,11 @@ import { assemble, fallbackFor, fromModel, isGroupOfPeople, matchDeterministic, 
  * Compact summaries of this reader's OTHER completed assessments, for stage 11.
  * An actor carries its GOV.UK register `bodyId` where the library knows it, and
  * `sharedBodies` names the register bodies the two papers have in common — the
- * reason this neighbour was chosen (phase 19, workstream X).
+ * reason this neighbour was chosen (phase 19, workstream X). Since phase 24b an
+ * actor also carries its `masterId` on the owner's master list of actors, which
+ * `crossIdentityHints` reads before the GOV.UK body and the name.
  */
-export type Neighbour = { id: string; title: string; policyArea: string | null; jurisdiction: string | null; completedAt: string | null; sharedBodies?: { id: string; name: string }[]; artefacts: { id: string; kind: string; label: string; statement: string; entityType?: string; aliases?: string[]; bodyId?: string }[] };
+export type Neighbour = { id: string; title: string; policyArea: string | null; jurisdiction: string | null; completedAt: string | null; sharedBodies?: { id: string; name: string }[]; artefacts: { id: string; kind: string; label: string; statement: string; entityType?: string; aliases?: string[]; bodyId?: string; masterId?: string }[] };
 export type Neighbours = () => Promise<Neighbour[]>;
 /** What this reader's persona library already holds about the actors in this run. */
 export type Personas = (actors: Artefact[]) => Promise<PersonaPrior[]>;

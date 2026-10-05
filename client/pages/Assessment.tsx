@@ -9,7 +9,8 @@ import { isFinished, isTerminal, statusColour, statusLabel } from '../status';
 import { Report, type ReportRoute } from '../report/Report';
 import { ProvenanceLead } from '../report/moves/ProvenanceLead';
 import { usePageTitle } from '../layout/Template';
-import { bodyPath } from '../places';
+import { bodyPath, GUIDE } from '../places';
+import { GuideBanner } from '../guide/GuideBanner';
 import { MOVES, USE_SLUG, moveOfId, moveOfSlug, returnTo, viewPath, type MoveId } from '../moves';
 
 /**
@@ -264,6 +265,9 @@ export function Assessment() {
               are the news; once there is a report they are in its last move. */}
           {showReport ? null : <span className="prt-meta">{done} of {stages.length} steps</span>}
           {showReport || !analysis.model ? null : <span className="prt-meta">{analysis.model}</span>}
+          {/* On every page of a report, beside its status: the way into the
+              guide for a reader who is lost on THIS page (phase 26). */}
+          {showReport ? <span className="prt-meta"><Link className="govuk-link" to={GUIDE}>How do I read this?</Link></span> : null}
         </p>
       </header>
       {/*
@@ -293,8 +297,9 @@ export function Assessment() {
           )}
         />
       ) : null}
-
-
+      {/* The guide, offered until the reader hides it (phase 26) — once a
+          report exists; a run still going has nothing to read yet. */}
+      {showReport ? <GuideBanner /> : null}
 
       {/*
         A FAILED RUN SAYS WHY IT FAILED.

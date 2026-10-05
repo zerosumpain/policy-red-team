@@ -48,19 +48,35 @@ export const HUB_VIEWS: readonly HubView[] = [
   { slug: '', label: 'List', hint: 'Every body your papers have named, and how often each has turned up' },
   { slug: 'across', label: 'Across papers', hint: 'Which public bodies your papers ask things of, paper by paper' },
   { slug: 'clashes', label: 'Clashes', hint: 'Where two papers pull the same bodies in opposite directions' },
-  // { slug: 'register', label: 'Register', hint: '…' } — phase 24b, see above.
+  /*
+   * PHASE 24B. "Master list", not "Register": on these same pages "What the
+   * register says" is GOV.UK's list of organisations, and one word cannot name
+   * two lists. The slug keeps the reserved name; only the label is the
+   * reader's. The queue's label gets its count from `Hub`, which asks.
+   */
+  { slug: 'register', label: 'Master list', hint: 'Every actor your papers named, once, arranged by what each sits inside or what kind of thing it is' },
+  { slug: 'review', label: 'Actors to review', hint: 'What the papers proposed for the list, and the joins the matching model made, for you to confirm or put right' },
   { slug: 'groups', label: 'Groups of people', hint: 'The people the papers say a policy affects' },
 ];
+
+/** One actor in the review queue, where every decision about it is a form of its own. */
+export function reviewPath(id: string, part?: string, query?: string): string {
+  return `${HUB}/review/${encodeURIComponent(id)}${part ? `/${part}` : ''}${query ? `?${query}` : ''}`;
+}
 
 export function hubPath(slug: string, query?: string): string {
   return `${HUB}${slug ? `/${slug}` : ''}${query ? `?${query}` : ''}`;
 }
 
 /**
- * "How to read a report". A short page today; the guide phase 26 builds takes
- * the same address, so the navigation item never has to move.
+ * "How to read a report": the guide's front page, with a chapter at
+ * `/guide/1` … `/guide/6` (phase 26). Phase 24 put a short page here first so
+ * the navigation item never had to move.
  */
 export const GUIDE = '/guide';
+
+/** One chapter of the guide. Kept here, beside `GUIDE`, so the report's "?" links need no guide module. */
+export const guideChapter = (n: number) => `${GUIDE}/${n}`;
 
 /** "seen in 3 policies" — the figure a link to a body's page carries. */
 export function seenIn(papers: number): string {

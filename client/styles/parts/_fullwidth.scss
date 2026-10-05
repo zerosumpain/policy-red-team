@@ -35,7 +35,10 @@
   .govuk-body-xs,
   .govuk-list,
   .govuk-hint,
-  .govuk-label,
+  // NOT a checkbox or radio label: GOV.UK caps those at the column minus the
+  // box, so a long one wraps beside its box. Lifted, it wrapped UNDER the box
+  // (found by phase 26 in the guide; the report's Stress lab had it too).
+  .govuk-label:not(.govuk-checkboxes__label):not(.govuk-radios__label),
   .govuk-fieldset__legend,
   .govuk-inset-text,
   .govuk-warning-text,

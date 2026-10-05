@@ -203,6 +203,9 @@ export const policyBodies = pgTable('policy_bodies', {
   fetchedAt: timestamp('fetched_at', { withTimezone: true }).notNull(),
 }, (t) => [uniqueIndex('policy_bodies_source_idx').on(t.source, t.sourceId)]);
 
+/** Who put an alias on a master actor, and from which paper. */
+export type AliasOrigin = { by: 'model' | 'rule' | 'reader'; analysisId: string | null; at: string };
+
 export const policyPersonas = pgTable('policy_personas', {
   id: uuid('id').primaryKey().defaultRandom(),
   owner: text('owner').notNull(),
@@ -235,6 +238,13 @@ export const policyPersonas = pgTable('policy_personas', {
   whatItIs: text('what_it_is'),
   notActorReason: text('not_actor_reason'),
   proposedIn: uuid('proposed_in').references(() => policyAnalyses.id, { onDelete: 'set null' }),
+  /**
+   * PHASE 24B: who added each alias — the model's matching call, a rule, or a
+   * reader — keyed by the alias's normalised name (`0008-alias-origins.sql`).
+   * A model-made alias is a deterministic match on every later run, so the
+   * review queue lists them for a reader to check.
+   */
+  aliasOrigins: jsonb('alias_origins').$type<Record<string, AliasOrigin>>().notNull().default({}),
 }, (t) => [index('policy_personas_owner_idx').on(t.owner, t.name), index('policy_personas_body_idx').on(t.owner, t.bodyId), index('policy_personas_status_idx').on(t.owner, t.status)]);
 
 /**
