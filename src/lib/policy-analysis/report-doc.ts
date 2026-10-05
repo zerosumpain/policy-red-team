@@ -27,6 +27,7 @@ import { checks } from './view';
 import { isBody, network } from './network';
 import { adjacency } from './matrix';
 import { briefItems, type Brief, type BriefItem } from '../brief';
+import { plainRows } from './plain';
 
 export type DocMeta = {
   title: string;
@@ -131,6 +132,17 @@ function verdict(artefacts: Artefact[]): string {
  * the model's own recall says so in the same line — "not checked" — or it
  * would read as evidence in the one copy nobody can query.
  */
+/**
+ * THE PLAIN BLOCK, AS MARKDOWN (phase 23): the five lines the page draws first,
+ * drawn first here too, so the Word file and the page lead with the same
+ * words. Null for an older item, which then reads as it always did.
+ */
+function plainMarkdown(a: Artefact): string | null {
+  const rows = plainRows(a);
+  if (!rows.length) return null;
+  return rows.map((row) => `- **${row.label}.** ${clean(row.text)}`).join('\n');
+}
+
 function precedentLine(play: Artefact): string | null {
   const { text, label } = precedentOf(play);
   if (!clean(text)) return null;
@@ -149,10 +161,12 @@ function itemMarkdown(item: BriefItem, full: boolean): string {
   return block([
     `### ${item.rank}. ${clean(item.title)}`,
     `**${clean(item.statement)}**`,
-    item.quote ? `> “${clean(item.quote.text)}”${item.quote.page ? ` (page ${item.quote.page})` : ''}` : null,
+    plainMarkdown(item.artefact),
+    item.quote ? `> “${clean(item.quote.text)}”${item.quote.document || item.quote.page ? ` (${[item.quote.document, item.quote.page ? `page ${item.quote.page}` : null].filter(Boolean).join(', ')})` : ''}` : null,
     [
       item.about && `- **Part of the policy.** ${clean(item.about.label)}`,
       play && `- **The way to beat it.** ${clean(play.artefact.label)} — ${BAND_LABEL[play.band].toLowerCase()}, ${play.pattern.toLowerCase()}.${item.morePlays ? ` It names ${item.morePlays} more.` : ''}`,
+      play?.goesWrong && `- **What goes wrong.** ${play.goesWrong}`,
       play?.earlyWarning && `- **Early warning.** ${play.earlyWarning}`,
       play?.fix && `- **The fix.** ${play.fix}`,
       full && item.restsOn && `- **What it rests on.** ${clean(item.restsOn.label)}`,
@@ -199,6 +213,7 @@ function playbook(artefacts: Artefact[]): string {
           : 'Would be a breach';
     return block([
       `### ${index + 1}. ${play.artefact.label}`,
+      plainMarkdown(play.artefact),
       `**${BAND_LABEL[play.band as Band] ?? play.band} · score ${Math.round(play.exposure * 100)}** — ${play.actor?.label ?? 'body not identified'}. ${legality}.`,
       play.artefact.statement,
       `Incentive ${Math.round(Number(d.incentive) * 100)} · ease ${Math.round(Number(d.ease) * 100)} · impact ${Math.round(Number(d.impact) * 100)} · concealment ${Math.round(Number(d.concealment) * 100)}. The score is the even blend of the four, and says how bad it would be, not how likely.`,
@@ -330,6 +345,7 @@ function scenarios(artefacts: Artefact[]): string {
     ...rows.map((s) =>
       block([
         `### ${clean(s.data.scenario).replaceAll('_', ' ')} — ${s.label}`,
+        plainMarkdown(s),
         s.statement,
         clean(s.data.changedConditions) && `**What changes.** ${clean(s.data.changedConditions)}`,
         clean(s.data.strategy) && `**The first move.** ${clean(s.data.strategy)}`,

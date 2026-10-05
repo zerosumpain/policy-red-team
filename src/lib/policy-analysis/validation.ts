@@ -1,7 +1,8 @@
 import { z } from 'zod';
-import { artefactSchema, dataSchemas, looseOutputSchema, PROFILE_FIELDS, RESULT_KINDS, SHORT_PROFILE_FIELDS, stageKinds, stageOutputSchema, type Artefact, type PassKind, type StageOutput } from './contracts';
+import { ASSURANCE_STAGE, ASSURED_SYNTHESIS_STAGE, artefactSchema, dataSchemas, looseOutputSchema, PROFILE_FIELDS, RESULT_KINDS, SHORT_PROFILE_FIELDS, stageKinds, stageOutputSchema, type Artefact, type PassKind, type StageOutput } from './contracts';
 import { locateQuote } from './quotes';
 import { clearedByWording, isPlay } from './cleared';
+import { incompleteAsk, plainGap, stripMalformedPlain } from './plain';
 
 export class PolicyError extends Error {
   constructor(public code: string, message: string) { super(message); }
@@ -58,6 +59,18 @@ export function stampProfileForm(raw: unknown, form: 'full' | 'short'): unknown 
     if (!data || typeof data !== 'object') continue;
     if (form === 'short') (data as Record<string, unknown>).form = 'short';
     else delete (data as Record<string, unknown>).form;
+    /*
+     * A PROFILE IS A SYNTHESIS, NOT AN EXTRACTION (phase 23, T4). Replayed from
+     * the stored replies of the Best Start run: 82 of 148 profiles came back
+     * with `origin: extracted_fact` on the profile itself and no quote, every
+     * one was refused as "an extracted assertion could not be located", and
+     * that one rule was 83 of the ~90 rejections behind stage 4's 18 repair
+     * calls. Each FIELD carries its own origin and its own refs — that is where
+     * "the paper says so" lives. The profile as a whole is the model's reading,
+     * so where it names no quote it is read as one, before triage.
+     */
+    const profile = item as { origin?: unknown; sourceQuote?: unknown };
+    if (profile.origin === 'extracted_fact' && !profile.sourceQuote) profile.origin = 'structural_inference';
   }
   return raw;
 }
@@ -103,6 +116,23 @@ function semanticFault(a: Artefact, all: Map<string, Artefact>, stage: number, n
       }
     }
     if (located) return located;
+  }
+  /*
+   * A QUOTE FROM GROUNDING MATERIAL IS CHECKED AGAINST ITS TEXT, exactly as a
+   * quote from the paper is (phase 25). The reader trusts the material; the
+   * model's copy of it is still a claim until it is found there. Found, its
+   * page, section and offsets are taken from the grounding passage — which
+   * also stops one quote being passed off under another item's name.
+   */
+  if (a.sourceId && all.get(a.sourceId)?.kind === 'grounding_passage' && a.sourceQuote) {
+    const source = all.get(a.sourceId)!;
+    const found = locateQuote(source.statement, a.sourceQuote);
+    if (!found) return fault('span', 'A quotation from the grounding material could not be found in the passage it names. Copy it exactly from that passage, with its id in sourceId.');
+    a.sourceQuote = found.quote;
+    a.page = source.page; a.section = source.section;
+    a.startOffset = (source.startOffset ?? 0) + found.start;
+    a.endOffset = (source.startOffset ?? 0) + found.end;
+    if (!a.refs.includes(source.id)) a.refs = [source.id, ...a.refs];
   }
   // URLs originate exclusively in trusted research adapter results, never model output.
   if (a.url && a.kind !== 'research_source') return fault('citation', 'Model-authored URLs are not accepted as evidence.');
@@ -428,7 +458,12 @@ export function validateOutput(raw: unknown, stage: number, prior: Artefact[], p
  * (claim)`: an identifier for something never stored, so nothing to open.
  */
 export type Rejection = { id: string; kind: string; code: string; reason: string; hint?: string; label?: string; quote?: string };
-export type TriagedOutput = StageOutput & { rejected: Rejection[] };
+/**
+ * `incomplete` (phase 23) is NOT a refusal: items KEPT that still owe their
+ * plain-words block. They ride the corrective round as asks beside `rejected`
+ * (`provider.ts`) and are never counted as discarded.
+ */
+export type TriagedOutput = StageOutput & { rejected: Rejection[]; incomplete?: Rejection[] };
 
 /**
  * Whether a reply that yielded NOTHING is a fault, or a legitimate silence.
@@ -485,6 +520,36 @@ export function isLegitimateSilence(accepted: number, rejected: Rejection[], had
  * seconds total, against a bridge restart that takes ten.
  */
 const TRANSPORT_RETRY_BACKOFF_MS = [5_000, 15_000, 30_000];
+
+/**
+ * A MODEL ACCOUNT THAT HAS USED ITS ALLOWANCE IS NOT AN UNREACHABLE PROVIDER.
+ *
+ * Phase 27: four real runs in an afternoon spent the Codex Plus account's
+ * five-hour window. The bridge answered every call within a second with a 502
+ * wrapping `codex responses 429: {"type":"usage_limit_reached", ...,
+ * "resets_at": ...}`, and this service reported each as "the configured model
+ * provider could not be reached … check site connections" — the wrong cause
+ * and the wrong remedy, and 127 failed calls before the stage gave up.
+ *
+ * Read from the error's text because that is all that survives the bridge:
+ * the 429 arrives as the body of a 502. `resets_at` is epoch SECONDS;
+ * `resets_in_seconds` is the fallback. Null when it is not a quota refusal.
+ */
+export function quotaFault(err: unknown, model: string, now = new Date()): PolicyError | null {
+  const text = [(err as { message?: unknown })?.message, (err as { error?: unknown })?.error, (err as { body?: unknown })?.body]
+    .map((part) => (typeof part === 'string' ? part : part == null ? '' : JSON.stringify(part))).join(' ');
+  const status = (err as { status?: unknown })?.status;
+  if (!/usage_limit_reached|insufficient_quota|usage limit has been reached/i.test(text) && !(status === 429 && /quota|usage limit/i.test(text))) return null;
+  const at = text.match(/resets_at\\?"?\s*:\s*(\d{9,})/)?.[1];
+  const inSeconds = text.match(/resets_in_seconds\\?"?\s*:\s*(\d+)/)?.[1];
+  const resets = at ? new Date(Number(at) * 1000) : inSeconds ? new Date(now.getTime() + Number(inSeconds) * 1000) : null;
+  const zone = 'Europe/London';
+  const day = (d: Date) => d.toLocaleDateString('en-GB', { timeZone: zone });
+  const when = resets
+    ? ` It resets at ${resets.toLocaleTimeString('en-GB', { timeZone: zone, hour: '2-digit', minute: '2-digit' })}${day(resets) === day(now) ? '' : ` on ${resets.toLocaleDateString('en-GB', { timeZone: zone, weekday: 'long', day: 'numeric', month: 'long' })}`} (UK time).`
+    : '';
+  return new PolicyError('quota', `The account behind “${model}” has used up its allowance: the provider refused the call because its usage limit was reached.${when} Add credits to the account, or resume after it resets. Nothing already completed is lost.`);
+}
 
 export function transportRetryDelayMs(code: string, attemptsSoFar: number): number | null {
   if (code !== 'provider') return null;
@@ -632,12 +697,18 @@ export function triageOutput(raw: unknown, stage: number, prior: Artefact[], pas
       ...(typeof said.sourceQuote === 'string' ? { quote: said.sourceQuote } : {}),
     });
   }
-  const warnings = (envelope.data.warnings ?? []).filter((w): w is string => typeof w === 'string').slice(0, 100);
-  const triaged = triageArtefacts({ artefacts, warnings }, stage, prior, passKind);
+  // THE MODEL'S OWN WARNINGS ARE NOTES, NOT THE RUN'S STATE (phase 23). What a
+  // model writes in its envelope's `warnings` is a remark about the paper — "the
+  // passage does not specify funding amounts" — and travels as `notes`, apart
+  // from what triage itself records about the reply. Only the second kind is
+  // carried into later prompts; see `StageOutput`.
+  const notes = (envelope.data.warnings ?? []).filter((w): w is string => typeof w === 'string').map((w) => w.trim()).filter(Boolean).slice(0, 100);
+  const triaged = { ...triageArtefacts({ artefacts, warnings: [] }, stage, prior, passKind), notes };
   if (!malformed.length) return triaged;
   return {
-    artefacts: triaged.artefacts,
+    ...triaged,
     warnings: clampWarnings([...triaged.warnings, discardWarning(malformed)]),
+    notes,
     rejected: [...malformed, ...triaged.rejected],
   };
 }
@@ -673,13 +744,19 @@ export function triageArtefacts(output: StageOutput, stage: number, prior: Artef
 
   let kept: Artefact[] = [];
   const seen = new Set<string>();
+  // A badly formed plain block costs the block, never the item (phase 23):
+  // taken off BEFORE the shape check, remembered, and asked for again below.
+  const plainIssues = new Map<string, string>();
   for (const a of parsed.artefacts) {
+    const issue = stripMalformedPlain(a);
+    if (issue) plainIssues.set(a.id, issue);
     // Echoing a supplied artefact back is a courtesy, not a contract breach:
     // drop the copy rather than the response.
     if (priorIds.has(a.id) || seen.has(a.id)) { drop(a, fault('duplicate', 'The model repeated an identifier that already exists; the repeat was discarded.')); continue; }
     seen.add(a.id);
     kept.push(a);
   }
+  if (stage === ASSURED_SYNTHESIS_STAGE || passKind === 'restatement') refileChallenges(kept, prior);
 
   const structural: Artefact[] = [];
   const map = new Map(prior.map((a) => [a.id, a]));
@@ -766,13 +843,16 @@ export function triageArtefacts(output: StageOutput, stage: number, prior: Artef
     if (a.kind === 'evidence' && (a.data.grade === 'strong' || a.data.grade === 'moderate')) {
       const sources = [...new Set([a.sourceId, String(a.data.sourceId ?? ''), ...a.refs])]
         .map((id) => (id ? finalById.get(id) : undefined))
-        .filter((s): s is Artefact => s?.kind === 'passage' || s?.kind === 'research_source');
+        .filter((s): s is Artefact => s?.kind === 'passage' || s?.kind === 'research_source' || s?.kind === 'grounding_passage');
       if (sources.length && sources.every((s) => s.kind === 'research_source' && s.data.retrieval === 'search_excerpt')) {
         capped.push(`“${a.label}” (${a.data.grade})`);
         a.data.grade = 'weak';
       }
     }
   }
+
+  // AFTER the clearance stamp: a cleared row owes no plain block.
+  const incomplete = kept.filter((a) => plainGap(a)).map((a) => incompleteAsk(a, plainIssues.get(a.id)));
 
   const warnings = [...parsed.warnings];
   if (stamped.length) warnings.push(`${stamped.length} row${stamped.length === 1 ? '' : 's'} said a body had no material way to beat the policy; ${stamped.length === 1 ? 'it is' : 'they are'} recorded as a cleared check, not counted as a way to beat it. ${stamped.slice(0, 4).join(', ')}${stamped.length > 4 ? `, and ${stamped.length - 4} more` : ''}.`.slice(0, 1000));
@@ -789,7 +869,50 @@ export function triageArtefacts(output: StageOutput, stage: number, prior: Artef
     for (const r of rejected) byCode.set(r.code, [...(byCode.get(r.code) ?? []), r]);
     for (const [, group] of byCode) warnings.push(discardWarning(group));
   }
-  return { artefacts: kept, warnings: clampWarnings(warnings), rejected };
+  return { artefacts: kept, warnings: clampWarnings(warnings), rejected, incomplete };
+}
+
+/**
+ * A CHALLENGE CITED BY A GUESSED IDENTIFIER IS REFILED BY ITS SLOT (phase 23).
+ *
+ * Each challenge remit is one call of stage 16 with a slot of its own, and
+ * writes one challenge under it: `s16_003_assurance_challenge_001`. On the Best
+ * Start run one remit wrote `s16_002_assurance_001` instead, and the final
+ * review — copying the PATTERN rather than the ids — answered the other six as
+ * `s16_003_assurance_001` and so on: 29 responses refused for "an invalid
+ * entity reference", and the recommendations citing them with them, across
+ * every attempt of the stage (replayed offline from the stored replies).
+ *
+ * An identifier the run does not hold whose `s16_<slot>_` names a slot that
+ * wrote exactly ONE challenge can only mean that challenge, so it is refiled to
+ * it — in `challengeId`, `challengeIds` and `refs` — rather than refused.
+ * Silent, as the refiling of an id under the wrong heading is
+ * (`semanticFault`): nothing the model asserted changes, only the spelling of
+ * which challenge it answered. A slot with two challenges, or none, is left
+ * alone and refused exactly as before.
+ */
+function refileChallenges(artefacts: Artefact[], prior: Artefact[]) {
+  const slotOf = (id: string) => new RegExp(`^(s${ASSURANCE_STAGE}_[^_]+_)`).exec(id)?.[1] ?? null;
+  const bySlot = new Map<string, string[]>();
+  for (const a of prior) {
+    if (a.kind !== 'assurance_challenge') continue;
+    const slot = slotOf(a.id);
+    if (slot) bySlot.set(slot, [...(bySlot.get(slot) ?? []), a.id]);
+  }
+  if (!bySlot.size) return;
+  const known = new Set([...prior.map((a) => a.id), ...artefacts.map((a) => a.id)]);
+  const refile = (id: unknown) => {
+    if (typeof id !== 'string' || known.has(id)) return id;
+    const slot = slotOf(id);
+    const only = slot ? bySlot.get(slot) : undefined;
+    return only?.length === 1 ? only[0] : id;
+  };
+  for (const a of artefacts) {
+    if (!a.data || typeof a.data !== 'object') continue;
+    if (typeof a.data.challengeId === 'string') a.data.challengeId = refile(a.data.challengeId);
+    if (Array.isArray(a.data.challengeIds)) a.data.challengeIds = [...new Set(a.data.challengeIds.map(refile))];
+    if (Array.isArray(a.refs)) a.refs = [...new Set(a.refs.map((id) => refile(id) as string))];
+  }
 }
 
 /** The most a stored warning may hold; `stage-facts.ts` and the report read it whole. */
@@ -949,7 +1072,7 @@ function checkPrecedent(a: Artefact, all: Map<string, Artefact>): boolean {
     if (a.data.precedentBasis !== 'none') a.data.precedentBasis = 'unverified_recall';
     changed = true;
   }
-  if (a.data.precedentBasis === 'external_evidence' && !a.refs.some((id) => ['research_source', 'evidence'].includes(all.get(id)?.kind ?? ''))) {
+  if (a.data.precedentBasis === 'external_evidence' && !a.refs.some((id) => ['research_source', 'evidence', 'grounding_passage'].includes(all.get(id)?.kind ?? ''))) {
     a.data.precedentBasis = 'unverified_recall';
     changed = true;
   }
@@ -961,7 +1084,9 @@ export function hasSource(id: string, all: Map<string, Artefact>, seen = new Set
   seen.add(id);
   const a = all.get(id);
   if (!a) return false;
-  if (a.kind === 'passage' || a.kind === 'research_source') return true;
+  // Grounding material is ground (phase 25): evidence the reader supplied and
+  // the run read in full — never the paper, which `locate` alone answers for.
+  if (a.kind === 'passage' || a.kind === 'research_source' || a.kind === 'grounding_passage') return true;
   return a.refs.some((r) => hasSource(r, all, seen));
 }
 

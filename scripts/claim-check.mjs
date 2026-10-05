@@ -28,7 +28,7 @@ const failures = [];
 const note = (m) => console.log(`  ${m}`);
 const check = (ok, message) => { if (!ok) failures.push(message); };
 
-let port = 5310;
+let port = Number(process.env.CLAIM_PORT ?? 5310); // overridable so parallel worktrees can check at once
 
 /**
  * A fixture server on its own database, with whatever environment the case

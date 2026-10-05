@@ -20,3 +20,7 @@
 0003-actor-identity.sql
 0004-body-evidence.sql
 0005-reader-inputs.sql
+0006-stage-notes.sql
+0007-actor-register.sql
+0008-alias-origins.sql
+0009-documents-grounding.sql

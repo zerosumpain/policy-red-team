@@ -1,5 +1,5 @@
 import { PASS_BASE, type Artefact } from '$lib/policy-analysis/contracts';
-import { partitionFrontMatter } from '$lib/policy-analysis/front-matter';
+import { documentOf, partitionSet, setPassagesInOrder } from '$lib/policy-analysis/document-set';
 
 /**
  * WHAT A REFUSED ITEM WAS, IN WORDS A READER CAN USE.
@@ -104,13 +104,17 @@ const STAGE_ONE = /^s1_(\d+)_/;
  * rules and why the slot is never read as a page number.
  */
 export function stageOnePlaces(artefacts: Artefact[]): Map<string, Place> {
-  const passages = artefacts.filter((a) => a.kind === 'passage').sort((a, b) => a.id.localeCompare(b.id));
+  // DOCUMENT ORDER, NOT ID ORDER (phase 25): `d1_passage_0001` sorts before
+  // `passage_0001`, and the pipeline numbers its slots main paper first. An
+  // addendum's `m<n>_` passages were never stage 1's, and grounding is not a
+  // `passage` at all.
+  const passages = setPassagesInOrder(artefacts);
   const byId = new Map(passages.map((p) => [p.id, p]));
   const votes = new Map<string, Map<string, { n: number; page: number | null; passage: Artefact | null }>>();
   for (const a of artefacts) {
     const slot = STAGE_ONE.exec(a.id)?.[1];
     if (!slot) continue;
-    const cited = [a.sourceId, ...a.refs].find((id): id is string => !!id && (byId.has(id) || id.startsWith('passage_')));
+    const cited = [a.sourceId, ...a.refs].find((id): id is string => !!id && (byId.has(id) || /^(?:d\d+_)?passage_/.test(id)));
     const passage = cited ? byId.get(cited) ?? null : null;
     const page = passage?.page ?? a.page ?? null;
     if (!cited && page === null) continue;
@@ -127,7 +131,7 @@ export function stageOnePlaces(artefacts: Artefact[]): Map<string, Place> {
     places.set(slot, { page: best.page, passage: best.passage });
   }
   // The partition, for a slot none of whose items survived to say where it was.
-  const { analyse } = partitionFrontMatter(passages);
+  const { analyse } = partitionSet(passages);
   analyse.forEach((passage, index) => {
     const slot = String(index).padStart(3, '0');
     if (!places.has(slot)) places.set(slot, { page: passage.page ?? null, passage });
@@ -206,6 +210,8 @@ export type RefusedGroup = {
   key: string;
   where: 'page' | 'step';
   page: number | null;
+  /** Which document the page is of, when the assessment read several (phase 25). */
+  document?: string | null;
   passage: Artefact | null;
   ordinal: number | null;
   stage: string | null;
@@ -241,8 +247,12 @@ export function groupRefused(
   for (const item of named) {
     const place = placeOf(item.id, places);
     const ordinal = item.ordinal ?? stageOfId(item.id);
+    // A PAGE OF WHICH DOCUMENT (phase 25): page 3 of the annex is not page 3
+    // of the paper, and must not share its line. A passage of a one-document
+    // run carries no title, so its lines read exactly as before.
+    const doc = place?.passage ? documentOf(place.passage) : null;
     const group = place && place.page !== null
-      ? open(`page:${place.page}`, { where: 'page', page: place.page, passage: place.passage, ordinal: 1, stage: item.stage })
+      ? open(`page:${doc?.position ?? 0}:${place.page}`, { where: 'page', page: place.page, document: doc?.title ?? null, passage: place.passage, ordinal: 1, stage: item.stage })
       : open(`step:${ordinal ?? '?'}:${item.kind ?? ''}`, { where: 'step', page: null, passage: null, ordinal, stage: item.stage });
     group.items.push(item);
     const row = group.kinds.find((k) => k.kind === item.kind);
@@ -253,7 +263,7 @@ export function groupRefused(
     const group = open(`more:${rest.ordinal ?? '?'}`, { where: 'step', page: null, passage: null, ordinal: rest.ordinal, stage: rest.stage });
     group.unnamed += rest.count;
   }
-  const order = (g: RefusedGroup) => (g.where === 'page' ? [0, g.page ?? 0, 0] : [1, g.ordinal ?? 999, g.key.startsWith('more:') ? 1 : 0]);
+  const order = (g: RefusedGroup) => (g.where === 'page' ? [0, (g.passage ? documentOf(g.passage).position : 0) * 100_000 + (g.page ?? 0), 0] : [1, g.ordinal ?? 999, g.key.startsWith('more:') ? 1 : 0]);
   return [...groups.values()].sort((a, b) => {
     const [x, y] = [order(a), order(b)];
     return x[0] - y[0] || x[1] - y[1] || x[2] - y[2] || a.key.localeCompare(b.key);
@@ -269,8 +279,13 @@ export function pageWords(group: RefusedGroup): string {
   return `${kindPhrase(group.kinds)} the model said ${group.items.length === 1 ? 'was' : 'were'} on`;
 }
 
+/** "page 3", or "Annex A, page 3" when the assessment read several documents. */
+export function pageName(group: RefusedGroup): string {
+  return `${group.document ? `${group.document}, ` : ''}page ${group.page}`;
+}
+
 export function groupWords(group: RefusedGroup): string {
-  if (group.where === 'page') return `${pageWords(group)} page ${group.page}`;
+  if (group.where === 'page') return `${pageWords(group)} ${pageName(group)}`;
   if (group.unnamed) return `${group.unnamed} more ${stepPhrase(group.ordinal, group.stage)}, counted but not named by the run`;
   return `${kindPhrase(group.kinds)} ${stepPhrase(group.ordinal, group.stage)}`;
 }

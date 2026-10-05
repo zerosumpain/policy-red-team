@@ -85,7 +85,10 @@ describe('policy ingestion and untrusted contracts', () => {
   });
   it('rejects malformed model output, fake quotes, missing provenance and invalid confidence', async () => {
     const source = (await ingest(fixture, 'policy.txt', 'text/plain')).artefacts;
-    const good = fixtureModel(1, '', { artefacts: source, idPrefix: 's1_' });
+    // The fixture stands in for the PROVIDER, which parts a reply's own warnings
+    // into `notes` (phase 23); as the model's reply they are its `warnings`.
+    const { notes, ...provided } = fixtureModel(1, '', { artefacts: source, idPrefix: 's1_' });
+    const good = { ...provided, warnings: [...provided.warnings, ...(notes ?? [])] };
     expect(() => validateOutput('not JSON', 1, source)).toThrow('invalid structured');
     const fake = structuredClone(good); fake.artefacts[0].sourceQuote = 'invented quote';
     expect(() => validateOutput(fake, 1, source)).toThrow('could not be located');
@@ -114,8 +117,15 @@ describe('complete fixture policy pipeline', () => {
     expect(all.filter((a) => a.kind === 'test')).toHaveLength(12);
     expect(all.filter((a) => a.kind === 'model')).toHaveLength(PATTERNS.length);
     expect(all.filter((a) => a.kind === 'scenario')).toHaveLength(SCENARIOS.length);
-    expect(all.filter((a) => a.kind === 'exploit')).toHaveLength(1);
+    // Three bodies since phase 23 — the council (named twice, one actor), the
+    // department and the providers — and a play for each. The programme is not
+    // an actor, and the named resident is no actor at all.
+    expect(all.filter((a) => a.kind === 'exploit')).toHaveLength(3);
     expect(all.find((a) => a.kind === 'exploit')!.data.band).toBe('significant');
+    const cast = all.filter((a) => a.kind === 'actor' && a.id.startsWith('s2_'));
+    expect(cast.map((a) => a.label).sort()).toEqual(['Council', 'Department for Education', 'Providers']);
+    expect(cast.find((a) => a.label === 'Council')!.data.programmes).toEqual(['Shared access programme']);
+    expect(JSON.stringify(cast)).not.toContain('Jane Smith');
     const map = new Map(all.map((a) => [a.id, a]));
     for (const finding of all.filter((a) => a.kind === 'finding')) expect(hasSource(finding.id, map)).toBe(true);
     const final = all.filter((a) => ['finding', 'recommendation'].includes(a.kind));
@@ -156,18 +166,40 @@ describe('stage 3 — the graph fans out instead of asking for the whole policy 
    * returned 10 nodes and 8 edges for 347 actors — not because it was shown too
    * little, but because one response cannot carry a policy's structure.
    */
-  it('makes a call per body rather than a single call for everything', async () => {
-    const { seen } = await run([
+  it('asks per body, several bodies a call, never a single call for everything', async () => {
+    const { seen, result } = await run([
       actorRow('s2_001', 'Skills England', 9),
       actorRow('s2_002', 'Skills England', 2),
       actorRow('s2_003', 'Ofsted', 4),
       actorRow('s2_004', 'UCAS', 1),
     ]);
-    // Four rows, three bodies — three calls, and emphatically not one 'main'.
-    expect(seen).toHaveLength(3);
+    // Four rows, three bodies — ONE call naming all three (T1, phase 23), and
+    // emphatically not one 'main' asking for the whole policy.
+    expect(seen).toEqual(['s2_001']);
     expect(seen).not.toContain('main');
-    // The best-evidenced row of a group speaks for it.
-    expect(seen).toContain('s2_001');
+    // Each body keeps its own target: an edge for each of the three.
+    expect(result.artefacts.filter((a) => a.kind === 'edge').map((a) => a.fromId).sort()).toEqual(['s2_001', 's2_003', 's2_004']);
+  });
+
+  it('sends a busy body alone, and packs at most six to a call', async () => {
+    const rows = [actorRow('s2_001', 'Busy', 45), ...Array.from({ length: 7 }, (_, i) => actorRow(`s2_1${i}`, `Quiet ${i}`, 1))];
+    const { seen } = await run(rows);
+    expect(seen).toEqual(['s2_001', 's2_10', 's2_16']);
+  });
+
+  it('skips a body the paper ties to no claim, part of the policy or assumption', async () => {
+    const linked = { ...actorRow('s2_001', 'Ofsted', 2), data: { ...actorRow('s2_001', 'Ofsted', 2).data, mentions: ['s1_000_actor'] } };
+    const loose = actorRow('s2_002', 'UCAS', 1);
+    const passage = artefact('passage_0001', 'passage', 'Page 1', QUOTE, {}, { origin: 'extracted_fact', confidence: 1 });
+    const mention = artefact('s1_000_actor', 'actor', 'Ofsted', 'Ofsted inspects.', { entityType: 'agency', aliases: [], mentions: ['passage_0001'], ambiguity: '', dates: [], parent: null }, { refs: ['passage_0001'] });
+    const mechanism = artefact('s1_000_mechanism', 'mechanism', 'Inspection', QUOTE, { intervention: 'x', implementation: 'y', notes: 'z' }, { origin: 'extracted_fact', confidence: 1, sourceId: 'passage_0001', sourceQuote: QUOTE, refs: ['passage_0001', 's1_000_actor'] });
+    const seen: unknown[] = [];
+    const result = await executeStage(
+      { stage: 3, title: 'Synthetic', jurisdiction: null, policyArea: null, context: null, artefacts: [passage, mention, mechanism, linked, loose] },
+      { model: async (...args) => { seen.push((args[2] as { targetActorId?: string }).targetActorId); return fixtureModel(...args); }, research: neverResearch, signal: new AbortController().signal },
+    );
+    expect(seen).toEqual(['s2_001']);
+    expect(result.warnings.join(' ')).toMatch(/1 of 2 actors are named in the paper but tied to no claim/);
   });
 
   it('gives every call the endpoints an edge needs at both ends', async () => {
@@ -197,7 +229,17 @@ describe('every stage is told to write plainly, and never to touch a quotation',
     for (const prompt of prompts) expect(prompt.split(WRITING_RULE)).toHaveLength(2);
     // The two things the rule must never loosen: quotes stay verbatim, and it is short.
     expect(WRITING_RULE).toMatch(/never applies to sourceQuote/);
-    expect(WRITING_RULE.length).toBeLessThan(900);
+    // Phase 23 changed the audience (P1): a reader who has never read the
+    // policy, the paper's names glossed once, a real person, no ids in prose.
+    expect(WRITING_RULE).toMatch(/never read this policy/);
+    expect(WRITING_RULE).toMatch(/say in a few words what it is/);
+    expect(WRITING_RULE).toMatch(/real person/);
+    expect(WRITING_RULE).toMatch(/Never put an identifier in a sentence/);
+    // 900 → 1,000: those four clauses cost ~210 characters, paid for by cutting
+    // three filler examples and folding "spell out an acronym… explain any
+    // technical term" into the gloss rule. It rides on every call of every
+    // stage (~430 on a real run), so the cap still stops it growing by habit.
+    expect(WRITING_RULE.length).toBeLessThan(1000);
   });
 });
 
@@ -294,7 +336,11 @@ describe('stage 4 — full profiles for the most connected bodies, short ones fo
   const bodies = Array.from({ length: FULL_PROFILES + 6 }, (_, i) => body(i));
   const mechanism = artefact('s1_000_mechanism', 'mechanism', 'A mechanism', QUOTE, { intervention: 'x', implementation: 'y', notes: 'z' },
     { origin: 'extracted_fact', confidence: 1, sourceId: 'passage_0001', sourceQuote: QUOTE, refs: ['passage_0001'] });
-  const edges = bodies.slice(6).map((b, i) => ({ ...artefact(`s3_${String(i).padStart(3, '0')}_edge`, 'edge', 'accountable', 'x', { notes: 'x' }, { refs: [b.id, mechanism.id] }), fromId: b.id, toId: mechanism.id, relation: 'is_accountable_for' as const, temporal: 'current' as const }));
+  // Every body is wired to the mechanism, so each one may have a short profile
+  // (phase 23 writes none for a body wired to nothing); the last twenty-four
+  // twice, so connectivity — not id order — decides who is in the top K.
+  const edge = (b: Artefact, i: number) => ({ ...artefact(`s3_${String(i).padStart(3, '0')}_edge`, 'edge', 'accountable', 'x', { notes: 'x' }, { refs: [b.id, mechanism.id] }), fromId: b.id, toId: mechanism.id, relation: 'is_accountable_for' as const, temporal: 'current' as const });
+  const edges = [...bodies.map((b, i) => edge(b, i)), ...bodies.slice(6).map((b, i) => edge(b, 100 + i))];
   const input: StageInput = { stage: 4, title: 'T', jurisdiction: null, policyArea: null, context: null, artefacts: [passage, mechanism, ...bodies, ...edges] };
 
   const run = async (model: Parameters<typeof executeStage>[1]['model'] = async (...a) => fixtureModel(...a)) => {
@@ -347,6 +393,17 @@ describe('stage 4 — full profiles for the most connected bodies, short ones fo
     expect(stageFacts(result.warnings).some((f) => f.kind === 'open')).toBe(false);
     expect(result.warnings.join(' ')).toMatch(/1 short profile named a body the call was not about/);
     expect(result.artefacts.filter((a) => a.kind === 'profile' && a.data.actorId === bodies[29].id)).toHaveLength(1);
+  });
+
+  it('writes no short profile for a body wired to no part of the policy, or for a group of people', async () => {
+    const loose = artefact('s2_900', 'actor', 'Loose body', 'Synthetic actor row.', { entityType: 'agency', aliases: [], mentions: ['passage_0001'], ambiguity: '', dates: [], parent: null }, { origin: 'extracted_fact', confidence: 1, sourceId: 'passage_0001', sourceQuote: QUOTE, refs: ['passage_0001'] });
+    const group = artefact('s2_901', 'actor', 'Parents', 'Synthetic actor row.', { entityType: 'user_group', aliases: [], mentions: ['passage_0001'], ambiguity: '', dates: [], parent: null }, { origin: 'extracted_fact', confidence: 1, sourceId: 'passage_0001', sourceQuote: QUOTE, refs: ['passage_0001'] });
+    const groupEdge = edge(group, 300);
+    const result = await executeStage({ ...input, artefacts: [...input.artefacts, loose, group, groupEdge] }, { model: async (...a) => fixtureModel(...a), research: neverResearch, signal: new AbortController().signal });
+    const profiled = new Set(result.artefacts.filter((a) => a.kind === 'profile').map((p) => p.data.actorId));
+    expect(profiled.has('s2_900')).toBe(false);
+    expect(profiled.has('s2_901')).toBe(false);
+    expect(result.warnings.join(' ')).toMatch(/2 of 32 actors were not profiled/);
   });
 
   it('gives the red team and the persona library full profiles to choose from', () => {
@@ -402,6 +459,19 @@ describe('rankActors — a tie-break must not become the ranking', () => {
     expect(basis).toBe('prominence');
     // Alphabetically `a_some_committee` wins. It must not.
     expect(ranked[0].id).toBe('z_skills_england');
+  });
+
+  /**
+   * Phase 27, gpt-6-luna on the Best Start paper: a thin graph let a body with
+   * three edges and two mentions take a red-team slot from one named 21 times.
+   */
+  it('puts how often the paper names a body ahead of a thin graph', () => {
+    const parents = actor('s2_parents', 'Parents', 21);
+    const hubs = actor('s2_maths_hubs', 'Maths Hubs', 2);
+    const all = [parents, hubs, edge('e1', 's2_maths_hubs', 'm1'), edge('e2', 's2_maths_hubs', 'm2'), edge('e3', 's2_maths_hubs', 'm3'), edge('e4', 's2_parents', 'm1')];
+    const { actors: ranked, basis } = rankActors(all, [profileFor(hubs.id), profileFor(parents.id)]);
+    expect(ranked.map((a) => a.label)).toEqual(['Parents', 'Maths Hubs']);
+    expect(basis).toBe('connectivity');
   });
 
   it('breaks a mention tie on how many rows carry the label', () => {
@@ -505,9 +575,13 @@ describe('concurrent agents', () => {
    * `lanes`, so one slow call held its whole batch — and the next — hostage:
    * measured 3.2 to 3.9 of six lanes busy on the review of 25 September 2026.
    *
-   * The first unit here does not answer until every other unit has STARTED. A
-   * batched fan-out can never get there (units 4 onward wait for unit 1), so the
+   * The SECOND unit here does not answer until every other unit has STARTED. A
+   * batched fan-out can never get there (units 4 onward wait for unit 2), so the
    * safety timer releases it instead and the test says which happened.
+   *
+   * The second and not the first since phase 23: stage 7 WARMS UP
+   * (`WARM_FIRST_STAGES`), so unit 1 goes out alone and holds everything by
+   * design until it lands. `warm-up.test.ts` covers that half.
    */
   it('starts the next unit as soon as a lane frees, so one slow call holds up nothing', async () => {
     const upTo7 = async (model: Parameters<typeof executeStage>[1]['model'], lanes: 1 | 3) => {
@@ -531,7 +605,7 @@ describe('concurrent agents', () => {
     const model: Parameters<typeof executeStage>[1]['model'] = async (stage, key, input) => {
       started.push(key);
       inFlight++; peak = Math.max(peak, inFlight);
-      if (key === PATTERNS[0]) await slow;
+      if (key === PATTERNS[1]) await slow;
       else if (started.length === PATTERNS.length) release('pool');
       await new Promise((resolve) => setTimeout(resolve, 1));
       inFlight--;
@@ -540,7 +614,7 @@ describe('concurrent agents', () => {
     const wide = await upTo7(model, 3);
     clearTimeout(safety);
 
-    // Every other pattern started while the first was still out, and never more
+    // Every other pattern started while the second was still out, and never more
     // than three at once.
     expect(await slow).toBe('pool');
     expect(peak).toBeLessThanOrEqual(3);
@@ -740,15 +814,23 @@ describe('a later stage may ask', () => {
     throw new Error('unreachable');
   };
 
-  /** `fixtureModel`, plus one research question from the stage under test. */
-  const alsoAsks = (stage: number) => async (...a: Parameters<typeof fixtureModel>) => {
+  /**
+   * `fixtureModel`, plus one research question from the stage under test — from
+   * its FIRST call only. The fixture red-teams three bodies since phase 23, and
+   * the question is the stage's, not each body's.
+   */
+  const alsoAsks = (stage: number) => {
+    let asked = false;
+    return async (...a: Parameters<typeof fixtureModel>) => {
     const out = fixtureModel(...a);
-    if (a[0] !== stage) return out;
+    if (a[0] !== stage || asked) return out;
+    asked = true;
     const prefix = (a[2] as { idPrefix: string }).idPrefix;
     return { ...out, artefacts: [...out.artefacts, artefact(`${prefix}followup`, 'research_question',
       'Comparable reform outcome', 'What happened when this was tried elsewhere?',
       { importance: 0.9, uncertainty: 0.8, consequence: 0.9, rationale: 'The playbook rests on it.', searchStrategy: 'comparable reform published evaluation', gap: 'Untested.' },
       { refs: [(a[2] as { artefacts: Artefact[] }).artefacts.find((x) => x.kind === 'assumption')!.id], confidence: 0.5 })] };
+    };
   };
 
   it('retrieves what the exploitation playbook asks, and keeps it in the stage output', async () => {
@@ -843,8 +925,9 @@ describe('a later stage may ask', () => {
     const research = async () => ({ artefacts: [], warnings: [] });
     // The fan-out asks once per red-teamed actor; `followUps` is 2 on a standard
     // run, so a stage that raises more than that must say which it left.
+    const asks = alsoAsks(10);
     const manyAsks = async (...a: Parameters<typeof fixtureModel>) => {
-      const out = await alsoAsks(10)(...a);
+      const out = await asks(...a);
       if (a[0] !== 10) return out;
       const prefix = (a[2] as { idPrefix: string }).idPrefix;
       const ref = (a[2] as { artefacts: Artefact[] }).artefacts.find((x) => x.kind === 'assumption')!.id;

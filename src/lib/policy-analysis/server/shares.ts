@@ -2,7 +2,7 @@ import { createHash, randomBytes } from 'node:crypto';
 import { and, asc, eq, sql } from 'drizzle-orm';
 import { db } from '$lib/db';
 import { policyAnalyses, policyShares, policyStages } from '$lib/db/schema';
-import { listPasses, loadArtefacts, ownedAnalysis } from './store';
+import { listPasses, loadArtefacts, ownedAnalysis, stagesWithNotes } from './store';
 import { shareablePasses, shareableReport, type SharedReport } from '../share';
 import { PolicyError } from '../validation';
 
@@ -122,8 +122,10 @@ export async function resolveShare(rawToken: string): Promise<SharedAssessment |
   const [analysis] = await db.select().from(policyAnalyses).where(eq(policyAnalyses.id, share.analysisId)).limit(1);
   if (!analysis || !['completed', 'completed_with_gaps'].includes(analysis.status)) return null;
 
-  const stages = await db.select({ ordinal: policyStages.ordinal, name: policyStages.name, warnings: policyStages.warnings })
-    .from(policyStages).where(eq(policyStages.analysisId, share.analysisId)).orderBy(asc(policyStages.ordinal));
+  // The model's notes travel with the stage's own record, as they always did
+  // when they were stored inside it (phase 23, `withNotes`).
+  const stages = await stagesWithNotes(share.analysisId, analysis.updatedAt, await db.select({ ordinal: policyStages.ordinal, name: policyStages.name, warnings: policyStages.warnings, notes: policyStages.notes, output: policyStages.output })
+    .from(policyStages).where(eq(policyStages.analysisId, share.analysisId)).orderBy(asc(policyStages.ordinal)));
   const report = shareableReport({ artefacts: await loadArtefacts(share.analysisId), stages });
   const passes = shareablePasses(await listPasses(share.analysisId));
 

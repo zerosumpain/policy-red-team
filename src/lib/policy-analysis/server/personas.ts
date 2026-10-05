@@ -1,6 +1,7 @@
 import { and, desc, eq, inArray, sql } from 'drizzle-orm';
 import { db, type DbExecutor } from '$lib/db';
-import { policyAffectedGroups, policyAnalyses, policyArtefacts, policyDocuments, policyPersonaDecisions, policyPersonaObservations, policyPersonas } from '$lib/db/schema';
+import { paperKeys, samePaper } from './paper';
+import { policyActorMentions, policyAffectedGroups, policyAnalyses, policyArtefacts, policyPersonaDecisions, policyPersonaObservations, policyPersonas } from '$lib/db/schema';
 import { normaliseName } from '$lib/jkai/intel/resolve/match';
 import { getLLMClient } from '$lib/llm/client';
 import { executionContext, type LLMCallRecord } from '$lib/context/execution';
@@ -14,6 +15,7 @@ import {
 } from '../personas';
 import { bodyFacts, resolveBody, searchRegister, type BodyFacts, type RegisterIndex } from '../register';
 import { documentShingles } from '../query-guard';
+import { isGroupOfPeople, masterIdOf, wouldCycle } from '../actor-register';
 import { PolicyError } from '../validation';
 import { registerIndex, syncRegister } from './register';
 import { research } from './research';
@@ -57,6 +59,7 @@ function toRecord(row: typeof policyPersonas.$inferSelect): PersonaRecord {
     researchedAt: row.researchedAt ? row.researchedAt.toISOString() : null,
     updatedAt: row.updatedAt ? row.updatedAt.toISOString() : null,
     bodyId: row.bodyId ?? null,
+    kind: row.kind, status: row.status === 'confirmed' ? 'confirmed' : 'proposed', partOf: row.partOf ?? null, kindOf: row.kindOf ?? null, whatItIs: row.whatItIs ?? null,
   };
 }
 
@@ -70,8 +73,16 @@ function toObservation(row: typeof policyPersonaObservations.$inferSelect): Pers
   };
 }
 
+/**
+ * The rows a body can be matched to for a dossier. Since phase 23 the library
+ * IS the master list of actors, so it also holds groups of people and things
+ * ruled not to be actors; neither ever gets a dossier, so neither is a
+ * candidate. "Children" as a persona is what split the library once.
+ */
 export async function personaCandidates(owner: string, tx: DbExecutor = db): Promise<PersonaRecord[]> {
-  const rows = await tx.select().from(policyPersonas).where(eq(policyPersonas.owner, owner)).orderBy(desc(policyPersonas.sightings), desc(policyPersonas.updatedAt)).limit(CANDIDATE_LIMIT);
+  const rows = await tx.select().from(policyPersonas)
+    .where(and(eq(policyPersonas.owner, owner), sql`${policyPersonas.kind} not in ('group_of_people', 'not_an_actor')`))
+    .orderBy(desc(policyPersonas.sightings), desc(policyPersonas.updatedAt)).limit(CANDIDATE_LIMIT);
   return rows.map(toRecord);
 }
 
@@ -93,16 +104,10 @@ export async function loadRulings(owner: string, tx: DbExecutor = db): Promise<I
  * the library: submitting v2 after acting on v1's plays is the intended way to
  * use this tool, and a paper is not "another policy" to its own redraft.
  */
-export async function sameDocument(owner: string, analysisId: string, tx: DbExecutor = db): Promise<Set<string>> {
-  const out = new Set([analysisId]);
-  const [mine] = await tx.select({ sha256: policyDocuments.sha256 }).from(policyDocuments).where(eq(policyDocuments.analysisId, analysisId));
-  if (!mine) return out;
-  const rows = await tx.select({ analysisId: policyDocuments.analysisId })
-    .from(policyDocuments)
-    .innerJoin(policyAnalyses, eq(policyAnalyses.id, policyDocuments.analysisId))
-    .where(and(eq(policyAnalyses.owner, owner), eq(policyDocuments.sha256, mine.sha256)));
-  for (const row of rows) out.add(row.analysisId);
-  return out;
+export async function sameDocument(_owner: string, analysisId: string, tx: DbExecutor = db): Promise<Set<string>> {
+  // Phase 25: the same DOCUMENT SET's paper — one `paper_key`, or any document
+  // in common. See `samePaper`.
+  return samePaper(analysisId, tx);
 }
 
 const actorOf = (actor: Artefact) => ({ id: actor.id, label: actor.label, entityType: String(actor.data.entityType ?? ''), aliases: list<string>(actor.data.aliases) });
@@ -123,8 +128,14 @@ export async function priorsFor(owner: string, actors: Artefact[], excludeAnalys
   const rulings = await loadRulings(owner);
   const exclude = excludeAnalysisId ? await sameDocument(owner, excludeAnalysisId) : new Set<string>();
   const matched = actors
-    .filter((actor) => !isAffectedGroup(actor.data.entityType))
+    .filter((actor) => !isAffectedGroup(actor.data.entityType) && !isGroupOfPeople(actor))
     .map((actor) => {
+      // THE MASTER LIST DECIDED ALREADY (phase 23): a stage-2 actor that carries
+      // its master id IS that row, and a name match could only second-guess it.
+      const master = masterIdOf(actor);
+      const persona = master ? candidates.find((p) => p.id === master) : undefined;
+      if (persona) return { actor, match: { persona, basis: `This is ${persona.name} on your master list of actors` } };
+      if (master) return { actor, match: null };
       const resolved = resolveBody(actorOf(actor), index);
       return { actor, match: matchPersona(actorOf(actor), candidates, { bodyId: resolved?.body.id, bodyName: resolved?.body.name, rulings }) };
     })
@@ -133,7 +144,8 @@ export async function priorsFor(owner: string, actors: Artefact[], excludeAnalys
   const observations = await observationsFor([...new Set(matched.map((m) => m.match.persona.id))]);
   return matched
     .map((m) => personaPrior(m.actor.id, m.match, observations, exclude))
-    .filter((p): p is PersonaPrior => Boolean(p));
+    // A master actor no paper has written a dossier for has nothing to say yet.
+    .filter((p): p is PersonaPrior => Boolean(p) && (p!.traits.length > 0 || p!.trackRecord.length > 0 || Boolean(p!.summary)));
 }
 
 /**
@@ -156,7 +168,7 @@ export async function applyPersonaLinks(tx: DbExecutor, owner: string, analysisI
   await lockOwner(tx, owner);
 
   const actors = new Map(all.filter((a) => a.kind === 'actor').map((a) => [a.id, a]));
-  const groups = [...actors.values()].filter((a) => a.id.startsWith('s2_') && isAffectedGroup(a.data.entityType));
+  const groups = [...actors.values()].filter((a) => a.id.startsWith('s2_') && (isAffectedGroup(a.data.entityType) || isGroupOfPeople(a)));
   await tx.delete(policyAffectedGroups).where(eq(policyAffectedGroups.analysisId, analysisId));
   if (groups.length) {
     await tx.insert(policyAffectedGroups).values(groups.map((g) => ({
@@ -165,7 +177,10 @@ export async function applyPersonaLinks(tx: DbExecutor, owner: string, analysisI
     })));
   }
 
-  const isGroupLink = (link: Artefact) => isAffectedGroup(actors.get(String(link.data.actorId ?? ''))?.data.entityType ?? link.data.entityType);
+  const isGroupLink = (link: Artefact) => {
+    const actor = actors.get(String(link.data.actorId ?? ''));
+    return actor ? isAffectedGroup(actor.data.entityType) || isGroupOfPeople(actor) : isAffectedGroup(link.data.entityType);
+  };
   const { kept, dropped } = onePerActor(links.filter((a) => a.kind === 'persona_link' && !isGroupLink(a)));
   if (dropped) {
     warnings.push(`The library was sent more than one entry for the same body ${dropped === 1 ? 'once' : `${dropped} times`}. It kept the fullest entry for each body and ignored the rest.`);
@@ -199,9 +214,13 @@ export async function applyPersonaLinks(tx: DbExecutor, owner: string, analysisI
     const resolved = resolveBody({ label, aliases: names.slice(1), entityType }, index);
     const subjects = [...names.map(nameSubject), ...(resolved ? [bodySubject(resolved.body.id)] : [])];
 
-    let persona = typeof data.personaId === 'string' ? candidates.find((p) => p.id === data.personaId) ?? null : null;
-    if (persona && ruling(rulings, persona.id, subjects) === 'different') persona = null;
-    if (persona && resolved && persona.bodyId && persona.bodyId !== resolved.body.id) persona = null;
+    // THE MASTER LIST FIRST (phase 23): stage 2 already decided which row this
+    // actor is, under the reader's rulings, and wrote it on the actor.
+    const master = actor ? masterIdOf(actor) : null;
+    let persona = master ? candidates.find((p) => p.id === master) ?? null : null;
+    persona ??= typeof data.personaId === 'string' ? candidates.find((p) => p.id === data.personaId) ?? null : null;
+    if (persona && persona.id !== master && ruling(rulings, persona.id, subjects) === 'different') persona = null;
+    if (persona && persona.id !== master && resolved && persona.bodyId && persona.bodyId !== resolved.body.id) persona = null;
     persona ??= matchPersona({ id: actorId, label, entityType, aliases: names.slice(1) }, candidates, { bodyId: resolved?.body.id, bodyName: resolved?.body.name, rulings })?.persona ?? null;
 
     const bodyId = resolved && (!persona || ruling(rulings, persona.id, [bodySubject(resolved.body.id)]) !== 'different') ? resolved.body.id : null;
@@ -221,7 +240,7 @@ export async function applyPersonaLinks(tx: DbExecutor, owner: string, analysisI
       // Department for Education" in the next read as one row in the library.
       const official = resolved?.body.name ?? name;
       const [created] = await tx.insert(policyPersonas).values({
-        owner, name: official, entityType, bodyId, dossierVersion: 1,
+        owner, name: official, entityType, bodyId, dossierVersion: 1, status: 'proposed', proposedIn: analysisId,
         aliases: names.filter((n) => n !== official).slice(0, 40),
       }).returning();
       persona = toRecord(created);
@@ -264,15 +283,17 @@ export async function applyPersonaLinks(tx: DbExecutor, owner: string, analysisI
 /**
  * Sightings are a COUNT of PAPERS, recomputed — deleting an assessment must
  * lower it, and two runs of one document are one paper. Counted on the
- * document hash, falling back to the analysis where a document row is missing.
+ * analysis's `paper_key` (phase 25: one per document SET, shared by a re-run
+ * with an annex added), falling back to the analysis where it has none. It
+ * was a join on `policy_documents`, which is one row per document now.
  */
 export async function recountSightings(tx: DbExecutor, personaIds: string[]) {
   if (!personaIds.length) return;
   await tx.execute(sql`
     update policy_personas p
-       set sightings = (select count(distinct coalesce(d.sha256, o.analysis_id::text))
+       set sightings = (select count(distinct coalesce(a.paper_key, o.analysis_id::text))
                           from policy_persona_observations o
-                          left join policy_documents d on d.analysis_id = o.analysis_id
+                          left join policy_analyses a on a.id = o.analysis_id
                          where o.persona_id = p.id and o.analysis_id is not null and o.kind = 'assessment')
      where p.id in (${sql.join(personaIds.map((id) => sql`${id}::uuid`), sql`, `)})`);
 }
@@ -322,6 +343,20 @@ export async function rebuildPersonas(tx: DbExecutor, personaIds: string[], opti
     if (!row) continue;
     const observations = (await tx.select().from(policyPersonaObservations).where(eq(policyPersonaObservations.personaId, id))).map(toObservation);
     if (!observations.some((o) => o.kind === 'assessment' && o.analysisId)) {
+      /*
+       * ON THE MASTER LIST, A ROW IS MORE THAN ITS DOSSIER (phase 23). It goes
+       * with its last paper only while it is a PROPOSAL nobody has vouched for
+       * and no paper still names it — a deleted paper takes its proposals with
+       * it, which is the phase 19 rule. A row the reader confirmed is the
+       * reader's own record and stays; a row a remaining paper names stays,
+       * with no dossier, until a dossier is written for it.
+       */
+      const [named] = await tx.select({ id: policyActorMentions.id }).from(policyActorMentions).where(eq(policyActorMentions.masterId, id)).limit(1);
+      if (named || row.status === 'confirmed') {
+        await tx.update(policyPersonas).set({ dossier: [], summary: null, dossierVersion: 1, updatedAt: new Date() }).where(eq(policyPersonas.id, id));
+        rebuilt.push(id);
+        continue;
+      }
       await tx.delete(policyPersonas).where(eq(policyPersonas.id, id));
       removed.push(id);
       continue;
@@ -422,9 +457,16 @@ export type PersonaSummary = PersonaRecord & {
 };
 
 export async function listPersonas(owner: string): Promise<PersonaSummary[]> {
-  const records = await personaCandidates(owner);
+  const candidates = await personaCandidates(owner);
+  if (!candidates.length) return [];
+  const all = await observationsFor(candidates.map((r) => r.id));
+  // THE LIBRARY LISTS BODIES WITH A DOSSIER, as it always has. Since phase 23
+  // the same table holds every master actor a paper named; those without a
+  // dossier are the register's to show (`GET …/register`), not this list's.
+  const withDossier = new Set(all.map((o) => o.personaId));
+  const records = candidates.filter((r) => withDossier.has(r.id));
   if (!records.length) return [];
-  const observations = await observationsFor(records.map((r) => r.id));
+  const observations = all;
   const index = records.some((r) => r.bodyId) ? await registerIndex() : null;
   const BANDS = ['severe', 'significant', 'moderate', 'limited'];
   return records.map((record) => {
@@ -449,7 +491,9 @@ export type DuplicateSuggestion = { a: { id: string; name: string }; b: { id: st
 const bodyNames = (index: RegisterIndex) => new Map([...index.bodies.values()].map((b) => [b.id, b.name]));
 
 export async function duplicateSuggestions(owner: string, personaId?: string): Promise<DuplicateSuggestion[]> {
-  const records = await personaCandidates(owner);
+  // Among the bodies the library LISTS (those with a dossier): the register's
+  // own queue offers the rest (`proposalQueue`).
+  const records = await listPersonas(owner);
   if (records.length < 2) return [];
   const pairs = possibleDuplicates(records, await loadRulings(owner), bodyNames(await registerIndex()));
   return pairs
@@ -464,10 +508,9 @@ export async function duplicateSuggestions(owner: string, personaId?: string): P
  * Counted in papers, by document, for the same reason sightings are.
  */
 export async function affectedGroups(owner: string): Promise<{ name: string; papers: number; analyses: { id: string; title: string }[] }[]> {
-  const rows = await db.select({ name: policyAffectedGroups.name, analysisId: policyAffectedGroups.analysisId, title: policyAnalyses.title, sha256: policyDocuments.sha256 })
+  const rows = await db.select({ name: policyAffectedGroups.name, analysisId: policyAffectedGroups.analysisId, title: policyAnalyses.title, sha256: policyAnalyses.paperKey })
     .from(policyAffectedGroups)
     .innerJoin(policyAnalyses, eq(policyAnalyses.id, policyAffectedGroups.analysisId))
-    .leftJoin(policyDocuments, eq(policyDocuments.analysisId, policyAffectedGroups.analysisId))
     .where(eq(policyAffectedGroups.owner, owner));
   const byName = new Map<string, { name: string; documents: Set<string>; analyses: Map<string, string> }>();
   for (const row of rows) {
@@ -493,9 +536,7 @@ export async function personaDetail(owner: string, id: string) {
     : [];
   // Each paper's document hash, so the page counts two runs of one document as
   // one paper — the same rule `recountSightings` applies to the figure.
-  const shas = analysisIds.length
-    ? new Map((await db.select({ analysisId: policyDocuments.analysisId, sha256: policyDocuments.sha256 }).from(policyDocuments).where(inArray(policyDocuments.analysisId, analysisIds))).map((d) => [d.analysisId, d.sha256]))
-    : new Map<string, string>();
+  const shas = await paperKeys(analysisIds);
   for (const o of observations) o.documentSha = o.analysisId ? shas.get(o.analysisId) ?? null : null;
   const persona = toRecord(row);
   const index = await registerIndex();
@@ -538,7 +579,8 @@ async function owned(tx: DbExecutor, owner: string, id: string) {
   return row ?? null;
 }
 
-async function rule(tx: DbExecutor, owner: string, personaId: string, subject: string, verdict: 'same' | 'different') {
+/** A reader's ruling, recorded or overwritten. Exported for the register's own rulings (phase 24b). */
+export async function rule(tx: DbExecutor, owner: string, personaId: string, subject: string, verdict: 'same' | 'different') {
   await tx.insert(policyPersonaDecisions).values({ owner, personaId, subject, verdict, decidedBy: 'human' })
     .onConflictDoUpdate({ target: [policyPersonaDecisions.personaId, policyPersonaDecisions.subject], set: { verdict, createdAt: new Date() } });
 }
@@ -567,6 +609,14 @@ export async function mergePersonas(owner: string, keepId: string, otherId: stri
       throw new PolicyError('state', `These are two different public bodies on GOV.UK: ${index.bodies.get(keep.bodyId)?.name ?? keep.name} and ${index.bodies.get(other.bodyId)?.name ?? other.name}. They cannot be combined. If one of them is linked to the wrong body, change that first.`);
     }
     await tx.update(policyPersonaObservations).set({ personaId: keep.id }).where(eq(policyPersonaObservations.personaId, other.id));
+    // THE MASTER LIST TOO (phase 23): every paper's mentions follow, except one
+    // already filed under the kept row; anything that sat under the other now
+    // sits under the kept one, unless that would put it under itself.
+    await tx.execute(sql`delete from policy_actor_mentions o using policy_actor_mentions k
+      where o.master_id = ${other.id}::uuid and k.master_id = ${keep.id}::uuid and o.analysis_id = k.analysis_id and o.mention_id = k.mention_id`);
+    await tx.update(policyActorMentions).set({ masterId: keep.id }).where(eq(policyActorMentions.masterId, other.id));
+    await tx.update(policyPersonas).set({ partOf: keep.id }).where(and(eq(policyPersonas.partOf, other.id), sql`${policyPersonas.id} <> ${keep.id}`));
+    await tx.update(policyPersonas).set({ kindOf: keep.id }).where(and(eq(policyPersonas.kindOf, other.id), sql`${policyPersonas.id} <> ${keep.id}`));
     // The other's rulings come with it, except any about the two of them.
     const theirs = await tx.select().from(policyPersonaDecisions).where(eq(policyPersonaDecisions.personaId, other.id));
     for (const r of theirs) {
@@ -579,15 +629,43 @@ export async function mergePersonas(owner: string, keepId: string, otherId: stri
     for (const name of [other.name, ...list<string>(other.aliases)].slice(0, 12)) {
       if (normaliseName(name)) await rule(tx, owner, keep.id, nameSubject(name), 'same');
     }
+    const mergedAliases = [...new Set([...list<string>(keep.aliases), other.name, ...list<string>(other.aliases)].filter((n) => n && n !== keep.name))].slice(0, 40);
+    // WHO PUT EACH NAME THERE (phase 24b): the other's own name is the reader's
+    // doing now; its aliases keep whatever origin they had, so a guess the
+    // model made about the other row is still listed for checking.
+    const origins = (row: typeof keep) => (row.aliasOrigins && typeof row.aliasOrigins === 'object' && !Array.isArray(row.aliasOrigins) ? row.aliasOrigins : {});
+    const aliasOrigins = { ...origins(other), ...origins(keep), [normaliseName(other.name)]: { by: 'reader' as const, analysisId: null, at: new Date().toISOString() } };
+    for (const key of Object.keys(aliasOrigins)) if (!mergedAliases.some((n) => normaliseName(n) === key)) delete aliasOrigins[key];
     await tx.update(policyPersonas).set({
-      aliases: [...new Set([...list<string>(keep.aliases), other.name, ...list<string>(other.aliases)].filter((n) => n && n !== keep.name))].slice(0, 40),
+      aliases: mergedAliases,
+      aliasOrigins,
       bodyId: keep.bodyId ?? other.bodyId,
       researchedAt: keep.researchedAt ?? other.researchedAt,
+      // A reader merging two rows has vouched for the one they kept.
+      status: 'confirmed',
+      ...(await mergedParents(tx, owner, keep, other)),
+      whatItIs: keep.whatItIs ?? other.whatItIs,
     }).where(eq(policyPersonas.id, keep.id));
     await tx.delete(policyPersonas).where(eq(policyPersonas.id, other.id));
     await rebuildPersonas(tx, [keep.id]);
     return { id: keep.id };
   });
+}
+
+/**
+ * The kept row's place in each tree after a merge: its own, or the other's
+ * where it had none — and neither if that would now make a loop.
+ */
+async function mergedParents(tx: DbExecutor, owner: string, keep: typeof policyPersonas.$inferSelect, other: typeof policyPersonas.$inferSelect) {
+  const rows = await tx.select({ id: policyPersonas.id, partOf: policyPersonas.partOf, kindOf: policyPersonas.kindOf }).from(policyPersonas).where(eq(policyPersonas.owner, owner));
+  const byId = new Map(rows.map((r) => [r.id, r]));
+  const out: { partOf: string | null; kindOf: string | null } = { partOf: null, kindOf: null };
+  for (const field of ['partOf', 'kindOf'] as const) {
+    const chosen = [keep[field], other[field]].find((p) => p && p !== keep.id && p !== other.id) ?? null;
+    const up = (x: string) => { const parent = byId.get(x)?.[field] ?? null; return parent === other.id ? keep.id : parent; };
+    out[field] = chosen && !wouldCycle(keep.id, chosen, up) ? chosen : null;
+  }
+  return out;
 }
 
 /** "These two are different bodies" — recorded both ways, so neither is offered as the other again. */
@@ -697,7 +775,7 @@ const RESEARCH_QUESTIONS = 3;
 
 export async function researchPersona(owner: string, id: string, signal: AbortSignal): Promise<{ sources: number; traits: number }> {
   const detail = await personaDetail(owner, id);
-  if (!detail) throw new PolicyError('missing', 'Persona not found.');
+  if (!detail) throw new PolicyError('missing', 'No such body.');
   const { persona } = detail;
   const known = persona.dossier.map((t) => `${t.label}: ${t.value}`).join('\n').slice(0, 4000);
 

@@ -3,7 +3,7 @@ import { factLabel, stageFacts, type StageFactKind } from '$lib/policy-analysis/
 import { Details, Table } from '../../govuk';
 import { Bar, Metrics } from '../Metrics';
 import type { Artefact } from '$lib/policy-analysis/contracts';
-import { groupRefused, groupWords, pageWords, stageOnePlaces, type Place, type RefusedGroup } from '$lib/refused';
+import { groupRefused, groupWords, pageName, pageWords, stageOnePlaces, type Place, type RefusedGroup } from '$lib/refused';
 import type { ArtefactLink } from '../Report';
 import { discards, readable, type ReasonRow } from '../warnings';
 
@@ -277,7 +277,7 @@ function Affected({ items, unnamed, places, linkTo }: {
 /** One line: a page, or a step. */
 function RefusedLine({ group, linkTo }: { group: RefusedGroup; linkTo?: ArtefactLink }) {
   if (group.where !== 'page') return <>{groupWords(group)}</>;
-  const page = `page ${group.page}`;
+  const page = pageName(group);
   return (
     <>
       {pageWords(group)}{' '}

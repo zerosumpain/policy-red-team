@@ -21,7 +21,7 @@ import { fileURLToPath } from 'node:url';
 import JSZip from 'jszip';
 
 const ROOT = path.resolve(fileURLToPath(new URL('..', import.meta.url)));
-const PORT = 5297;
+const PORT = Number(process.env.OFFLINE_PORT ?? 5297); // overridable so parallel worktrees can check at once
 const failures = [];
 const note = (m) => console.log(`  ${m}`);
 
@@ -45,6 +45,14 @@ try {
   // Phase 22 part 2: a source of the reader's own, so the pack has one to tag.
   form.set('sourceUrl.0', 'https://www.example.org/capacity-review');
   form.set('lookUp.0', 'council delivery capacity evaluation');
+  // Phase 25: an annex as part of the paper, and statistics as grounding, so
+  // the pack has a second document to name and a Grounding section to draw.
+  form.set('document.1', new Blob(['Annex A: costings. The annex sets out how the shared access programme is paid for in its first three years. Councils receive a grant for each resident who uses the service, paid quarterly in arrears.'], { type: 'text/plain' }), 'annex.txt');
+  form.set('documentRole.1', 'policy');
+  form.set('documentTitle.1', 'Annex A: costings');
+  form.set('document.2', new Blob(['Local authority workforce statistics, 2025. Councils reported 1,240 vacancies in the advice posts the programme relies on, a rise of a fifth on the year before.'], { type: 'text/plain' }), 'statistics.txt');
+  form.set('documentRole.2', 'statistics');
+  form.set('documentTitle.2', 'Workforce statistics 2025');
   const created = await fetch(`http://127.0.0.1:${PORT}/api/policy-analysis`, { method: 'POST', body: form });
   if (!created.ok) throw new Error(`submit failed: ${created.status} ${await created.text()}`);
   const { id } = await created.json();
@@ -138,10 +146,39 @@ try {
   for (const expected of ['Offline pack check', 'Ways to beat it', 'How this was produced', 'Another explanation', 'What would tell them apart', 'What the report concluded', 'How strong the evidence is', 'Checked outside the paper', 'Supplied by you', 'Asked by you']) {
     if (!body.includes(expected)) failures.push(`offline page missing "${expected}"`);
   }
+  // Phase 25: the annex named among the paper's documents, and the grounding
+  // it was judged against, with its tag — from file://, nothing fetched.
+  for (const expected of ['What it read', 'Annex A: costings', 'What it was judged against', 'Workforce statistics 2025', 'Grounding', 'The grounding material']) {
+    if (!body.includes(expected)) failures.push(`offline page missing "${expected}"`);
+  }
   for (const absent of ['I have a source for this', 'Look this up']) {
     if (body.includes(absent)) failures.push(`offline page draws "${absent}", which needs a server`);
   }
   if (body.length < 500) failures.push(`offline page rendered only ${body.length} characters`);
+
+  // Phase 23: plain words first, the paper's names defined — and the term is
+  // a button React drives, so it must work from file:// with nothing fetched.
+  for (const expected of ['What this report says, in plain words', 'What goes wrong', 'Who it happens to', "What the paper's own names mean"]) {
+    if (!body.includes(expected)) failures.push(`offline page missing "${expected}"`);
+  }
+  // Phase 26: the pack has no guide, so it carries what the guide teaches —
+  // every chapter's words and the band key — and no "?" pointing at a guide
+  // a file:// page cannot open.
+  for (const expected of ['How to read this report', 'It finds weak points; it is not a prediction', 'Severe', 'from 0.7']) {
+    if (!body.includes(expected)) failures.push(`offline page missing "${expected}"`);
+  }
+  if (!(await page.locator('.prt-howto .prt-bandscale svg').count())) failures.push('offline: the "How to read this report" section has no band key');
+  if (await page.locator('.prt-guidehelp, .prt-guidebanner').count()) failures.push('offline: the pack draws a link into the guide, which a file:// page cannot open');
+  if (body.includes('How do I read this?')) failures.push('offline: the pack carries the service header\'s guide link');
+  {
+    const term = page.locator('.prt-play .prt-term__name').first();
+    if (!(await term.count())) failures.push('offline: no definable term on a play card');
+    else {
+      await term.click();
+      const shown = await page.locator('.prt-play .prt-term__definition').first().isVisible();
+      if (!shown || (await term.getAttribute('aria-expanded')) !== 'true') failures.push('offline: pressing a term does not show its definition');
+    }
+  }
 
   // It must LOOK right too: GOV.UK 6 styles nothing without its shell classes,
   // and an unstyled pack is a pack nobody reads.

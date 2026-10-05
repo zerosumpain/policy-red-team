@@ -1,6 +1,7 @@
 import { useMemo, type ReactNode } from 'react';
 import type { Artefact } from '$lib/policy-analysis/contracts';
 import { evidenceShape } from '$lib/evidence-view';
+import { groundingOf } from '$lib/policy-analysis/grounding';
 import { isSupplied } from '$lib/research-view';
 import { GRADE_LABEL, GRADE_RUBRIC, evidenceReadLine, gradeOf, gradeTally } from '$lib/evidence-grade';
 import { Details, InsetText, Table, Tag } from '../govuk';
@@ -178,6 +179,10 @@ export function EvidenceCoverage({ artefacts, mix, linkTo }: {
               {/* A SOURCE THE READER NAMED says so wherever it is shown (phase 22
                   part 2) — and is graded in the next column like any other. */}
               {(() => { const own = byId.get(row.id); const source = own ? byId.get(String(own.data.sourceId ?? '')) : undefined; return isSupplied(source) ? <> <Tag colour="purple">Supplied by you</Tag></> : null; })()}
+              {/* GROUNDING, the reader's material for this policy (phase 25):
+                  named as such wherever a row leans on it, as a supplied
+                  source is above. */}
+              {groundingOf(byId.get(row.id), byId) ? <> <Tag colour="turquoise">Grounding</Tag></> : null}
             </span>,
             (() => { const own = byId.get(row.id); return own ? GRADE_LABEL[gradeOf(own, byId).grade] : '—'; })(),
             <span className="prt-evidence__dispute">{row.dispute || '—'}</span>,

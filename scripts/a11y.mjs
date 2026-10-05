@@ -92,6 +92,29 @@ function serve() {
  * and the journey rather than their sign-in forms — those are audited too, by
  * the browser walk against a real server.
  */
+/** One master-list entry, every field the pages read. */
+const registerEntry = (id, name, over = {}) => ({
+  id, name, kind: 'organisation', status: 'confirmed', partOf: null, kindOf: null, partOfPath: [], kindOfPath: [],
+  whatItIs: null, notActorReason: null, aliases: [], body: null, papers: 1,
+  analyses: [{ id: '00000000-0000-4000-8000-000000000001', title: 'Schools white paper: opportunity for every child' }],
+  capacities: { funds: 1 }, capacityPapers: { funds: 1 }, dossier: false, plays: 0, worstBand: null,
+  rollup: { partOf: { plays: 0, worstBand: null }, kindOf: { plays: 0, worstBand: null } }, proposedIn: null, ...over,
+});
+const REGISTER_STUB = {
+  entries: [
+    registerEntry('r-gov', 'Government', { papers: 2, rollup: { partOf: { plays: 3, worstBand: 'severe' }, kindOf: { plays: 0, worstBand: null } } }),
+    registerEntry('r-dfe', 'Department for Education', { partOf: 'r-gov', partOfPath: ['Government'], body: { id: 'govuk:department-for-education', name: 'Department for Education' }, papers: 2, plays: 1, worstBand: 'moderate', rollup: { partOf: { plays: 3, worstBand: 'severe' }, kindOf: { plays: 1, worstBand: 'moderate' } } }),
+    registerEntry('r-sos', 'Secretary of State for Education', { kind: 'office_or_role', status: 'proposed', partOf: 'r-dfe', partOfPath: ['Department for Education', 'Government'], plays: 2, worstBand: 'severe', rollup: { partOf: { plays: 2, worstBand: 'severe' }, kindOf: { plays: 2, worstBand: 'severe' } }, proposedIn: { id: '00000000-0000-4000-8000-000000000001', title: 'Schools white paper: opportunity for every child' } }),
+    registerEntry('r-eyp', 'Early years providers', { kind: 'sector_or_category', rollup: { partOf: { plays: 0, worstBand: null }, kindOf: { plays: 0, worstBand: null } } }),
+    registerEntry('r-cm', 'Childminders', { kind: 'sector_or_category', status: 'proposed', kindOf: 'r-eyp', kindOfPath: ['Early years providers'], whatItIs: 'People registered to look after children in their own home.' }),
+    registerEntry('r-prog', 'Shared access programme', { kind: 'not_an_actor', notActorReason: 'programme' }),
+  ],
+  partOf: { roots: ['r-gov', 'r-eyp', 'r-cm', 'r-prog'], children: { 'r-gov': ['r-dfe'], 'r-dfe': ['r-sos'] } },
+  kindOf: { roots: ['r-gov', 'r-dfe', 'r-sos', 'r-eyp', 'r-prog'], children: { 'r-eyp': ['r-cm'] } },
+  counts: { actors: 5, proposed: 2, notActors: 1, groups: 0 },
+  readOnly: false,
+};
+
 const API_STUBS = {
   '/api/admin/status': { available: true, problem: null, signedIn: true, claimable: false, tokenRequired: false },
   '/api/admin/setup': {
@@ -138,6 +161,10 @@ const API_STUBS = {
   // `stages` draws the eighteen. A stub missing either renders an empty page
   // that audits clean, which is the failure this whole stub exists to avoid.
   '/api/policy-analysis': { analyses: [], models: [], stages: [], readOnly: false },
+  // Phase 25: the grounding library's list of policies, which the submit form
+  // reads too — one policy with an item, so the audit sees the table, not an
+  // empty state.
+  '/api/policy-analysis/policies': { policies: [{ id: '00000000-0000-4000-8000-000000000025', name: 'Shared access', createdAt: '2026-10-05T10:00:00Z', items: 1, runs: 2 }] },
   // Phase 19, workstream X: the bodies × papers grid. Two bodies, two papers
   // and one clash, so the audit sees the sticky row headers, a scrolling table,
   // a dash for "not named" and the side-by-side quotes — not an empty state.
@@ -162,6 +189,52 @@ const API_STUBS = {
       b: { paper: { id: '00000000-0000-4000-8000-000000000002', title: 'Inspection reform', completedAt: '2026-09-20T00:00:00Z', sha256: 'b' }, words: 'Department for Education reports to Ofsted', quote: 'The Department will report to Ofsted on progress.', artefactId: 's3_001_edge' },
     }],
     personaOf: { 'govuk:department-for-education': '00000000-0000-4000-8000-00000000000a' },
+    readOnly: false,
+  },
+  // Phase 24: the landing page's "Bodies that turn up again", with one body
+  // seen in two papers, so the audit sees the strip and its links.
+  '/api/policy-analysis/bodies/recurring': {
+    papers: 2, repeating: 1,
+    bodies: [{
+      personaId: '00000000-0000-4000-8000-00000000000a', name: 'Department for Education', entityType: 'department', sightings: 2,
+      papers: [
+        { id: '00000000-0000-4000-8000-000000000001', title: 'Schools white paper: opportunity for every child', completedAt: '2026-09-01T00:00:00Z', worstBand: 'moderate', plays: 1, ask: 'commissions Ofsted' },
+        { id: '00000000-0000-4000-8000-000000000002', title: 'Inspection reform', completedAt: '2026-09-20T00:00:00Z', worstBand: 'severe', plays: 2, ask: null },
+      ],
+    }],
+  },
+  // Phase 24: the hub's list and its groups view.
+  '/api/policy-analysis/personas': {
+    personas: [{
+      id: '00000000-0000-4000-8000-00000000000a', name: 'Department for Education', entityType: 'department', aliases: [], summary: null, dossier: [],
+      sightings: 2, researchedAt: null, updatedAt: '2026-09-20T00:00:00Z', bodyId: 'govuk:department-for-education',
+      lastSeen: '2026-09-20T00:00:00Z', worstBand: 'severe', plays: 3, researchNotes: 0, body: { id: 'govuk:department-for-education', name: 'Department for Education' },
+    }],
+    groups: [{ name: 'Parents', papers: 2, analyses: [
+      { id: '00000000-0000-4000-8000-000000000001', title: 'Schools white paper: opportunity for every child' },
+      { id: '00000000-0000-4000-8000-000000000002', title: 'Inspection reform' },
+    ] }],
+    duplicates: [],
+    readOnly: false,
+  },
+  // Phase 24b: the master list and its review queue. Enough structure that the
+  // audit sees a tree two levels deep with a disclosure, a proposed tag, a
+  // band, an inherited roll-up and the context list — and a queue with one of
+  // each thing to review.
+  '/api/policy-analysis/register': REGISTER_STUB,
+  '/api/policy-analysis/register/review-count': { proposed: 2, joined: 1, duplicates: 1, total: 4 },
+  '/api/policy-analysis/register/proposals': {
+    proposals: REGISTER_STUB.entries.filter((e) => e.status === 'proposed').map((e) => ({
+      ...e,
+      similar: e.name === 'Childminders' ? [{ id: 'r-eyp', name: 'Early years providers', reason: 'One name contains the other, or they share words.' }] : [],
+      wordings: [{ wording: e.name, papers: 2, capacities: ['delivers'], basis: ['model'] }, { wording: `The ${e.name.toLowerCase()}`, papers: 1, capacities: ['receives'], basis: ['name'] }],
+    })),
+    joined: [{
+      id: 'r-dfe', name: 'Department for Education', status: 'confirmed', kind: 'organisation', wording: 'The Department',
+      analyses: [{ id: '00000000-0000-4000-8000-000000000001', title: 'Schools white paper: opportunity for every child' }], alias: true, at: '2026-09-20T00:00:00Z',
+    }],
+    joinedTotal: 1,
+    duplicates: [{ a: { id: 'r-eyp', name: 'Early years providers' }, b: { id: 'r-childcare', name: 'Childcare providers' }, reason: 'One name contains the other.', strong: false }],
     readOnly: false,
   },
 };

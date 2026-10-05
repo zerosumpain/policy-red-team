@@ -1,5 +1,5 @@
 /**
- * THE FOURTEEN PROBES — the SQL half of the purge receipt.
+ * THE SIXTEEN PROBES — the SQL half of the purge receipt.
  *
  * The receipt's shape, wording and file rendering are pure and live in
  * `$lib/policy-analysis/receipt`, which the dashboard imports. This half holds
@@ -24,6 +24,9 @@ const PROBES: { table: string; what: string; query: (id: string) => ReturnType<t
   { table: 'policy_passes', what: 'material attached after the report, and its extracted text', query: (id) => sql`select count(*)::int as n from policy_passes where analysis_id = ${id}::uuid` },
   // Phase 22 part 2: sources and look-ups the reader supplied at submission.
   { table: 'policy_reader_inputs', what: 'sources and look-ups you supplied with the paper', query: (id) => sql`select count(*)::int as n from policy_reader_inputs where analysis_id = ${id}::uuid` },
+  // Phase 25: the copy of each grounding item a run was given. The library it
+  // came from is the owner's and outlives the run; this copy does not.
+  { table: 'policy_run_grounding', what: 'the grounding material copied into it', query: (id) => sql`select count(*)::int as n from policy_run_grounding where analysis_id = ${id}::uuid` },
   { table: 'policy_stages', what: 'stage outputs, warnings and errors', query: (id) => sql`select count(*)::int as n from policy_stages where analysis_id = ${id}::uuid` },
   { table: 'policy_executions', what: 'execution attempts', query: (id) => sql`select count(*)::int as n from policy_executions e join policy_stages s on s.id = e.stage_id where s.analysis_id = ${id}::uuid` },
   { table: 'policy_model_calls', what: 'the model-call audit', query: (id) => sql`select count(*)::int as n from policy_model_calls c join policy_executions e on e.id = c.execution_id join policy_stages s on s.id = e.stage_id where s.analysis_id = ${id}::uuid` },
@@ -33,6 +36,9 @@ const PROBES: { table: string; what: string; query: (id: string) => ReturnType<t
   // Phase 19: the groups of people a paper named. They cascade with the paper,
   // and a name like "care leavers in Kent" is the paper's own words.
   { table: 'policy_affected_groups', what: 'the groups of people it named, kept apart from the persona library', query: (id) => sql`select count(*)::int as n from policy_affected_groups where analysis_id = ${id}::uuid` },
+  // Phase 23: which master actor each of the paper's mentions resolved to,
+  // with the paper's own wording. Cascades with the paper.
+  { table: 'policy_actor_mentions', what: 'which actors on your master list it named, in its own words', query: (id) => sql`select count(*)::int as n from policy_actor_mentions where analysis_id = ${id}::uuid` },
   { table: 'policy_share', what: 'share links minted against it', query: (id) => sql`select count(*)::int as n from policy_share where analysis_id = ${id}::uuid` },
   // The two that no cascade reaches, and that a plain DELETE left behind for two
   // months. They are the reason this census exists rather than a success message.

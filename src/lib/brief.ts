@@ -1,4 +1,5 @@
 import type { Artefact } from '$lib/policy-analysis/contracts';
+import { documentCount, documentName, sourceDocument } from '$lib/policy-analysis/document-set';
 import { keyJudgements } from '$lib/policy-analysis/judgements';
 import { isPlay } from '$lib/policy-analysis/cleared';
 import { evidenceReadLine, NOTHING_READ } from '$lib/evidence-grade';
@@ -8,6 +9,7 @@ import { stageFacts, truncations } from '$lib/policy-analysis/stage-facts';
 import { BAND_LABEL, findingsBySection, headlineSentence, recommendations, type Band } from '$lib/policy-analysis/view';
 import { provenance } from '$lib/provenance';
 import { rankFindings, withoutEcho, type Severity } from '$lib/writeup-view';
+import { plainField, plainRows, type PlainRow } from '$lib/policy-analysis/plain';
 
 /**
  * THE ONE-PAGE BRIEF — what a busy official reads in two minutes.
@@ -66,6 +68,8 @@ export type BriefPlay = {
   earlyWarning: string;
   /** What would stop it. First sentence only. */
   fix: string;
+  /** What goes wrong, and for whom, from the play's plain block (phase 23). '' on an older play. */
+  goesWrong: string;
 };
 
 export type BriefItem = {
@@ -78,7 +82,8 @@ export type BriefItem = {
   /** The judgement itself, in a sentence or two. */
   statement: string;
   /** The paper's own words, and where. Null when nothing on the chain quotes the paper. */
-  quote: { text: string; page: number | null } | null;
+  /** `document` names which document, when the assessment read several (phase 25). */
+  quote: { text: string; page: number | null; document?: string | null } | null;
   /** The part of the policy it is about. */
   about: Artefact | null;
   /** The way to beat it the judgement rests on — the sharpest, where it names several. */
@@ -98,6 +103,8 @@ export type BriefItem = {
   restsOn: Artefact | null;
   /** The decision a key judgement bears on. The full document prints it; the brief does not. */
   decision: string;
+  /** A key judgement's plain block — who it happens to, why it matters (phase 23). Empty otherwise. */
+  plain: PlainRow[];
 };
 
 export type Brief = {
@@ -154,7 +161,19 @@ function briefPlay(play: Artefact): BriefPlay {
     pattern: patternLabel(play),
     earlyWarning: clip(sentences(String(play.data.earlyWarning ?? '')), PROSE_MAX),
     fix: clip(sentences(String(play.data.counter ?? '')), PROSE_MAX),
+    goesWrong: clip(plainField(play, 'goesWrong'), PROSE_MAX),
   };
+}
+
+/**
+ * WHICH DOCUMENT A QUOTATION IS FROM, when the paper is several (phase 25);
+ * null for one document, so a single paper's brief reads as it always did.
+ */
+function documentOfQuote(sourceId: string | null, artefacts: Artefact[]): { document?: string } {
+  if (!sourceId || documentCount(artefacts) < 2) return {};
+  const byId = new Map(artefacts.filter((a) => a.kind === 'passage').map((a) => [a.id, a]));
+  const doc = sourceDocument({ sourceId } as Artefact, byId);
+  return doc ? { document: documentName(doc) } : {};
 }
 
 /** The key judgements, as brief items. */
@@ -167,7 +186,7 @@ function fromJudgements(artefacts: Artefact[]): BriefItem[] {
       artefact: j.artefact,
       title: clean(j.artefact.label),
       statement: clean(j.judgement),
-      quote: j.quote ? { text: clip(j.quote.text), page: j.quote.page } : null,
+      quote: j.quote ? { text: clip(j.quote.text), page: j.quote.page, ...documentOfQuote(j.quote.sourceId, artefacts) } : null,
       about: j.mechanism,
       play: plays[0] ? briefPlay(plays[0]) : null,
       morePlays: Math.max(0, plays.length - 1),
@@ -178,6 +197,7 @@ function fromJudgements(artefacts: Artefact[]): BriefItem[] {
       severity: null,
       restsOn: j.assumption,
       decision: clean(j.decision),
+      plain: plainRows(j.artefact),
     };
   });
 }
@@ -236,7 +256,7 @@ function fromFindings(artefacts: Artefact[]): BriefItem[] {
       artefact: finding,
       title: clean(view.title),
       statement: sentences(view.statement, 1),
-      quote: about && clean(about.sourceQuote) ? { text: clip(String(about.sourceQuote)), page: about.page } : null,
+      quote: about && clean(about.sourceQuote) ? { text: clip(String(about.sourceQuote)), page: about.page, ...documentOfQuote(about.sourceId, artefacts) } : null,
       about,
       play: play ? briefPlay(play) : null,
       // A play reached through a part of the policy is not one the finding
@@ -249,6 +269,7 @@ function fromFindings(artefacts: Artefact[]): BriefItem[] {
       severity: view.severity,
       restsOn: null,
       decision: '',
+      plain: [],
     };
   });
 }
@@ -365,3 +386,27 @@ export function briefOf(artefacts: Artefact[], stages: StageWarnings[]): Brief {
 
 /** The band a brief item wears, where it has one. */
 export const briefBand = (item: BriefItem): string | null => (item.play ? BAND_LABEL[item.play.band] : null);
+
+/**
+ * WHAT THIS REPORT SAYS, IN PLAIN WORDS — the Summary's first card (phase 23).
+ *
+ * Three lines at most, each what goes wrong and for whom, from a play's plain
+ * block: first the plays the brief leads with, in the brief's order, then the
+ * worst of the rest. One per play and never the same sentence twice. Empty on
+ * an assessment written before plain blocks — both live runs — and the card
+ * is then not drawn, rather than drawn from words written for someone else.
+ */
+export const PLAIN_LINES = 3;
+export function plainLines(brief: Brief, worst: Artefact[]): { text: string; artefact: Artefact }[] {
+  const out: { text: string; artefact: Artefact }[] = [];
+  const seen = new Set<string>();
+  for (const play of [...brief.items.map((item) => item.play?.artefact), ...worst]) {
+    if (!play || seen.has(play.id)) continue;
+    seen.add(play.id);
+    const text = clean(plainField(play, 'goesWrong'));
+    if (!text || out.some((line) => line.text === text)) continue;
+    out.push({ text, artefact: play });
+    if (out.length >= PLAIN_LINES) break;
+  }
+  return out;
+}

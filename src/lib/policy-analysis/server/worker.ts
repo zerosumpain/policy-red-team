@@ -1,16 +1,19 @@
 import { and, eq, gt, gte, lt, sql } from 'drizzle-orm';
 import { db, type DbExecutor } from '$lib/db';
-import { policyAnalyses, policyDocuments, policyExecutions, policyModelCalls, policyPasses, policyStages, workflowRuns } from '$lib/db/schema';
+import { policyAnalyses, policyDocuments, policyExecutions, policyGrounding, policyModelCalls, policyPasses, policyRunGrounding, policyStages, workflowRuns } from '$lib/db/schema';
 import { isThinkingLevel } from '$lib/models/thinking';
 import { boundWarnings } from '../budget';
 import { ASSURANCE_CATEGORIES, ASSURANCE_STAGE, DEEP_CHAINS, isPassStage, MATERIAL_ROLE_LABELS, MATERIAL_ROLE_NOTES, PASS_BASE, passOf, passStep, PERSONA_STAGE, THEORY_STAGE, type Concurrency, type Extraction, type PassKind } from '../contracts';
 import { executeStage, graphUncovered } from '../pipeline';
 import { PolicyError } from '../validation';
 import { ingest } from './ingest';
+import { ingestDocumentSet } from './document-set';
+import { ingestGrounding, runGroundingFor } from './grounding';
 import { loadArtefacts, neighbourSummaries, persistArtefacts, queueStage, readerInputsFor, sealOf } from './store';
 import { resolveReaderInputs } from './reader-brought';
 import { sealRow, unsealRow } from './seal';
 import { applyPersonaLinks, priorsFor } from './personas';
+import { applyRegisterPlan, loadRegisterView, stampMasterIds } from './actor-register';
 import { actorBodies, evidenceForActors } from './body-evidence';
 import { documentShingles } from '../query-guard';
 import { chosenEngine } from '$lib/server/search';
@@ -70,7 +73,8 @@ export function stageBudgetMs(ordinal: number, all: { kind: string; id: string }
   const units = ordinal === 1 ? count('passage')
     // The graph now makes one call per resolved body, exactly as the profiles do.
     : ordinal === 3 || ordinal === 4 ? Math.max(1, count('actor'))
-    : ordinal === 6 ? count('research_question') + 1
+    // One call per grounding item as well (phase 25), as per research question.
+    : ordinal === 6 ? count('research_question') + new Set(all.filter((a) => a.kind === 'grounding_passage').map((a) => a.id.split('_')[0])).size + 1
     : ordinal === 7 || ordinal === 9 ? 8
     : ordinal === 10 ? Math.max(1, count('profile'))
     // The persona library makes one merge call per profiled actor, exactly as the
@@ -186,7 +190,7 @@ export async function executePolicyRun(claimed: { id: string; input: Record<stri
       .innerJoin(policyExecutions, eq(policyExecutions.id, policyModelCalls.executionId))
       .innerJoin(policyStages, eq(policyStages.id, policyExecutions.stageId))
       .where(and(eq(policyStages.analysisId, analysisId), gte(policyStages.ordinal, block.floor), lt(policyStages.ordinal, block.ceiling)));
-    if (made >= MODEL_CALL_CEILING) throw new PolicyError('budget', `This ${isPassStage(started.stage.ordinal) ? 'addendum' : 'assessment'} has made ${made.toLocaleString()} model calls, past the ${MODEL_CALL_CEILING.toLocaleString()} this implementation allows for one document. Completed stages are retained; submit a shorter document or split it.`);
+    if (made >= MODEL_CALL_CEILING) throw new PolicyError('budget', `This ${isPassStage(started.stage.ordinal) ? 'addendum' : 'assessment'} has made ${made.toLocaleString()} model calls, past the ${MODEL_CALL_CEILING.toLocaleString()} this implementation allows for one assessment. Completed stages are retained; submit fewer or shorter documents, or split them.`);
     const previousStages = (await db.select({ ordinal: policyStages.ordinal, warnings: policyStages.warnings, output: policyStages.output }).from(policyStages).where(eq(policyStages.analysisId, analysisId)))
       .map((r) => unsealRow(seal, 'stage', r));
     // How much of the knowledge graph triage threw away. The deterministic checks
@@ -216,12 +220,19 @@ export async function executePolicyRun(claimed: { id: string; input: Record<stri
     // difference: `policy_artefacts` is keyed on `(analysis_id, id)`, and the
     // policy's `passage_0001` is already taken.
     const ingestsMaterial = passKind === 'addendum' && passStep(started.stage.ordinal) === 0;
-    const extracted = ingestsDocument
-      ? await (async () => {
-          const [row] = await db.select({ content: policyDocuments.content, filename: policyDocuments.filename, mimeType: policyDocuments.mimeType }).from(policyDocuments).where(eq(policyDocuments.analysisId, analysisId));
-          const document = unsealRow(seal, 'document', row);
-          return ingest(Buffer.from(document.content, 'base64'), document.filename, document.mimeType);
-        })()
+    // PHASE 25: the whole SET of documents, then the grounding the run was
+    // given — the second under `g<n>_` as `grounding_passage`, never `passage`.
+    // Grounding is read here, at stage 0, so it is in the inventory before the
+    // research PLANNER runs at stage 5 (phase 22's reader sources arrived after
+    // it). Fetching a page follows the reader-source rule exactly.
+    const set = ingestsDocument ? await ingestDocumentSet(analysisId, seal) : null;
+    const groundingRows = ingestsDocument ? await runGroundingFor(analysisId, seal) : [];
+    const mayFetchGrounding = !analysis.sealed && chosenEngine() !== 'none';
+    const grounded = ingestsDocument && groundingRows.length
+      ? await ingestGrounding(groundingRows, { mayFetch: mayFetchGrounding, why: analysis.sealed ? 'this assessment is sealed, so no page is fetched for it' : 'this install is set not to reach the open web, so no page is fetched', signal })
+      : null;
+    const extracted = set
+      ? { artefacts: [...set.artefacts, ...(grounded?.artefacts ?? [])], warnings: [...set.warnings, ...(grounded?.warnings ?? [])], text: '', metadata: null }
       : ingestsMaterial
         ? await ingest(Buffer.from(String(pass!.content), 'base64'), String(pass!.filename), String(pass!.mimeType), `m${passNumber}_`)
         : null;
@@ -317,11 +328,39 @@ export async function executePolicyRun(claimed: { id: string; input: Record<stri
           lookUp: pass.lookUp ? String(pass.lookUp) : null,
         }
       : null;
-    const output = extracted ?? await executeStage({ stage: started.stage.ordinal, title: analysis.title, jurisdiction: analysis.jurisdiction, policyArea: analysis.policyArea, context: analysis.context, depth: analysis.depth as 'standard' | 'deep', sealed: sealedRun, searches: searches && !inPass, graphLoss, priorWarnings: boundWarnings(previousStages.flatMap((s) => s.warnings)), artefacts: all }, { model: modelCaller(started.execution.id, claimed.id, signal, all, { model: analysis.model, thinkingLevel: isThinkingLevel(analysis.thinkingLevel) ? analysis.thinkingLevel : null, sealed: sealedRun, passKind, extraction: analysis.extraction as Extraction | null }), research: searches && !inPass ? researchWithPages : noResearch, signal, concurrency: analysis.concurrency as Concurrency | null, passKind, material, reader, extraction: analysis.extraction as Extraction | null, sharedContextFirst: analysis.sharedContextFirst, onProgress: (phase) => beat?.(`${stagePhase} · ${phase}`), neighbours: sealedRun || inPass ? async () => [] : () => neighbourSummaries(analysis.owner, analysisId), personas: sealedRun || inPass ? async () => [] : (actors) => priorsFor(analysis.owner, actors, analysisId), bodyEvidence, registerBodies });
+    /*
+     * THE MASTER LIST OF ACTORS (phase 23), read for stage 2. A SEALED RUN READS
+     * IT TOO — matching writes nothing — but what it proposes never goes back:
+     * see the commit below. A pass resolves no actors of its own.
+     */
+    const register = inPass || started.stage.ordinal !== 2 ? undefined : () => loadRegisterView(analysis.owner);
+    const output = extracted ?? await executeStage({ stage: started.stage.ordinal, title: analysis.title, jurisdiction: analysis.jurisdiction, policyArea: analysis.policyArea, context: analysis.context, depth: analysis.depth as 'standard' | 'deep', sealed: sealedRun, searches: searches && !inPass, graphLoss, priorWarnings: boundWarnings(previousStages.flatMap((s) => s.warnings)), artefacts: all }, { model: modelCaller(started.execution.id, claimed.id, signal, all, { model: analysis.model, thinkingLevel: isThinkingLevel(analysis.thinkingLevel) ? analysis.thinkingLevel : null, sealed: sealedRun, passKind, extraction: analysis.extraction as Extraction | null }), research: searches && !inPass ? researchWithPages : noResearch, signal, concurrency: analysis.concurrency as Concurrency | null, passKind, material, reader, extraction: analysis.extraction as Extraction | null, sharedContextFirst: analysis.sharedContextFirst, onProgress: (phase) => beat?.(`${stagePhase} · ${phase}`), neighbours: sealedRun || inPass ? async () => [] : () => neighbourSummaries(analysis.owner, analysisId), personas: sealedRun || inPass ? async () => [] : (actors) => priorsFor(analysis.owner, actors, analysisId), bodyEvidence, registerBodies, register });
     signal.throwIfAborted();
     await db.transaction(async (tx) => {
       const locked = await lockLease(tx, analysisId, stageId, claimed.id, workerId);
       if (!locked) return;
+      /*
+       * WHAT STAGE 2 PROPOSED GOES ON THE MASTER LIST HERE, in the stage's own
+       * commit and BEFORE its artefacts are stored, so each new actor's row id
+       * is on the artefact a later stage reads. In a savepoint: a list that
+       * cannot be written must not cost the run its actors, which are complete
+       * without the ids. Stamped only once the savepoint has committed, so no
+       * artefact names a row that was rolled back.
+       *
+       * NEVER FROM A SEALED RUN. Its proposals, its mentions and the paper's
+       * wording as aliases would all outlive the run and survive its purge. Its
+       * actors stay run-local: matched to what was already on the list, and
+       * otherwise carrying no id at all.
+       */
+      if (started.stage.ordinal === 2 && !sealedRun && 'register' in output && output.register) {
+        const plan = output.register;
+        try {
+          const written = await tx.transaction((inner) => applyRegisterPlan(inner, analysis.owner, analysisId, plan));
+          stampMasterIds(output.artefacts, written.ids);
+        } catch {
+          output.warnings.push('This paper\u2019s actors could not be written to the master list of actors. The assessment is unaffected; the list simply does not have this paper.');
+        }
+      }
       await persistArtefacts(tx, analysisId, started.stage.ordinal, output.artefacts, seal);
       // The persona library is written here, not by the pipeline: a rolled-back
       // stage must leave no rows behind, and a re-run must replace its own
@@ -343,14 +382,28 @@ export async function executePolicyRun(claimed: { id: string; input: Record<stri
           output.warnings.push('This assessment could not be written into the persona library. Its own findings are unaffected; the library simply does not have this run.');
         }
       }
-      if (extracted && ingestsDocument) await tx.update(policyDocuments).set(sealRow(seal, 'document', { extractedText: extracted.text, metadata: extracted.metadata })).where(eq(policyDocuments.analysisId, analysisId));
+      if (set) for (const document of set.documents) await tx.update(policyDocuments).set(sealRow(seal, 'document', { extractedText: document.text, metadata: document.metadata })).where(eq(policyDocuments.id, document.id));
+      if (grounded) {
+        for (const update of grounded.updates) {
+          await tx.update(policyRunGrounding).set(sealRow(seal, 'grounding', { extractedText: update.extractedText, error: update.error })).where(eq(policyRunGrounding.id, update.id));
+          // A PAGE FETCHED FOR AN UNSEALED RUN GOES BACK TO THE LIBRARY, so the
+          // next run of the policy reads it rather than fetching it again. A
+          // sealed run's rows carry no library id, so it can never get here.
+          if (update.fetched && update.libraryId && !sealedRun) await tx.update(policyGrounding).set({ extractedText: update.extractedText, fetchedAt: new Date(), error: null }).where(eq(policyGrounding.id, update.libraryId));
+        }
+      }
       if (extracted && ingestsMaterial) await tx.update(policyPasses).set(sealRow(seal, 'pass', { extractedText: extracted.text, metadata: extracted.metadata })).where(and(eq(policyPasses.analysisId, analysisId), eq(policyPasses.pass, passNumber)));
       if (inPass) await tx.update(policyPasses).set({ status: 'running', error: null }).where(and(eq(policyPasses.analysisId, analysisId), eq(policyPasses.pass, passNumber)));
       await tx.update(policyExecutions).set({ status: 'completed', completedAt: new Date() }).where(eq(policyExecutions.id, started.execution.id));
       // `output` is identifiers the pipeline minted and stays in the clear — the
       // structural checks read it, and it holds no words from the paper. The
       // WARNINGS do: they quote artefact labels.
-      await tx.update(policyStages).set({ status: 'completed', completedAt: new Date(), ...sealRow(seal, 'stage', { warnings: output.warnings }), output: { artefactIds: output.artefacts.map((a) => a.id), contractVersion: 1, rejected: 'rejected' in output ? output.rejected : 0 } }).where(eq(policyStages.id, stageId));
+      // `notes` beside `warnings`, never inside them (phase 23): the model's
+      // remarks about the paper are read by the report and NOT carried into a
+      // later stage's prompt, which reads `warnings` alone (`previousStages`
+      // above). `contractVersion: 2` says the split was made here, so a reader
+      // never has to guess which of an older stage's warnings were the model's.
+      await tx.update(policyStages).set({ status: 'completed', completedAt: new Date(), ...sealRow(seal, 'stage', { warnings: output.warnings, notes: output.notes ?? [] }), output: { artefactIds: output.artefacts.map((a) => a.id), contractVersion: 2, rejected: 'rejected' in output ? output.rejected : 0 } }).where(eq(policyStages.id, stageId));
       await tx.update(workflowRuns).set({ status: 'completed', completedAt: new Date() }).where(eq(workflowRuns.id, claimed.id));
       const [next] = await tx.select().from(policyStages).where(and(eq(policyStages.analysisId, analysisId), eq(policyStages.ordinal, started.stage.ordinal + 1)));
       if (next) {
@@ -363,7 +416,9 @@ export async function executePolicyRun(claimed: { id: string; input: Record<stri
         // here, and the analysis is complete when every stage it holds is.
         const stages = await tx.select().from(policyStages).where(eq(policyStages.analysisId, analysisId));
         if (stages.some((s) => s.status !== 'completed')) throw new PolicyError('incomplete', 'Cannot complete an analysis with unfinished stages.');
-        const gaps = stages.some((s) => s.warnings.length > 0);
+        // A model's note about the paper is a gap in the assessment as much as
+        // a refused output is, so it still decides `completed_with_gaps`.
+        const gaps = stages.some((s) => s.warnings.length > 0 || s.notes.length > 0);
         if (inPass) await tx.update(policyPasses).set({ status: 'completed', completedAt: new Date(), error: null }).where(and(eq(policyPasses.analysisId, analysisId), eq(policyPasses.pass, passNumber)));
         await tx.update(policyAnalyses).set({ status: gaps ? 'completed_with_gaps' : 'completed', completedAt: new Date(), updatedAt: new Date() }).where(eq(policyAnalyses.id, analysisId));
       }
@@ -378,7 +433,7 @@ export async function executePolicyRun(claimed: { id: string; input: Record<stri
       // A deadline is deterministic: the same model on the same page will run out
       // of time again. Retrying it twice more cost the first white-paper run two
       // hours and told the reader nothing new.
-      const retry = attempts < 3 && !(err instanceof PolicyError && ['budget', 'extraction', 'timeout'].includes(err.code));
+      const retry = attempts < 3 && !(err instanceof PolicyError && ['budget', 'extraction', 'timeout', 'quota'].includes(err.code));
       // A FAILURE MESSAGE CAN QUOTE THE PAPER — a triage rejection names the
       // artefact labels it discarded — so on a sealed run it is encrypted into the
       // three policy tables and NEVER written to `workflow_runs`. That table is

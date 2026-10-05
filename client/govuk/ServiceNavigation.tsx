@@ -37,12 +37,27 @@ export type ServiceNavItem = {
 /** The framework's own breakpoint, as `getBreakpoint('tablet')` reads it. */
 const TABLET = 641;
 
-export function ServiceNavigation({ items, label = 'Menu', wide, render }: {
+export function ServiceNavigation({ items, label, wide, render, sections, toggle = 'Menu' }: {
   items: ServiceNavItem[];
   /** Matches `Template`'s own `wide`, or the bar's contents stop short of the page's. */
   wide?: boolean;
   /** The `<nav>`'s name, which defaults to the button's text as the template's does. */
   label?: string;
+  /**
+   * THE SECTIONS OF ONE THING, drawn INSIDE the page rather than across the top
+   * of it (phase 24). The service's own navigation is on every page now, under
+   * the header, full bleed — the place GOV.UK gives it — so an assessment's six
+   * views and the bodies hub's views cannot also be a full-bleed bar there: two
+   * identical bars stacked is two "you are here" claims a reader has to tell
+   * apart by position. This is the same markup and the same behaviour, inside
+   * the width container and under the page's own title, with no band of colour
+   * — the secondary-navigation pattern (MOJ's sub navigation, HMRC's account
+   * menu) built from the framework's own component rather than a third
+   * vocabulary.
+   */
+  sections?: boolean;
+  /** The Menu button's words. Two buttons both reading "Menu" at 320px is one too many. */
+  toggle?: string;
   render?: (props: { href: string; className: string; current?: 'page' | 'true'; children: ReactNode }) => ReactNode;
 }) {
   const listId = useId();
@@ -66,45 +81,49 @@ export function ServiceNavigation({ items, label = 'Menu', wide, render }: {
     <a className={className} href={href} aria-current={current}>{children}</a>
   ));
 
+  const bar = (
+    <div className="govuk-service-navigation__container">
+      <nav aria-label={label ?? toggle} className="govuk-service-navigation__wrapper">
+        <button
+          type="button"
+          className="govuk-service-navigation__toggle govuk-js-service-navigation-toggle"
+          aria-controls={listId}
+          {...(narrow
+            ? { 'aria-expanded': open }
+            : { hidden: true, 'aria-hidden': true })}
+          onClick={() => setOpen((was) => !was)}
+        >
+          {toggle}
+        </button>
+        <ul className="govuk-service-navigation__list" id={listId} hidden={narrow === true && !open}>
+          {items.map((item) => {
+            const marked = item.current || item.active;
+            return (
+              <li
+                key={item.href}
+                className={`govuk-service-navigation__item${marked ? ' govuk-service-navigation__item--active' : ''}`}
+                onClick={() => setOpen(false)}
+              >
+                {anchor({
+                  href: item.href,
+                  className: 'govuk-service-navigation__link',
+                  current: item.current ? 'page' : item.active ? 'true' : undefined,
+                  children: marked
+                    ? <strong className="govuk-service-navigation__active-fallback">{item.text}</strong>
+                    : item.text,
+                })}
+              </li>
+            );
+          })}
+        </ul>
+      </nav>
+    </div>
+  );
+  if (sections) return <div className="govuk-service-navigation prt-subnav">{bar}</div>;
   return (
     <div className="govuk-service-navigation">
       <div className={`govuk-width-container${wide ? ' govuk-width-container--wide' : ''}`}>
-        <div className="govuk-service-navigation__container">
-          <nav aria-label={label} className="govuk-service-navigation__wrapper">
-            <button
-              type="button"
-              className="govuk-service-navigation__toggle govuk-js-service-navigation-toggle"
-              aria-controls={listId}
-              {...(narrow
-                ? { 'aria-expanded': open }
-                : { hidden: true, 'aria-hidden': true })}
-              onClick={() => setOpen((was) => !was)}
-            >
-              Menu
-            </button>
-            <ul className="govuk-service-navigation__list" id={listId} hidden={narrow === true && !open}>
-              {items.map((item) => {
-                const marked = item.current || item.active;
-                return (
-                  <li
-                    key={item.href}
-                    className={`govuk-service-navigation__item${marked ? ' govuk-service-navigation__item--active' : ''}`}
-                    onClick={() => setOpen(false)}
-                  >
-                    {anchor({
-                      href: item.href,
-                      className: 'govuk-service-navigation__link',
-                      current: item.current ? 'page' : item.active ? 'true' : undefined,
-                      children: marked
-                        ? <strong className="govuk-service-navigation__active-fallback">{item.text}</strong>
-                        : item.text,
-                    })}
-                  </li>
-                );
-              })}
-            </ul>
-          </nav>
-        </div>
+        {bar}
       </div>
     </div>
   );

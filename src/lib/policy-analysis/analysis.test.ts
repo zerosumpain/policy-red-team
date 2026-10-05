@@ -203,15 +203,16 @@ describe('the theory of change is one programme model and deep chains where the 
 });
 
 describe('the assured report leads with key judgements', () => {
-  const withhold = (drop: (a: Artefact) => boolean, rounds = Infinity) => {
-    let calls = 0;
+  // `firstAskOnly`: withhold from the report's own parts, not from the top-up
+  // (phase 27: the report is four calls, so "the first call" no longer is one).
+  const withhold = (drop: (a: Artefact) => boolean, firstAskOnly = false) => {
     const keys: string[] = [];
     const gaps: unknown[] = [];
     const model = async (...args: Parameters<typeof fixtureModel>) => {
       keys.push(args[1]);
       gaps.push((args[2] as { coverageGap?: unknown }).coverageGap);
       const out = fixtureModel(...args);
-      return calls++ < rounds ? { ...out, artefacts: out.artefacts.filter((a) => !drop(a)) } : out;
+      return firstAskOnly && args[1] === 'topup' ? out : { ...out, artefacts: out.artefacts.filter((a) => !drop(a)) };
     };
     return { model, keys, gaps };
   };
@@ -232,11 +233,13 @@ describe('the assured report leads with key judgements', () => {
     const all = await inventory();
     // The top-up here ignores the instruction and restates the whole report —
     // the fixture always does — so only the key judgement must be taken from it.
-    const { model, keys, gaps } = withhold((a) => a.kind === 'key_judgement', 1);
+    const { model, keys, gaps } = withhold((a) => a.kind === 'key_judgement', true);
     const result = await executeStage(base(ASSURED_SYNTHESIS_STAGE, all), { model, research, signal, neighbours: none, personas: none });
-    expect(keys).toEqual(['main', 'topup']);
-    expect(gaps[1]).toEqual(['key_judgements']);
-    expect(result.artefacts.filter((a) => a.kind === 'key_judgement')).toHaveLength(1);
+    expect(keys).toEqual(['findings_a', 'findings_b', 'responses', 'close', 'topup']);
+    expect(gaps[4]).toEqual(['key_judgements']);
+    // Three: the fixture red-teams three bodies since phase 23 (the master list
+    // of actors), so it has three plays to write a judgement about.
+    expect(result.artefacts.filter((a) => a.kind === 'key_judgement')).toHaveLength(3);
     expect(result.artefacts.filter((a) => a.kind === 'review_summary')).toHaveLength(1);
     expect(result.warnings.join(' ')).toContain('already holds');
   });
@@ -249,8 +252,8 @@ describe('the assured report leads with key judgements', () => {
     const all = await inventory();
     const { model, keys } = withhold((a) => a.kind === 'key_judgement');
     const result = await executeStage(base(ASSURED_SYNTHESIS_STAGE, all), { model, research, signal, neighbours: none, personas: none });
-    // One ask, one top-up — not a loop.
-    expect(keys).toHaveLength(2);
+    // One ask (in its four parts), one top-up — not a loop.
+    expect(keys).toHaveLength(5);
     expect(result.artefacts.filter((a) => a.kind === 'key_judgement')).toHaveLength(0);
     expect(result.artefacts.filter((a) => a.kind === 'review_summary')).toHaveLength(1);
     const facts = stageFacts(result.warnings);
@@ -276,14 +279,15 @@ describe('the assured report leads with key judgements', () => {
       return fixtureModel(...args);
     };
     const result = await executeStage(base(ASSURED_SYNTHESIS_STAGE, [...all, ...padding]), { model, research, signal, neighbours: none, personas: none });
-    const main = new Set(sent.find((s) => s.key === 'main')!.artefacts.map((a) => a.id));
+    // Every part is handed the same fitted context; the first stands for all.
+    const main = new Set(sent.find((s) => s.key === 'findings_a')!.artefacts.map((a) => a.id));
     // The context really was cut: most of the padding did not fit.
     expect(padding.filter((a) => main.has(a.id)).length).toBeLessThan(padding.length);
     const chosen = deepChainMechanisms(all).selected;
     expect(chosen.length).toBeGreaterThan(0);
     for (const mechanism of chosen) expect(main.has(mechanism.id)).toBe(true);
-    // And so the report leads with one.
-    expect(result.artefacts.filter((a) => a.kind === 'key_judgement')).toHaveLength(1);
+    // And so the report leads with them — one per play, three since phase 23.
+    expect(result.artefacts.filter((a) => a.kind === 'key_judgement')).toHaveLength(3);
   });
 
   it('reconciles a surplus — every corrective round restating them, and more than five — rather than failing', async () => {
@@ -306,7 +310,8 @@ describe('the assured report leads with key judgements', () => {
     // The last of rank 1 is the revised one.
     expect(kept.find((a) => a.data.rank === 1)!.statement).toBe('The restated judgement.');
     const discarded = stageFacts(result.warnings).find((f) => f.kind === 'discarded')!;
-    expect(discarded.detail.join(' ')).toContain('3 key judgements were discarded');
+    // Ten arrived — the fixture's three, six more and a restated first — and five stay.
+    expect(discarded.detail.join(' ')).toContain('5 key judgements were discarded');
   });
 
   it('tells the model what a key judgement is, in plain words', () => {

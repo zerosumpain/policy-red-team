@@ -32,6 +32,7 @@
  */
 
 import { parseAffected, type Named } from '$lib/refused';
+import { splitNotes } from '$lib/policy-analysis/notes';
 
 /** One discarded group: the count, the reason, and the ids it names. */
 export type Refusal = { count: number; reason: string; affected: string };
@@ -398,3 +399,44 @@ export function discards(stages: StageWarnings[]): Discards {
  * changes.
  */
 export { truncations, type Truncation } from '$lib/policy-analysis/stage-facts';
+
+/**
+ * THE RUN'S LIMITS AND THE MODEL'S NOTES, PARTED (phase 23).
+ *
+ * `stage.warnings` holds everything a stage noted; `stage.notes` the model's
+ * remarks about the paper inside it. "What it could not establish" draws the
+ * two as two lists — what the RUN could not do, and what the PAPER does not
+ * say — and every count on the page reads one of these, never the raw list,
+ * so a heading and the rows under it cannot disagree. A stage with no `notes`
+ * (an older pack, a sealed older run) parts into all limits, which is exactly
+ * how it read before.
+ */
+export type NotedStageRow = StageWarnings & { ordinal: number; notes?: string[] };
+
+export function partLimits<T extends NotedStageRow>(stages: T[]): { limits: (T & { warnings: string[] })[]; notes: { name: string; ordinal: number; notes: string[] }[] } {
+  const limits: (T & { warnings: string[] })[] = [];
+  const notes: { name: string; ordinal: number; notes: string[] }[] = [];
+  for (const stage of stages) {
+    const parted = splitNotes(stage);
+    limits.push({ ...stage, warnings: parted.limits });
+    if (parted.notes.length) notes.push({ name: stage.name, ordinal: stage.ordinal, notes: parted.notes });
+  }
+  return { limits, notes };
+}
+
+/** One distinct note, and the steps that wrote it — a fan-out repeats itself. */
+export type NoteRow = { text: string; stages: string[] };
+
+export function noteRows(stages: { name: string; notes: string[] }[]): NoteRow[] {
+  const rows = new Map<string, NoteRow>();
+  for (const stage of stages) {
+    for (const raw of stage.notes) {
+      const text = raw.trim();
+      if (!text) continue;
+      const row = rows.get(text) ?? { text, stages: [] };
+      if (!row.stages.includes(stage.name)) row.stages.push(stage.name);
+      rows.set(text, row);
+    }
+  }
+  return [...rows.values()];
+}

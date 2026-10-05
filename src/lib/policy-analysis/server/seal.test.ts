@@ -135,10 +135,18 @@ const CLEAR: Record<string, string[]> = {
     'owner',        // scopes every query in the feature
     'depth', 'model', 'thinking_level', 'status', // execution settings and lifecycle, not the paper
     'extraction',   // 'prose' or 'indexed' — a fixed vocabulary naming how the inventory was asked for, never the paper's words
+    'document_set_hash', 'paper_key', // digests of digests: the run's own identity, as `sha256` is (phase 25)
   ],
   policy_documents: [
     'mime_type',    // decides the extractor before any key is read
     'sha256',       // the run's own integrity check; the shared offline pack already withholds it
+    'role',         // 'main' or 'part' — a fixed vocabulary, not the reader's words (phase 25)
+    'id_prefix',    // the namespace this pipeline minted for its passages
+  ],
+  policy_run_grounding: [
+    'role',         // the vocabulary the form offers, not the reader's words (phase 25)
+    'mime_type',    // decides the extractor before any key is read
+    'sha256',       // the item's own integrity check, exactly as a document's is
   ],
   policy_passes: [
     'kind',         // 'addendum' or 'restatement' — which stages the block runs
@@ -172,6 +180,7 @@ const TABLE_FOR: Record<keyof typeof SEALED_FIELDS, string> = {
   execution: 'policy_executions',
   artefact: 'policy_artefacts',
   readerInput: 'policy_reader_inputs',
+  grounding: 'policy_run_grounding',
 };
 
 /** A table's column declarations, without its indexes — the block ends at `}, (t) => [`. */

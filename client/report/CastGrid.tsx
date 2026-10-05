@@ -6,6 +6,7 @@ import { BAND_LABEL, type Band } from '$lib/policy-analysis/view';
 import { Details, Table } from '../govuk';
 import { Metrics } from './Metrics';
 import { castCoverage, isSilent, SILENT_TEXT } from './cast';
+import { BodyPageLink } from './body-pages';
 
 /**
  * WHAT MOVES EACH BODY — and the questions the paper does not answer about it.
@@ -98,7 +99,7 @@ export function CastGrid({ board, personas, linkTo }: {
           {/* The row's own ranking, kept on the row: this grid replaces nothing,
               and a reader arriving at it from the body table above needs to see
               that the order is the same one. */}
-          <span className="prt-cast__name">{link(row, actorById, linkTo)}</span>
+          <span className="prt-cast__name">{link(row, actorById, linkTo)}<BodyPageLink actorId={row.id} /></span>
           <span className="prt-cast__rank">
             {row.band ? <span className={`prt-band prt-band--${row.band}`}>{BAND_LABEL[row.band as Band]}</span> : null}
             <span className="prt-denom">

@@ -1,11 +1,13 @@
 import { Fragment, useEffect, useState } from 'react';
 import { Link } from 'react-router';
-import { api, type AnalysisRow } from '../api';
+import { api, type AnalysisRow, type RecurringBodies } from '../api';
 import { Details, NotificationBanner, Table, Tag, type TagColour } from '../govuk';
 import type { OverviewCard } from '$lib/overview';
 import { MOVES } from '../moves';
 import { isFinished, spent, statusLabel, statusColour } from '../status';
 import { usePageTitle } from '../layout/Template';
+import { bodyPath, HUB, seenIn } from '../places';
+import { GuideBanner } from '../guide/GuideBanner';
 
 /**
  * Everything assessed so far.
@@ -29,6 +31,8 @@ export function Home() {
   const [stages, setStages] = useState<readonly string[]>([]);
   const [readOnly, setReadOnly] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [recurring, setRecurring] = useState<RecurringBodies | null>(null);
+  const [recurringError, setRecurringError] = useState<string | null>(null);
   // No page name: the landing page IS the service, and "Policy Red Team —
   // Policy Red Team" is what a title built by rote looks like.
   usePageTitle();
@@ -37,6 +41,9 @@ export function Home() {
     api.landing()
       .then((data) => { setRows(data.analyses); setStages(data.stages); setReadOnly(data.readOnly); })
       .catch((err: Error) => setError(err.message));
+    // Its own request, so the assessments are on screen before the graphs
+    // the panel reads have been counted.
+    api.recurringBodies().then(setRecurring).catch((err: Error) => setRecurringError(err.message));
   }, []);
 
   return (
@@ -51,6 +58,10 @@ export function Home() {
           It is not an assurance review. It will not tell you a policy is fine — a clean report
           means it found nothing, which is not the same thing.
         </p>
+        {/* THE GUIDE, OFFERED ONCE (phase 26): a banner a reader can hide for
+            good, never an overlay that takes the page over. After the two
+            sentences that say what this is, before the first thing to do. */}
+        <GuideBanner />
         {/* Read-only: say it once, plainly, and do not render a button that
             would 403. A disabled control the reader cannot explain is worse than
             no control at all. */}
@@ -112,12 +123,27 @@ export function Home() {
         // A FINISHED run leads where there is one; a failed run's partial
         // report only when nothing has finished.
         const latest = rows?.find((row) => row.summary && isFinished(row.status)) ?? rows?.find((row) => row.summary);
-        return latest?.summary ? (
-          <div className="govuk-grid-column-full govuk-!-margin-top-6">
-            <h2 className="govuk-heading-l">Latest assessment</h2>
-            <Feature row={latest} card={latest.summary} />
-          </div>
-        ) : null;
+        /*
+          BESIDE IT, FROM DESKTOP: THE BODIES THAT TURN UP AGAIN (phase 24).
+          The one thing a single assessment cannot say is which bodies keep
+          coming back across papers, and it was reachable only from a footer
+          link. Two thirds and one third, so both are on the first screen; a
+          column each below desktop, the assessment first.
+        */
+        return (
+          <>
+            {latest?.summary ? (
+              <div className="govuk-grid-column-two-thirds-from-desktop govuk-!-margin-top-6">
+                <h2 className="govuk-heading-l">Latest assessment</h2>
+                <Feature row={latest} card={latest.summary} />
+              </div>
+            ) : null}
+            <div className={`${latest?.summary ? 'govuk-grid-column-one-third-from-desktop' : 'govuk-grid-column-full'} govuk-!-margin-top-6`}>
+              <h2 className="govuk-heading-l">Bodies that turn up again</h2>
+              <Recurring data={recurring} error={recurringError} />
+            </div>
+          </>
+        );
       })()}
 
       <div className="govuk-grid-column-full govuk-!-margin-top-6">
@@ -188,7 +214,10 @@ function Assessments({ rows }: { rows: AnalysisRow[] }) {
     day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit',
   });
   const table = (list: AnalysisRow[]) => (
-    <Table className="prt-table prt-table--zebra" firstCellIsHeader
+    /* `scroll`: five columns of real titles pushed a 320px landing page 207px
+       sideways (measured on the live list, phase 24). The table scrolls in
+       its own box instead, as every other wide table here does. */
+    <Table className="prt-table prt-table--zebra" firstCellIsHeader scroll
       columns={[{ header: 'Paper' }, { header: 'What it found' }, { header: 'Started' }, { header: 'Ran for' }, { header: 'Status' }]}
       rows={list.map((row) => [
         <Fragment key="t">
@@ -310,3 +339,93 @@ function Feature({ row, card }: { row: AnalysisRow; card: OverviewCard }) {
     </section>
   );
 }
+
+/**
+ * "BODIES THAT TURN UP AGAIN" — the landing page's second feature (phase 24).
+ *
+ * Each body seen in two or more papers, with a SMALL-MULTIPLES STRIP: one
+ * square per paper, oldest first, painted with the worst band that paper found
+ * for the body — the band ramp and the band words the rest of the landing page
+ * uses (`BANDS`, `.prt-band--*`), not a new vocabulary. Under it, what each
+ * paper asks of the body, in the paper's own graph's words, where it has any.
+ *
+ * AN EMPTY PANEL SAYS WHY, and there are two reasons that read differently:
+ * fewer than two papers assessed, where nothing could turn up twice yet; and
+ * several papers with no body in common. Hiding the panel would hide the very
+ * feature a reader was told to look for.
+ *
+ * LIVE THERE IS ONE: Jobcentre Plus, in two papers. So the panel is built for
+ * one row looking deliberate and for five looking like a list, and it counts
+ * the rest rather than drawing them.
+ */
+function Recurring({ data, error }: { data: RecurringBodies | null; error: string | null }) {
+  if (error) return <p className="govuk-body govuk-error-message">{error}</p>;
+  if (!data) return <p className="govuk-body">Loading…</p>;
+  // An answer without the list (an older server, a stub) is "nothing to show", never a crash of the landing page.
+  if (!Array.isArray(data.bodies)) return <p className="govuk-body">Nothing to show yet.</p>;
+  const empty = !data.bodies.length;
+  return (
+    <section className="prt-recurring" aria-label="Bodies that turn up again">
+      {empty ? (
+        <p className="govuk-body">
+          {data.papers === 0
+            ? 'No paper has been assessed yet. A body turns up again when a second paper names it, and this is where it will show.'
+            : data.papers === 1
+              ? 'One paper has been assessed so far, so nothing can have turned up twice yet. Assess a second paper that names any of the same bodies and they will show here.'
+              : `${data.papers} papers have been assessed and no body has turned up in more than one of them yet. A body shows here once a second paper names it.`}
+        </p>
+      ) : (
+        <>
+          <p className="govuk-body">
+            {data.repeating === 1 ? 'One body has' : `${data.repeating} bodies have`} turned up in more
+            than one of the {data.papers} papers assessed here. Each square is a paper, coloured by
+            the worst way to beat it found for the body there.
+          </p>
+          <ul className="prt-recurring__list">
+            {data.bodies.map((body) => <RecurringRow key={body.personaId} body={body} />)}
+          </ul>
+        </>
+      )}
+      <p className="govuk-body govuk-!-margin-bottom-0">
+        <Link className="govuk-link" to={HUB}>
+          {empty ? 'See every body the papers name' : data.repeating > data.bodies.length ? `See all ${data.repeating}, and every other body` : 'See every body across policies'}
+        </Link>
+      </p>
+    </section>
+  );
+}
+
+function RecurringRow({ body }: { body: RecurringBodies['bodies'][number] }) {
+  const word = (band: string | null) => BANDS.find(([b]) => b === band)?.[1] ?? 'No way to beat it found';
+  /* The strip's words, for anyone not looking at the squares. */
+  const label = `Worst in each paper, oldest first: ${body.papers.map((p) => `${p.title}, ${word(p.worstBand).toLowerCase()}`).join('; ')}`;
+  /* Three asks at most: a line each, and the body's page has every one. */
+  const asks = body.papers.filter((p) => p.ask).slice(-3);
+  return (
+    <li className="prt-recurring__body">
+      <h3 className="prt-recurring__name">
+        <Link className="govuk-link" to={bodyPath(body.personaId)}>{body.name}</Link>
+      </h3>
+      <p className="govuk-body-s govuk-!-margin-bottom-1">
+        <span className="prt-papermarks" role="img" aria-label={label}>
+          {body.papers.map((p) => (
+            <span key={p.id} className={`prt-papermarks__mark${p.worstBand ? ` prt-band--${p.worstBand}` : ''}`} title={`${p.title}: ${word(p.worstBand)}`} />
+          ))}
+        </span>
+        {seenIn(body.sightings)}
+        {body.entityType ? <span className="prt-meta"> · {body.entityType.replaceAll('_', ' ')}</span> : null}
+      </p>
+      {asks.length ? (
+        <ul className="prt-recurring__asks">
+          {asks.map((p) => (
+            <li key={p.id}>
+              <span className="prt-meta">{shortTitle(p.title)}:</span> {p.ask}
+            </li>
+          ))}
+        </ul>
+      ) : null}
+    </li>
+  );
+}
+
+const shortTitle = (title: string) => (title.length > 32 ? `${title.slice(0, 30).trimEnd()}…` : title);

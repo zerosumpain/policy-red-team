@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useState } from 'react';
-import { createPortal } from 'react-dom';
 import { Link, Navigate, useLocation, useNavigate, useParams } from 'react-router';
 import type { Artefact } from '$lib/policy-analysis/contracts';
 import { api, watchRun, type Detail, type DetailView, type RunProgress } from '../api';
@@ -9,7 +8,9 @@ import { Button, ButtonGroup, NotificationBanner, ServiceNavigation, Tag, TaskLi
 import { isFinished, isTerminal, statusColour, statusLabel } from '../status';
 import { Report, type ReportRoute } from '../report/Report';
 import { ProvenanceLead } from '../report/moves/ProvenanceLead';
-import { useNavSlot, usePageTitle } from '../layout/Template';
+import { usePageTitle } from '../layout/Template';
+import { bodyPath, GUIDE } from '../places';
+import { GuideBanner } from '../guide/GuideBanner';
 import { MOVES, USE_SLUG, moveOfId, moveOfSlug, returnTo, viewPath, type MoveId } from '../moves';
 
 /**
@@ -68,7 +69,6 @@ export function Assessment() {
   const { id = '', '*': splat = '' } = useParams();
   const location = useLocation();
   const navigate = useNavigate();
-  const slot = useNavSlot();
   const page = pageOf(splat);
   const [detail, setDetail] = useState<Detail | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -254,34 +254,6 @@ export function Assessment() {
         where it qualifies it; the failure's DETAIL belongs in Provenance, which
         is the move that exists for what the run did to itself.
       */}
-      {/*
-        THE SIX VIEWS, ACROSS THE TOP OF EVERY PAGE OF THE REPORT (phase 21).
-        Portalled into the slot `Template` keeps under the header, because
-        GOV.UK puts the service navigation there, full bleed, and only this page
-        knows whether there is a report to navigate. A run still going has one
-        page and no views, so it draws none.
-
-        THE CURRENT VIEW IS `page` ON ITS LANDING PAGE AND `true` UNDER IT —
-        the framework's own distinction between "this is the page" and "you are
-        inside this", which a screen reader announces differently.
-      */}
-      {showReport && slot ? createPortal(
-        <ServiceNavigation
-          wide
-          label="This assessment"
-          items={MOVES.map((entry) => ({
-            href: viewPath(id, entry.id, undefined, carried),
-            text: entry.label,
-            current: entry.id === page.view && !page.section,
-            active: entry.id === page.view && Boolean(page.section),
-          }))}
-          render={({ href, className, current, children }) => (
-            <Link to={href} className={className} aria-current={current}>{children}</Link>
-          )}
-        />,
-        slot,
-      ) : null}
-
       <header className="prt-pagehead">
         <span className="govuk-caption-l">Assessment</span>
         {/* The full-size title on the front page; one size down on every page
@@ -293,9 +265,41 @@ export function Assessment() {
               are the news; once there is a report they are in its last move. */}
           {showReport ? null : <span className="prt-meta">{done} of {stages.length} steps</span>}
           {showReport || !analysis.model ? null : <span className="prt-meta">{analysis.model}</span>}
+          {/* On every page of a report, beside its status: the way into the
+              guide for a reader who is lost on THIS page (phase 26). */}
+          {showReport ? <span className="prt-meta"><Link className="govuk-link" to={GUIDE}>How do I read this?</Link></span> : null}
         </p>
       </header>
+      {/*
+        THE SIX VIEWS, UNDER THE TITLE OF EVERY PAGE OF THE REPORT. Across the
+        top, full bleed, from phase 21 to 24; the service's own navigation has
+        that place on every page now, so the views are the assessment's
+        SECTIONS — the same component, drawn inside the page (`sections`).
+        A run still going has one page and no views, so it draws none.
 
+        THE CURRENT VIEW IS `page` ON ITS LANDING PAGE AND `true` UNDER IT —
+        the framework's own distinction between "this is the page" and "you are
+        inside this", which a screen reader announces differently.
+      */}
+      {showReport ? (
+        <ServiceNavigation
+          sections
+          label="This assessment"
+          toggle="Sections of this assessment"
+          items={MOVES.map((entry) => ({
+            href: viewPath(id, entry.id, undefined, carried),
+            text: entry.label,
+            current: entry.id === page.view && !page.section,
+            active: entry.id === page.view && Boolean(page.section),
+          }))}
+          render={({ href, className, current, children }) => (
+            <Link to={href} className={className} aria-current={current}>{children}</Link>
+          )}
+        />
+      ) : null}
+      {/* The guide, offered until the reader hides it (phase 26) — once a
+          report exists; a run still going has nothing to read yet. */}
+      {showReport ? <GuideBanner /> : null}
 
       {/*
         A FAILED RUN SAYS WHY IT FAILED.
@@ -443,6 +447,11 @@ export function Assessment() {
                 without them, and the link simply carries no position until
                 `Report` starts passing one.
               */
+              bodyLink={({ personaId, name }, words) => (
+                <Link className="govuk-link" to={bodyPath(personaId)}>
+                  {words}<span className="govuk-visually-hidden">: {name}</span><span aria-hidden="true"> →</span>
+                </Link>
+              )}
               linkTo={(artefact: Artefact, label?: string, at?: string) => (
                 <Link
                   className="govuk-link"

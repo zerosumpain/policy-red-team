@@ -48,6 +48,15 @@ export type PersonaRecord = {
   updatedAt: string | null;
   /** The register body this persona IS, if one is known. See `register.ts`. */
   bodyId?: string | null;
+  /**
+   * PHASE 23: where it sits on the master list of actors (`actor-register.ts`).
+   * Optional, so every caller written before it reads a record unchanged.
+   */
+  kind?: string;
+  status?: 'confirmed' | 'proposed';
+  partOf?: string | null;
+  kindOf?: string | null;
+  whatItIs?: string | null;
 };
 
 /** One assessment's or one research pass's contribution to a persona. */

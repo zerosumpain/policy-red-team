@@ -3,15 +3,16 @@ import { afterAll, describe, expect, it, vi } from 'vitest';
 import { and, eq, sql } from 'drizzle-orm';
 import { chromium } from 'playwright';
 import { db } from '$lib/db';
-import { policyAnalyses, policyArtefacts, policyExecutions, policyStages, workflowRuns } from '$lib/db/schema';
+import { policyAnalyses, policyArtefacts, policyExecutions, policyModelCalls, policyStages, workflowRuns } from '$lib/db/schema';
 import { claimNext, releaseExpiredLeases } from '$lib/workflows/run-queue';
-import { fixtureModel } from '../../../tests/fixtures/policy-analysis/model';
+import { FIXTURE_NOTE, fixtureModel } from '../../../tests/fixtures/policy-analysis/model';
 import { STAGES, TRIGGER } from './contracts';
 import { createAnalysis, control, detail, loadArtefacts, ownedAnalysis } from './server/store';
 import { executePolicyRun } from './server/worker';
 import { PolicyError } from './validation';
-const state = vi.hoisted(() => ({ fail: false, wait: null as null | (() => Promise<void>) }));
+const state = vi.hoisted(() => ({ fail: false, wait: null as null | (() => Promise<void>), prior: new Map<number, string[]>() }));
 vi.mock('./server/provider', () => ({ modelCaller: () => async (stage: number, key: string, input: unknown) => {
+  state.prior.set(stage, (input as { priorWarnings?: string[] }).priorWarnings ?? []);
   if (state.wait) await state.wait();
   if (state.fail) throw new PolicyError('contract', 'Synthetic malformed output; stage visibly failed.');
   return fixtureModel(stage, key, input);
@@ -92,6 +93,38 @@ describe.skipIf(!local)('policy pipeline on isolated Postgres', () => {
       if (process.env.POLICY_KEEP_FIXTURE === '1') console.log(`Retained synthetic policy preview: ${base}/policy-analysis/${id}`);
     } finally { await browser.close(); }
   }, 180_000);
+  /**
+   * THE MODEL'S NOTES ARE STORED APART AND NOT CARRIED FORWARD (phase 23).
+   *
+   * The fixture's decomposition writes one note about the paper. It must land
+   * in `policy_stages.notes`, stay out of `warnings`, never reach the next
+   * stage's `priorWarnings`, and still come back on `detail()` — inside
+   * `warnings`, where every existing reader counts it, and as `notes`.
+   */
+  it('keeps the model\'s notes about the paper out of every later prompt, and still shows them', async () => {
+    const a = await create();
+    await advance(a.id); await advance(a.id); await advance(a.id);
+    const [row] = await db.select().from(policyStages).where(and(eq(policyStages.analysisId, a.id), eq(policyStages.ordinal, 1)));
+    expect(row.notes).toEqual([FIXTURE_NOTE]);
+    expect(row.warnings).not.toContain(FIXTURE_NOTE);
+    expect((row.output as { contractVersion: number }).contractVersion).toBe(2);
+    expect(state.prior.get(2) ?? []).not.toContain(FIXTURE_NOTE);
+    const shown = (await detail(owner, a.id))!.stages.find((s) => s.ordinal === 1)!;
+    expect(shown.warnings).toContain(FIXTURE_NOTE);
+    expect(shown.notes).toEqual([FIXTURE_NOTE]);
+
+    // A stage written BEFORE the split: the note inside `warnings`, no `notes`,
+    // and the model's reply on record. It is told apart by the reply, not by
+    // its wording.
+    await db.update(policyStages).set({ warnings: [...row.warnings, FIXTURE_NOTE], notes: [], output: { ...(row.output as object), contractVersion: 1 } }).where(eq(policyStages.id, row.id));
+    const [execution] = await db.select().from(policyExecutions).where(eq(policyExecutions.stageId, row.id));
+    await db.insert(policyModelCalls).values({ executionId: execution.id, callKey: 'legacy', promptVersion: 'test', inputHash: 'legacy', status: 'completed', output: { artefacts: [], warnings: [FIXTURE_NOTE] } });
+    await db.update(policyAnalyses).set({ updatedAt: new Date() }).where(eq(policyAnalyses.id, a.id));
+    const legacy = (await detail(owner, a.id))!.stages.find((s) => s.ordinal === 1)!;
+    expect(legacy.warnings.filter((w) => w === FIXTURE_NOTE)).toHaveLength(1);
+    expect(legacy.notes).toEqual([FIXTURE_NOTE]);
+    await control(owner, a.id, 'cancel');
+  });
   it('reclaims an expired lease and makes stage completion idempotent', async () => {
     const a = await create(); const first = await claim(a.id);
     await db.update(workflowRuns).set({ leaseExpiresAt: new Date(0) }).where(eq(workflowRuns.id, first.id));

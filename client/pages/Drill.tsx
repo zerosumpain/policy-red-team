@@ -1,16 +1,22 @@
 import { ItemChecks } from '../report/ItemChecks';
 import { ReaderActions } from '../report/ReaderActions';
 import { isSupplied } from '$lib/research-view';
+import { documentCount, wherePlace } from '$lib/policy-analysis/document-set';
+import { groundingOf } from '$lib/policy-analysis/grounding';
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { Link, useParams, useSearchParams } from 'react-router';
 import type { Artefact } from '$lib/policy-analysis/contracts';
 import { explain } from '$lib/policy-analysis/glossary';
 import { GRADE_LABEL, gradeOf, markDownJudgements, markedDown } from '$lib/evidence-grade';
+import { whatItIs, withoutIds } from '$lib/policy-analysis/plain';
+import { policyTerms, termFinder } from '$lib/policy-terms';
+import { PlainBlock } from '../report/Plain';
+import { TermsContext } from '../report/Term';
 import { isCleared } from '$lib/policy-analysis/cleared';
 import { BAND_LABEL, confidenceJudgement, plays, precedentOf, stageOfId } from '$lib/policy-analysis/view';
 import { STAGES, isPassStage } from '$lib/policy-analysis/contracts';
 import { edgesOf, nodesOf } from '$lib/policy-analysis/network';
-import { citedBy, paperWording, provenance, type StageOf } from '$lib/provenance';
+import { citedBy, groundingWording, paperWording, provenance, type StageOf } from '$lib/provenance';
 import { linkRecommendation, TIER_LABEL, TIER_RULE, type Tier } from '$lib/recommendation';
 import { egoOf, labelIndex } from '$lib/relationships';
 import { api, type Detail } from '../api';
@@ -27,6 +33,8 @@ import { returnLabel as returnLabelOf, returnTo } from '../moves';
 import { stageMarks } from '$lib/stage-rail';
 import { Quoted } from '../report/Quoted';
 import { TestResult } from '../report/TestResult';
+import { BodyPages, useBodyPage } from '../report/body-pages';
+import { bodyPath } from '../places';
 
 /**
  * ONE ITEM, AS FOUR PAGES — and the chain back to the paper.
@@ -122,7 +130,9 @@ export function Drill() {
    * the item itself is read from the marked copy, or its standing would be the
    * one word on the page that disagrees. Above the early returns: a hook.
    */
-  const judged = useMemo(() => (detail ? markDownJudgements(detail.artefacts) : null), [detail]);
+  // And read without ids in its prose (phase 23), as `Report` reads them.
+  const judged = useMemo(() => (detail ? withoutIds(markDownJudgements(detail.artefacts)) : null), [detail]);
+  const finder = useMemo(() => termFinder(policyTerms(judged ?? [])), [judged]);
   const artefact = judged?.find((a) => a.id === artefactId) ?? null;
   usePageTitle(artefact ? (part && part !== 'item' ? `${artefact.label} — ${PART_TITLE[part]}` : artefact.label) : undefined);
   /*
@@ -352,7 +362,27 @@ export function Drill() {
     { part: 'record', count: fields },
   ];
 
+  /*
+   * THE BODY THIS ITEM IS ABOUT, AND ITS PAGE ACROSS POLICIES (phase 24). A
+   * body's own item page always offers it — the page also carries the
+   * register and the public record, worth reading for a body met once; a way
+   * to beat it offers its body's page only where that body has turned up in
+   * another policy, as every card in the report does.
+   */
+  const aboutBody = artefact.kind === 'actor' || artefact.kind === 'profile';
+  const bodyOf = aboutBody ? artefact.id : play?.actor?.id ?? null;
+
   return (
+    <BodyPages
+      personas={detail.personas}
+      artefacts={detail.artefacts}
+      render={({ personaId, name }, words) => (
+        <Link className="govuk-link" to={bodyPath(personaId)}>
+          {aboutBody ? `${name}: ${words}` : `${name} is ${words}`}<span aria-hidden="true"> →</span>
+        </Link>
+      )}
+    >
+      <TermsContext.Provider value={finder}>
     <div className="prt-drill">
       {/*
         THE CAPTION NAMES THE PAPER *AND* SAYS WHAT STATE THE RUN IS IN.
@@ -396,8 +426,10 @@ export function Drill() {
       <p className="prt-item__where">
         <Tag colour="grey">{isCleared(artefact) ? 'Checked and cleared' : noun}</Tag>
         {isSupplied(artefact) ? <Tag colour="purple">Supplied by you</Tag> : null}
+        {groundingOf(artefact, byId) ? <Tag colour="turquoise">Grounding</Tag> : null}
         {whereFrom(stage, marksOnScale.sources)}
       </p>
+      <ItemBodyLink actorId={bodyOf} always={aboutBody} />
 
       <ItemParts
         parts={parts}
@@ -505,6 +537,8 @@ export function Drill() {
         <Link className="govuk-link" to={backHref}>{returnLabel}</Link>
       </p>
     </div>
+      </TermsContext.Provider>
+    </BodyPages>
   );
 }
 
@@ -615,6 +649,10 @@ function ItemPart({
   const down = markedDown(artefact);
   const grade = artefact.kind === 'evidence' ? gradeOf(artefact, byId) : null;
   const time = artefact.temporal ? fieldLabel(artefact.temporal) : null;
+  // Phase 25: how many documents the paper is, and the grounding this quotes.
+  const documents = documentCount(all);
+  const groundingSource = groundingOf(artefact, byId);
+  const grounded = groundingWording(artefact);
   const standingRows = [
     {
       key: 'How it was arrived at',
@@ -677,9 +715,13 @@ function ItemPart({
           }),
         }]
       : []),
-    ...(artefact.page || artefact.section
-      ? [{ key: 'Where in the paper', value: whereInThePaper(artefact) }]
-      : []),
+    // GROUNDING HAS ITS OWN PLACE (phase 25): a page of the impact assessment
+    // is not a page of the paper, and is never called one.
+    ...(groundingSource && (artefact.page || artefact.section || artefact.kind === 'grounding_passage')
+      ? [{ key: 'Where in the grounding material', value: [String(groundingSource.data.groundingTitle ?? 'Grounding material'), whereInThePaper(artefact, byId, 1)].filter(Boolean).join(' · ') }]
+      : artefact.page || artefact.section
+        ? [{ key: 'Where in the paper', value: whereInThePaper(artefact, byId, documents) }]
+        : []),
     ...(artefact.relation ? [{ key: 'Relation', value: fieldLabel(artefact.relation) }] : []),
     ...(time ? [{ key: 'Time', value: time }] : []),
   ];
@@ -689,7 +731,14 @@ function ItemPart({
       {/* A PASSAGE'S STATEMENT IS ITS WORDING, and the section below sets it as
           the quotation it is. Printing both put the same text on the page
           twice. */}
-      {artefact.kind === 'passage' ? null : <p className="prt-drill__lead">{artefact.statement}</p>}
+      {artefact.kind === 'passage' || artefact.kind === 'grounding_passage' ? null : <p className="prt-drill__lead">{artefact.statement}</p>}
+      {/* IN PLAIN WORDS, before the detail (phase 23): a way to beat it, a
+          scenario or a key judgement's block, or what a part of the policy or
+          a body is in everyday words. Nothing on an older item. */}
+      <PlainBlock artefact={artefact} className="prt-drill__plain" />
+      {whatItIs(artefact) ? (
+        <p className="govuk-body prt-drill__whatitis"><strong>In everyday words:</strong> {whatItIs(artefact)}</p>
+      ) : null}
       {artefact.origin === 'behavioural_hypothesis' || artefact.kind === 'profile' ? (
         <WarningText>
           This is a hypothesis about what a body's position rewards. It is not a finding about
@@ -750,6 +799,23 @@ function ItemPart({
         </section>
       ) : null}
 
+      {grounded ? (
+        <section aria-labelledby="quoted-grounding">
+          <h2 className="govuk-heading-m" id="quoted-grounding">
+            {artefact.kind === 'grounding_passage' ? 'The passage, as the grounding material has it' : 'The grounding material’s own words'}
+          </h2>
+          {/* Checked against the material's text when it was written, exactly
+              as a quotation of the paper is (phase 25). */}
+          {artefact.kind === 'grounding_passage'
+            ? <Quoted text={grounded} quotes={quotesInto(artefact.id, all)} />
+            : <InsetText>{grounded}</InsetText>}
+          <p className="govuk-body-s prt-meta">
+            Material you supplied to judge the policy by. It is evidence, not the paper: it was
+            checked against its own text, and graded on what it is.
+          </p>
+        </section>
+      ) : null}
+
       {wording ? (
         <section aria-labelledby="quoted">
           <h2 className="govuk-heading-m" id="quoted">
@@ -804,6 +870,7 @@ const KIND_NOUN: Record<string, string> = {
   resolution_candidate: 'Possible body',
   alias: 'Another name for a body',
   passage: 'Passage of the paper',
+  grounding_passage: 'Grounding material',
   claim: 'Claim',
   mechanism: 'Part of the policy',
   assumption: 'Assumption',
@@ -1211,11 +1278,10 @@ function listGloss(depth: number, thing: string, items: Artefact[], stageOf: Sta
  * common case rather than the odd one: an extractor with no headings names each
  * section after the page it came from, and the row then read "Page 1 · Page 1".
  */
-function whereInThePaper(artefact: Artefact): string {
-  const page = artefact.page ? `Page ${artefact.page}` : null;
-  const section = artefact.section?.trim() || null;
-  if (page && section && section.toLowerCase() === page.toLowerCase()) return page;
-  return [page, section].filter(Boolean).join(' · ');
+function whereInThePaper(artefact: Artefact, byId: Map<string, Artefact>, documents: number): string {
+  // Naming the document when the assessment read several (phase 25):
+  // "Annex A: costings · Page 12". One document reads exactly as it did.
+  return wherePlace(artefact, byId, documents);
 }
 
 /**
@@ -1539,4 +1605,10 @@ function ProfileSection({ profile }: { profile: Artefact }) {
       <SummaryList rows={rows} />
     </section>
   );
+}
+
+/** The link to the item's body page, on a line of its own, or nothing at all. */
+function ItemBodyLink({ actorId, always }: { actorId: string | null; always: boolean }) {
+  const link = useBodyPage()(actorId, { always });
+  return link ? <p className="govuk-body prt-item__body">{link}</p> : null;
 }

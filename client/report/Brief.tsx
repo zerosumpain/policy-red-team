@@ -3,6 +3,7 @@ import type { Artefact } from '$lib/policy-analysis/contracts';
 import { BAND_LABEL } from '$lib/policy-analysis/view';
 import type { Brief as BriefView, BriefItem } from '$lib/brief';
 import { Button } from '../govuk';
+import { PlainBlock } from './Plain';
 
 /**
  * THE ONE-PAGE BRIEF — the first thing on the report.
@@ -114,6 +115,8 @@ function Item({ item, name }: { item: BriefItem; name: (artefact: Artefact | nul
         </>
       ),
     });
+    // What goes wrong, for whom, in the play's own plain words (phase 23).
+    if (play.goesWrong) rows.push({ label: 'What goes wrong', value: play.goesWrong });
     if (play.earlyWarning) rows.push({ label: 'Early warning', value: play.earlyWarning });
     if (play.fix) rows.push({ label: 'The fix', value: play.fix });
   }
@@ -131,13 +134,15 @@ function Item({ item, name }: { item: BriefItem; name: (artefact: Artefact | nul
         <span>{name(item.artefact, item.title)}</span>
       </h4>
       <p className="govuk-body prt-brief__judgement">{item.statement}</p>
+      {/* Who it happens to and why it matters, in plain words (phase 23). */}
+      <PlainBlock artefact={item.artefact} className="prt-brief__plain" />
       {item.quote ? (
         <figure className="prt-brief__quote">
           <blockquote>
             <p>&ldquo;{item.quote.text}&rdquo;</p>
           </blockquote>
           <figcaption className="prt-meta">
-            The paper&rsquo;s own words{item.quote.page ? `, page ${item.quote.page}` : ''}
+            The paper&rsquo;s own words{item.quote.document ? `, ${item.quote.document}` : ''}{item.quote.page ? `, page ${item.quote.page}` : ''}
           </figcaption>
         </figure>
       ) : null}

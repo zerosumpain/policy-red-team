@@ -1,5 +1,6 @@
 import { isSelfHost } from '$lib/server/identity';
 import { z } from 'zod';
+import { PLAIN_SCHEMAS, WHAT_IT_IS } from './plain-schema';
 
 export const STAGES = [
   'Document ingestion', 'Document decomposition', 'Entity resolution', 'Policy knowledge graph',
@@ -80,6 +81,53 @@ export const MATERIAL_ROLES = [
   ['other', 'Something else', 'Read it on its own terms and say plainly what kind of document it turned out to be.'],
 ] as const;
 export type MaterialRole = (typeof MATERIAL_ROLES)[number][0];
+
+/**
+ * WHAT A GROUNDING ITEM IS (phase 25): material the reader trusts to judge the
+ * policy BY — never the policy, and never instruction. `MATERIAL_ROLES` less
+ * the two that are the policy speaking (a later draft) or an argument about it
+ * (a critique stays, as something to weigh), plus statistics, guidance and an
+ * evaluation, which are what a policy professional actually reaches for.
+ */
+export const GROUNDING_ROLES = [
+  ['impact_assessment', 'Impact assessment', 'A formal appraisal of the policy\u2019s effects. Compare what it assesses against what the policy asserts, and note what it does not cover.'],
+  ['consultation_response', 'Consultation response', 'A body responding to the policy, in its own interest: evidence about the respondent at least as much as about the policy.'],
+  ['statistics', 'Statistics', 'Published figures. Use them to test what the policy assumes about scale, take-up, cost or capacity; say which year and which population they describe.'],
+  ['guidance', 'Guidance', 'Statutory or operational guidance the policy works within. Use it to test what bodies are actually required or allowed to do.'],
+  ['evaluation', 'Evaluation', 'An evaluation of this or a comparable programme. Weigh it by its method: what it compared against, and how much it could tell apart.'],
+  ['supporting_evidence', 'Supporting evidence', 'Data, analysis or research offered in support of the policy. Test whether it supports what the paper claims, rather than assuming it does.'],
+  ['related_policy', 'Related policy', 'A different instrument the policy interacts with. Look for what only exists because the two coexist.'],
+  ['critique', 'Critique or rebuttal', 'An argument against the policy. Test it as sceptically as the policy itself.'],
+  ['other', 'Something else', 'Read it on its own terms and say plainly what kind of document it turned out to be.'],
+] as const;
+export type GroundingRole = (typeof GROUNDING_ROLES)[number][0];
+export const GROUNDING_ROLE_LABELS: Record<string, string> = Object.fromEntries(GROUNDING_ROLES.map(([k, label]) => [k, label]));
+export const GROUNDING_ROLE_NOTES: Record<string, string> = Object.fromEntries(GROUNDING_ROLES.map(([k, , note]) => [k, note]));
+/** The roles the submission form offers for "Supporting material", in this order. */
+export const SUBMISSION_GROUNDING_ROLES = ['impact_assessment', 'consultation_response', 'statistics', 'guidance', 'evaluation', 'other'] as const satisfies readonly GroundingRole[];
+
+/**
+ * SEVERAL DOCUMENTS, ONE ASSESSMENT (phase 25). The caps that were per
+ * document are now TOTALS across the set — `MAX_BYTES` of uploads,
+ * `MAX_CHARACTERS` of text and `MAX_PAGES` of pages — because every downstream
+ * budget (stage 1's fan-out, the stage clock, the call ceiling) was sized on
+ * one document of that size and is now sized on the set.
+ */
+export const MAX_DOCUMENTS = 6;
+/**
+ * GROUNDING IS BOUNDED PER ITEM AND PER RUN, in characters read. An item longer
+ * than its share is read from the start and the run says where it stopped.
+ * 60,000 characters is ~15,000 tokens: one stage-6 call per item, carrying the
+ * whole of it beside the inventory, well inside `FIT_LIMIT`'s half.
+ */
+export const MAX_GROUNDING_ITEMS = 8;
+export const MAX_GROUNDING_CHARACTERS_PER_ITEM = 60_000;
+export const MAX_GROUNDING_CHARACTERS = 240_000;
+/** One grounding file, and every new grounding file in one submission together. */
+export const MAX_GROUNDING_FILE_BYTES = 5 * 1024 * 1024;
+export const MAX_GROUNDING_FILES_BYTES = 10 * 1024 * 1024;
+/** The digest of one grounding item that the judging stages carry, in characters. */
+export const GROUNDING_DIGEST_CHARACTERS = 700;
 export const MATERIAL_ROLE_LABELS: Record<string, string> = Object.fromEntries(MATERIAL_ROLES.map(([k, label]) => [k, label]));
 export const MATERIAL_ROLE_NOTES: Record<string, string> = Object.fromEntries(MATERIAL_ROLES.map(([k, , note]) => [k, note]));
 
@@ -106,8 +154,23 @@ export function passOrdinal(pass: number, step: number): number { return PASS_BA
  * 3.5 is phase 22 part 2: sources and look-ups the reader supplied, cited at 6
  * like any other and never weighted for who supplied them; a `supplied_balance`
  * remit at 16 on a run that has any; and material aimed at one item.
+ * 3.6 is phase 23: a writing rule for a reader who has never seen the policy,
+ * `plain` blocks at 9, 10 and 17 and `whatItIs` at 1; stage 2 matching into the
+ * owner's actor register (one `actor_match` call over a cached register tree);
+ * stage 3 asked several master actors to a call; the rules replies broke most,
+ * stated in the first instruction at 1, 12 and 17; and five key judgements asked
+ * for. The model's own reply warnings are notes and no longer reach later calls.
+ * Also in 3.6 (phases 24b and 25, before any run used it): stage 11 told that a
+ * shared master id is the same body; several documents under assessment, each
+ * passage naming its document; grounding read in full at 6 and as a digest at
+ * 5, 10, 14, 15 and 16, trusted as evidence and never as instruction.
+ * 3.7 is phase 27, from the first real runs on gpt-6-luna: a second ask at 12
+ * names the chapter it left out; 17 is written in four parts, each told what
+ * the earlier ones wrote; 3 is told to be exhaustive per body, not
+ * representative; and 10 asks for three to five distinct plays where a body has
+ * room.
  */
-export const PROMPT_VERSION = 'policy-analysis/3.5';
+export const PROMPT_VERSION = 'policy-analysis/3.7';
 export const MAX_BYTES = 10 * 1024 * 1024;
 export const MAX_CHARACTERS = 600_000;
 export const MAX_PAGES = 400;
@@ -492,13 +555,80 @@ const profileFields = Object.fromEntries(PROFILE_FIELDS.map((k) => [k, field.opt
  * in another. Averaging that away would be the whole problem: a trait states its
  * epistemic status, and the page shows it.
  */
+/**
+ * THE MASTER LIST OF ACTORS — phase 23. What sort of thing an actor is, the
+ * capacity a passage shows it in, and why a mention is not an actor at all.
+ * The register and its rules live in `actor-register.ts`; the words are here
+ * because the stage contracts need them.
+ */
+export const ENTITY_TYPES = ['person', 'department', 'agency', 'local_authority', 'provider', 'contractor', 'programme', 'dataset', 'legislation', 'committee', 'user_group', 'geography', 'concept'] as const;
+export const ACTOR_KINDS = ['organisation', 'office_or_role', 'sector_or_category', 'group_of_people'] as const;
+/**
+ * PERSPECTIVE IS A PROPERTY OF A MENTION, NOT A NEW ACTOR. Read off the stage-1
+ * mentions of the real Best Start run: "funder of improvements", "named as
+ * partners", "intended beneficiaries", "affected by new schemes". `partners`,
+ * `advises` and `is_affected` were added for what the brief's seven did not
+ * cover; `named_only` is a mention that shows no capacity at all.
+ */
+export const CAPACITIES = ['decides', 'funds', 'commissions', 'regulates', 'delivers', 'partners', 'advises', 'receives', 'is_measured', 'is_affected', 'named_only'] as const;
+export const NOT_ACTOR_REASONS = ['programme', 'place', 'assessment', 'named_person', 'other'] as const;
+const masterRef = z.object({ id: z.string().max(100).nullable(), key: z.string().max(400), name: z.string().max(300) });
+const actorMaster = z.object({
+  id: z.string().max(100).nullable(),
+  key: z.string().max(400),
+  status: z.enum(['confirmed', 'proposed', 'new']),
+  kind: z.enum(ACTOR_KINDS),
+  partOf: masterRef.nullable(),
+  kindOf: masterRef.nullable(),
+  bodyId: z.string().max(200).nullable(),
+  basis: z.string().max(400),
+});
 const personaTraits = z.array(z.object({ key: z.string().max(60), label: z.string().max(120), value: text, origin: z.enum(ORIGINS), confidence: confidenceSchema }).strict()).max(30);
 export const dataSchemas = {
-  passage: z.object({ documentHash: text }),
+  // Phase 25: which document of the set it comes from. Optional, so every
+  // passage of a one-document run before this parses as it always did — and
+  // reads as document 0, the main paper.
+  passage: z.object({ documentHash: text, documentTitle: z.string().max(300).optional(), documentRole: z.string().max(40).optional(), documentPosition: z.number().int().min(0).optional(), documentCount: z.number().int().min(1).optional() }),
+  /**
+   * GROUNDING MATERIAL (phase 25): one chunk of an item the reader trusts to
+   * judge the policy by. Never a `passage` — "the paper said" is a passage and
+   * only a passage — and minted by the server at stage 0, never by a model.
+   */
+  grounding_passage: z.object({ documentHash: text, groundingTitle: z.string().max(300), groundingRole: z.string().max(40), groundingPosition: z.number().int().min(1), publisher: z.string().max(300).nullable().optional(), publishedOn: z.string().max(60).nullable().optional(), libraryId: z.string().max(60).nullable().optional(), truncated: z.boolean().optional() }),
   claim: z.object({ category: z.enum(['objective', 'problem', 'responsibility', 'decision_right', 'funding', 'dependency', 'data_flow', 'measure', 'constraint', 'risk', 'benefit', 'claim', 'cited_evidence']), notes: text }),
-  mechanism: z.object({ intervention: text, implementation: text, notes: text }),
+  // `whatItIs` (phase 23): this part of the policy in everyday words, one line.
+  // Optional in the shape so every older row parses; the prompt shows it as
+  // required (`plain.ts`, `promptSchema`) and a missing one is a warning.
+  mechanism: z.object({ intervention: text, implementation: text, notes: text, whatItIs: WHAT_IT_IS.optional() }),
   assumption: z.object({ importance: unit, uncertainty: unit, consequence: unit, priority: unit.optional(), notes: text }),
-  actor: z.object({ entityType: z.enum(['person', 'department', 'agency', 'local_authority', 'provider', 'contractor', 'programme', 'dataset', 'legislation', 'committee', 'user_group', 'geography', 'concept']), aliases: strings, mentions: ids, ambiguity: text, dates: strings, parent: z.string().nullable() }),
+  actor: z.object({
+    entityType: z.enum(ENTITY_TYPES), aliases: strings, mentions: ids, ambiguity: text, dates: strings, parent: z.string().nullable(),
+    // PHASE 23 — written by the SERVER on a stage-2 actor, never asked of the
+    // model: which master actor this is and where it sits. Optional, so every
+    // actor written before it still validates and renders as it did.
+    master: actorMaster.optional().describe('Written by the server at stage 2. Never write it.'),
+    whatItIs: z.string().max(400).optional().describe('One plain line saying what this body is.'),
+    capacities: z.array(z.object({ mentionId: z.string().max(100), capacity: z.enum(CAPACITIES) })).max(2000).optional().describe('Written by the server at stage 2. Never write it.'),
+    programmes: z.array(z.string().max(300)).max(40).optional().describe('Written by the server at stage 2. Never write it.'),
+  }),
+  /**
+   * ONE ANSWER ABOUT SOURCE MENTIONS, matched into the reader's master list of
+   * actors (phase 23). Stage 2's model writes these and nothing else when it is
+   * given the register; the server turns them into one `actor` per master actor
+   * and never stores the answer itself.
+   */
+  actor_match: z.object({
+    mentions: ids.min(1),
+    answer: z.enum(['existing', 'new', 'not_actor']),
+    matchId: z.string().max(100).nullable().default(null),
+    kind: z.enum(ACTOR_KINDS).nullable().default(null),
+    partOf: z.string().max(300).nullable().default(null),
+    kindOf: z.string().max(300).nullable().default(null),
+    whatItIs: z.string().max(400).nullable().default(null),
+    capacities: z.array(z.object({ mentionId: z.string().max(100), capacity: z.enum(CAPACITIES) })).max(400).default([]),
+    notActor: z.enum(NOT_ACTOR_REASONS).nullable().default(null),
+    runBy: z.string().max(300).nullable().default(null),
+  }),
   alias: z.object({ actorId: text }),
   resolution_candidate: z.object({ candidates: ids.min(2), reason: text, resolved: z.literal(false) }),
   edge: z.object({ notes: text }),
@@ -542,7 +672,7 @@ export const dataSchemas = {
   // the run could not make because its own graph did not link what the paper
   // states is an EXTRACTION GAP, and says which relation and how many items.
   test: z.object({ testId: text, rationale: text, inputs: ids, rule: text, reasoning: text, result: z.enum(['low_risk', 'moderate_risk', 'high_risk', 'indeterminate']), severity: z.enum(['low', 'moderate', 'high', 'unknown']), actors: ids, mitigation: text, basis: z.literal('extraction_gap').optional(), extracted: z.object({ relation: text, what: text, count: z.number().int().positive() }).optional() }),
-  scenario: z.object({ scenario: z.enum(SCENARIOS), changedConditions: text, firstActor: z.string().nullable(), strategy: text, downstreamEffects: strings, affectedOutcomes: ids, detectability: text, correction: text, weaknesses: strings, assumptions: ids.min(1), sensitivity: strings.min(1) }),
+  scenario: z.object({ scenario: z.enum(SCENARIOS), changedConditions: text, firstActor: z.string().nullable(), strategy: text, downstreamEffects: strings, affectedOutcomes: ids, detectability: text, correction: text, weaknesses: strings, assumptions: ids.min(1), sensitivity: strings.min(1), plain: PLAIN_SCHEMAS.scenario.optional() }),
   exploit: z.object({
     actorId: text, motivation: text, play: text, legality: z.enum(LEGALITY),
     targets: ids.min(1), preconditions: ids.min(1), payoff: text, costToPolicy: text,
@@ -568,6 +698,13 @@ export const dataSchemas = {
      * their wording.
      */
     cleared: z.boolean().optional(),
+    /*
+     * THE PLAY IN PLAIN WORDS (phase 23): who, what they do, what goes wrong
+     * and for whom, an everyday comparison, and why it matters — what the
+     * report shows FIRST. Optional in the shape so older rows parse and a
+     * missing block costs a corrective ask, never the play (`plain.ts`).
+     */
+    plain: PLAIN_SCHEMAS.exploit.optional(),
   }).strict(),
   cross_policy: z.object({
     pattern: z.enum(CROSS_PATTERNS), otherAnalysisId: z.string().max(100), otherAnalysisTitle: text,
@@ -662,6 +799,8 @@ export const dataSchemas = {
     mechanismId: text, playIds: ids.min(1), assumptionId: text,
     wouldChangeIf: text, decision: text, action: text, owner: text,
     findingIds: ids.default([]),
+    // Who it happens to and why it matters, in everyday words (phase 23).
+    plain: PLAIN_SCHEMAS.key_judgement.optional(),
   }).strict(),
   finding: z.object({
     section: z.enum(['executive_assessment', 'scope_methodology', 'objectives', 'actors', 'mechanisms', 'theory_of_change', 'options_appraisal', 'evaluation_plan', 'assurance', 'high_risk_assumptions', 'test_results', 'strategic_responses', 'scenarios', 'exploitation', 'cross_policy', 'evidence_gaps', 'confidence_uncertainty', 'distribution', 'unresolved_questions']),
@@ -755,9 +894,44 @@ export const dataSchemas = {
  * failure (see `reconcileKeyJudgements`).
  */
 export const MAX_KEY_JUDGEMENTS = 5;
+/**
+ * The fewest key judgements a final review is asked AGAIN for (phase 23).
+ *
+ * The Best Start run led with 2 of a possible 5. Replayed from its stored
+ * replies, the cause was the context, not the model: the old theory of change
+ * (75 chains, 537k characters) took the call's room, and stage 17 was sent
+ * none of the 75 mechanisms and none of the 365 claims a judgement must name
+ * and quote — so it wrote the two it could. Today's stage 14 (one logic model
+ * and eight chains) leaves room for all 75 quotable items, and the instruction
+ * now asks for five. Below this floor the existing top-up asks once more, for
+ * more, naming the ones already written.
+ */
+export const KEY_JUDGEMENT_FLOOR = 3;
 export const RESULT_KINDS = ['test', 'model', 'scenario', 'exploit', 'cross_policy', 'causal_chain', 'logic_model', 'option_appraisal', 'evaluation_plan'] as const;
 
 export const REPORT_SECTIONS = ['executive_assessment', 'scope_methodology', 'objectives', 'actors', 'mechanisms', 'theory_of_change', 'options_appraisal', 'evaluation_plan', 'assurance', 'high_risk_assumptions', 'test_results', 'strategic_responses', 'scenarios', 'exploitation', 'cross_policy', 'evidence_gaps', 'confidence_uncertainty', 'distribution', 'unresolved_questions'] as const;
+/**
+ * STAGE 17 IS WRITTEN IN PARTS (phase 27), one call each, in this order.
+ *
+ * It used to be one call asked for a complete replacement report: nineteen
+ * sections of findings, a response to every challenge, the key judgements,
+ * the recommendations and a review summary. gpt-6-luna refused that outright
+ * on the Best Start paper ("too large to reproduce a complete assured
+ * replacement within this response") and returned nothing, twice; gpt-5.6
+ * wrote it. Stage 2 failed the same way on the same model until it was cut
+ * into chunks, and the cure is the same here. In ORDER because the later parts
+ * cite what the earlier ones wrote: a key judgement and a recommendation name
+ * assured findings, and only a call that has been told their identifiers can.
+ * The two finding parts together are every section, which a test asserts.
+ */
+export const ASSURED_PARTS = [
+  { key: 'findings_a', label: 'headline and analysis', kinds: ['finding'], sections: ['executive_assessment', 'scope_methodology', 'objectives', 'actors', 'mechanisms', 'high_risk_assumptions', 'test_results', 'strategic_responses', 'scenarios', 'exploitation'] },
+  { key: 'findings_b', label: 'appraisal and limits', kinds: ['finding'], sections: ['theory_of_change', 'options_appraisal', 'evaluation_plan', 'assurance', 'cross_policy', 'evidence_gaps', 'confidence_uncertainty', 'distribution', 'unresolved_questions'] },
+  { key: 'responses', label: 'challenge responses and key judgements', kinds: ['assurance_response', 'key_judgement'], sections: [] },
+  { key: 'close', label: 'recommendations and review summary', kinds: ['recommendation', 'review_summary'], sections: [] },
+] as const satisfies readonly { key: string; label: string; kinds: readonly string[]; sections: readonly (typeof REPORT_SECTIONS)[number][] }[];
+/** What a part of stage 17 writes; anything else it cites is kept only if it is not one of these. */
+export const ASSURED_REPORT_KINDS: readonly string[] = ['finding', 'assurance_response', 'key_judgement', 'recommendation', 'review_summary'];
 export type Kind = keyof typeof dataSchemas;
 export const KINDS = Object.keys(dataSchemas) as [Kind, ...Kind[]];
 // Every nullable field also DEFAULTS to null. A model that omits `toId` on an
@@ -809,7 +983,17 @@ export type Artefact = z.infer<typeof artefactSchema>;
  * the safer way round if the flag ever goes missing.
  */
 export type StageInput = { stage: number; title: string; depth?: Depth; graphLoss?: number; sealed?: boolean; searches?: boolean; jurisdiction: string | null; policyArea: string | null; context: string | null; priorWarnings?: string[]; artefacts: Artefact[] };
-export type StageOutput = { artefacts: Artefact[]; warnings: string[] };
+/**
+ * `notes` (phase 23) are what the MODEL wrote in its reply's `warnings` — almost
+ * always about the paper: "the passage does not specify funding amounts". They
+ * are kept apart from `warnings`, which are the RUN's own state (context clipped,
+ * output refused, references dropped), because only the run's state is carried
+ * forward into later stages' prompts under `WARNING_BUDGET`. On the Post-16 run
+ * 103 of 256 warnings were model notes, competing for that budget in every later
+ * call with the machine facts it exists to carry. Optional: an older caller, or
+ * a stage that ran before the split, simply has none.
+ */
+export type StageOutput = { artefacts: Artefact[]; warnings: string[]; notes?: string[] };
 export const stageOutputSchema = z.object({ artefacts: z.array(artefactSchema).max(2000), warnings: z.array(z.string().max(1000)).max(100) }).strict();
 /**
  * The envelope as the INDEXED decomposition is shown it. Display only.
@@ -853,7 +1037,7 @@ export const indexedOutputSchema = z.object({ artefacts: z.array(indexedArtefact
 // the profiles are asked for, so a profile can cite it. `MODEL_KINDS` drops it
 // there as everywhere.
 export const STAGE_KINDS: Kind[][] = [
-  ['passage'], ['claim', 'mechanism', 'assumption', 'actor'], ['actor', 'alias', 'resolution_candidate'],
+  ['passage', 'grounding_passage'], ['claim', 'mechanism', 'assumption', 'actor'], ['actor', 'alias', 'resolution_candidate', 'actor_match'],
   ['edge'], ['profile', 'research_source'], ['research_question', 'research_source'], ['evidence'], ['model', 'assumption', 'research_question', 'research_source'], ['test'], ['scenario', 'assumption', 'research_question', 'research_source'],
   ['exploit', 'assumption', 'research_question', 'research_source'], ['cross_policy'], ['finding', 'recommendation', 'assumption'], ['persona_link'],
   ['causal_chain', 'logic_model', 'assumption', 'research_question', 'research_source'], ['option_appraisal', 'evaluation_plan', 'assumption', 'research_question', 'research_source'],
@@ -868,7 +1052,9 @@ export const STAGE_KINDS: Kind[][] = [
  * a URL, of its own. Describing a kind the model may not write is the defect;
  * this is the one place the two lists are allowed to differ.
  */
-export const MODEL_KINDS: Kind[][] = STAGE_KINDS.map((kinds) => kinds.filter((kind) => kind !== 'research_source'));
+// Stage 2's model writes ANSWERS (phase 23); the actors are the server's,
+// built from them, and so are the two kinds the old resolution emitted.
+export const MODEL_KINDS: Kind[][] = STAGE_KINDS.map((kinds, stage) => kinds.filter((kind) => kind !== 'research_source' && kind !== 'grounding_passage' && (stage !== 2 || kind === 'actor_match')));
 /**
  * WHAT A STAGE IS GIVEN, AS KINDS, IN THE ORDER IT NEEDS THEM.
  *
@@ -896,16 +1082,22 @@ export const MODEL_KINDS: Kind[][] = STAGE_KINDS.map((kinds) => kinds.filter((ki
  * build a per-unit context of their own, and 8 makes no model call.
  */
 export const STAGE_CONTEXT: Partial<Record<number, readonly Kind[]>> = {
-  5: ['assumption', 'claim', 'mechanism', 'actor', 'edge', 'profile', 'research_question', 'research_source'],
-  6: ['claim', 'assumption', 'mechanism', 'actor'],
+  // `grounding_passage` (phase 25) is the reader's grounding material. Stage 6
+  // reads each item IN FULL in a call of its own (the fan-out's own block, which
+  // is never shed); everywhere else it is named here and arrives as ONE DIGEST
+  // PER ITEM (`groundingDigests`), last in the declared order — a few hundred
+  // characters, constant for the whole run, shed first only if nothing else
+  // fits. Stage 5 has it so the research PLANNER sees it before round one.
+  5: ['assumption', 'claim', 'mechanism', 'actor', 'edge', 'profile', 'research_question', 'research_source', 'grounding_passage'],
+  6: ['claim', 'assumption', 'mechanism', 'actor', 'grounding_passage'],
   7: ['assumption', 'mechanism', 'edge', 'actor', 'evidence', 'profile', 'claim', 'research_source'],
   9: ['assumption', 'model', 'test', 'mechanism', 'edge', 'actor', 'evidence', 'profile', 'claim', 'research_source'],
-  10: ['assumption', 'mechanism', 'model', 'scenario', 'test', 'edge', 'actor', 'evidence', 'claim', 'research_source'],
+  10: ['assumption', 'mechanism', 'model', 'scenario', 'test', 'edge', 'actor', 'evidence', 'claim', 'research_source', 'grounding_passage'],
   11: ['mechanism', 'assumption', 'claim', 'actor', 'exploit', 'test', 'model', 'scenario', 'edge'],
   12: ['test', 'model', 'scenario', 'exploit', 'cross_policy', 'assumption', 'evidence', 'mechanism', 'claim', 'actor', 'profile', 'edge', 'research_question', 'research_source'],
-  14: ['mechanism', 'evidence', 'assumption', 'claim', 'research_source'],
-  15: ['logic_model', 'causal_chain', 'finding', 'recommendation', 'evidence', 'assumption', 'mechanism', 'claim', 'exploit', 'test', 'research_source'],
-  16: ['finding', 'recommendation', 'exploit', 'logic_model', 'causal_chain', 'option_appraisal', 'evaluation_plan', 'test', 'model', 'scenario', 'cross_policy', 'assumption', 'evidence', 'mechanism', 'claim', 'actor', 'research_source'],
+  14: ['mechanism', 'evidence', 'assumption', 'claim', 'research_source', 'grounding_passage'],
+  15: ['logic_model', 'causal_chain', 'finding', 'recommendation', 'evidence', 'assumption', 'mechanism', 'claim', 'exploit', 'test', 'research_source', 'grounding_passage'],
+  16: ['finding', 'recommendation', 'exploit', 'logic_model', 'causal_chain', 'option_appraisal', 'evaluation_plan', 'test', 'model', 'scenario', 'cross_policy', 'assumption', 'evidence', 'mechanism', 'claim', 'actor', 'research_source', 'grounding_passage'],
   17: ['assurance_challenge', 'finding', 'recommendation', 'logic_model', 'causal_chain', 'option_appraisal', 'evaluation_plan', 'exploit', 'test', 'model', 'scenario', 'cross_policy', 'assumption', 'evidence', 'mechanism', 'claim', 'actor', 'research_source'],
 };
 /**

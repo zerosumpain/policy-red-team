@@ -1,0 +1,125 @@
+@use "../govuk" as govuk;
+@use "../tokens" as *;
+
+// ── Plain words, and the paper's names defined (phase 23) ───────────────────
+
+// THE PLAIN BLOCK: five short labelled lines, the same labels in the same
+// place on every card. A label column from tablet, stacked on a phone — the
+// brief's description list (`.prt-brief__facts`) at a smaller size, because
+// here it sits inside a card that already has a title.
+.prt-plain {
+  margin: 0;
+  @include govuk.govuk-font($size: 16);
+
+  &__row {
+    display: grid;
+    grid-template-columns: 9.5em minmax(0, 1fr);
+    gap: 0 govuk.govuk-spacing(3);
+    padding: 2px 0;
+
+    @include govuk.govuk-media-query($until: tablet) {
+      grid-template-columns: minmax(0, 1fr);
+    }
+  }
+
+  &__label {
+    font-weight: 700;
+    color: govuk.govuk-colour("black", $variant: "tint-25");
+  }
+
+  &__text { margin: 0; }
+}
+
+// On a play card the block takes the card's whole width, under the title and
+// figures, so the band edge rules it too.
+.prt-play__plain {
+  grid-column: 1 / -1;
+  border-top: 1px solid govuk.govuk-colour("black", $variant: "tint-80");
+  padding-top: govuk.govuk-spacing(2);
+}
+
+// A TERM IS A BUTTON THAT LOOKS LIKE THE WORD IT IS: the sentence's own type,
+// a dotted underline that says "there is more here" without saying "link",
+// and the design system's focus state. Pressing it shows the definition
+// straight after it, in a ruled box, until it is pressed again.
+.prt-term__name {
+  -webkit-appearance: none;
+  appearance: none;
+  background: none;
+  border: 0;
+  padding: 0;
+  margin: 0;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+  text-align: inherit;
+  text-decoration: underline dotted;
+  text-decoration-thickness: 2px;
+  text-underline-offset: 0.15em;
+
+  &:hover { text-decoration-style: solid; }
+
+  &[aria-expanded="true"] { text-decoration-style: solid; }
+
+  &:focus-visible {
+    outline: 3px solid govuk.govuk-colour("yellow");
+    outline-offset: 0;
+    background: govuk.govuk-colour("yellow");
+    color: govuk.govuk-colour("black");
+    box-shadow: 0 -2px govuk.govuk-colour("yellow"), 0 4px govuk.govuk-colour("black");
+    text-decoration: none;
+  }
+}
+
+.prt-term__definition {
+  display: block;
+  margin: govuk.govuk-spacing(1) 0;
+  padding: govuk.govuk-spacing(1) govuk.govuk-spacing(2);
+  border-left: 4px solid govuk.govuk-colour("black", $variant: "tint-50");
+  // White, not the page's grey: the term sits inside grey cards too.
+  background: govuk.govuk-colour("white");
+  @include govuk.govuk-font($size: 16);
+  font-weight: 400;
+
+  &[hidden] { display: none; }
+}
+
+// THE SUMMARY'S FIRST CARD: three lines, the report in plain words.
+.prt-plainwords {
+  margin-bottom: govuk.govuk-spacing(6);
+
+  &__list { margin-bottom: 0; }
+
+  &__line {
+    @include govuk.govuk-font($size: 19);
+    margin-bottom: govuk.govuk-spacing(2);
+  }
+}
+
+// The paper's own names, listed under the report's glossary. A long list, so
+// two columns from desktop.
+.prt-glossary--terms {
+  @include govuk.govuk-media-query($from: desktop) {
+    columns: 2;
+    column-gap: govuk.govuk-spacing(6);
+    .prt-glossary__row { break-inside: avoid; }
+  }
+}
+
+// Inside an open scenario: the block sits where the beats start, and the
+// beats follow under their own small heading.
+.prt-scenario__plain {
+  margin: 0 govuk.govuk-spacing(3) govuk.govuk-spacing(3) govuk.govuk-spacing(6);
+}
+
+.prt-scenario__detail {
+  margin: 0 0 govuk.govuk-spacing(2) govuk.govuk-spacing(6);
+}
+
+// A key judgement's two plain lines, between the judgement and its quote.
+.prt-brief__plain {
+  margin-bottom: govuk.govuk-spacing(3);
+}
+
+// The item page: the block under the lead sentence, before the detail.
+.prt-drill__plain { margin-bottom: govuk.govuk-spacing(4); }

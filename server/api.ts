@@ -46,6 +46,7 @@ import { PolicyError } from '$lib/policy-analysis/validation';
 import { assessmentDocument, briefDocument, isDownloadFormat, isExportFormat } from '$lib/policy-analysis/server/export';
 import { briefOf } from '$lib/brief';
 import { markDownJudgements } from '$lib/evidence-grade';
+import { withoutIds } from '$lib/policy-analysis/plain';
 import { assessmentBundle } from '$lib/policy-analysis/server/bundle';
 import { ownerPayload, sharedPayload } from '$lib/policy-analysis/offline/payload';
 import { runFacts, type PackPayload } from '$lib/offline-run';
@@ -83,6 +84,18 @@ async function summaryCard(id: string, updatedAt: Date | string | null): Promise
 }
 
 const owner = () => getOwnerEmails()[0];
+
+/**
+ * The landing page's recurring bodies, held until what they are counted from
+ * moves. A WORKER writes the library mid-run without an HTTP request, so the
+ * write-drop above is not enough on its own: the key is the library's own
+ * size and last change, and the finished-paper count, read in one query.
+ */
+let recurring: { key: string; value: unknown } | null = null;
+async function recurringKey(who: string): Promise<string> {
+  const { recurringSignature } = await import('$lib/policy-analysis/server/intel');
+  return recurringSignature(who);
+}
 
 /**
  * The copied export layer returns a web `Response`; this server speaks
@@ -145,8 +158,12 @@ function asRequest(fields: Record<string, string>, file?: { field: string; filen
   for (const [key, value] of Object.entries(fields)) form.set(key, value);
   // Every file under its own name: the paper, and each source the reader
   // supplied beside it (phase 22 part 2).
+  //
+  // APPENDED, NEVER SET (phase 25). `set` replaces every earlier entry of the
+  // same name, so two files a client sent under one name arrived as the last
+  // of them — a second document silently dropped before any reader saw it.
   for (const one of Array.isArray(file) ? file : file ? [file] : []) {
-    form.set(one.field || 'document', new Blob([new Uint8Array(one.bytes)], { type: one.mimeType }), one.filename);
+    form.append(one.field || 'document', new Blob([new Uint8Array(one.bytes)], { type: one.mimeType }), one.filename);
   }
   return new Request('http://localhost/api/policy-analysis', { method: 'POST', body: form });
 }
@@ -162,7 +179,7 @@ export async function handleApi(
   // Anything that writes may change what a card summarises — a purge empties
   // a run without touching its `updatedAt` — so every write drops the cache.
   // Writes are rare and a card is one query to rebuild.
-  if (method !== 'GET' && method !== 'HEAD') summaries.clear();
+  if (method !== 'GET' && method !== 'HEAD') { summaries.clear(); recurring = null; }
 
   // One gate for every mutation, rather than a check per handler. A route added
   // later is covered without anyone remembering to cover it — which is the only
@@ -278,10 +295,168 @@ export async function handleApi(
    * library and the papers' graphs, which `share.ts` withholds and no export
    * reads. Sealed papers are not in it at all.
    */
+  /*
+   * GET /api/policy-analysis/bodies/recurring — the landing page's "Bodies
+   * that turn up again" (phase 24): the bodies seen in two or more papers,
+   * one mark per paper, and how many papers there are at all, so an empty
+   * panel can say why. A small endpoint of its own rather than a field on the
+   * landing list: that response also feeds the submit form, and this one
+   * reads graphs. Cached against what it is computed from; any write drops it.
+   */
+  if (segments[0] === 'bodies' && segments[1] === 'recurring' && segments.length === 2 && method === 'GET') {
+    const { recurringBodies } = await import('$lib/policy-analysis/server/intel');
+    const key = await recurringKey(owner());
+    if (!recurring || recurring.key !== key) recurring = { key, value: await recurringBodies(owner()) };
+    sendJson(res, 200, recurring.value);
+    return true;
+  }
+
   if (segments[0] === 'bodies' && segments.length === 1 && method === 'GET') {
     const { bodiesGrid } = await import('$lib/policy-analysis/server/intel');
     sendJson(res, 200, { ...(await bodiesGrid(owner())), readOnly: isReadOnly() });
     return true;
+  }
+
+  /*
+   * THE MASTER LIST OF ACTORS — phase 23. Before the /:id routes, or "register"
+   * is read as an id. Its ids ARE persona ids: merge, "not the same", split and
+   * the GOV.UK link stay where they were (`…/personas/:id/merge` and the rest).
+   *
+   *   GET  …/register                           the list, as both trees
+   *   GET  …/register/proposals                 what runs proposed, for review
+   *   POST …/register/:id/accept    { kind? }   the reader vouches for it
+   *   POST …/register/:id/parent    { partOf?, kindOf? }   move it (null = to the top)
+   *   POST …/register/:id/not-actor { reason, runBy? }     a programme, place, assessment
+   *   POST …/register/:id/kind      { kind }    what sort of actor it is (and so an actor again)
+   *
+   * The owner's own pages: built from the library and the papers' mentions,
+   * which no share or export reads. A sealed paper wrote no mention.
+   */
+  /*
+   * POLICIES AND THEIR GROUNDING LIBRARIES (phase 25). Before the /:id routes,
+   * or "policies" is read as an assessment id.
+   *
+   *   GET    /policies                       every policy, with its counts
+   *   POST   /policies                       { name } — a new policy
+   *   GET    /policies/:id                   one policy, its library and its runs
+   *   POST   /policies/:id/grounding         multipart: one item (file or url)
+   *   DELETE /policies/:id/grounding/:item   remove one item
+   *
+   * A library item never carries its bytes or its text out of here. Adding a
+   * page fetches it NOW, through the SSRF-guarded reader, under the same brake
+   * as material added by address — unless the install is set not to reach the
+   * open web, in which case it is kept and fetched by nothing.
+   */
+  if (segments[0] === 'policies') {
+    const grounding = await import('$lib/policy-analysis/server/grounding');
+    if (segments.length === 1 && method === 'GET') {
+      sendJson(res, 200, { policies: await grounding.listPolicies(owner()) });
+      return true;
+    }
+    if (segments.length === 1 && method === 'POST') {
+      const body = await readJson(req);
+      const created = await grounding.createPolicy(owner(), typeof body.name === 'string' ? body.name : '');
+      sendJson(res, 201, created);
+      return true;
+    }
+    const detail = segments[1] ? await grounding.policyDetail(owner(), segments[1]) : null;
+    if (!detail) throw new HttpError(404, 'No such policy.');
+    if (segments.length === 2 && method === 'GET') {
+      sendJson(res, 200, detail);
+      return true;
+    }
+    if (segments.length === 3 && segments[2] === 'grounding' && method === 'POST') {
+      const form = await readMultipart(req);
+      const { readGroundingItem } = await import('$lib/policy-analysis/server/ingest');
+      const item = await readGroundingItem(asRequest(form.fields, form.file));
+      const { chosenEngine } = await import('$lib/server/search');
+      const fetchNow = item.kind === 'page' && chosenEngine() !== 'none';
+      if (fetchNow) {
+        const limit = rateLimit(`material-fetch:${owner()}`, { capacity: 6, refillPerSecond: 1 / 60 });
+        if (!limit.allowed) throw new HttpError(429, `That is enough for now. Try again in ${Math.max(1, Math.ceil(limit.retryAfterMs / 60000))} minutes.`);
+      }
+      const controller = new AbortController();
+      res.on('close', () => { if (!res.writableFinished) controller.abort(); });
+      const added = await grounding.addLibraryItem(owner(), segments[1], item, { fetchNow, signal: controller.signal });
+      sendJson(res, 201, added);
+      return true;
+    }
+    if (segments.length === 4 && segments[2] === 'grounding' && method === 'DELETE') {
+      if (!(await grounding.removeLibraryItem(owner(), segments[1], segments[3]))) throw new HttpError(404, 'No such item.');
+      sendJson(res, 200, { removed: true });
+      return true;
+    }
+    return false;
+  }
+
+  if (segments[0] === 'register') {
+    const registry = await import('$lib/policy-analysis/server/actor-register');
+    if (segments.length === 1 && method === 'GET') {
+      sendJson(res, 200, { ...(await registry.registerTreeFor(owner())), readOnly: isReadOnly() });
+      return true;
+    }
+    /*
+     * PHASE 24B: the queue is the ONE place identity is reviewed, so the same
+     * response also carries the model's joins to check and the "these may be
+     * the same body" pairs the List view used to show. Additive: `proposals`
+     * is what it was.
+     */
+    if (segments.length === 2 && segments[1] === 'proposals' && method === 'GET') {
+      sendJson(res, 200, { ...(await registry.reviewQueue(owner())), readOnly: isReadOnly() });
+      return true;
+    }
+    // The figure beside "Actors to review" in the hub's views, asked on every hub page.
+    if (segments.length === 2 && segments[1] === 'review-count' && method === 'GET') {
+      sendJson(res, 200, await registry.reviewCount(owner()));
+      return true;
+    }
+    // One entry with its place in both trees and its children — a body's page.
+    if (segments.length === 2 && method === 'GET') {
+      const entry = await registry.registerEntry(owner(), segments[1]);
+      if (!entry) throw new HttpError(404, 'That actor is not on the list.');
+      sendJson(res, 200, { ...entry, readOnly: isReadOnly() });
+      return true;
+    }
+    /*
+     *   POST …/register/:id/reopen                 undo an accept: back to the queue
+     *   POST …/register/:id/split  { wording }     that wording is a different actor (undoes a join)
+     *   POST …/register/:id/keep   { wording }     the model's join was right
+     *
+     * Mutations like the rest: the read-only gate at the top of `handleApi`
+     * refuses them, and the reader gate and cross-site check in
+     * `server/index.ts` stand in front.
+     */
+    if (segments.length === 3 && method === 'POST' && ['reopen', 'split', 'keep'].includes(segments[2])) {
+      const body = segments[2] === 'reopen' ? {} : await readJson(req);
+      const wording = typeof body.wording === 'string' ? body.wording.trim().slice(0, 300) : '';
+      if (segments[2] === 'reopen') { sendJson(res, 200, await registry.reopenEntry(owner(), segments[1])); return true; }
+      if (!wording) throw new HttpError(400, segments[2] === 'split' ? 'Choose the name to split off.' : 'Choose the name to keep.');
+      sendJson(res, 200, segments[2] === 'split' ? await registry.splitWording(owner(), segments[1], wording) : await registry.keepWording(owner(), segments[1], wording));
+      return true;
+    }
+    if (segments.length === 3 && method === 'POST' && ['accept', 'parent', 'not-actor', 'kind'].includes(segments[2])) {
+      const body = await readJson(req);
+      const text = (key: string) => (typeof body[key] === 'string' ? (body[key] as string).trim().slice(0, 200) : '');
+      // `null` is a value here: it takes an actor out from under its parent.
+      const parent = (key: string) => (body[key] === null ? null : typeof body[key] === 'string' ? (body[key] as string).trim().slice(0, 100) : undefined);
+      const id = segments[1];
+      if (segments[2] === 'accept') { sendJson(res, 200, await registry.acceptEntry(owner(), id, text('kind') || null)); return true; }
+      if (segments[2] === 'parent') {
+        const change = { partOf: parent('partOf'), kindOf: parent('kindOf') };
+        if (change.partOf === undefined && change.kindOf === undefined) throw new HttpError(400, 'Say where it sits: partOf, kindOf or both.');
+        sendJson(res, 200, await registry.reparentEntry(owner(), id, change));
+        return true;
+      }
+      if (segments[2] === 'not-actor') {
+        if (!text('reason')) throw new HttpError(400, 'Say what it is: a programme, a place, an assessment or something else.');
+        sendJson(res, 200, await registry.markNotActor(owner(), id, text('reason'), text('runBy') || null));
+        return true;
+      }
+      if (!text('kind')) throw new HttpError(400, 'Choose what sort of actor it is.');
+      sendJson(res, 200, await registry.acceptEntry(owner(), id, text('kind')));
+      return true;
+    }
+    return false;
   }
 
   // The persona library. Before the /:id routes, or "personas" is read as an id.
@@ -320,7 +495,7 @@ export async function handleApi(
     if (segments.length === 3 && segments[2] === 'intel' && method === 'GET') {
       const { bodyIntel } = await import('$lib/policy-analysis/server/intel');
       const intel = await bodyIntel(owner(), segments[1]);
-      if (!intel) throw new HttpError(404, 'No such persona.');
+      if (!intel) throw new HttpError(404, 'No such body.');
       sendJson(res, 200, intel);
       return true;
     }
@@ -335,7 +510,7 @@ export async function handleApi(
      */
     if (segments.length === 3 && segments[2] === 'evidence' && method === 'POST') {
       const persona = (await personaDetail(owner(), segments[1]))?.persona;
-      if (!persona) throw new HttpError(404, 'No such persona.');
+      if (!persona) throw new HttpError(404, 'No such body.');
       if (!persona.bodyId) throw new HttpError(409, 'This body is not matched to the GOV.UK list, so there is no public record to check. Find it on the list first.');
       const limit = rateLimit(`body-evidence:${owner()}`, { capacity: 6, refillPerSecond: 1 / 60 });
       if (!limit.allowed) throw new HttpError(429, `That is enough checks for now. Try again in ${Math.max(1, Math.ceil(limit.retryAfterMs / 60000))} minutes.`);
@@ -352,7 +527,7 @@ export async function handleApi(
     }
     if (segments.length === 2 && method === 'GET') {
       const dossier = await personaDetail(owner(), segments[1]);
-      if (!dossier) throw new HttpError(404, 'No such persona.');
+      if (!dossier) throw new HttpError(404, 'No such body.');
       // `readOnly` rides along so the page can decline to draw a control that
       // would only 403, the same as the assessment detail.
       sendJson(res, 200, { ...dossier, readOnly: isReadOnly() });
@@ -383,7 +558,7 @@ export async function handleApi(
       // VALIDATED BEFORE A TOKEN IS TAKEN. Six requests for an id that does not
       // exist cost nothing and used to lock the reader out of six that would.
       const dossier = await personaDetail(owner(), segments[1]);
-      if (!dossier) throw new HttpError(404, 'No such persona.');
+      if (!dossier) throw new HttpError(404, 'No such body.');
 
       /*
        * FAIL CLOSED WHERE THE DOCUMENT GUARD CANNOT WORK.
@@ -470,7 +645,7 @@ export async function handleApi(
       const body = await readJson(req);
       const text = (key: string) => (typeof body[key] === 'string' ? (body[key] as string).trim().slice(0, 200) : '');
       const id = segments[1];
-      if (!(await personaDetail(owner(), id))) throw new HttpError(404, 'No such persona.');
+      if (!(await personaDetail(owner(), id))) throw new HttpError(404, 'No such body.');
       if (segments[2] === 'merge') {
         if (!text('other')) throw new HttpError(400, 'Choose the body to combine this one with.');
         sendJson(res, 200, await actions.mergePersonas(owner(), id, text('other')));
@@ -494,7 +669,7 @@ export async function handleApi(
       return true;
     }
     if (segments.length === 2 && method === 'DELETE') {
-      if (!(await removePersona(owner(), segments[1]))) throw new HttpError(404, 'No such persona.');
+      if (!(await removePersona(owner(), segments[1]))) throw new HttpError(404, 'No such body.');
       sendJson(res, 200, { removed: true });
       return true;
     }
@@ -689,7 +864,9 @@ export async function handleApi(
         : ownerPayload({
             ...meta,
             sealed: result.analysis.sealed,
-            documentSha256: result.documents?.[0]?.sha256 ?? null,
+            // The SET's digest (phase 25): for one paper, its own sha256 as
+            // before; for several, the hash of their sorted digests.
+            documentSha256: result.analysis.documentSetHash ?? result.documents?.[0]?.sha256 ?? null,
             artefacts,
             stages: result.stages,
           })),
@@ -709,7 +886,8 @@ export async function handleApi(
     // The documents print judgements, so they read them as the page does: marked
     // down where the evidence will not carry them (phase 22). The pack is handed
     // the stored rows and marks them down itself, in `Report`.
-    const judged = markDownJudgements(artefacts);
+    // And with no identifier left in a sentence (phase 23, `withoutIds`).
+    const judged = withoutIds(markDownJudgements(artefacts));
     const response = part === 'brief' && isExportFormat(format)
       ? await briefDocument(judged, redacted ? { ...meta, withheld: withheldPhrases(redacted.withheld) } : meta, format, briefOf(judged, briefStages))
       : isExportFormat(format)

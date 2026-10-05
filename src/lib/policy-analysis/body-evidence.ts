@@ -97,7 +97,12 @@ export type BodyEvidenceRecord = {
 };
 
 const clip = (v: unknown, max: number) => String(v ?? '').replace(/\s+/g, ' ').trim().slice(0, max);
-const isoOrNull = (v: unknown) => (typeof v === 'string' && !Number.isNaN(Date.parse(v)) ? new Date(v).toISOString() : null);
+// A date-time with no zone is read as UTC, never as the server's local time.
+// Hansard sends `SittingDate: "2024-09-05T00:00:00"`; on a box set to London
+// time that parsed as 23:00 the day before, and the sitting's URL, built from
+// the date, pointed at the wrong day for half the year.
+const zoned = (v: string) => (/T\d{2}:\d{2}(:\d{2}(\.\d+)?)?$/.test(v) ? `${v}Z` : v);
+const isoOrNull = (v: unknown) => (typeof v === 'string' && !Number.isNaN(Date.parse(zoned(v))) ? new Date(zoned(v)).toISOString() : null);
 
 // ---------------------------------------------------------------------------
 // What each record answers, by rule

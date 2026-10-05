@@ -24,6 +24,7 @@
  * pack opened in two years should be able to say what it is.
  */
 import type { Artefact } from '../contracts';
+import { flagNotes } from '../notes';
 
 export const PAYLOAD_VERSION = 1;
 
@@ -50,7 +51,8 @@ export type OfflinePayload = {
   /** The source paper's digest, so a pack can be tied back to the document it read. */
   documentSha256: string | null;
   artefacts: Artefact[];
-  warnings: { stage: string; text: string }[];
+  /** `note` marks the model's remark about the paper, as against the run's own state (phase 23). Absent on an older pack. */
+  warnings: { stage: string; text: string; note?: true }[];
   withheld: { kind: string; count: number }[];
 };
 
@@ -64,7 +66,7 @@ export type PayloadInput = {
   completedAt: Date | string | null;
   documentSha256?: string | null;
   artefacts: Artefact[];
-  stages: { ordinal: number; name: string; warnings: string[] }[];
+  stages: { ordinal: number; name: string; warnings: string[]; notes?: string[] }[];
 };
 
 const iso = (v: Date | string | null | undefined): string | null =>
@@ -91,7 +93,7 @@ export function ownerPayload(input: PayloadInput, now = new Date()): OfflinePayl
     generatedAt: now.toISOString(),
     documentSha256: input.documentSha256 ?? null,
     artefacts: input.artefacts,
-    warnings: input.stages.flatMap((s) => s.warnings.map((text) => ({ stage: s.name, text }))),
+    warnings: input.stages.flatMap((s) => flagNotes(s).map((w) => ({ stage: s.name, ...w }))),
     withheld: [],
   };
 }
@@ -118,7 +120,7 @@ export function sharedPayload(
     status: string;
     completedAt: Date | string | null;
     artefacts: Artefact[];
-    warnings: { stage: string; text: string }[];
+    warnings: { stage: string; text: string; note?: true }[];
     withheld: { kind: string; count: number }[];
   },
   now = new Date(),

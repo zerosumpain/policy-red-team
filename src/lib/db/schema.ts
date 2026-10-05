@@ -26,8 +26,21 @@ import {
   jsonb,
   primaryKey,
   uuid,
+  type AnyPgColumn,
 } from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
+
+/**
+ * A POLICY (phase 25): what drafts and re-runs of one policy share, and what
+ * its grounding library hangs off. See `migrations/0009-documents-grounding.sql`.
+ */
+export const policyPolicies = pgTable('policy_policies', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  owner: text('owner').notNull(),
+  name: text('name').notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [index('policy_policies_owner_idx').on(t.owner, t.name)]);
 
 export const policyAnalyses = pgTable('policy_analyses', {
   id: uuid('id').primaryKey().defaultRandom(),
@@ -44,13 +57,18 @@ export const policyAnalyses = pgTable('policy_analyses', {
   sharedContextFirst: boolean('shared_context_first').notNull().default(false),
   sealed: boolean('sealed').notNull().default(false),
   sealedResearch: boolean('sealed_research').notNull().default(false),
+  // Phase 25 (`0009-documents-grounding.sql`): which set of documents, which
+  // paper it counts as, and which policy it belongs to (never on a sealed run).
+  documentSetHash: text('document_set_hash'),
+  paperKey: text('paper_key'),
+  policyId: uuid('policy_id').references(() => policyPolicies.id, { onDelete: 'set null' }),
   status: text('status').notNull().default('queued'),
   cancelledAt: timestamp('cancelled_at', { withTimezone: true }),
   error: text('error'),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   completedAt: timestamp('completed_at', { withTimezone: true }),
-}, (t) => [index('policy_analyses_owner_idx').on(t.owner, t.createdAt)]);
+}, (t) => [index('policy_analyses_owner_idx').on(t.owner, t.createdAt), index('policy_analyses_paper_idx').on(t.owner, t.paperKey)]);
 
 export const policyDocuments = pgTable('policy_documents', {
   id: uuid('id').primaryKey().defaultRandom(),
@@ -62,7 +80,13 @@ export const policyDocuments = pgTable('policy_documents', {
   content: text('content').notNull(),
   extractedText: text('extracted_text'),
   metadata: jsonb('metadata'),
-}, (t) => [uniqueIndex('policy_documents_analysis_idx').on(t.analysisId)]);
+  // Phase 25: several documents in one assessment. Document 0 keeps the empty
+  // prefix, so every passage id stored before this survives unchanged.
+  position: integer('position').notNull().default(0),
+  role: text('role').notNull().default('main'),
+  title: text('title'),
+  idPrefix: text('id_prefix').notNull().default(''),
+}, (t) => [uniqueIndex('policy_documents_analysis_position_idx').on(t.analysisId, t.position)]);
 
 export const policyStages = pgTable('policy_stages', {
   id: uuid('id').primaryKey().defaultRandom(),
@@ -76,6 +100,9 @@ export const policyStages = pgTable('policy_stages', {
   completedAt: timestamp('completed_at', { withTimezone: true }),
   error: text('error'),
   warnings: jsonb('warnings').$type<string[]>().notNull().default([]),
+  // The model's own remarks about the paper (phase 23, `0006-stage-notes.sql`).
+  // Never carried into a later prompt; see `StageOutput`.
+  notes: jsonb('notes').$type<string[]>().notNull().default([]),
   output: jsonb('output'),
 }, (t) => [uniqueIndex('policy_stages_order_idx').on(t.analysisId, t.ordinal)]);
 
@@ -176,6 +203,9 @@ export const policyBodies = pgTable('policy_bodies', {
   fetchedAt: timestamp('fetched_at', { withTimezone: true }).notNull(),
 }, (t) => [uniqueIndex('policy_bodies_source_idx').on(t.source, t.sourceId)]);
 
+/** Who put an alias on a master actor, and from which paper. */
+export type AliasOrigin = { by: 'model' | 'rule' | 'reader'; analysisId: string | null; at: string };
+
 export const policyPersonas = pgTable('policy_personas', {
   id: uuid('id').primaryKey().defaultRandom(),
   owner: text('owner').notNull(),
@@ -193,7 +223,50 @@ export const policyPersonas = pgTable('policy_personas', {
   researchedAt: timestamp('researched_at', { withTimezone: true }),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
-}, (t) => [index('policy_personas_owner_idx').on(t.owner, t.name), index('policy_personas_body_idx').on(t.owner, t.bodyId)]);
+  /**
+   * PHASE 23: THE PERSONA LIBRARY IS THE MASTER LIST OF ACTORS
+   * (`migrations/0007-actor-register.sql`). organisation, office_or_role,
+   * sector_or_category, group_of_people or not_an_actor.
+   */
+  kind: text('kind').notNull().default('organisation'),
+  /** Structure: who it sits inside. For a programme, who runs it. */
+  partOf: uuid('part_of').references((): AnyPgColumn => policyPersonas.id, { onDelete: 'set null' }),
+  /** Category: what sort of thing it is a member of. */
+  kindOf: uuid('kind_of').references((): AnyPgColumn => policyPersonas.id, { onDelete: 'set null' }),
+  /** confirmed or proposed. Both are matched into; proposed ones wait for review. */
+  status: text('status').notNull().default('proposed'),
+  whatItIs: text('what_it_is'),
+  notActorReason: text('not_actor_reason'),
+  proposedIn: uuid('proposed_in').references(() => policyAnalyses.id, { onDelete: 'set null' }),
+  /**
+   * PHASE 24B: who added each alias — the model's matching call, a rule, or a
+   * reader — keyed by the alias's normalised name (`0008-alias-origins.sql`).
+   * A model-made alias is a deterministic match on every later run, so the
+   * review queue lists them for a reader to check.
+   */
+  aliasOrigins: jsonb('alias_origins').$type<Record<string, AliasOrigin>>().notNull().default({}),
+}, (t) => [index('policy_personas_owner_idx').on(t.owner, t.name), index('policy_personas_body_idx').on(t.owner, t.bodyId), index('policy_personas_status_idx').on(t.owner, t.status)]);
+
+/**
+ * MATCHING BACK IN (phase 23): each source mention of an unsealed paper, the
+ * master actor it resolved to and the capacity the paper shows it in.
+ */
+export const policyActorMentions = pgTable('policy_actor_mentions', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  owner: text('owner').notNull(),
+  analysisId: uuid('analysis_id').notNull().references(() => policyAnalyses.id, { onDelete: 'cascade' }),
+  actorId: text('actor_id'),
+  mentionId: text('mention_id').notNull(),
+  masterId: uuid('master_id').notNull().references(() => policyPersonas.id, { onDelete: 'cascade' }),
+  capacity: text('capacity'),
+  basis: text('basis').notNull(),
+  wording: text('wording').notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  uniqueIndex('policy_actor_mentions_mention_idx').on(t.analysisId, t.mentionId, t.masterId),
+  index('policy_actor_mentions_master_idx').on(t.masterId),
+  index('policy_actor_mentions_owner_idx').on(t.owner),
+]);
 
 export const policyPersonaObservations = pgTable('policy_persona_observations', {
   id: uuid('id').primaryKey().defaultRandom(),
@@ -336,6 +409,48 @@ export const policyReaderInputs = pgTable('policy_reader_inputs', {
   wording: text('wording'),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 }, (t) => [index('policy_reader_inputs_analysis_idx').on(t.analysisId, t.position)]);
+
+/** The grounding library: material trusted to judge a policy by, attached once per policy (phase 25). */
+export const policyGrounding = pgTable('policy_grounding', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  owner: text('owner').notNull(),
+  policyId: uuid('policy_id').notNull().references(() => policyPolicies.id, { onDelete: 'cascade' }),
+  role: text('role').notNull(),
+  title: text('title').notNull(),
+  publisher: text('publisher'),
+  publishedOn: text('published_on'),
+  url: text('url'),
+  filename: text('filename'),
+  mimeType: text('mime_type'),
+  size: integer('size'),
+  sha256: text('sha256'),
+  content: text('content'),
+  extractedText: text('extracted_text'),
+  fetchedAt: timestamp('fetched_at', { withTimezone: true }),
+  error: text('error'),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [index('policy_grounding_policy_idx').on(t.policyId, t.createdAt)]);
+
+/** What one run was grounded on: a copy of each item, taken at submission and sealed with the run (phase 25). */
+export const policyRunGrounding = pgTable('policy_run_grounding', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  analysisId: uuid('analysis_id').notNull().references(() => policyAnalyses.id, { onDelete: 'cascade' }),
+  position: integer('position').notNull(),
+  libraryId: uuid('library_id').references(() => policyGrounding.id, { onDelete: 'set null' }),
+  role: text('role').notNull(),
+  title: text('title').notNull(),
+  publisher: text('publisher'),
+  publishedOn: text('published_on'),
+  url: text('url'),
+  filename: text('filename'),
+  mimeType: text('mime_type'),
+  size: integer('size'),
+  sha256: text('sha256'),
+  content: text('content'),
+  extractedText: text('extracted_text'),
+  error: text('error'),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [uniqueIndex('policy_run_grounding_analysis_idx').on(t.analysisId, t.position)]);
 
 export const policyShares = pgTable('policy_share', {
   id: uuid('id').primaryKey().defaultRandom(),

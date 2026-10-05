@@ -21,7 +21,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const ROOT = path.resolve(fileURLToPath(new URL('..', import.meta.url)));
-const PORT = 5299;
+const PORT = Number(process.env.WALK_PORT ?? 5299); // overridable so parallel worktrees can walk at once
 const failures = [];
 const note = (m) => console.log(`  ${m}`);
 
@@ -58,6 +58,14 @@ const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
 page.on('pageerror', (err) => failures.push(`page error: ${err.message}`));
 
 async function audit(label) {
+  // SETTLED, NOT MID-FADE. The guide's pieces enter from opacity 0, and axe
+  // measuring one partway through reported a contrast failure on /guide/2 and
+  // /guide/3 about one walk in three — text no reader ever sees at that
+  // opacity. Wait for running animations to finish, so the scan reads the page
+  // as it rests. Infinite ones (a pulse) are left alone: they never settle.
+  await page.evaluate(() => Promise.all(document.getAnimations()
+    .filter((a) => a.playState === 'running' && a.effect?.getComputedTiming().iterations !== Infinity)
+    .map((a) => a.finished.catch(() => {}))));
   await page.addScriptTag({ content: axeSource });
   const violations = await page.evaluate(async () => {
     const r = await window.axe.run(document, {
@@ -82,6 +90,9 @@ try {
   // 1 — the landing page, with nothing on it yet
   await page.goto(`http://127.0.0.1:${PORT}/`, { waitUntil: 'networkidle' });
   if (!(await page.getByRole('heading', { name: 'Policy Red Team' }).isVisible())) failures.push('landing: no heading');
+  // An empty "Bodies that turn up again" says why it is empty, rather than vanishing (phase 24).
+  await page.locator('.prt-recurring').waitFor({ timeout: 20000 });
+  if (!/No paper has been assessed yet/.test(await page.locator('.prt-recurring').innerText())) failures.push('landing: the empty bodies panel does not say why it is empty');
   await audit('/');
   note('landing');
 
@@ -124,6 +135,28 @@ try {
   // The lanes question arrives answered. Every browser run before phase 19 went
   // one call at a time because the form had no field and the default was one.
   if (!(await page.getByLabel('Six at once', { exact: true }).isChecked())) failures.push('/new: the lanes question is not answered "Six at once" by default');
+  /*
+   * THE SEALED BOX MUST SEAL (phase 23). From phase 4 the form sent
+   * `sealed=sealed` and the server, correctly strict, read it as unsealed. So
+   * tick it, catch the real request in flight, read the field, refuse the
+   * request, and untick: the walk's own run stays unsealed because later steps
+   * read its personas, which a sealed run never writes.
+   */
+  await page.getByLabel('Seal this assessment', { exact: true }).check();
+  let sealedSent = null;
+  const catchSubmit = async (route) => {
+    if (route.request().method() !== 'POST') return route.fallback();
+    const body = route.request().postDataBuffer()?.toString('latin1') ?? '';
+    sealedSent = body.match(/name="sealed"\r\n\r\n([^\r]*)/)?.[1] ?? '(absent)';
+    await route.fulfill({ status: 400, contentType: 'application/json', body: JSON.stringify({ message: 'Held by the walk.' }) });
+  };
+  await page.route('**/api/policy-analysis', catchSubmit);
+  await page.getByRole('button', { name: 'Start the assessment' }).click();
+  await page.getByRole('alert').filter({ hasText: 'Held by the walk.' }).waitFor({ timeout: 5000 });
+  await page.unroute('**/api/policy-analysis', catchSubmit);
+  if (sealedSent !== 'true') failures.push(`/new: a ticked "Seal this assessment" sent sealed=${sealedSent}, not sealed=true`);
+  await page.getByLabel('Seal this assessment', { exact: true }).uncheck();
+  note('a ticked sealed box sends sealed=true');
   await page.getByRole('button', { name: 'Start the assessment' }).click();
   await page.waitForURL('**/assessments/**', { timeout: 20000 });
   note('submitted');
@@ -143,7 +176,9 @@ try {
    * renders and does not route is the failure a walk exists to catch, and it
    * waits for the URL and the page's own content, not the shell.
    */
-  const serviceNav = page.locator('.govuk-service-navigation');
+  // THE ASSESSMENT'S OWN SECTIONS (`.prt-subnav`) since phase 24: the
+  // service's navigation is the other bar, on every page.
+  const serviceNav = page.locator('.prt-subnav');
   const currentView = async () => (await serviceNav.locator('.govuk-service-navigation__item--active').innerText().catch(() => '')).trim();
   const settle = async () => {
     await page.locator('.prt-view').first().waitFor({ timeout: 30000 });
@@ -152,7 +187,7 @@ try {
   const openView = async (label) => {
     await serviceNav.getByRole('link', { name: label, exact: true }).click();
     await page.waitForFunction((name) => {
-      const active = document.querySelector('.govuk-service-navigation__item--active');
+      const active = document.querySelector('.prt-subnav .govuk-service-navigation__item--active');
       return active?.textContent?.trim() === name;
     }, label, { timeout: 10000 });
     await settle();
@@ -190,6 +225,72 @@ try {
     const caption = (await page.locator('.prt-viewhead').innerText()).replace(/\s+/g, ' ');
     if (!caption.includes(`${first} way`)) failures.push(`summary: the first figure says ${first} and the Threats page says "${caption}"`);
     note(`summary: ${tiles} figures, ${cards} boxes, and the way on opens a section of Threats`);
+  }
+
+  /*
+   * PLAIN WORDS FIRST, AND THE PAPER'S NAMES DEFINED ON TAP (phase 23). The
+   * fixture writes a plain block on every play, scenario and key judgement and
+   * an everyday line on its part of the policy, whose name ("Shared access
+   * programme") the play's "who" line uses — so the Summary leads with a
+   * plain-words card, a play card shows its block before its detail, and the
+   * name is a button that discloses its definition from the keyboard.
+   */
+  {
+    const report = `http://127.0.0.1:${PORT}/assessments/${id}`;
+    await page.goto(report, { waitUntil: 'networkidle' });
+    await page.getByRole('heading', { name: 'What this report says, in plain words' }).waitFor({ timeout: 20000 }).catch(() => failures.push('summary: no "What this report says, in plain words" card'));
+    const plainFirst = await page.evaluate(() => {
+      const card = document.querySelector('.prt-plainwords');
+      const kpis = document.querySelector('.prt-kpis');
+      return !!card && !!kpis && Boolean(card.compareDocumentPosition(kpis) & Node.DOCUMENT_POSITION_FOLLOWING);
+    });
+    if (!plainFirst) failures.push('summary: the plain-words card is not the first thing on the Summary');
+
+    await page.goto(`${report}/threats/weights`, { waitUntil: 'networkidle' });
+    const card = page.locator('.prt-play').first();
+    await card.waitFor({ timeout: 20000 });
+    const order = await card.evaluate((el) => {
+      const plain = el.querySelector('.prt-plain');
+      const detail = el.querySelector('.prt-play__closing');
+      return {
+        plain: !!plain,
+        labels: [...el.querySelectorAll('.prt-plain__label')].map((d) => d.textContent?.trim()),
+        before: !!plain && !!detail && Boolean(plain.compareDocumentPosition(detail) & Node.DOCUMENT_POSITION_FOLLOWING),
+      };
+    });
+    if (!order.plain) failures.push('play card: no plain-words block');
+    else {
+      for (const label of ['Who', 'What they do', 'What goes wrong', 'It is like', 'Why it matters']) {
+        if (!order.labels.includes(label)) failures.push(`play card: the plain block has no "${label}" line`);
+      }
+      if (!order.before) failures.push('play card: the plain block is not drawn before the detail');
+    }
+    if (!(await card.locator('.prt-play__closing').getByText('How it runs').count())) {
+      await card.locator('.prt-play__closing summary').click();
+      if (!(await card.locator('.prt-play__closing').getByText('How it runs').isVisible())) failures.push('play card: the detail under the plain block does not carry the play itself');
+    }
+
+    // THE PART OF THE POLICY, not a body: since phase 23 the bodies on a card
+    // are terms too (stage 2 writes each one a line of what it is), and the
+    // fixture names one first.
+    const partTerm = card.locator('.prt-term').filter({ hasNot: page.locator('.prt-term__name', { hasText: /\b(Councils?|Department for Education|Providers)\b/ }) }).first();
+    const term = partTerm.locator('.prt-term__name');
+    if (!(await term.count())) failures.push('play card: the part of the policy it names is not a definable term');
+    else {
+      const definition = partTerm.locator('.prt-term__definition');
+      if ((await term.getAttribute('aria-expanded')) !== 'false' || (await definition.isVisible())) failures.push('term: the definition shows before it is asked for');
+      // KEYBOARD, NOT A POINTER: the accessibility statement promises nothing here appears on hover.
+      await term.focus();
+      await page.keyboard.press('Enter');
+      if ((await term.getAttribute('aria-expanded')) !== 'true' || !(await definition.isVisible())) failures.push('term: Enter does not show the definition');
+      else if (!/one place to ask for help/.test(await definition.innerText())) failures.push(`term: the definition reads "${await definition.innerText()}"`);
+      await term.hover();
+      await page.keyboard.press('Space');
+      if (await definition.isVisible()) failures.push('term: pressing again does not hide the definition');
+      await page.keyboard.press('Enter');
+      await audit('ways to beat it, a term opened');
+    }
+    note('plain words lead the Summary and every play card; a term opens and closes from the keyboard');
   }
 
   /*
@@ -923,14 +1024,17 @@ try {
    */
   await page.goto(base, { waitUntil: 'networkidle' });
   await page.getByRole('heading', { name: 'The report at a glance' }).waitFor({ timeout: 30000 });
-  const menu = page.locator('.govuk-service-navigation__toggle');
-  const list = page.locator('.govuk-service-navigation__list');
+  const menu = page.locator('.prt-subnav .govuk-service-navigation__toggle');
+  const list = page.locator('.prt-subnav .govuk-service-navigation__list');
+  // THE SERVICE'S OWN BAR COLLAPSES TOO, and must not be the one opened here:
+  // two "Menu" buttons at 320px is why the sections' toggle names itself.
+  if ((await page.locator('.govuk-service-navigation__toggle', { hasText: /^Menu$/ }).count()) !== 1) failures.push('nav at 320px: the service navigation has no Menu button of its own');
   if (!(await menu.isVisible())) failures.push('nav at 320px: no Menu button');
   else {
     if (await list.isVisible()) failures.push('nav at 320px: the list is open before Menu is pressed');
     await menu.click();
     if ((await menu.getAttribute('aria-expanded')) !== 'true' || !(await list.isVisible())) failures.push('nav at 320px: Menu does not open the list');
-    if ((await page.locator('.govuk-service-navigation__item--active').count()) !== 1) failures.push('nav at 320px: the list does not mark the current view');
+    if ((await list.locator('.govuk-service-navigation__item--active').count()) !== 1) failures.push('nav at 320px: the list does not mark the current view');
     await list.getByRole('link', { name: 'Causes', exact: true }).click();
     await page.waitForURL((url) => url.pathname.endsWith('/causes'), { timeout: 10000 }).catch(() => failures.push('nav at 320px: choosing a view did not route'));
     if (await list.isVisible()) failures.push('nav at 320px: the list stays open over the page it opened');
@@ -968,28 +1072,183 @@ try {
   const secondPaper = Buffer.concat([
     await readFile(path.join(ROOT, 'tests', 'fixtures', 'policy-analysis', 'policy.txt')),
     Buffer.from('\n\nThis note is a separate policy about the same Council.\n'),
+    // PHASE 24B: words for the council no rule can join. The fixture's matching
+    // answer joins them, so the queue has a model-made join to check.
+    Buffer.from('\nThe local authority runs the scheme day to day.\n'),
   ]);
   await page.getByLabel('The paper', { exact: true }).setInputFiles({ name: 'second-policy.txt', mimeType: 'text/plain', buffer: secondPaper });
   await page.getByRole('button', { name: 'Start the assessment' }).click();
   await page.waitForURL('**/assessments/**', { timeout: 20000 });
   await page.getByRole('heading', { name: 'The report at a glance' }).waitFor({ timeout: 120000 });
 
+  // 9a — THE MASTER LIST OF ACTORS (phase 23), through the API the hub will
+  // draw from. Two papers in: the council named as "Council" and "Councils" is
+  // ONE actor seen in two papers; the department is matched through GOV.UK; the
+  // programme is kept as context, not an actor; the named resident is nowhere.
+  // Then a ruling: accept the council, put it inside the department, and have
+  // the opposite move refused as a loop.
+  {
+    const register = await page.evaluate(async () => (await fetch('/api/policy-analysis/register')).json());
+    const named = (name) => register.entries?.find((e) => e.name === name);
+    const council = named('Council');
+    const dfe = named('Department for Education');
+    if (!council || !dfe) failures.push(`register: the master list does not hold the council and the department (${(register.entries ?? []).map((e) => e.name).join(', ')})`);
+    else if (council.papers !== 2) failures.push(`register: the council is seen in ${council.papers} papers, expected 2`);
+    if (named('Shared access programme')?.kind !== 'not_an_actor') failures.push('register: the programme is not kept as "not an actor"');
+    if (JSON.stringify(register).includes('Jane Smith')) failures.push('register: a named private individual reached the master list');
+    const queue = await page.evaluate(async () => (await fetch('/api/policy-analysis/register/proposals')).json());
+    if (!queue.proposals?.length) failures.push('register: the review queue is empty after two papers proposed actors');
+    if (!queue.joined?.some((j) => j.wording === 'The local authority' && j.name === 'Council')) failures.push('register: the model-made join of "The local authority" to the council is not listed to check');
+    if (council && dfe) {
+      /*
+       * 9a-i — THE QUEUE, IN A BROWSER (phase 24b). Accept the council from
+       * its card; the confirmation takes focus and offers Undo; undo, and
+       * accept again.
+       */
+      const banner = page.locator('.prt-flash');
+      await page.goto(`http://127.0.0.1:${PORT}/bodies/review`, { waitUntil: 'networkidle' });
+      await page.getByRole('heading', { name: /^Proposed for the list/, level: 3 }).waitFor({ timeout: 20000 });
+      if (!/Actors to review \(\d+\)/.test(await page.locator('.prt-subnav').innerText())) failures.push('review: the hub\'s views do not count the actors to review');
+      if (!(await page.getByRole('heading', { name: /^Joined by the model — check/ }).count())) failures.push('review: the model\'s joins are not offered to check');
+      await audit('/bodies/review');
+      const councilCard = page.locator(`#proposal-${council.id}`);
+      if (!(await councilCard.count())) failures.push('review: the council has no card in the queue');
+      else {
+        if (!/Also worded as[\s\S]*Councils/.test(await councilCard.innerText())) failures.push('review: a proposal does not show how the papers worded it');
+        await councilCard.getByRole('button', { name: /^Accept/ }).click();
+        await banner.getByText('Council is confirmed on the list.').waitFor({ timeout: 20000 });
+        if (!(await page.evaluate(() => document.activeElement?.classList.contains('prt-flash')))) failures.push('review: the confirmation does not take focus');
+        await banner.getByRole('button', { name: 'Undo' }).click();
+        await banner.getByText(/^Undone\./).waitFor({ timeout: 20000 });
+        const reopened = (await page.evaluate(async () => (await fetch('/api/policy-analysis/register')).json())).entries.find((e) => e.id === council.id);
+        if (reopened?.status !== 'proposed') failures.push('review: undoing an accept did not put it back in the queue');
+        await page.locator(`#proposal-${council.id}`).getByRole('button', { name: /^Accept/ }).click();
+        await banner.getByText('Council is confirmed on the list.').waitFor({ timeout: 20000 });
+      }
+
+      // 9a-ii — MOVE IT UNDER A PARENT, then have the opposite move refused as a loop, as a GOV.UK error.
+      await page.goto(`http://127.0.0.1:${PORT}/bodies/review/${council.id}/part-of?q=Department`, { waitUntil: 'networkidle' });
+      await page.getByRole('heading', { name: 'What does it sit inside?', level: 1 }).waitFor({ timeout: 20000 });
+      await audit('/bodies/review/:id/part-of');
+      await page.getByLabel(/^Department for Education/).check();
+      await page.getByRole('button', { name: 'Save' }).click();
+      await page.waitForURL(`**/bodies/review/${council.id}`, { timeout: 20000 });
+      await banner.getByText('Council now sits inside Department for Education.').waitFor({ timeout: 20000 });
+      await audit('/bodies/review/:id (after a decision)');
+      await page.goto(`http://127.0.0.1:${PORT}/bodies/review/${dfe.id}/part-of?q=Council`, { waitUntil: 'networkidle' });
+      await page.getByRole('heading', { name: 'What does it sit inside?', level: 1 }).waitFor({ timeout: 20000 });
+      await page.getByLabel(/^Council —/).check();
+      await page.getByRole('button', { name: 'Save' }).click();
+      const summary = page.locator('.govuk-error-summary');
+      await summary.waitFor({ timeout: 20000 });
+      if (!/cannot sit under it/.test(await summary.innerText())) failures.push('review: a loop in the hierarchy was not refused with a GOV.UK error');
+      if (!(await page.evaluate(() => document.activeElement?.classList.contains('govuk-error-summary')))) failures.push('review: the error summary does not take focus');
+      await audit('/bodies/review/:id/part-of (refused loop)');
+      const after = await page.evaluate(async () => (await fetch('/api/policy-analysis/register')).json());
+      const placed = after.entries.find((e) => e.id === council.id);
+      if (placed?.status !== 'confirmed' || placed?.partOfPath?.[0] !== 'Department for Education') failures.push('register: the ruling did not stick');
+      if (after.entries.find((e) => e.id === dfe.id)?.partOf) failures.push('register: the refused loop was written anyway');
+
+      // 9a-iii — THE MODEL'S JOIN, split off in one step and merged back with Undo.
+      await page.goto(`http://127.0.0.1:${PORT}/bodies/review`, { waitUntil: 'networkidle' });
+      await page.getByRole('heading', { name: /^Joined by the model — check/ }).waitFor({ timeout: 20000 });
+      const splitButton = page.getByRole('button', { name: /^Split it off\b.*The local authority/ });
+      await splitButton.waitFor({ timeout: 20000 }).catch(() => undefined);
+      if (!(await splitButton.count())) throw new Error(`review: no way to split off the model's join. The section reads: ${(await page.locator('#main-content').innerText()).slice(0, 1200)}`);
+      await splitButton.click();
+      await banner.getByText(/“The local authority” is now an actor of its own/).waitFor({ timeout: 20000 });
+      const split = await page.evaluate(async () => (await fetch('/api/policy-analysis/register')).json());
+      if (!split.entries.some((e) => e.name === 'The local authority')) failures.push('review: splitting the model\'s join did not make an actor of its own');
+      await banner.getByRole('button', { name: 'Undo' }).click();
+      await banner.getByText(/^Undone\./).waitFor({ timeout: 20000 });
+      const back = await page.evaluate(async () => (await fetch('/api/policy-analysis/register')).json());
+      if (back.entries.some((e) => e.name === 'The local authority') || !back.entries.find((e) => e.id === council.id)?.aliases.includes('The local authority')) failures.push('review: undoing the split did not merge the two again');
+
+      // 9a-iv — THE TREE, in both hierarchies: open the department and find the council inside it.
+      await page.goto(`http://127.0.0.1:${PORT}/bodies/register`, { waitUntil: 'networkidle' });
+      await page.getByRole('heading', { name: 'What each actor sits inside', level: 3 }).waitFor({ timeout: 20000 });
+      const toggle = page.getByRole('button', { name: /inside it — Department for Education$/ });
+      if (!(await toggle.count())) failures.push('register: the department offers no way to open what sits inside it');
+      else {
+        if ((await toggle.getAttribute('aria-expanded')) !== 'false') failures.push('register: a closed actor does not say it is collapsed');
+        await toggle.click();
+        if ((await toggle.getAttribute('aria-expanded')) !== 'true') failures.push('register: opening an actor does not say it is expanded');
+        const inside = page.locator(`#${await toggle.getAttribute('aria-controls')}`);
+        if (!(await inside.getByRole('link', { name: 'Council', exact: true }).count())) failures.push('register: the council is not drawn inside the department');
+        if (!/Inherited from what sits inside it/.test(await page.locator('.prt-tree').first().innerText())) failures.push('register: the department does not show what was found for the council as inherited');
+      }
+      await audit('/bodies/register (opened)');
+      await page.getByRole('link', { name: 'What kind of thing each is' }).click();
+      await page.getByRole('heading', { name: 'What kind of thing each actor is', level: 3 }).waitFor({ timeout: 20000 });
+      if (!new URL(page.url()).searchParams.get('tree')) failures.push('register: the kind-of arrangement is not its own address');
+      await audit('/bodies/register?tree=kind');
+
+      // 9a-v — THE BODY'S PAGE says where it sits and what papers gave it to do.
+      await page.goto(`http://127.0.0.1:${PORT}/bodies/${council.id}`, { waitUntil: 'networkidle' });
+      await page.getByRole('heading', { name: 'Where it sits on your master list', level: 2 }).waitFor({ timeout: 20000 });
+      const councilPage = await page.locator('#main-content').innerText();
+      if (!/Part of Department for Education/.test(councilPage)) failures.push('body: the page has no part-of breadcrumb');
+      if (!/ in \d+ papers?/.test(councilPage)) failures.push('body: the page does not say what papers gave it to do, in papers');
+      if (!/Department for Education/.test(await page.locator('#band-list').locator('..').innerText())) failures.push('body: the master-list section does not name the department');
+      const dfePage = await page.evaluate(async (id) => (await fetch(`/api/policy-analysis/register/${id}`)).json(), dfe.id);
+      if (!dfePage.children?.partOf?.some((c) => c.id === council.id)) failures.push('body: the department\'s entry does not list the council beneath it');
+    }
+    note('the master list holds one council seen in two papers; the queue accepts (and undoes), moves it under the department, refuses a loop as a GOV.UK error, splits the model\'s join and merges it back; the tree opens in both hierarchies');
+  }
+
+  /*
+   * 9a′ — THE LANDING PAGE NAMES THE BODIES THAT TURN UP AGAIN (phase 24).
+   * Two papers that both name the fixture's bodies, so the panel has rows —
+   * and each row is a way into that body's page.
+   */
+  await page.goto(`http://127.0.0.1:${PORT}/`, { waitUntil: 'networkidle' });
+  const recurringPanel = page.locator('.prt-recurring');
+  await recurringPanel.waitFor({ timeout: 20000 });
+  if (!(await recurringPanel.locator('a[href^="/bodies/"]').count())) failures.push('landing: "Bodies that turn up again" names no body after two papers that share them');
+  if (!(await recurringPanel.locator('.prt-papermarks__mark').count())) failures.push('landing: a recurring body has no strip of papers');
+  note('the landing page names the bodies two papers share');
+
+  /*
+   * 9a″ — A REPORT LINKS EACH BODY IT NAMES TO ITS PAGE ACROSS POLICIES
+   * (phase 24), from "Who is involved", where it has turned up before.
+   */
+  const secondId = (await page.locator('table a[href^="/assessments/"]', { hasText: 'Walk second paper' }).first().getAttribute('href'))?.split('/')[2];
+  await page.goto(`http://127.0.0.1:${PORT}/assessments/${secondId}/who`, { waitUntil: 'networkidle' });
+  await page.locator('.prt-view').first().waitFor({ timeout: 30000 });
+  const bodyLinks = page.locator('#main-content .prt-bodylink a[href^="/bodies/"]');
+  if (!(await bodyLinks.count())) failures.push('report: no body under "Who is involved" links to its page across policies');
+  else if (!/seen in 2 policies/.test(await bodyLinks.first().innerText())) failures.push('report: the link to a body\'s page does not say how many policies it was seen in');
+  note('a report links its bodies to their pages across policies');
+
+  // THE OLD ADDRESS ANSWERS, and the hub has the service's navigation.
   await page.goto(`http://127.0.0.1:${PORT}/personas`, { waitUntil: 'networkidle' });
-  await page.getByRole('heading', { name: 'Persona library', level: 1 }).waitFor({ timeout: 20000 });
+  await page.waitForURL((u) => u.pathname === '/bodies', { timeout: 10000 }).catch(() => failures.push('hub: /personas does not redirect to /bodies'));
+  await page.getByRole('heading', { name: 'Bodies across policies', level: 1 }).waitFor({ timeout: 20000 });
+  const siteNav = page.locator('.govuk-service-navigation:not(.prt-subnav)');
+  if ((await siteNav.locator('a[aria-current="page"]').innerText().catch(() => '')).trim() !== 'Bodies across policies') {
+    failures.push('hub: the service navigation is missing or does not mark Bodies across policies as the current page');
+  }
+  for (const label of ['Assessments', 'How to read a report']) {
+    if (!(await siteNav.getByRole('link', { name: label, exact: true }).count())) failures.push(`hub: the service navigation has no "${label}"`);
+  }
+  if (!(await page.locator('.prt-subnav').getByRole('link', { name: 'Clashes', exact: true }).count())) failures.push('hub: the views of the bodies are not offered');
+  if (/persona/i.test(await page.locator('#main-content').innerText())) failures.push('hub: the page still says "persona"');
+  await audit('/bodies (with bodies)');
   const persona = page.locator('#main-content table a').first();
   if (!(await persona.count())) {
     failures.push('personas: the library lists nothing after two assessments');
   } else {
     const personaName = (await persona.innerText()).trim();
     await persona.click();
-    await page.waitForURL('**/personas/**');
-    // The library's own h1 is still on screen until React swaps, so waiting for
+    await page.waitForURL('**/bodies/**');
+    // The hub's own h1 is still on screen until React swaps, so waiting for
     // "any level-1 heading" returns immediately on the wrong one.
-    await page.getByRole('heading', { name: 'Where it has been seen', level: 2 }).waitFor({ timeout: 20000 });
+    await page.getByRole('heading', { name: /^What papers ask of it/, level: 2 }).waitFor({ timeout: 20000 });
     const dossierText = await page.locator('#main-content').innerText();
     if (!dossierText.includes(personaName)) failures.push(`personas: the dossier does not name ${personaName}`);
-    if (!/seen in 2 papers/.test(dossierText)) failures.push('personas: the dossier does not say it was seen twice');
-    for (const expected of ['What the library holds', 'Where it has been seen', 'Enquiries you commissioned']) {
+    if (!/seen in 2 policies/.test(dossierText)) failures.push('personas: the dossier does not say it was seen twice');
+    // THE THREE BANDS (phase 24), each saying what kind of thing it holds.
+    for (const expected of ['What the register says', 'What papers ask of it', 'What public records show', 'Enquiries you commissioned', 'Is this the right record?']) {
       if (!dossierText.includes(expected)) failures.push(`personas: the dossier is missing "${expected}"`);
     }
     // A persona is CONTEXT, NEVER EVIDENCE, and the page has to say so: it is
@@ -1002,8 +1261,9 @@ try {
       failures.push('personas: the dossier does not link back to both papers that named it');
     }
     if (!(await page.title()).startsWith(personaName)) failures.push('personas: the tab does not name the body');
-    if (!dossierText.includes('On the GOV.UK list of public bodies')) failures.push('personas: the dossier does not say where it stands on the GOV.UK list');
-    await audit('/personas/:id');
+    if (!/FACT[\s\S]*CONTEXT[\s\S]*EVIDENCE/.test(dossierText)) failures.push('personas: the bands are not labelled fact, context and evidence, in that order');
+    if (!(await page.locator('#main-content a[href*="/who?sel="]').count())) failures.push('personas: a paper does not link to the body on its "Who is involved" page');
+    await audit('/bodies/:id');
     note(`dossier opens on "${personaName}", seen in two papers`);
 
     /*
@@ -1016,16 +1276,19 @@ try {
      * split, the merge and the rebuild through the real HTTP layer.
      */
     const personaUrl = page.url();
-    const personaId = personaUrl.split('/personas/')[1].split(/[?#/]/)[0];
+    const personaId = personaUrl.split('/bodies/')[1].split(/[?#/]/)[0];
+    // A bookmark from before phase 24 lands on the same body.
+    await page.goto(`http://127.0.0.1:${PORT}/personas/${personaId}`, { waitUntil: 'networkidle' });
+    await page.waitForURL(`**/bodies/${personaId}`, { timeout: 10000 }).catch(() => failures.push('personas: /personas/:id does not redirect to /bodies/:id'));
 
-    await page.goto(`http://127.0.0.1:${PORT}/personas/${personaId}/register`, { waitUntil: 'networkidle' });
+    await page.goto(`http://127.0.0.1:${PORT}/bodies/${personaId}/register`, { waitUntil: 'networkidle' });
     await page.getByRole('heading', { name: 'Which public body is this?', level: 1 }).waitFor({ timeout: 20000 });
     await page.getByText(/Nothing on the list matches|Which of these is/).first().waitFor({ timeout: 20000 });
-    await audit('/personas/:id/register');
+    await audit('/bodies/:id/register');
 
-    await page.goto(`http://127.0.0.1:${PORT}/personas/${personaId}/merge`, { waitUntil: 'networkidle' });
+    await page.goto(`http://127.0.0.1:${PORT}/bodies/${personaId}/merge`, { waitUntil: 'networkidle' });
     await page.getByRole('heading', { level: 1 }).waitFor({ timeout: 20000 });
-    await audit('/personas/:id/merge');
+    await audit('/bodies/:id/merge');
 
     await page.goto(personaUrl, { waitUntil: 'networkidle' });
     const split = page.getByRole('link', { name: /This paper meant a different body/ }).first();
@@ -1034,21 +1297,21 @@ try {
     } else {
       await split.click();
       await page.getByRole('heading', { name: 'Did this paper mean a different body?', level: 1 }).waitFor({ timeout: 20000 });
-      await audit('/personas/:id/sightings/:observationId');
+      await audit('/bodies/:id/sightings/:observationId');
       await page.getByRole('button', { name: 'Yes, move it to its own record' }).click();
-      await page.waitForURL((u) => u.pathname.startsWith('/personas/') && !u.pathname.includes(personaId), { timeout: 20000 });
-      await page.getByRole('heading', { name: 'Where it has been seen', level: 2 }).waitFor({ timeout: 20000 });
+      await page.waitForURL((u) => u.pathname.startsWith('/bodies/') && !u.pathname.includes(personaId), { timeout: 20000 });
+      await page.getByRole('heading', { name: /^What papers ask of it/, level: 2 }).waitFor({ timeout: 20000 });
       const splitId = new URL(page.url()).pathname.split('/')[2];
-      if (!/seen in 1 paper\b/.test(await page.locator('#main-content').innerText())) failures.push('personas: the separated paper is not a record of its own');
+      if (!/seen in 1 policy\b/.test(await page.locator('#main-content').innerText())) failures.push('personas: the separated paper is not a record of its own');
 
-      await page.goto(`http://127.0.0.1:${PORT}/personas/${personaId}/merge/${splitId}`, { waitUntil: 'networkidle' });
+      await page.goto(`http://127.0.0.1:${PORT}/bodies/${personaId}/merge/${splitId}`, { waitUntil: 'networkidle' });
       await page.getByRole('heading', { name: 'Are these the same body?', level: 1 }).waitFor({ timeout: 20000 });
-      await audit('/personas/:id/merge/:other');
+      await audit('/bodies/:id/merge/:other');
       await page.getByLabel(/Yes — combine them into one record/).check();
       await page.getByRole('button', { name: 'Save' }).click();
-      await page.waitForURL(`**/personas/${personaId}`, { timeout: 20000 });
-      await page.getByRole('heading', { name: 'Where it has been seen', level: 2 }).waitFor({ timeout: 20000 });
-      if (!/seen in 2 papers/.test(await page.locator('#main-content').innerText())) failures.push('personas: combining the two records again did not bring both papers back');
+      await page.waitForURL(`**/bodies/${personaId}`, { timeout: 20000 });
+      await page.getByRole('heading', { name: /^What papers ask of it/, level: 2 }).waitFor({ timeout: 20000 });
+      if (!/seen in 2 policies/.test(await page.locator('#main-content').innerText())) failures.push('personas: combining the two records again did not bring both papers back');
       note('a paper separated into its own record and combined back, through the pages a reader would use');
     }
 
@@ -1066,23 +1329,28 @@ try {
     })).status, personaId);
     if (linked !== 200) failures.push(`personas: linking a body to the GOV.UK list answered ${linked}`);
     await page.goto(personaUrl, { waitUntil: 'networkidle' });
-    await page.getByRole('heading', { name: /^Track record/, level: 2 }).waitFor({ timeout: 20000 });
+    await page.getByRole('heading', { name: /^Track record/, level: 3 }).waitFor({ timeout: 20000 });
     await page.getByRole('button', { name: 'Check again now' }).click();
     await page.getByText(/Found \d+ new documents?\.|Nothing new was found\./).waitFor({ timeout: 20000 });
     const intelText = await page.locator('#main-content').innerText();
-    for (const expected of ['Where it sits', 'What each paper asks of it', 'What it is asked to do, and what it has', '(fixture record)']) {
+    for (const expected of ['It is part of', 'What papers ask of it', 'What it says about its money and staff', '(fixture record)']) {
       if (!intelText.includes(expected)) failures.push(`personas: the body's page is missing "${expected}"`);
     }
     if (!/these are evidence/i.test(intelText)) failures.push('personas: the public record does not say it is evidence, unlike the rest of the page');
-    await audit('/personas/:id (across papers and public record)');
+    await audit('/bodies/:id (across papers and public record)');
 
-    await page.goto(`http://127.0.0.1:${PORT}/bodies`, { waitUntil: 'networkidle' });
-    await page.getByRole('heading', { name: 'Bodies across papers', level: 1 }).waitFor({ timeout: 20000 });
+    await page.goto(`http://127.0.0.1:${PORT}/bodies/across`, { waitUntil: 'networkidle' });
+    await page.getByRole('heading', { name: 'Across papers', level: 2 }).waitFor({ timeout: 20000 });
     await page.locator('#main-content table').first().waitFor({ timeout: 20000 });
     const gridText = await page.locator('#main-content').innerText();
     if (!gridText.includes('Department for Education')) failures.push('bodies: the grid does not list the body the walk matched');
-    if (!/Same body, different asks/.test(gridText)) failures.push('bodies: a body named in two papers is not offered for comparison');
-    await audit('/bodies');
+    if (/Same body, different asks/.test(gridText)) failures.push('bodies: the grid still repeats its own Papers column as a list');
+    await audit('/bodies/across (with bodies)');
+    for (const [path, heading] of [['/bodies/clashes', 'Clashes'], ['/bodies/groups', 'Groups of people']]) {
+      await page.goto(`http://127.0.0.1:${PORT}${path}`, { waitUntil: 'networkidle' });
+      await page.getByRole('heading', { name: heading, level: 2 }).waitFor({ timeout: 20000 });
+      await audit(`${path} (with bodies)`);
+    }
     note('a body matched to GOV.UK shows what each paper asks of it, a dated public record, and a row in the bodies × papers grid');
   }
 
@@ -1360,10 +1628,202 @@ try {
   }
   note('the setup journey lists what is left, and the test step tells the truth');
 
+  /*
+   * HOW TO READ A RED-TEAM REPORT (phase 26). The ways in from a report — the
+   * banner, the header link, a "?" beside a figure — then the six chapters
+   * stepped through from the keyboard, each chapter's one idea pressed once
+   * (a slider moves the band, a switch takes ways to beat it off the table),
+   * and the banner dismissed and still dismissed after a reload.
+   */
+  {
+    await page.goto(`${base}/threats/bands`, { waitUntil: 'networkidle' });
+    await page.locator('.prt-view').first().waitFor({ timeout: 30000 });
+    if (!(await page.getByRole('region', { name: 'New to these reports?' }).isVisible())) failures.push('guide: a report page has no first-visit banner');
+    if (!(await page.locator('.prt-pagehead').getByRole('link', { name: 'How do I read this?' }).isVisible())) failures.push('guide: a report page header has no "How do I read this?" link');
+    const help = page.locator('.prt-guidehelp a');
+    if ((await help.count()) !== 1) failures.push(`guide: ${await help.count()} "?" links on the bands page, expected one`);
+    await help.first().focus();
+    await page.keyboard.press('Enter');
+    await page.waitForURL('**/guide/4', { timeout: 10000 }).catch(() => failures.push(`guide: the "?" beside the bands opened ${page.url()}, not chapter 4`));
+
+    await page.goto(`http://127.0.0.1:${PORT}/guide`, { waitUntil: 'networkidle' });
+    await page.getByRole('heading', { level: 1, name: 'How to read a red-team report' }).waitFor({ timeout: 10000 });
+    await audit('/guide');
+    await page.getByRole('button', { name: 'Start the guide' }).focus();
+    await page.keyboard.press('Enter');
+    const chapters = ['What a red team does', 'From paper to parts', 'A way to beat it, in plain words', 'How exposed? Build the band yourself', 'What if we’re wrong?', 'Bodies across policies'];
+    for (const [i, title] of chapters.entries()) {
+      await page.waitForURL(`**/guide/${i + 1}`, { timeout: 10000 }).catch(() => {});
+      if (!(await page.getByRole('heading', { level: 1, name: title, exact: true }).waitFor({ timeout: 10000 }).then(() => true, () => false))) {
+        failures.push(`guide: chapter ${i + 1} is not "${title}" (at ${page.url()})`);
+        break;
+      }
+      if (i === 0) {
+        const pause = page.getByRole('button', { name: 'Pause the animation' });
+        await pause.focus();
+        await page.keyboard.press('Enter');
+        if (!(await page.getByRole('button', { name: 'Play the animation' }).isVisible())) failures.push('guide 1: the animation has no working pause control');
+      }
+      if (i === 1) {
+        await page.getByRole('button', { name: 'Read the first sentence' }).focus();
+        await page.keyboard.press('Enter');
+        const said = await page.locator('.prt-parts [aria-live]').innerText();
+        if (!/Sentence 1 of 5 gave/.test(said)) failures.push(`guide 2: reading a sentence announced "${said}"`);
+        if (!(await page.locator('.prt-parts__piece').count())) failures.push('guide 2: reading a sentence pulled nothing out of it');
+      }
+      if (i === 2) {
+        await page.getByRole('button', { name: 'Show me the detail' }).focus();
+        await page.keyboard.press('Enter');
+        if (!(await page.locator('.prt-guideplay__detail .prt-play').isVisible())) failures.push('guide 3: "Show me the detail" did not open the report\'s own play card');
+      }
+      if (i === 3) {
+        const mark = page.locator('.prt-buildband__mark');
+        const before = (await mark.innerText()).trim();
+        await page.getByLabel('How much do they gain?', { exact: true }).focus();
+        await page.keyboard.press('Home');
+        // WAIT for the re-render rather than reading straight after the key:
+        // read at once, the band and the live region raced React and failed
+        // about one full run in three with nothing wrong on the page.
+        await page.waitForFunction((was) => document.querySelector('.prt-buildband__mark')?.textContent?.trim() !== was, before, { timeout: 3000 }).catch(() => {});
+        const after = (await mark.innerText()).trim();
+        if (before === after) failures.push(`guide 4: moving a slider to 0 left the band at "${after}"`);
+        await page.waitForFunction(() => /now limited/.test(document.querySelector('.prt-buildband [aria-live]')?.textContent ?? ''), null, { timeout: 3000 }).catch(() => {});
+        if (!/now limited/.test(await page.locator('.prt-buildband [aria-live]').innerText())) failures.push('guide 4: the band change was not announced');
+      }
+      if (i === 4) {
+        const play = page.locator('.prt-ministress__item', { hasText: 'Count every early arrival as a breakfast' });
+        if (await play.locator('.prt-ministress__tag').count()) failures.push('guide 5: a way to beat it is off the table before anything is switched off');
+        await page.getByLabel('A yearly sample is all the checking the counts need').focus();
+        await page.keyboard.press('Space');
+        if (!/Taken off the table/.test(await play.innerText())) failures.push('guide 5: switching its assumption off did not take the play off the table');
+        if ((await page.locator('.prt-ministress__item.is-off').count()) !== 2) failures.push('guide 5: switching one assumption off did not take exactly its two plays away');
+      }
+      if (i === 5 && !(await page.getByRole('link', { name: 'See every body in Bodies across policies' }).isVisible())) failures.push('guide 6: no link on to the hub');
+      if (await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth)) failures.push(`guide ${i + 1}: scrolls sideways`);
+      await audit(`/guide/${i + 1}`);
+      if (i < chapters.length - 1) {
+        await page.locator('.govuk-pagination__next a').focus();
+        await page.keyboard.press('Enter');
+      }
+    }
+
+    // Reduced motion: the machine is drawn still, and offers no control that would do nothing.
+    await page.emulateMedia({ reducedMotion: 'reduce' });
+    await page.goto(`http://127.0.0.1:${PORT}/guide/1`, { waitUntil: 'networkidle' });
+    await page.getByRole('heading', { level: 1, name: 'What a red team does' }).waitFor({ timeout: 10000 });
+    if (await page.locator('.prt-machine.is-playing').count()) failures.push('guide 1: the loop plays under reduced motion');
+    if (await page.getByRole('button', { name: /the animation/ }).count()) failures.push('guide 1: reduced motion still offers a play/pause control');
+    await page.emulateMedia({ reducedMotion: 'no-preference' });
+
+    // The banner, hidden for good.
+    await page.goto(`http://127.0.0.1:${PORT}/`, { waitUntil: 'networkidle' });
+    const banner = page.getByRole('region', { name: 'New to these reports?' });
+    if (!(await banner.isVisible())) failures.push('guide: the landing page has no first-visit banner');
+    await banner.getByRole('button', { name: 'Hide this message' }).click();
+    if (await banner.count()) failures.push('guide: "Hide this message" did not hide the banner');
+    if (await page.evaluate(() => document.activeElement?.id) !== 'main-content') failures.push('guide: hiding the banner did not move focus to the main content');
+    await page.reload({ waitUntil: 'networkidle' });
+    await page.getByRole('heading', { name: 'Policy Red Team', level: 1 }).waitFor({ timeout: 10000 });
+    if (await page.getByRole('region', { name: 'New to these reports?' }).count()) failures.push('guide: the banner came back after a reload');
+    await page.goto(base, { waitUntil: 'networkidle' });
+    await page.getByRole('heading', { name: 'The report at a glance' }).waitFor({ timeout: 20000 });
+    if (await page.getByRole('region', { name: 'New to these reports?' }).count()) failures.push('guide: the banner came back on a report page after it was hidden');
+    note('the guide: banner, header link and "?" lead in; six chapters by keyboard; slider, switch and banner memory work');
+  }
+
+  /*
+   * 9z — SEVERAL DOCUMENTS AND A GROUNDING LIBRARY (phase 25).
+   *
+   * A policy is started on the library page and given one piece of grounding
+   * (statistics, as a file); then a paper of TWO documents — the fixture paper
+   * and an annex — is submitted under that policy with its grounding ticked.
+   * The run must read the annex as part of the paper and name it in a
+   * citation, read the grounding in full at the evidence step with its
+   * quotation verified against its own text, and say so in the report under a
+   * Grounding tag. The paper shares a document with the first walk paper, so
+   * it is the SAME paper to the library: run last, it changes no count above.
+   */
+  {
+    await page.goto(`http://127.0.0.1:${PORT}/grounding`, { waitUntil: 'networkidle' });
+    await page.getByRole('heading', { name: 'Grounding library', level: 1 }).waitFor({ timeout: 10000 });
+    const libraryNav = page.locator('.govuk-service-navigation:not(.prt-subnav)');
+    if ((await libraryNav.locator('a[aria-current="page"]').innerText().catch(() => '')).trim() !== 'Grounding library') failures.push('grounding: the service navigation does not mark Grounding library as the current page');
+    await audit('/grounding');
+    await page.getByLabel('Policy name', { exact: true }).fill('Walk shared access policy');
+    await page.getByRole('button', { name: 'Start the policy' }).click();
+    await page.getByRole('status').getByRole('link', { name: 'Walk shared access policy' }).click();
+    await page.getByRole('heading', { name: 'Walk shared access policy', level: 1 }).waitFor({ timeout: 10000 });
+    await page.getByLabel('What is it?', { exact: true }).selectOption('statistics');
+    await page.getByLabel('Attach it', { exact: true }).setInputFiles({
+      name: 'workforce-statistics.txt', mimeType: 'text/plain',
+      buffer: Buffer.from('Local authority workforce statistics, 2025. Councils reported 1,240 vacancies in the advice posts the programme relies on, a rise of a fifth on the year before. Vacancy rates were highest in rural areas, where one post in eight was unfilled.'),
+    });
+    await page.getByLabel('Title (optional)', { exact: true }).fill('Walk workforce statistics');
+    await page.getByLabel('Publisher (optional)', { exact: true }).fill('Office for Local Statistics');
+    await page.getByRole('button', { name: 'Add to the library' }).click();
+    await page.locator('#main-content table strong', { hasText: 'Walk workforce statistics' }).waitFor({ timeout: 15000 });
+    await audit('/grounding/:id (with an item)');
+    note('a policy is started and given grounding on the library page');
+
+    await page.goto(`http://127.0.0.1:${PORT}/new`, { waitUntil: 'networkidle' });
+    await page.getByLabel('What is this paper called?', { exact: true }).fill('Walk two-document paper');
+    await page.getByLabel('The paper', { exact: true }).setInputFiles(path.join(ROOT, 'tests', 'fixtures', 'policy-analysis', 'policy.txt'));
+    await page.getByLabel('Which policy is this paper part of?', { exact: true }).selectOption({ label: 'Walk shared access policy — 1 grounding item' });
+    const ticked = page.getByLabel(/^Walk workforce statistics/);
+    await ticked.waitFor({ timeout: 10000 });
+    if (!(await ticked.isChecked())) failures.push('/new: the policy\'s grounding is not ticked by default');
+    await page.getByRole('button', { name: 'Add another document' }).click();
+    if (await page.evaluate(() => document.activeElement?.id) !== 'document-role-1') failures.push('/new: Add another document did not move focus to the new row');
+    await page.locator('#document-role-1').selectOption('policy');
+    await page.locator('#document-1').setInputFiles({
+      name: 'annex.txt', mimeType: 'text/plain',
+      buffer: Buffer.from('Annex A: costings. The annex sets out how the shared access programme is paid for in its first three years. Councils receive a grant for each resident who uses the service, paid quarterly in arrears. The grant does not cover the cost of new staff, which councils must meet from their own budgets.'),
+    });
+    await page.locator('#document-title-1').fill('Annex A: costings');
+    await audit('/new (two documents and a policy)');
+    await page.getByRole('button', { name: 'Start the assessment' }).click();
+    await page.waitForURL('**/assessments/**', { timeout: 20000 });
+    await page.getByRole('heading', { name: 'The report at a glance' }).waitFor({ timeout: 120000 });
+    const docsId = page.url().split('/').filter(Boolean).find((part) => /^[0-9a-f-]{36}$/.test(part));
+    const full = await page.evaluate(async (aid) => (await fetch(`/api/policy-analysis/${aid}`)).json(), docsId);
+    const arts = full.artefacts ?? [];
+    const annexClaim = arts.find((a) => a.kind === 'claim' && a.sourceId === 'd1_passage_0001');
+    if (!arts.some((a) => a.id === 'passage_0001' && a.kind === 'passage')) failures.push('documents: the main paper\'s first passage is not passage_0001');
+    if (!annexClaim) failures.push('documents: nothing was read from the annex as part of the paper');
+    const groundingPassages = arts.filter((a) => a.kind === 'grounding_passage');
+    if (!groundingPassages.length) failures.push('grounding: the run read no grounding material');
+    const groundedRow = arts.find((a) => a.kind === 'evidence' && groundingPassages.some((g) => g.id === a.sourceId));
+    if (!groundedRow) failures.push('grounding: no evidence row cites the grounding');
+    else {
+      const source = groundingPassages.find((g) => g.id === groundedRow.sourceId);
+      if (groundedRow.startOffset == null || !source.statement.includes(groundedRow.sourceQuote)) failures.push('grounding: the quotation from the grounding was not verified against its text');
+    }
+    if (annexClaim) {
+      await page.goto(`http://127.0.0.1:${PORT}/assessments/${docsId}/items/${annexClaim.id}`, { waitUntil: 'networkidle' });
+      await page.locator('#standing').waitFor({ timeout: 20000 });
+      const where = await page.locator('.govuk-summary-list').filter({ hasText: 'Where in the paper' }).innerText().catch(() => '');
+      if (!where.includes('Annex A: costings')) failures.push(`documents: a citation from the annex does not name its document ("${where.replace(/\s+/g, ' ').slice(0, 160)}")`);
+      await audit('item page (a claim from the annex)');
+    }
+    await page.goto(`http://127.0.0.1:${PORT}/assessments/${docsId}/findings/grounding`, { waitUntil: 'networkidle' });
+    await page.getByRole('heading', { name: 'What it was judged against' }).first().waitFor({ timeout: 20000 });
+    if (!(await page.locator('#main-content .govuk-tag', { hasText: 'Grounding' }).count())) failures.push('grounding: the Findings section draws no Grounding tag');
+    if (!(await page.locator('#main-content').getByText('Walk workforce statistics').count())) failures.push('grounding: Findings does not name the grounding that was used');
+    await audit('/findings/grounding');
+    await page.setViewportSize({ width: 320, height: 900 });
+    if (await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth) > 0) failures.push('grounding: the Findings section scrolls sideways at 320px');
+    await page.setViewportSize({ width: 1280, height: 900 });
+    await page.goto(`http://127.0.0.1:${PORT}/assessments/${docsId}/method/read`, { waitUntil: 'networkidle' });
+    await page.getByRole('heading', { name: 'What it read' }).first().waitFor({ timeout: 20000 });
+    if (!(await page.locator('#main-content').getByText('Annex A: costings').count())) failures.push('documents: Method does not list the annex among what it read');
+    await audit('/method/read');
+    note('two documents read as one paper, the annex named in its citation, the grounding quoted, verified and tagged');
+  }
+
   // 10 — the rest of the surface
-  for (const [route, heading] of [['/personas', 'Persona library'], ['/design', 'Design system'], ['/accessibility', 'Accessibility statement'], ['/about', 'About this tool']]) {
+  for (const [route, heading] of [['/bodies', 'Bodies across policies'], ['/guide', 'How to read a red-team report'], ['/design', 'Design system'], ['/accessibility', 'Accessibility statement'], ['/about', 'About this tool']]) {
     await page.goto(`http://127.0.0.1:${PORT}${route}`, { waitUntil: 'networkidle' });
-    if (!(await page.getByRole('heading', { name: heading, level: 1 }).isVisible())) failures.push(`${route}: no "${heading}" heading`);
+    if (!(await page.getByRole('heading', { name: heading, level: 1 }).waitFor({ timeout: 10000 }).then(() => true, () => false))) failures.push(`${route}: no "${heading}" heading`);
     await audit(route);
   }
   note('remaining routes');

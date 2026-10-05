@@ -20,12 +20,13 @@
 // `docs/upstream.json` is this build's own and needs no such bookkeeping.
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
-import { artefact, ASSURANCE_CATEGORIES, assuranceCategories, ASSURANCE_STAGE, ASSURED_SYNTHESIS_STAGE, APPRAISAL_STAGE, type Artefact, type StageInput } from './contracts';
+import { artefact, ASSURANCE_CATEGORIES, assuranceCategories, ASSURANCE_STAGE, ASSURED_PARTS, ASSURED_SYNTHESIS_STAGE, APPRAISAL_STAGE, REPORT_SECTIONS, SYNTHESIS_STAGE, type Artefact, type StageInput } from './contracts';
 // The remits a run with no reader-supplied source is asked: every one but
 // `supplied_balance`, which has nothing to check there (phase 22 part 2).
 const RUN_CATEGORIES = assuranceCategories([]);
 import { PolicyError, triageArtefacts } from './validation';
 import { executeStage } from './pipeline';
+import { systemPrompt } from './prompts';
 import { ingest } from './server/ingest';
 import { stageFacts } from './stage-facts';
 import { fixtureModel } from '../../../tests/fixtures/policy-analysis/model';
@@ -77,16 +78,15 @@ describe('a coverage gap is asked about before it is fatal', () => {
     const challenges = all.filter((a) => a.kind === 'assurance_challenge');
     expect(challenges.length).toBe(RUN_CATEGORIES.length);
 
-    // The live failure: the first call answers all but one challenge. Before
+    // The live failure: the first ask answers all but one challenge. Before
     // this phase that threw, the cached reply made every retry deterministic,
-    // and nine attempts reached the same place.
+    // and nine attempts reached the same place. The responses are one part of
+    // the report since phase 27, so that is the call that drops one.
     const keys: string[] = [];
-    let first = true;
     const model = async (...args: Parameters<typeof fixtureModel>) => {
       keys.push(args[1]);
       const out = fixtureModel(...args);
-      if (!first) return out;
-      first = false;
+      if (args[1] !== 'responses') return out;
       const omitted = challenges[0].id;
       return { ...out, artefacts: out.artefacts.filter((a) => !(a.kind === 'assurance_response' && a.data.challengeId === omitted)) };
     };
@@ -94,14 +94,63 @@ describe('a coverage gap is asked about before it is fatal', () => {
     const result = await executeStage(base(ASSURED_SYNTHESIS_STAGE, all), { model, research, signal, neighbours: none, personas: none });
     // It asked a second time, under a key of its own so the response cache
     // cannot replay the omission.
-    expect(keys).toHaveLength(2);
-    expect(keys[1]).not.toBe(keys[0]);
+    expect(keys).toEqual(['findings_a', 'findings_b', 'responses', 'close', 'topup']);
     const responses = result.artefacts.filter((a) => a.kind === 'assurance_response');
     expect(new Set(responses.map((a) => a.data.challengeId)).size).toBe(challenges.length);
     // A gap the second ask CLOSED is not a limit, so it writes no warning: the
     // stage is complete, and the warning channel is carried into every later
     // call and counted on the report's account of what the run discarded.
     expect(result.warnings.join(' ')).not.toContain('not assessed');
+  });
+
+  it('asks again for a load-bearing chapter the initial report left out', async () => {
+    // Phase 27, live on gpt-6-luna: a complete initial report on the Best Start
+    // paper with no high_risk_assumptions finding. Stage 12 had no second ask,
+    // so all three attempts replayed the one cached answer and the run ended.
+    const all = await inventory();
+    const keys: string[] = [];
+    const asked: unknown[] = [];
+    let first = true;
+    const model = async (...args: Parameters<typeof fixtureModel>) => {
+      keys.push(args[1]);
+      asked.push((args[2] as { coverageGap?: unknown }).coverageGap);
+      const out = fixtureModel(...args);
+      if (!first) return out;
+      first = false;
+      return { ...out, artefacts: out.artefacts.filter((a) => a.data.section !== 'high_risk_assumptions') };
+    };
+    const result = await executeStage(base(SYNTHESIS_STAGE, without(all, SYNTHESIS_STAGE)), { model, research, signal, neighbours: none, personas: none });
+    expect(keys).toHaveLength(2);
+    expect(asked[1]).toEqual(['high_risk_assumptions']);
+    expect(result.artefacts.some((a) => a.data.section === 'high_risk_assumptions')).toBe(true);
+    // The fixture restates the whole report on the second call; only the
+    // missing chapter (and what it rests on) is taken, so nothing is doubled.
+    const heads = result.artefacts.filter((a) => a.data.section === 'executive_assessment');
+    expect(heads).toHaveLength(1);
+  });
+
+  it('still refuses an initial report whose second ask is also short', async () => {
+    const all = await inventory();
+    const model = withhold((a) => a.data.section === 'high_risk_assumptions');
+    await expect(executeStage(base(SYNTHESIS_STAGE, without(all, SYNTHESIS_STAGE)), { model, research, signal, neighbours: none, personas: none }))
+      .rejects.toThrow(/high risk assumptions/);
+  });
+
+  it('names the id prefix before the artefacts on a report stage, and after them on a fan-out', async () => {
+    // Phase 27: gpt-6-luna lost an idPrefix that followed 242k tokens of
+    // artefacts at stage 17 and returned an empty report.
+    const all = await inventory();
+    const order = new Map<number, string[]>();
+    const model = async (...args: Parameters<typeof fixtureModel>) => {
+      if (!order.has(args[0])) order.set(args[0], Object.keys(args[2] as object));
+      return fixtureModel(...args);
+    };
+    await executeStage(base(SYNTHESIS_STAGE, without(all, SYNTHESIS_STAGE)), { model, research, signal, neighbours: none, personas: none });
+    await executeStage(base(ASSURANCE_STAGE, without(all, ASSURANCE_STAGE)), { model, research, signal, neighbours: none, personas: none });
+    const report = order.get(SYNTHESIS_STAGE)!;
+    expect(report.indexOf('idPrefix')).toBeLessThan(report.indexOf('artefacts'));
+    const fan = order.get(ASSURANCE_STAGE)!;
+    expect(fan.indexOf('idPrefix')).toBeGreaterThan(fan.indexOf('artefacts'));
   });
 
   it('re-dispatches the units of a fan-out that produced nothing', async () => {
@@ -132,11 +181,9 @@ describe('a coverage gap is asked about before it is fatal', () => {
     // stage that was one response short.
     const all = await inventory();
     const omitted = all.filter((a) => a.kind === 'assurance_challenge')[0].id;
-    let first = true;
     const model = async (...args: Parameters<typeof fixtureModel>) => {
       const out = fixtureModel(...args);
-      if (!first) return out;
-      first = false;
+      if (args[1] !== 'responses') return out;
       return { ...out, artefacts: out.artefacts.filter((a) => !(a.kind === 'assurance_response' && a.data.challengeId === omitted)) };
     };
     const result = await executeStage(base(ASSURED_SYNTHESIS_STAGE, all), { model, research, signal, neighbours: none, personas: none });
@@ -156,8 +203,9 @@ describe('a coverage gap is asked about before it is fatal', () => {
       return { ...out, artefacts: out.artefacts.filter((a) => !(a.kind === 'assurance_response' && a.data.challengeId === omitted)) };
     };
     const result = await executeStage(base(ASSURED_SYNTHESIS_STAGE, all), { model, research, signal, neighbours: none, personas: none });
-    // Two calls, not nine: one ask, one top-up, then the gate decides.
-    expect(keys).toHaveLength(2);
+    // Five calls, not nine asks: one ask in its four parts, one top-up, then
+    // the gate decides.
+    expect(keys).toHaveLength(5);
     expect(result.warnings.join(' ')).toContain('no response');
     expect(result.warnings.join(' ')).toContain('asked a second time');
   });
@@ -415,5 +463,81 @@ describe('a surplus summing-up is the correction arriving twice, not a shortfall
     };
     await expect(executeStage(base(ASSURED_SYNTHESIS_STAGE, all), { model, research, signal, neighbours: none, personas: none }))
       .rejects.toThrow(PolicyError);
+  });
+});
+
+describe('the revised report is written in parts (phase 27)', () => {
+  // gpt-6-luna refused stage 17 as one call on the Best Start paper, twice:
+  // "too large to reproduce a complete assured replacement within this
+  // response". Four smaller asks, each told what the earlier ones wrote.
+  it('splits every report section between the finding parts, once each', () => {
+    const sections = ASSURED_PARTS.flatMap((p) => [...p.sections]);
+    expect([...sections].sort()).toEqual([...REPORT_SECTIONS].sort());
+    expect(new Set(sections).size).toBe(sections.length);
+  });
+
+  it('tells each later part what the earlier ones wrote, so it can cite them', async () => {
+    const all = await inventory();
+    const asked: { key: string; written: { id: string; kind: string }[] }[] = [];
+    const model = async (...args: Parameters<typeof fixtureModel>) => {
+      asked.push({ key: args[1], written: (args[2] as { assuredWritten?: { id: string; kind: string }[] }).assuredWritten ?? [] });
+      return fixtureModel(...args);
+    };
+    const result = await executeStage(base(ASSURED_SYNTHESIS_STAGE, all), { model, research, signal, neighbours: none, personas: none });
+    expect(asked.map((a) => a.key)).toEqual(ASSURED_PARTS.map((p) => p.key));
+    expect(asked[0].written).toHaveLength(0);
+    const fromA = asked[1].written.filter((w) => w.kind === 'finding').map((w) => w.id);
+    expect(fromA.length).toBe(ASSURED_PARTS[0].sections.length);
+    // The recommendation, written last, cites a finding a part before it wrote.
+    const [recommendation] = result.artefacts.filter((a) => a.kind === 'recommendation');
+    expect(fromA).toContain((recommendation.data.findingIds as string[])[0]);
+    expect(result.artefacts.filter((a) => a.kind === 'review_summary')).toHaveLength(1);
+  });
+
+  it('keeps only its own part from a model that writes the whole report every time', async () => {
+    const all = await inventory();
+    // The fixture without `assuredPart`: what a model that skims the
+    // instruction would send, four times over.
+    const model = async (...args: Parameters<typeof fixtureModel>) => {
+      const { assuredPart: _ignored, ...rest } = args[2] as Record<string, unknown>;
+      return fixtureModel(args[0], args[1], rest as Parameters<typeof fixtureModel>[2]);
+    };
+    const result = await executeStage(base(ASSURED_SYNTHESIS_STAGE, all), { model, research, signal, neighbours: none, personas: none });
+    const findings = result.artefacts.filter((a) => a.kind === 'finding' && a.data.revision === 'assured');
+    expect(findings).toHaveLength(REPORT_SECTIONS.length);
+    expect(new Set(findings.map((a) => a.data.section)).size).toBe(REPORT_SECTIONS.length);
+    expect(result.artefacts.filter((a) => a.kind === 'review_summary')).toHaveLength(1);
+    expect(result.artefacts.filter((a) => a.kind === 'recommendation')).toHaveLength(1);
+    expect(result.warnings.join(' ')).toContain('belonging to another part');
+  });
+
+  it('asks once more for a load-bearing chapter a part left out', async () => {
+    // Run 2's second failure: the report came back without options appraisal,
+    // assurance and exploitation, and nothing asked for them.
+    const all = await inventory();
+    const gaps: unknown[] = [];
+    const model = async (...args: Parameters<typeof fixtureModel>) => {
+      gaps.push((args[2] as { coverageGap?: unknown }).coverageGap);
+      const out = fixtureModel(...args);
+      if (args[1] !== 'findings_b') return out;
+      return { ...out, artefacts: out.artefacts.filter((a) => a.data.section !== 'options_appraisal') };
+    };
+    const result = await executeStage(base(ASSURED_SYNTHESIS_STAGE, all), { model, research, signal, neighbours: none, personas: none });
+    expect(gaps.at(-1)).toEqual(['options_appraisal']);
+    expect(result.artefacts.filter((a) => a.data.section === 'options_appraisal')).toHaveLength(1);
+  });
+});
+
+describe('a terse model is told what a complete answer is (phase 27)', () => {
+  // gpt-6-luna did the minimum each call asked: 62 graph edges where gpt-5.6
+  // wrote 188 on the same build, and about one play per body against three to
+  // five. Neither instruction said how much was enough.
+  it('asks the red team for three to five distinct plays where a body has room', () => {
+    const prompt = systemPrompt(10);
+    expect(prompt).toContain('THREE TO FIVE distinct plays');
+    expect(prompt).toContain('NO MATERIAL WAY TO BEAT IT');
+  });
+  it('asks the graph for every relationship of every body, not a sample', () => {
+    expect(systemPrompt(3)).toContain('BE EXHAUSTIVE, NOT REPRESENTATIVE');
   });
 });

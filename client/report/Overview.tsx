@@ -1,7 +1,8 @@
 import type { ReactNode } from 'react';
 import type { Artefact } from '$lib/policy-analysis/contracts';
 import { BAND_LABEL, type Band } from '$lib/policy-analysis/view';
-import type { Brief } from '$lib/brief';
+import { plainLines, type Brief } from '$lib/brief';
+import { TermName, TermText } from './Term';
 import { BAND_ORDER, type BandTally, type Overview as OverviewView } from '$lib/overview';
 import { LEGALITY_LABEL } from '$lib/verdict-view';
 import type { MoveId } from '../moves';
@@ -68,12 +69,33 @@ export function Overview({
     return artefact && linkTo ? linkTo(artefact, label) : label;
   };
   const severe = plays.bands.severe;
+  const plainSaid = plainLines(brief, plays.top.map((play) => byId.get(play.id)).filter((a): a is Artefact => Boolean(a)));
   const finished = stages.filter((stage) => stage.status === 'completed').length;
 
   return (
     <section aria-labelledby="overview" className="prt-overview">
       <h2 className="govuk-heading-l" id="overview">The report at a glance</h2>
       <ScopeNote selection={selection} subject="the whole assessment" />
+
+      {/* ── In plain words ─────────────────────────────────────────────
+          THE FIRST CARD (phase 23): what goes wrong, and for whom, in the
+          words each way to beat it was written in for someone who has never
+          read the policy. Absent on an older assessment, which has none. */}
+      {plainSaid.length ? (
+        <section className="prt-card prt-plainwords" aria-labelledby="overview-plain">
+          <h3 className="govuk-heading-m prt-card__title" id="overview-plain">What this report says, in plain words</h3>
+          <div className="prt-card__body">
+            <ul className="govuk-list govuk-list--bullet prt-plainwords__list">
+              {plainSaid.map((line) => (
+                <li key={line.artefact.id} className="prt-plainwords__line"><TermText text={line.text} /></li>
+              ))}
+            </ul>
+          </div>
+          <p className="govuk-body prt-card__more">
+            <Go to="threats" anchor="weights" onGo={onGo}>See every way to beat it, in plain words first</Go>
+          </p>
+        </section>
+      ) : null}
 
       {/* ── The four figures ──────────────────────────────────────────── */}
       <ul className="prt-kpis" aria-label="The assessment in four figures">
@@ -210,7 +232,7 @@ export function Overview({
                     <span className="govuk-visually-hidden">Worst: </span>{BAND_LABEL[body.worstBand]}
                   </span>
                   <span className="prt-glance__text">
-                    <span className="prt-glance__name">{body.label}</span>
+                    <span className="prt-glance__name"><TermName name={body.label} /></span>
                     <span className="prt-glance__meta">
                       {body.plays} {body.plays === 1 ? 'way' : 'ways'} to beat it
                     </span>

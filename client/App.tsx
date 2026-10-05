@@ -1,6 +1,7 @@
 import { Suspense, lazy } from 'react';
 import { Navigate, Route, Routes, useLocation, useParams, useSearchParams } from 'react-router';
 import { returnLabel, returnTo } from './moves';
+import { HUB } from './places';
 import { Template } from './layout/Template';
 import { Home } from './pages/Home';
 import { ReaderGate } from './pages/ReaderGate';
@@ -30,7 +31,6 @@ import { ReaderGate } from './pages/ReaderGate';
 const New = lazy(() => import('./pages/New').then((m) => ({ default: m.New })));
 const Assessment = lazy(() => import('./pages/Assessment').then((m) => ({ default: m.Assessment })));
 const Drill = lazy(() => import('./pages/Drill').then((m) => ({ default: m.Drill })));
-const Personas = lazy(() => import('./pages/Personas').then((m) => ({ default: m.Personas })));
 const Admin = lazy(() => import('./pages/Admin').then((m) => ({ default: m.Admin })));
 /*
  * The setup journey, lazy like every other route here. It is a first-visit
@@ -46,7 +46,18 @@ const SetupSpend = lazy(() => import('./pages/Setup').then((m) => ({ default: m.
 const SetupSearch = lazy(() => import('./pages/Setup').then((m) => ({ default: m.SetupSearch })));
 const SetupEgress = lazy(() => import('./pages/Setup').then((m) => ({ default: m.SetupEgress })));
 const Persona = lazy(() => import('./pages/Persona').then((m) => ({ default: m.Persona })));
-const Bodies = lazy(() => import('./pages/Bodies').then((m) => ({ default: m.Bodies })));
+const BodiesList = lazy(() => import('./pages/Bodies').then((m) => ({ default: m.BodiesList })));
+const BodiesAcross = lazy(() => import('./pages/Bodies').then((m) => ({ default: m.BodiesAcross })));
+const BodiesClashes = lazy(() => import('./pages/Bodies').then((m) => ({ default: m.BodiesClashes })));
+const BodiesGroups = lazy(() => import('./pages/Bodies').then((m) => ({ default: m.BodiesGroups })));
+const BodiesRegister = lazy(() => import('./pages/Register').then((m) => ({ default: m.BodiesRegister })));
+const BodiesReview = lazy(() => import('./pages/Register').then((m) => ({ default: m.BodiesReview })));
+const ReviewActor = lazy(() => import('./pages/Register').then((m) => ({ default: m.ReviewActor })));
+const ReviewDecision = lazy(() => import('./pages/Register').then((m) => ({ default: m.ReviewDecision })));
+const Guide = lazy(() => import('./pages/Guide').then((m) => ({ default: m.Guide })));
+const GuideChapter = lazy(() => import('./pages/Guide').then((m) => ({ default: m.GuideChapter })));
+const GroundingIndex = lazy(() => import('./pages/Grounding').then((m) => ({ default: m.GroundingIndex })));
+const GroundingPolicy = lazy(() => import('./pages/Grounding').then((m) => ({ default: m.GroundingPolicy })));
 const PersonaRegister = lazy(() => import('./pages/PersonaIdentity').then((m) => ({ default: m.PersonaRegister })));
 const PersonaMerge = lazy(() => import('./pages/PersonaIdentity').then((m) => ({ default: m.PersonaMerge })));
 const PersonaMergeConfirm = lazy(() => import('./pages/PersonaIdentity').then((m) => ({ default: m.PersonaMergeConfirm })));
@@ -86,7 +97,7 @@ export function App() {
         THE ITEM ROUTES RANK ABOVE IT because a static segment outranks a
         splat, so `/items/…` never reaches the view parser.
       */}
-      <Route path="/assessments/:id/*" element={<Template wide navSlot backLink={{ href: '/' }}><Assessment /></Template>} />
+      <Route path="/assessments/:id/*" element={<Template wide backLink={{ href: '/' }}><Assessment /></Template>} />
       {/* The drill is its own URL, not a layer over the one above. That is what
           makes it shareable, openable in a tab, and reversible with the browser's
           own back button — see client/pages/Drill.tsx for why a drawer was not
@@ -111,15 +122,51 @@ export function App() {
       <Route path="/setup/spend" element={<Template backLink={{ href: '/setup' }}><SetupSpend /></Template>} />
       <Route path="/setup/search" element={<Template backLink={{ href: '/setup' }}><SetupSearch /></Template>} />
       <Route path="/setup/egress" element={<Template backLink={{ href: '/setup' }}><SetupEgress /></Template>} />
-      <Route path="/personas" element={<Template wide backLink={{ href: '/' }}><Personas /></Template>} />
-      {/* Phase 19, workstream X: every register body against every paper. */}
-      <Route path="/bodies" element={<Template wide backLink={{ href: '/personas', text: 'Back to the library' }}><Bodies /></Template>} />
-      <Route path="/personas/:id" element={<Template wide backLink={{ href: '/personas', text: 'Back to the library' }}><Persona /></Template>} />
+      {/*
+        BODIES ACROSS POLICIES (phase 24): one hub, a page per question, and a
+        page per body. See `client/places.ts` for why the address is `/bodies`
+        and `client/pages/Bodies.tsx` for what each view answers. The static
+        segments outrank `:id`, and a body's id is a uuid, so they cannot meet.
+      */}
+      <Route path="/bodies" element={<Template wide><BodiesList /></Template>} />
+      <Route path="/bodies/across" element={<Template wide><BodiesAcross /></Template>} />
+      <Route path="/bodies/clashes" element={<Template wide><BodiesClashes /></Template>} />
+      <Route path="/bodies/groups" element={<Template wide><BodiesGroups /></Template>} />
+      {/* Phase 24b: the master list of actors and the queue of what to review
+          on it. One actor and each decision about it are pages, never dialogs.
+          `review` is a static segment, so it outranks `/bodies/:id`. */}
+      <Route path="/bodies/register" element={<Template wide><BodiesRegister /></Template>} />
+      <Route path="/bodies/review" element={<Template wide><BodiesReview /></Template>} />
+      <Route path="/bodies/review/:id" element={<Template backLink={{ href: `${HUB}/review`, text: 'Back to the actors to review' }}><ReviewActor /></Template>} />
+      <Route path="/bodies/review/:id/:decision" element={<Template backLink={{ href: `${HUB}/review`, text: 'Back to the actors to review' }}><ReviewDecision /></Template>} />
+      <Route path="/bodies/:id" element={<Template wide backLink={{ href: HUB, text: 'Back to bodies across policies' }}><Persona /></Template>} />
       {/* Phase 19: a reader's rulings on who a body is. Routes, never dialogs. */}
-      <Route path="/personas/:id/register" element={<Template backLink={{ href: '/personas', text: 'Back to the library' }}><PersonaRegister /></Template>} />
-      <Route path="/personas/:id/merge" element={<Template backLink={{ href: '/personas', text: 'Back to the library' }}><PersonaMerge /></Template>} />
-      <Route path="/personas/:id/merge/:other" element={<Template backLink={{ href: '/personas', text: 'Back to the library' }}><PersonaMergeConfirm /></Template>} />
-      <Route path="/personas/:id/sightings/:observationId" element={<Template backLink={{ href: '/personas', text: 'Back to the library' }}><PersonaSplit /></Template>} />
+      <Route path="/bodies/:id/register" element={<Template backLink={{ href: HUB, text: 'Back to bodies across policies' }}><PersonaRegister /></Template>} />
+      <Route path="/bodies/:id/merge" element={<Template backLink={{ href: HUB, text: 'Back to bodies across policies' }}><PersonaMerge /></Template>} />
+      <Route path="/bodies/:id/merge/:other" element={<Template backLink={{ href: HUB, text: 'Back to bodies across policies' }}><PersonaMergeConfirm /></Template>} />
+      <Route path="/bodies/:id/sightings/:observationId" element={<Template backLink={{ href: HUB, text: 'Back to bodies across policies' }}><PersonaSplit /></Template>} />
+      {/* THE OLD ADDRESSES ANSWER. `/personas` was the library and every page
+          under it a body or a ruling on one; each has exactly one new home
+          with the same id, so the redirect is a prefix swap. */}
+      <Route path="/personas" element={<Navigate replace to={HUB} />} />
+      <Route path="/personas/*" element={<PersonasRedirect />} />
+      {/*
+        HOW TO READ A RED-TEAM REPORT (phase 26): the guide's front page and a
+        route per chapter. WRITTEN OUT, NOT `/guide/:n`, because `npm run a11y`
+        reads its routes off this file and skips parameterised ones — six
+        literal lines are six pages the gate audits, and a chapter number
+        nothing serves is a missing route rather than a blank page.
+      */}
+      <Route path="/guide" element={<Template backLink={{ href: '/' }}><Guide /></Template>} />
+      <Route path="/guide/1" element={<Template wide><GuideChapter n={1} /></Template>} />
+      <Route path="/guide/2" element={<Template wide><GuideChapter n={2} /></Template>} />
+      <Route path="/guide/3" element={<Template wide><GuideChapter n={3} /></Template>} />
+      <Route path="/guide/4" element={<Template wide><GuideChapter n={4} /></Template>} />
+      <Route path="/guide/5" element={<Template wide><GuideChapter n={5} /></Template>} />
+      <Route path="/guide/6" element={<Template wide><GuideChapter n={6} /></Template>} />
+      {/* Phase 25: what each policy is judged against, reused by every run of it. */}
+      <Route path="/grounding" element={<Template><GroundingIndex /></Template>} />
+      <Route path="/grounding/:id" element={<Template backLink={{ href: '/grounding', text: 'Back to the grounding library' }}><GroundingPolicy /></Template>} />
       {/* The design system, kept as a route: it is what `npm run a11y` scans and
           the cheapest place to argue about a component before it is spread over
           five pages. */}
@@ -179,4 +226,11 @@ function ItemRedirect() {
   const { id = '', artefactId = '' } = useParams();
   const { search, hash } = useLocation();
   return <Navigate replace to={`/assessments/${id}/items/${encodeURIComponent(artefactId)}${search}${hash}`} />;
+}
+
+/** `/personas/:id/…` → `/bodies/:id/…`, keeping the query and the hash. */
+function PersonasRedirect() {
+  const { '*': rest = '' } = useParams();
+  const { search, hash } = useLocation();
+  return <Navigate replace to={`${HUB}/${rest}${search}${hash}`} />;
 }

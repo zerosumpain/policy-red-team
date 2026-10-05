@@ -14,7 +14,7 @@ import { MOVES, viewPath } from '../moves';
 import {
   filterPlays, mechanismIdsOf, mechanismsOf, narrowExcept, parseSelection, selectionParam, type Selection,
 } from './selection';
-import { byReason, groupLimits, truncations } from './warnings';
+import { byReason, groupLimits, noteRows, partLimits, truncations } from './warnings';
 import { Metrics } from './Metrics';
 import { WriteUp } from './WriteUp';
 import { SelectionBanner } from './moves/SelectionBanner';
@@ -24,6 +24,9 @@ import { PatternGrid } from './PatternGrid';
 import { briefOf } from '$lib/brief';
 import { overviewOf } from '$lib/overview';
 import { markDownJudgements } from '$lib/evidence-grade';
+import { withoutIds } from '$lib/policy-analysis/plain';
+import { policyTerms, termFinder } from '$lib/policy-terms';
+import { TermsContext } from './Term';
 import { Overview } from './Overview';
 import { WorstPlays } from './moves/WorstPlays';
 import { CausalityLead } from './moves/CausalityLead';
@@ -35,6 +38,9 @@ import { WatchList } from './WatchList';
 import { ChangeStrips } from './ChangeStrips';
 import { RestsOnWhat } from './RestsOnWhat';
 import { Glossary } from './Glossary';
+import { GuideHelp } from './GuideHelp';
+import { HowToRead } from './HowToRead';
+import { HELP_FOR_SECTION } from '../guide/content';
 import { rankFindings } from '$lib/writeup-view';
 import { changeStrips, programmeStrip } from '$lib/change-strip';
 import { NetworkSection } from './Network';
@@ -55,6 +61,9 @@ import { CheckLedger } from './CheckLedger';
 import { Assurance } from './Assurance';
 import { Rival } from './Rival';
 import { CheckedOutside } from './CheckedOutside';
+import { GroundingUsed, WhatItRead } from './Grounding';
+import { documentCount, documentName, documentOf, documentSet, setPassagesInOrder } from '$lib/policy-analysis/document-set';
+import { groundingItems, hasGrounding } from '$lib/policy-analysis/grounding';
 import { ReaderActions } from './ReaderActions';
 import { Cleared } from './Cleared';
 import { rivalExplanations } from '$lib/assurance-view';
@@ -74,9 +83,11 @@ import { Models } from './Models';
 import { Resolution } from './Resolution';
 /* Provenance: the run itself, what it could not see, and what it could not establish. */
 import { RunProfile } from './RunProfile';
+import { ValueLedger } from './ValueLedger';
 import { Withheld } from './Withheld';
 import { Limits } from './Limits';
 import { DownloadGrid } from './DownloadGrid';
+import { BodyPages, type BodyPageRender } from './body-pages';
 
 /**
  * The report.
@@ -168,6 +179,9 @@ const SECTION_NOTES: Record<string, string> = {
   howyoudknow: 'The measures that would show whether it is working.',
   rests: 'The assumptions the most conclusions depend on.',
   outside: 'What was looked up, what came back, and what is still open.',
+  grounding: 'The material you supplied to judge it by, and what leaned on it.',
+  read: 'The documents of the paper, and the grounding read beside them.',
+  groundingtext: 'The grounding material, as the assessment read it.',
   writeup: 'Every finding, grouped by what it is about.',
   checks: 'Twelve fixed tests of how the policy is wired.',
   patterns: 'Which kinds of idea, aimed at which parts.',
@@ -188,8 +202,9 @@ const SECTION_NOTES: Record<string, string> = {
   machine: 'How much the run produced.',
   discarded: 'What the model wrote that was thrown out, and why.',
   provenance: 'Which model, how long each step took, what it cost.',
+  value: 'The tokens each step spent, against what a later step or a reader used.',
   withheld: 'Steps where the model saw only part of the assessment.',
-  gaps: 'Every limit a step recorded, each said once.',
+  gaps: 'Every limit a step recorded, each said once, and what the paper does not say.',
   composition: 'The claims and machinery the paper is built from.',
   evidence: 'Which claims have evidence behind them.',
   assurance: 'The challenge round that attacked the findings.',
@@ -205,7 +220,7 @@ const SECTION_NOTES: Record<string, string> = {
 const READING_ORDER: Partial<Record<Move, string[]>> = {
   verdict: [
     'main-findings', 'exposure-profile', 'rival', 'legality',
-    'suggests', 'howyoudknow', 'rests', 'outside',
+    'suggests', 'howyoudknow', 'rests', 'outside', 'grounding',
     'writeup', 'checks',
   ],
   threats: [
@@ -213,7 +228,7 @@ const READING_ORDER: Partial<Record<Move, string[]>> = {
   ],
   causality: ['mechanisms', 'change', 'network'],
   provenance: [
-    'machine', 'discarded', 'provenance', 'withheld', 'gaps', 'composition', 'evidence', 'assurance', 'paper',
+    'machine', 'read', 'discarded', 'provenance', 'value', 'withheld', 'gaps', 'composition', 'evidence', 'assurance', 'paper', 'groundingtext',
   ],
 };
 
@@ -281,10 +296,16 @@ export type ArtefactLink = (artefact: Artefact, label?: string, at?: string) => 
  * reader the very file they are already reading. Found by looking at a real pack
  * rather than by any test, which is the argument for looking at real output.
  */
-export function Report({ detail, offline, linkTo, onChanged, route, onTitle }: {
+type ReportProps = {
   detail: Detail;
   offline?: boolean;
   linkTo?: ArtefactLink;
+  /**
+   * How a body's page across policies is linked (phase 24). The service's is
+   * a router `Link`; the pack passes none and every body stays plain text —
+   * see `body-pages.tsx`.
+   */
+  bodyLink?: BodyPageRender;
   /** The service only. Absent, the report is the pack's one cascading document. */
   route?: ReportRoute;
   /** What this page is, for the document title — "Ways to beat it — Threats". Null on the Summary. */
@@ -295,7 +316,37 @@ export function Report({ detail, offline, linkTo, onChanged, route, onTitle }: {
    * longer the thing to show — the progress list is.
    */
   onChanged?: () => void;
-}) {
+};
+
+/**
+ * THE READINGS EVERY PAGE OF THE REPORT TAKES, ONCE, AT THE ROOT.
+ *
+ * Bodies (phase 24): the bodies it names are linked to their pages across
+ * policies. The index is built from the RAW artefacts, so every table, card and
+ * grid below asks one question of one lookup.
+ *
+ * `withoutIds` (phase 23): an identifier the model wrote into a sentence — the
+ * live run's scenarios say "If s1_023_assumption_001 is true" 76 times — is read
+ * as the name of the item it points to, so no page, the pack included, ever
+ * shows one. The glossary: the paper's own names, defined on tap wherever a
+ * sentence uses them (`Term`). Both here rather than in each component, for the
+ * reason `markDownJudgements` is at the root below.
+ */
+export function Report(props: ReportProps) {
+  const { detail } = props;
+  const shown = useMemo(() => withoutIds(detail.artefacts), [detail.artefacts]);
+  const readable = useMemo(() => (shown === detail.artefacts ? detail : { ...detail, artefacts: shown }), [detail, shown]);
+  const finder = useMemo(() => termFinder(policyTerms(shown)), [shown]);
+  return (
+    <BodyPages personas={detail.personas} artefacts={detail.artefacts} render={props.bodyLink}>
+      <TermsContext.Provider value={finder}>
+        <ReportView {...props} detail={readable} />
+      </TermsContext.Provider>
+    </BodyPages>
+  );
+}
+
+function ReportView({ detail, offline, linkTo, onChanged, route, onTitle }: ReportProps) {
   const { analysis, stages } = detail;
   /*
    * THE JUDGEMENTS THE EVIDENCE WILL CARRY, ONCE, AT THE ROOT (phase 22). A
@@ -658,12 +709,20 @@ export function Report({ detail, offline, linkTo, onChanged, route, onTitle }: {
    * the section cannot drift apart without the body changing too.
    */
   type Index = Pick<ContentsEntry, 'count' | 'anchors'>;
+  /*
+   * THE GUIDE'S "?" (phase 26), at the head of the few sections a chapter of
+   * `/guide` explains — `HELP_FOR_SECTION` says which. The service only: the
+   * pack has no guide to open, and carries "How to read this report" instead.
+   */
+  const helped = (id: string, body: React.ReactNode) => (
+    body && !offline && HELP_FOR_SECTION[id] ? <><GuideHelp section={id} place={follow} />{body}</> : body
+  );
   const section = (id: string, title: string, move: Move, body: React.ReactNode, index?: Index) => {
-    if (body) sections.push({ id, title, body, move, ...index });
+    if (body) sections.push({ id, title, body: helped(id, body), move, ...index });
   };
   /** A lead: same list, same contents entry, but it draws its own heading. */
   const lead = (id: string, title: string, move: Move, body: React.ReactNode, index?: Index) => {
-    if (body) sections.push({ id, title, body, move, bare: true, ...index });
+    if (body) sections.push({ id, title, body: helped(id, body), move, bare: true, ...index });
   };
 
   /*
@@ -780,6 +839,15 @@ export function Report({ detail, offline, linkTo, onChanged, route, onTitle }: {
     />
   ) : null);
   /*
+   * WHAT IT WAS JUDGED AGAINST (phase 25): the grounding material the reader
+   * supplied for this policy, how much of each was read, and how many evidence
+   * rows lean on it. Gated on there being any, so a report without grounding
+   * — every report before this phase — draws nothing new.
+   */
+  section('grounding', 'What it was judged against', 'verdict', hasGrounding(artefacts) ? (
+    <GroundingUsed artefacts={artefacts} linkTo={link} />
+  ) : null);
+  /*
    * EVERY SECTION BELOW IS GATED ON ITS OWN INPUT, and six of tonight's were
    * handed over ungated. `section()` keeps any TRUTHY body and a JSX element is
    * always truthy, so a component that returns `null` for a run it has nothing
@@ -881,6 +949,14 @@ export function Report({ detail, offline, linkTo, onChanged, route, onTitle }: {
       ]}
     />
   ));
+  /*
+   * WHAT IT READ (phase 25): the documents of the set and the grounding beside
+   * them. Gated, so one paper with no grounding — every older run — draws
+   * nothing new on this page.
+   */
+  section('read', 'What it read', 'provenance', documentCount(artefacts) > 1 || hasGrounding(artefacts) ? (
+    <WhatItRead artefacts={artefacts} />
+  ) : null);
   lead('discarded', 'What was discarded, and why', 'provenance',
     <>
       {/* The one panel that is about the RUN and not the paper, under a banner
@@ -1174,10 +1250,15 @@ export function Report({ detail, offline, linkTo, onChanged, route, onTitle }: {
    * lead sentence and reports 181, so the index reads the same function the
    * section does rather than a number that was true of the block it replaced.
    */
-  const limitGroups = useMemo(() => groupLimits(stages), [stages]);
+  // THE RUN'S LIMITS AND THE MODEL'S NOTES ABOUT THE PAPER, counted as the
+  // section draws them: two lists (phase 23, `partLimits`).
+  const limitGroups = useMemo(() => {
+    const parted = partLimits(stages);
+    return groupLimits(parted.limits).length + noteRows(parted.notes).length;
+  }, [stages]);
   section('gaps', 'What it could not establish', 'provenance',
-    limitGroups.length ? <Limits stages={stages} artefacts={artefacts} /> : null,
-    { count: { n: limitGroups.length, noun: 'different gaps' } });
+    limitGroups ? <Limits stages={stages} artefacts={artefacts} /> : null,
+    { count: { n: limitGroups, noun: 'different gaps' } });
 
   /*
    * ONE SECTION, BECAUSE THE DIFFERENCE BETWEEN SIX DOWNLOADS IS TWO FACTS.
@@ -1237,6 +1318,15 @@ export function Report({ detail, offline, linkTo, onChanged, route, onTitle }: {
     />);
 
   /*
+   * WHAT EACH STEP SPENT, AGAINST WHAT CAME OF IT — under the ladder it reads
+   * beside (phase 23). Computed on the server from stored rows, and carried in
+   * the pack's run facts, so both renderers draw the same figure; an older
+   * reading has no ledger and the section is simply absent.
+   */
+  section('value', 'What each step spent, and what came of it', 'provenance',
+    detail.ledger ? <ValueLedger ledger={detail.ledger} /> : null);
+
+  /*
    * THE PAPER ITSELF, IN THE PACK, WHERE A READER CAN FIND IT.
    *
    * A pack carries every `passage` artefact — 264 KiB of the white paper's own
@@ -1256,8 +1346,21 @@ export function Report({ detail, offline, linkTo, onChanged, route, onTitle }: {
    * document — so this renders nothing there and says nothing about it, because
    * the handling note already does.
    */
+  /*
+   * HOW TO READ THIS REPORT, in the pack only (phase 26). The service links
+   * every report page to the guide at `/guide`; a pack opened from `file://`
+   * cannot follow that link, so it carries what the guide teaches as text and
+   * one static band key — from the guide's own content model, so the two say
+   * the same thing. After the summary, where a first-time reader is.
+   */
+  if (offline) section('howtoread', 'How to read this report', 'overview', <HowToRead />);
+
   if (offline) {
-    const passages = artefacts.filter((a) => a.kind === 'passage');
+    // IN DOCUMENT ORDER, under a heading per document when there are several
+    // (phase 25): `d1_` sorts before `passage_`, and a reader checking the
+    // paper reads it front to back, one document at a time.
+    const passages = setPassagesInOrder(artefacts);
+    const documents = documentSet(artefacts);
     if (passages.length) {
       section('paper', 'The paper itself', 'provenance', (
         <>
@@ -1266,13 +1369,46 @@ export function Report({ detail, offline, linkTo, onChanged, route, onTitle }: {
             here so the report can be checked against its source with no network and nothing to
             open — searching this page searches the paper.
           </p>
-          {passages.map((passage) => (
-            <div key={passage.id} className="prt-source">
-              <p className="govuk-body-s prt-source__cite">
-                <strong>{passage.label}</strong>
-                {passage.page ? <span className="prt-meta"> · page {passage.page}</span> : null}
-              </p>
-              <div className="prt-quoted prt-quoted--full">{passage.statement}</div>
+          {documents.map((doc) => (
+            <div key={doc.position}>
+              {documents.length > 1 ? <h3 className="govuk-heading-s">{documentName(doc)}</h3> : null}
+              {passages.filter((passage) => documentOf(passage).position === doc.position).map((passage) => (
+                <div key={passage.id} className="prt-source">
+                  <p className="govuk-body-s prt-source__cite">
+                    <strong>{passage.label}</strong>
+                    {passage.page ? <span className="prt-meta"> · page {passage.page}</span> : null}
+                  </p>
+                  <div className="prt-quoted prt-quoted--full">{passage.statement}</div>
+                </div>
+              ))}
+            </div>
+          ))}
+        </>
+      ));
+    }
+    // THE GROUNDING MATERIAL, IN FULL, FOR THE SAME REASON (phase 25): a
+    // quotation of it can be checked here with nothing to open. An owner's
+    // pack only: a shared copy withholds it, as it withholds the paper.
+    const grounding = groundingItems(artefacts);
+    if (grounding.length) {
+      section('groundingtext', 'The grounding material', 'provenance', (
+        <>
+          <p className="govuk-body">
+            What the assessment was judged against, as it read it — evidence you supplied, never
+            the paper.
+          </p>
+          {grounding.map((item) => (
+            <div key={item.position}>
+              <h3 className="govuk-heading-s">{item.title} <span className="prt-meta">({item.roleLabel})</span></h3>
+              {item.passages.map((passage) => (
+                <div key={passage.id} className="prt-source">
+                  <p className="govuk-body-s prt-source__cite">
+                    <strong>{passage.label}</strong>
+                    {passage.page ? <span className="prt-meta"> · page {passage.page}</span> : null}
+                  </p>
+                  <div className="prt-quoted prt-quoted--full">{passage.statement}</div>
+                </div>
+              ))}
             </div>
           ))}
         </>

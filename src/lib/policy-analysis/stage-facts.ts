@@ -54,6 +54,7 @@ export type StageFactKind =
   | 'cut_short'
   | 'unavailable'
   | 'sealed'
+  | 'plain_check'
   | 'open';
 
 export type StageFact = {
@@ -86,6 +87,12 @@ type Rule = {
  */
 const RULES: Rule[] = [
   { kind: 'sealed', test: /\bsealed assessment\b/i },
+
+  // THE PIPELINE'S OWN WRITING CHECK (phase 23, `plainChecks`), not a gap in the
+  // paper. Left to the default it was filed as an "open question" — a claim
+  // about the policy that the run never made. First, so no looser rule below
+  // claims it on a word like "no".
+  { kind: 'plain_check', test: /^Plain English check:/, count: /^Plain English check: (\d+)\b/ },
 
   {
     kind: 'no_text',
@@ -147,6 +154,8 @@ export function factLabel(fact: StageFact): string {
       return fact.of === null
         ? `${n} thing${one ? '' : 's'} not covered`
         : `${n} of ${fact.of} not covered`;
+    case 'plain_check':
+      return `${n} item${one ? '' : 's'} not yet in plain words`;
     case 'unavailable':
       return `${n} thing${one ? ' was' : 's were'} not available`;
     default:
@@ -163,6 +172,7 @@ const ORDER: StageFactKind[] = [
   'reference_dropped',
   'unavailable',
   'sealed',
+  'plain_check',
   'open',
 ];
 

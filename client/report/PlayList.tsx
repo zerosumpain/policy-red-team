@@ -3,6 +3,10 @@ import { BAND_LABEL, precedentOf, type Play } from '$lib/policy-analysis/view';
 import type { Artefact } from '$lib/policy-analysis/contracts';
 import { Details } from '../govuk';
 import { Bar } from './Metrics';
+import { BodyPageLink } from './body-pages';
+import { plainRows } from '$lib/policy-analysis/plain';
+import { PlainBlock } from './Plain';
+import { TermName } from './Term';
 
 /**
  * The stored enum, in words. `compliant` is the one a reader must not skim: it
@@ -131,7 +135,7 @@ export function PlayList({ plays, linkTo, rank, trailing, exposureMax, rankValue
           ) : null}
           <div className="prt-play__main">
             <p className="prt-play__title">{linkTo ? linkTo(play.artefact) : play.artefact.label}</p>
-            {play.actor ? <p className="prt-play__who">{play.actor.label}</p> : null}
+            {play.actor ? <p className="prt-play__who"><TermName name={play.actor.label} /><BodyPageLink actorId={play.actor.id} /></p> : null}
           </div>
           <div className="prt-play__figures">
             {/*
@@ -160,6 +164,20 @@ export function PlayList({ plays, linkTo, rank, trailing, exposureMax, rankValue
             </span>
             {trailing ? trailing(play) : null}
           </div>
+          {/*
+            THE PLAY IN PLAIN WORDS, FIRST (phase 23). Five short lines a
+            newcomer can scan — who, what they do, what goes wrong and for
+            whom, what it is like, why it matters — with the detailed play
+            underneath. An older play has no block and the card is as it was.
+          */}
+          <PlainBlock artefact={play.artefact} className="prt-play__plain" />
+          {!counters && plainRows(play.artefact).length && typeof play.artefact.data.play === 'string' ? (
+            <div className="prt-play__closing">
+              <Details summary="How it would be run">
+                <p className="govuk-body-s prt-play__closing-line">{play.artefact.data.play}</p>
+              </Details>
+            </div>
+          ) : null}
           {counters ? (
             /*
               AFTER THE FIGURES, so the card's shape and its band edge are
@@ -169,8 +187,10 @@ export function PlayList({ plays, linkTo, rank, trailing, exposureMax, rankValue
               fields on every play with no rule of their own.
             */
             <div className="prt-play__closing">
-              <Details summary="What it would cost, how you would spot it, what would close it" open={countersOpen}>
-                {CLOSING_FIELDS.map(([key, label]) => {
+              <Details summary={plainRows(play.artefact).length ? 'How it runs, what it would cost, how you would spot it, what would close it' : 'What it would cost, how you would spot it, what would close it'} open={countersOpen}>
+                {/* With the plain block above, the detail starts with the play
+                    itself, which the card otherwise never printed. */}
+                {(plainRows(play.artefact).length ? [['play', 'How it runs'] as [string, string], ...CLOSING_FIELDS] : CLOSING_FIELDS).map(([key, label]) => {
                   const value = play.artefact.data[key];
                   // Guarded one field at a time, the way `PlaySection` guards the
                   // same values on the drill: a play written by an earlier

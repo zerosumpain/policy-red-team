@@ -1,11 +1,12 @@
 // Synthetic provider responses used only by automated tests. Not a runtime fallback.
-import { artefact, ASSURANCE_CATEGORIES, isPassStage, passOf, passStep, PATTERNS, SCENARIOS, PROFILE_FIELDS, REPORT_SECTIONS, SHORT_PROFILE_FIELDS, type Artefact, type StageInput, type StageOutput } from '../../../src/lib/policy-analysis/contracts';
+import { artefact, ASSURANCE_CATEGORIES, KEY_JUDGEMENT_FLOOR, MAX_KEY_JUDGEMENTS, isPassStage, passOf, passStep, PATTERNS, SCENARIOS, PROFILE_FIELDS, REPORT_SECTIONS, SHORT_PROFILE_FIELDS, type Artefact, type StageInput, type StageOutput } from '../../../src/lib/policy-analysis/contracts';
 export function fixtureModel(stage: number, _key: string, raw: unknown, _options?: { signal?: AbortSignal }): StageOutput {
   const input = raw as StageInput & { idPrefix: string; targetActorId?: string | null; targetActorIds?: string[]; targetPattern?: string; targetScenario?: string; targetMechanismId?: string; targetCategory?: string };
   const prefix = input.idPrefix;
   const one = (kind: Artefact['kind']) => input.artefacts.find((a) => a.kind === kind && (kind !== 'actor' || stage < 3 || a.id.startsWith('s2_')))!;
   const make = (id: string, kind: Artefact['kind'], data: Record<string, unknown>, refs: string[], statement = 'Synthetic fixture assessment; not a real policy conclusion.') => artefact(`${prefix}${id}`, kind, `Synthetic ${kind} ${id}`, statement, data, { refs, confidence: 0.5 });
   let items: Artefact[] = [];
+  const items_: Artefact[] = [];
   /**
    * A PASS. Keyed on the step within the block rather than on the ordinal, so
    * the same fixture serves pass 1, pass 2 and pass 7.
@@ -22,7 +23,7 @@ export function fixtureModel(stage: number, _key: string, raw: unknown, _options
       const common = { refs: [materialPassage.id], origin: 'extracted_fact' as const, sourceId: materialPassage.id, sourceQuote: materialPassage.statement.slice(0, 40) };
       items = [
         { ...make('claim', 'claim', { category: 'claim', notes: 'A claim the attached material makes.' }, [materialPassage.id]), ...common },
-        { ...make('mech', 'mechanism', { intervention: 'A change the material proposes', implementation: 'Unspecified', notes: 'From the material.' }, [materialPassage.id]), ...common },
+        { ...make('mech', 'mechanism', { intervention: 'A change the material proposes', implementation: 'Unspecified', notes: 'From the material.', whatItIs: 'A change the attached document proposes to how the programme works.' }, [materialPassage.id]), ...common },
         make('assumption', 'assumption', { importance: 0.8, uncertainty: 0.8, consequence: 0.8, notes: 'The material assumes this.' }, [materialPassage.id, `${prefix}mech`]),
       ];
     } else if (step === 2) {
@@ -61,26 +62,70 @@ export function fixtureModel(stage: number, _key: string, raw: unknown, _options
       }, [challenge.id])));
       items.push({ ...make('redesign', 'recommendation', { findingIds: [items[0].id], change: 'Commit resources and review authority.', tradeoffs: 'Additional public expenditure.', beneficiaries: ['Service users'], burdenBearers: ['Department'], validationNeeded: 'Verify capacity.', revision: 'assured', challengeIds: challenges.map((c) => c.id), judgement: 'supported_with_limits' }, [items[0].id, ...challenges.map((c) => c.id)]), origin: 'normative_judgement' });
       items.push(make('summary', 'review_summary', { decisionUse: 'independently_challenged', judgement: 'supported_with_limits', openChallenges: 0, acceptedChallenges: 0, unresolvedMaterialChallenges: 0, scope: 'Restated after material was attached.', limitations: ['No human sign-off.'] }, challenges.map((c) => c.id)));
-      items.push(...keyJudgements(input, [items[0].id]));
+      items.push(...keyJudgements(input, [items[0].id], 1));
     }
   } else if (stage === 1) {
     const p = one('passage');
-    const common = { refs: [p.id], origin: 'extracted_fact' as const, sourceId: p.id, sourceQuote: 'The Council is accountable for delivery and bears implementation costs.' };
+    // A FURTHER DOCUMENT OF THE SET (phase 25) does not carry the main paper's
+    // sentence, so the fixture quotes its own first sentence instead — still a
+    // verbatim span, so the quote is located like any other.
+    const canonical = 'The Council is accountable for delivery and bears implementation costs.';
+    const quote = p.statement.includes(canonical) ? canonical : (p.statement.match(/[^.!?]{20,}[.!?]/)?.[0] ?? p.statement.slice(0, 80)).trim();
+    const common = { refs: [p.id], origin: 'extracted_fact' as const, sourceId: p.id, sourceQuote: quote };
     items = [
       { ...make('objective', 'claim', { category: 'objective', notes: 'The policy claims this objective; no evaluation is supplied.' }, [p.id]), ...common },
-      { ...make('mechanism', 'mechanism', { intervention: 'Shared access programme', implementation: 'Council delivery', notes: 'Funding unspecified' }, [p.id]), ...common },
+      { ...make('mechanism', 'mechanism', { intervention: 'Shared access programme', implementation: 'Council delivery', notes: 'Funding unspecified', whatItIs: 'A council scheme that gives residents one place to ask for help.' }, [p.id]), ...common, label: 'Shared access programme' },
       make('assumption', 'assumption', { importance: 0.9, uncertainty: 0.9, consequence: 0.9, notes: 'Sufficient capacity is assumed.' }, [p.id, `${prefix}mechanism`, `${prefix}actor`]),
       { ...make('actor', 'actor', { entityType: 'local_authority', aliases: ['Council'], mentions: [p.id], ambiguity: 'None within this synthetic fixture.', dates: [], parent: null }, [p.id]), ...common, label: 'Council' },
+      // PHASE 23: enough of a cast to exercise the master list of actors — a
+      // body the GOV.UK register knows, the same council named twice, a
+      // category, a programme that is not an actor, and a named private
+      // individual who must never become one.
+      ...[
+        ['actor_dfe', 'Department for Education', 'department', 'The Department for Education commissions the Council.'],
+        ['actor_councils', 'Councils', 'local_authority', 'Councils deliver the shared access programme.'],
+        ['actor_providers', 'Providers', 'provider', 'Providers supply data to the Council.'],
+        ['actor_programme', 'Shared access programme', 'programme', 'The shared access programme is delivered by the Council.'],
+        ['actor_person', 'Jane Smith', 'person', 'Jane Smith is a resident who uses the service.'],
+      ].map(([id, label, entityType, statement]) => ({ ...make(id, 'actor', { entityType, aliases: [], mentions: [p.id], ambiguity: 'None within this synthetic fixture.', dates: [], parent: null }, [p.id], statement), ...common, label })),
+      // PHASE 24B: a paper that says "the local authority" names the council
+      // in other words. No rule can join the two; the matching answer below
+      // does, which is the model-made join the review queue lists to check.
+      ...(input.artefacts.some((a) => a.kind === 'passage' && /the local authority/i.test(a.statement))
+        ? [{ ...make('actor_la', 'actor', { entityType: 'local_authority', aliases: [], mentions: [p.id], ambiguity: 'None within this synthetic fixture.', dates: [], parent: null }, [p.id], 'The local authority runs the scheme day to day.'), ...common, label: 'The local authority' }]
+        : []),
     ];
+  } else if (stage === 2 && Array.isArray((raw as { items?: unknown }).items)) {
+    // THE MASTER-LIST MATCH (phase 23): the answers a model would give for the
+    // names the rules could not place. A name already on the register tree is
+    // that entry; a programme is not an actor, run by the first other name; a
+    // person with no role is a named individual; anything else is new.
+    const asked = (raw as { items: { item: string; mentions: string[]; said: string; type: string; hint?: string }[] }).items;
+    const tree = String((raw as { register?: unknown }).register ?? '');
+    // "The local authority" is the council in other words — a join only a model makes.
+    const synonym = (said: string) => (/^the local authority$/i.test(said) ? 'council' : said.toLowerCase().replace(/s$/, ''));
+    const onTree = (said: string) => tree.split('\n').map((line) => /^([rn]\d+) (.*?) \[/.exec(line)).find((m) => m && m[2].toLowerCase().replace(/s$/, '') === synonym(said))?.[1] ?? null;
+    const runner = asked.find((i) => i.hint !== 'programme' && i.hint !== 'person');
+    asked.forEach((item, i) => {
+      const capacities = item.mentions.map((mentionId) => ({ mentionId, capacity: item.type === 'provider' ? 'delivers' : 'decides' }));
+      const answer = (data: Record<string, unknown>, label = item.said) => ({ ...make(`match_${i}`, 'actor_match', { mentions: item.mentions, capacities, partOf: null, kindOf: null, runBy: null, matchId: null, kind: null, whatItIs: null, notActor: null, ...data }, item.mentions, `What the paper calls ${item.said}.`), label });
+      const known = onTree(item.said);
+      if (known) items_.push(answer({ answer: 'existing', matchId: known }));
+      else if (item.hint === 'programme') items_.push(answer({ answer: 'not_actor', notActor: 'programme', runBy: runner?.said ?? null }));
+      else if (item.hint === 'person') items_.push(answer({ answer: 'not_actor', notActor: 'named_person' }));
+      else items_.push(answer({ answer: 'new', kind: item.type === 'provider' ? 'sector_or_category' : 'organisation', whatItIs: `A synthetic ${item.type.replaceAll('_', ' ')} used only by automated tests.` }));
+    });
+    items = items_;
   } else if (stage === 2) {
     const a = one('actor');
     items = [make('council', 'actor', { ...a.data, mentions: [a.id] }, [a.id])];
   } else if (stage === 3) {
-    const a = input.artefacts.find((a) => a.kind === 'actor' && a.id.startsWith('s2_'))!;
     const m = one('mechanism');
     // Edges only: the `node` kind the graph stage used to emit alongside them was
-    // rendered by nothing and is retired.
-    items = [{ ...make('edge', 'edge', { notes: 'Paper assigns responsibility; authority not documented.' }, [a.id, m.id]), fromId: a.id, toId: m.id, relation: 'is_accountable_for', temporal: 'proposed' }];
+    // rendered by nothing and is retired. A batched call (phase 23) names
+    // several bodies, and each gets its own edge.
+    const targets = input.targetActorIds?.length ? input.targetActorIds : [input.targetActorId ?? input.artefacts.find((a) => a.kind === 'actor' && a.id.startsWith('s2_'))!.id];
+    items = targets.map((id, i) => ({ ...make(i ? `edge_${i}` : 'edge', 'edge', { notes: 'Paper assigns responsibility; authority not documented.' }, [id, m.id]), fromId: id, toId: m.id, relation: 'is_accountable_for' as const, temporal: 'proposed' as const }));
   } else if (stage === 4 && input.targetActorIds?.length) {
     // A SHORT call: one five-field profile per listed body, as instruction 4 asks.
     items = input.targetActorIds.map((id, i) => {
@@ -93,6 +138,17 @@ export function fixtureModel(stage: number, _key: string, raw: unknown, _options
     items = [make('profile', 'profile', { actorId: a.id, ...fields }, [a.id])];
   } else if (stage === 5) {
     items = [make('question', 'research_question', { importance: 0.9, uncertainty: 0.9, consequence: 0.9, rationale: 'Capacity changes feasibility.', searchStrategy: 'local authority implementation capacity evaluation', gap: 'Capacity is unverified.' }, [one('assumption').id])];
+  } else if (stage === 6 && input.artefacts.some((a) => a.kind === 'grounding_passage')) {
+    // GROUNDING, read in full in a call of its own (phase 25): one evidence row
+    // quoting the material's first sentence, verbatim, graded on what it is —
+    // statistics read in full, so moderate — against the paper's claim.
+    const g = input.artefacts.find((a) => a.kind === 'grounding_passage')!;
+    const c = one('claim');
+    const quote = (g.statement.match(/[^.!?]{20,}[.!?]/)?.[0] ?? g.statement.slice(0, 80)).trim();
+    items = [{
+      ...make('grounding', 'evidence', { claimId: c.id, mechanismId: null, actorId: null, assumptionId: one('assumption').id, sourceId: g.id, evidenceType: 'grounding material read in full', result: 'mixed', sourceQuality: 'Official statistics read in full.', relevance: 'Direct', freshness: 'Dated by its publisher.', dispute: 'The figures show capacity below what the paper assumes.', grade: 'moderate' }, [c.id, g.id, one('assumption').id]),
+      origin: 'external_evidence' as const, sourceId: g.id, sourceQuote: quote,
+    }];
   } else if (stage === 6) {
     const c = one('claim');
     items = [make('evidence', 'evidence', { claimId: c.id, mechanismId: one('mechanism').id, actorId: one('actor').id, assumptionId: one('assumption').id, sourceId: c.sourceId, evidenceType: 'paper claim', result: 'insufficient', sourceQuality: 'Unverified policy proposal.', relevance: 'Direct', freshness: 'Unknown', dispute: 'No independent evaluation.', grade: 'weak' }, [c.id, one('assumption').id])];
@@ -107,10 +163,14 @@ export function fixtureModel(stage: number, _key: string, raw: unknown, _options
   } else if (stage === 7) {
     items = PATTERNS.filter((p) => !input.targetPattern || input.targetPattern === p).map((pattern) => make(pattern, 'model', { pattern, players: [one('actor').id], strategies: ['Cooperate', 'Minimum compliance'], decisionOrder: 'Department commissions; Council responds.', information: 'Capacity is uncertain.', costs: 'Implementation effort.', benefits: 'Access improvements.', rewards: 'Unspecified.', sanctions: 'Unspecified.', dependencies: [one('mechanism').id], assumptions: [one('assumption').id], responses: ['Minimum compliance under capacity pressure.'], equilibria: ['Conditional compliance; qualitative hypothesis.'], explanation: 'Cooperation depends on resources and reciprocal incentives.', applicability: 'Synthetic semi-formal example.' }, [one('evidence').id, one('assumption').id, one('mechanism').id]));
   } else if (stage === 9) {
-    items = SCENARIOS.filter((s) => !input.targetScenario || input.targetScenario === s).map((scenario) => make(scenario, 'scenario', { scenario, changedConditions: 'Capacity and cooperation vary.', firstActor: one('actor').id, strategy: 'Delay delivery when capacity is low.', downstreamEffects: ['Longer waits.'], affectedOutcomes: [one('claim').id], detectability: 'Monthly reports, subject to gaming.', correction: 'Review resourcing.', weaknesses: ['No assured capacity.'], assumptions: [one('assumption').id], sensitivity: ['If capacity is sufficient, cooperation is feasible; if not, minimum compliance becomes more plausible. Capacity most changes this result.'] }, [one('model').id, one('test').id, one('assumption').id]));
+    items = SCENARIOS.filter((s) => !input.targetScenario || input.targetScenario === s).map((scenario) => make(scenario, 'scenario', { scenario, changedConditions: 'Capacity and cooperation vary.', firstActor: one('actor').id, strategy: 'Delay delivery when capacity is low.', downstreamEffects: ['Longer waits.'], affectedOutcomes: [one('claim').id], detectability: 'Monthly reports, subject to gaming.', correction: 'Review resourcing.', weaknesses: ['No assured capacity.'], assumptions: [one('assumption').id], sensitivity: ['If capacity is sufficient, cooperation is feasible; if not, minimum compliance becomes more plausible. Capacity most changes this result.'],
+      plain: { what: 'Councils have fewer staff than the programme expects.', firstMove: 'The Council, which runs the scheme locally, slows down new cases.', result: 'A parent asking for help waits weeks longer for an answer.', whyItMatters: 'The programme promised quicker help, and this is slower help.' } }, [one('model').id, one('test').id, one('assumption').id]));
   } else if (stage === 10) {
     const a = input.artefacts.find((x) => x.id === input.targetActorId)!;
-    items = [make('exploit', 'exploit', { actorId: a.id, motivation: 'Avoids implementation cost while remaining compliant.', play: 'Report against the measure without changing the unobservable practice.', legality: 'compliant', targets: [one('mechanism').id], preconditions: [one('assumption').id], payoff: 'Retains discretion and avoids cost.', costToPolicy: 'The objective is not delivered while the measure reads well.', incentive: 0.6, ease: 0.6, impact: 0.6, concealment: 0.6, earlyWarning: 'Measure improves while complaints do not fall.', counter: 'Add an independent check of the unobservable practice.', precedent: 'None identified in this synthetic fixture.', precedentBasis: 'none' }, [one('profile').id, one('mechanism').id, one('assumption').id])];
+    items = [make('exploit', 'exploit', { actorId: a.id, motivation: 'Avoids implementation cost while remaining compliant.', play: 'Report against the measure without changing the unobservable practice.', legality: 'compliant', targets: [one('mechanism').id], preconditions: [one('assumption').id], payoff: 'Retains discretion and avoids cost.', costToPolicy: 'The objective is not delivered while the measure reads well.', incentive: 0.6, ease: 0.6, impact: 0.6, concealment: 0.6, earlyWarning: 'Measure improves while complaints do not fall.', counter: 'Add an independent check of the unobservable practice.', precedent: 'None identified in this synthetic fixture.', precedentBasis: 'none',
+      // The plain block the report shows first (phase 23); the comparison is
+      // honest here, so it is given — a null would mean there is none.
+      plain: { who: 'The Council, which runs the shared access programme locally.', does: 'It reports good numbers without changing how it treats people.', goesWrong: 'A parent who asks for help is counted as helped but still waits.', likeWhen: 'Like a shop counting people through the door instead of sales.', whyItMatters: 'The programme looks delivered when families are no better off.' } }, [one('profile').id, one('mechanism').id, one('assumption').id])];
   } else if (stage === 11) {
     items = [];
   } else if (stage === 13) {
@@ -186,27 +246,66 @@ export function fixtureModel(stage: number, _key: string, raw: unknown, _options
     } : {
       challengeId: challenge.id, disposition: challenge.data.finding === 'issue' ? 'accepted' : 'rejected', response: 'The revised report addresses the challenge.', changes: 'The conclusion is qualified.', remainingLimit: 'Human review remains outside scope.',
     }, [challenge.id])));
-    items.push({ ...make('redesign', 'recommendation', { findingIds: [items[0].id], change: 'Commit resources and review authority.', tradeoffs: 'Additional public expenditure.', beneficiaries: ['Service users'], burdenBearers: ['Department'], validationNeeded: 'Verify capacity and legal powers.', revision: 'assured', challengeIds: challenges.map((c) => c.id), judgement: 'supported_with_limits' }, [items[0].id, ...challenges.map((c) => c.id)]), origin: 'normative_judgement' });
+    // Written in parts since phase 27: a later part cites the findings an
+    // earlier one wrote, which `assuredWritten` names, and never its own copy.
+    const parted = input as unknown as { assuredPart?: { kinds: string[]; sections: string[] }; assuredWritten?: { id: string; kind: string }[] };
+    const cite = parted.assuredWritten?.find((w) => w.kind === 'finding')?.id ?? items[0].id;
+    items.push({ ...make('redesign', 'recommendation', { findingIds: [cite], change: 'Commit resources and review authority.', tradeoffs: 'Additional public expenditure.', beneficiaries: ['Service users'], burdenBearers: ['Department'], validationNeeded: 'Verify capacity and legal powers.', revision: 'assured', challengeIds: challenges.map((c) => c.id), judgement: 'supported_with_limits' }, [cite, ...challenges.map((c) => c.id)]), origin: 'normative_judgement' });
     items.push(make('summary', 'review_summary', { decisionUse: 'independently_challenged', judgement: 'supported_with_limits', openChallenges: 0, acceptedChallenges: 0, unresolvedMaterialChallenges: 0, scope: 'Automated independent challenge.', limitations: ['No human sign-off.'] }, challenges.map((c) => c.id)));
-    items.push(...keyJudgements(input, [items[0].id]));
+    // The main call writes `KEY_JUDGEMENT_FLOOR`; a top-up asked for more
+    // (phase 23) writes the rest, each about a combination the ones already
+    // written do not use — which is what the instruction asks of a model.
+    const asking = input as unknown as { coverageGap?: unknown; keyJudgementsWritten?: { mechanismId?: unknown; playIds?: unknown }[] };
+    const asked = Array.isArray(asking.coverageGap) && asking.coverageGap.includes('key_judgements');
+    const written = asking.keyJudgementsWritten ?? [];
+    items.push(...keyJudgements(input, [cite], asked ? MAX_KEY_JUDGEMENTS - written.length : KEY_JUDGEMENT_FLOOR, written));
+    // A part writes only its own kinds and sections, as a model that follows
+    // the instruction would; the pipeline's own cut is tested separately.
+    const part = parted.assuredPart;
+    if (part) items = items.filter((a) => (a.kind === 'assumption' || part.kinds.includes(a.kind)) && (a.kind !== 'finding' || part.sections.includes(String(a.data.section))));
   }
-  return { artefacts: items, warnings: [] };
+  // ONE NOTE ABOUT THE PAPER, from decomposition (phase 23): what the provider
+  // hands back as `notes` when a model's reply says, in its own `warnings`,
+  // what the passage leaves out. The walk then sees it stored apart from the
+  // run's limits, listed under "What the paper does not say", and absent from
+  // every later stage's `priorWarnings`.
+  const notes = stage === 1 && items.length ? [FIXTURE_NOTE] : [];
+  return { artefacts: items, warnings: [], notes };
 }
 
+/** The fixture's one remark about the paper; tests look for it by value. */
+export const FIXTURE_NOTE = 'The passage does not say how the shared access programme will be funded after its first year.';
+
 /**
- * The key judgements a revised report leads with: one, quoting the mechanism
- * it is about exactly as stage 1 located it, naming the sharpest play.
+ * The key judgements a revised report leads with: up to `count`, each quoting
+ * the mechanism it is about exactly as stage 1 located it and naming a play,
+ * and none repeating a (mechanism, play) pair in `written` or in this list.
  */
-function keyJudgements(input: StageInput & { idPrefix: string }, findingIds: string[]): Artefact[] {
-  const mechanism = input.artefacts.find((a) => a.kind === 'mechanism' && a.sourceId && a.sourceQuote);
-  const play = input.artefacts.find((a) => a.kind === 'exploit');
+function keyJudgements(input: StageInput & { idPrefix: string }, findingIds: string[], count: number, written: { mechanismId?: unknown; playIds?: unknown }[] = []): Artefact[] {
+  const mechanisms = input.artefacts.filter((a) => a.kind === 'mechanism' && a.sourceId && a.sourceQuote);
+  const plays = input.artefacts.filter((a) => a.kind === 'exploit');
   const assumption = input.artefacts.find((a) => a.kind === 'assumption');
-  if (!mechanism || !play || !assumption) return [];
-  return [artefact(`${input.idPrefix}judgement_1`, 'key_judgement', 'Councils can comply on paper', 'Councils can report against the access measure without changing practice, so the shared access programme can look delivered when it is not.', {
-    rank: 1, mechanismId: mechanism.id, playIds: [play.id], assumptionId: assumption.id,
-    wouldChangeIf: 'An independent check found practice changing where the measure improves.',
-    decision: 'Whether to fund the programme beyond its first year.',
-    action: 'Add an independent check of practice before the second year of funding.', owner: 'The funding department',
-    findingIds,
-  }, { refs: [mechanism.id, play.id, assumption.id, ...findingIds], sourceId: mechanism.sourceId, sourceQuote: mechanism.sourceQuote, origin: 'structural_inference', confidence: null })];
+  if (!mechanisms.length || !plays.length || !assumption) return [];
+  const taken = new Set(written.map((w) => `${String(w.mechanismId)}|${Array.isArray(w.playIds) ? String(w.playIds[0]) : ''}`));
+  const out: Artefact[] = [];
+  for (let i = 0; out.length < count && i < mechanisms.length * plays.length; i++) {
+    const mechanism = mechanisms[i % mechanisms.length];
+    const play = plays[Math.floor(i / mechanisms.length) % plays.length];
+    if (taken.has(`${mechanism.id}|${play.id}`)) continue;
+    taken.add(`${mechanism.id}|${play.id}`);
+    const n = out.length + 1;
+    out.push(artefact(`${input.idPrefix}judgement_${n}`, 'key_judgement', n === 1 ? 'Councils can comply on paper' : `Synthetic judgement ${n}`, n === 1
+      ? 'Councils can report against the access measure without changing practice, so the shared access programme can look delivered when it is not.'
+      : `Synthetic key judgement ${n}: a body can meet the letter of this part of the policy without its purpose.`, {
+      rank: n, mechanismId: mechanism.id, playIds: [play.id], assumptionId: assumption.id,
+      wouldChangeIf: 'An independent check found practice changing where the measure improves.',
+      decision: 'Whether to fund the programme beyond its first year.',
+      action: 'Add an independent check of practice before the second year of funding.', owner: 'The funding department',
+      findingIds,
+      plain: n === 1
+        ? { forWhom: 'Parents who ask the council for help.', whyItMatters: 'Money keeps flowing to a programme that is not helping anyone faster.' }
+        : { forWhom: 'The people this part of the policy is meant to help.', whyItMatters: 'The policy can look delivered while its purpose is missed.' },
+    }, { refs: [mechanism.id, play.id, assumption.id, ...findingIds], sourceId: mechanism.sourceId, sourceQuote: mechanism.sourceQuote, origin: 'structural_inference', confidence: null }));
+  }
+  return out;
 }

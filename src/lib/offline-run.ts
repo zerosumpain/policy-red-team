@@ -1,4 +1,5 @@
-import { keptByStage, modelsUsed, reportCost } from './detail-views';
+import { keptByStage, ledgerOf, modelsUsed, reportCost } from './detail-views';
+import type { ValueLedger } from './value-ledger';
 import type { OfflinePayload } from './policy-analysis/offline/payload';
 import type { RunCost } from './policy-analysis/view';
 
@@ -73,6 +74,12 @@ export type RunFacts = {
    * null price and a zero one.
    */
   cost: RunCost | null;
+  /**
+   * What each step spent against what came of it (phase 23). Optional: a pack
+   * made before it has none, and the page then draws no ledger rather than
+   * one of zeros.
+   */
+  ledger?: ValueLedger | null;
 };
 
 /** A payload that has been through `withRun`. */
@@ -97,8 +104,10 @@ export function runFacts(input: {
     ordinal: number; name: string; status: string; error: string | null;
     startedAt?: Date | string | null; completedAt?: Date | string | null;
   }[];
-  calls?: { provider: string | null; model: string | null; usage?: unknown }[];
-  artefactMetadata?: { stage?: number }[];
+  calls?: { provider: string | null; model: string | null; usage?: unknown; executionId?: string; callKey?: string; status?: string | null }[];
+  artefactMetadata?: { id?: string; stage?: number }[];
+  executions?: { id: string; stageId: string }[];
+  artefacts?: { id: string; kind: string; refs: string[] }[];
 }): RunFacts {
   const kept = keptByStage(input.artefactMetadata ?? []);
   return {
@@ -116,5 +125,14 @@ export function runFacts(input: {
       kept: kept.get(stage.ordinal) ?? 0,
     })),
     cost: reportCost(input.calls),
+    ledger: input.artefacts && input.executions
+      ? ledgerOf({
+        stages: input.stages as { ordinal: number; id?: string; name?: string }[],
+        artefactMetadata: (input.artefactMetadata ?? []).filter((m): m is { id: string; stage?: number } => typeof m.id === 'string'),
+        artefacts: input.artefacts as Parameters<typeof ledgerOf>[0]['artefacts'],
+        calls: input.calls,
+        executions: input.executions,
+      })
+      : null,
   };
 }

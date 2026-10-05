@@ -1,11 +1,13 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import { Link, useNavigate } from 'react-router';
 import { api, type AnalysisRow, type OfferedModel } from '../api';
-import { Button, ButtonGroup, Details, ErrorSummary, FileUpload, Input, Radios, Select, Textarea, WarningText } from '../govuk';
+import { Button, ButtonGroup, Details, ErrorSummary, Input, Radios, Select, Textarea, WarningText } from '../govuk';
 import { MEASURED_RUN, MEASURED_STANDARD_HINT } from '../measured';
 import { isFinished, spent } from '../status';
+import { stampSubmission } from '../submission';
 import { usePageTitle } from '../layout/Template';
-import { DEFAULT_CONCURRENCY, OFFERED_CONCURRENCY } from '$lib/policy-analysis/contracts';
+import { DEFAULT_CONCURRENCY, MAX_BYTES, MAX_GROUNDING_FILE_BYTES, MAX_GROUNDING_FILES_BYTES, OFFERED_CONCURRENCY } from '$lib/policy-analysis/contracts';
+import { documentErrorHref, Documents, PolicyChoice } from './NewDocuments';
 import { readerErrorHref, SourcesItShouldUse, ThingsToLookUp } from './NewReaderInputs';
 
 /** The three answers the lanes question offers, in the words the form uses. */
@@ -71,12 +73,26 @@ export function New() {
     if (!String(form.get('title') ?? '').trim()) found.push({ text: 'Enter a title for this assessment', href: '#title' });
     const file = form.get('document');
     if (!(file instanceof File) || !file.size) found.push({ text: 'Select the paper to assess', href: '#document' });
+    // THE TOTALS, said before the upload rather than after it (phase 25). The
+    // server enforces the same caps whatever this says.
+    let partBytes = file instanceof File ? file.size : 0;
+    let supportBytes = 0;
+    for (const [name, value] of form.entries()) {
+      const row = /^document\.(\d+)$/.exec(name);
+      if (!row || !(value instanceof File) || !value.size) continue;
+      const role = String(form.get(`documentRole.${row[1]}`) ?? 'policy');
+      if (role === 'policy') partBytes += value.size;
+      else {
+        supportBytes += value.size;
+        if (value.size > MAX_GROUNDING_FILE_BYTES) found.push({ text: `Document ${Number(row[1]) + 1}: supporting material must be at most ${MAX_GROUNDING_FILE_BYTES / 1024 / 1024} MB a file`, href: `#document-${row[1]}` });
+      }
+    }
+    if (partBytes > MAX_BYTES) found.push({ text: `The documents under assessment come to more than ${MAX_BYTES / 1024 / 1024} MB together`, href: '#document' });
+    if (supportBytes > MAX_GROUNDING_FILES_BYTES) found.push({ text: `The supporting material comes to more than ${MAX_GROUNDING_FILES_BYTES / 1024 / 1024} MB together`, href: '#document' });
     setErrors(found);
     if (found.length) return;
 
-    form.set('depth', depth);
-    form.set('concurrency', lanes);
-    form.set('sealed', sealed ? 'sealed' : '');
+    stampSubmission(form, { depth, lanes, sealed });
     setSubmitting(true);
     try {
       const { id } = await api.submit(form);
@@ -85,7 +101,7 @@ export function New() {
       // A refusal about one source or look-up names it by number; the link
       // goes to that entry rather than to the paper (phase 22 part 2).
       const message = (err as Error).message;
-      setErrors([{ text: message, href: readerErrorHref(message) ?? '#document' }]);
+      setErrors([{ text: message, href: readerErrorHref(message) ?? documentErrorHref(message) ?? '#document' }]);
       setSubmitting(false);
     }
   }
@@ -125,9 +141,13 @@ export function New() {
         <form onSubmit={onSubmit} noValidate>
           <Input id="title" label="What is this paper called?" labelSize="s"
                  hint="Use the title on the front of the document." />
-          <FileUpload id="document" name="document" label="The paper" labelSize="s"
-                      hint="PDF, DOCX or UTF-8 text, up to 10 MB. It must have a text layer — a scan of a page yields nothing."
-                      accept=".pdf,.docx,.txt" />
+          {/*
+            PHASE 25: which policy it is part of — whose grounding library it
+            reads — and the documents: the paper, any further part of the
+            policy, and supporting material, each row with its role.
+          */}
+          <PolicyChoice sealed={sealed} />
+          <Documents sealed={sealed} />
           <Input id="jurisdiction" label="Jurisdiction" labelSize="s"
                  hint="Optional. England, Scotland, Wales, Northern Ireland, or UK-wide." />
           <Input id="policyArea" name="policyArea" label="Policy area" labelSize="s" hint="Optional." />
