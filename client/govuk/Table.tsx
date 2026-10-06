@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from 'react';
+import { Fragment, useState, type ReactNode } from 'react';
 import { cx } from './cx';
 
 export interface Column {
@@ -65,7 +65,7 @@ type Direction = 'asc' | 'desc';
  * arrived in.
  */
 export function Table({
-  caption, captionSize = 'm', columns, rows, scroll, firstCellIsHeader, sortKeys, defaultOrder, className,
+  caption, captionSize = 'm', columns, rows, scroll, firstCellIsHeader, sortKeys, defaultOrder, className, expanded,
 }: {
   caption?: ReactNode;
   captionSize?: 's' | 'm' | 'l' | 'xl';
@@ -84,6 +84,12 @@ export function Table({
   defaultOrder?: string;
   /** Added to `govuk-table` — `prt-table` and its modifiers, in `parts/_table.scss`. */
   className?: string;
+  /**
+   * A full-width row drawn straight under one row, by its index in `rows`
+   * (phase 29): where a table is a picker, the answer to a press goes under
+   * the row that was pressed, and follows it through any sort.
+   */
+  expanded?: { row: number; content: ReactNode };
 }) {
   const [sort, setSort] = useState<{ column: number; direction: Direction } | null>(null);
   const sortable = columns.some((column) => column.sortable);
@@ -180,15 +186,22 @@ export function Table({
       </thead>
       <tbody className="govuk-table__body">
         {rowOrder.map((source) => (
-          <tr key={source} className="govuk-table__row">
-            {rows[source].map((cell, j) =>
-              j === 0 && firstCellIsHeader ? (
-                <th key={j} scope="row" className={cx('govuk-table__header', columns[j]?.className)}>{cell}</th>
-              ) : (
-                <td key={j} className={cx('govuk-table__cell', columns[j]?.numeric && 'govuk-table__cell--numeric', columns[j]?.className)}>{cell}</td>
-              )
-            )}
-          </tr>
+          <Fragment key={source}>
+            <tr className={cx('govuk-table__row', expanded?.row === source && 'prt-table__row--expanded')}>
+              {rows[source].map((cell, j) =>
+                j === 0 && firstCellIsHeader ? (
+                  <th key={j} scope="row" className={cx('govuk-table__header', columns[j]?.className)}>{cell}</th>
+                ) : (
+                  <td key={j} className={cx('govuk-table__cell', columns[j]?.numeric && 'govuk-table__cell--numeric', columns[j]?.className)}>{cell}</td>
+                )
+              )}
+            </tr>
+            {expanded?.row === source ? (
+              <tr className="govuk-table__row prt-table__expansion">
+                <td className="govuk-table__cell" colSpan={columns.length}>{expanded.content}</td>
+              </tr>
+            ) : null}
+          </Fragment>
         ))}
       </tbody>
     </table>

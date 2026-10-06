@@ -18,6 +18,7 @@ import { byReason, groupLimits, noteRows, partLimits, truncations } from './warn
 import { Metrics } from './Metrics';
 import { WriteUp } from './WriteUp';
 import { SelectionBanner } from './moves/SelectionBanner';
+import { SelectionAnswer } from './moves/SelectionAnswer';
 import { VerdictLead } from './moves/VerdictLead';
 import { Brief } from './Brief';
 import { PatternGrid } from './PatternGrid';
@@ -632,6 +633,8 @@ function ReportView({ detail, offline, linkTo, onChanged, route, onTitle }: Repo
   const programme = useMemo(() => programmeStrip(artefacts), [artefacts]);
   /** The watch list narrows by everything selected, like the ranked list it sits under. */
   const watchPlays = useMemo(() => filterPlays(list, selection, mechanismIds), [list, selection, mechanismIds]);
+  /** Every way to beat it the selection leaves — what the answers under the pickers list (phase 29). */
+  const selectedPlays = watchPlays;
 
 
   const sections: Section[] = [];
@@ -690,6 +693,17 @@ function ReportView({ detail, offline, linkTo, onChanged, route, onTitle }: Repo
    * The rule this now follows needs no knowledge of any minifier: a function a
    * closure calls is declared before the closure is built.
    */
+  /*
+   * ON TO THE RANKED LIST, CARRYING THE SELECTION. Where the list is a page
+   * (the service) this routes to it; in the pack it is further down the one
+   * document, so it is an anchor.
+   */
+  const seeRanked = selection ? (
+    <a className="govuk-link" {...(route ? follow(placeOf('threats', 'weights', selection)) : { href: '#weights' })}>
+      See {watchPlays.length === 1 ? 'it' : `all ${watchPlays.length}`} ranked, with what would stop {watchPlays.length === 1 ? 'it' : 'each'}
+    </a>
+  ) : null;
+
   const goTo = (next: Move, anchor: string, sel?: Selection) => {
     if (route) {
       route.navigate(placeOf(next, anchor, sel));
@@ -797,7 +811,15 @@ function ReportView({ detail, offline, linkTo, onChanged, route, onTitle }: Repo
     return artefacts.filter((a) => a.kind !== 'exploit' || keep.has(a.id));
   }, [artefacts, list, selection, mechanismIds]);
   lead('patterns', 'The same few ideas, aimed at the same parts', 'threats',
-    list.length ? <PatternGrid artefacts={gridArtefacts} selection={selection} onSelect={setSelection} linkTo={link} /> : null);
+    list.length ? (
+      <>
+        <PatternGrid artefacts={gridArtefacts} selection={selection} onSelect={setSelection} linkTo={link} />
+        {/* THE PRESS IS ANSWERED UNDER THE GRID (phase 29). The ranked list a
+            square narrows is a different page, so on this one a press used to
+            change nothing but the square — and the page read as broken. */}
+        <SelectionAnswer selection={selection} plays={selectedPlays} linkTo={link} seeAll={seeRanked} onClear={() => setSelection(null)} />
+      </>
+    ) : null);
   section('bands', 'How exposed the policy is', 'threats',
     list.length ? <ExposureRail bands={bands} total={list.length} selection={selection} onSelect={setSelection} /> : null);
   section('spread', 'How the scores are spread', 'threats', <ExposureSpread list={list} />);
@@ -914,7 +936,13 @@ function ReportView({ detail, offline, linkTo, onChanged, route, onTitle }: Repo
       onClear={() => setSelection(null)}
       written={playsWritten}
       onProvenance={() => goTo('provenance', 'discarded')}
-    />, list.length ? { count: { n: list.length, noun: 'ways to beat it' } } : undefined);
+    />, list.length ? {
+      // Under a selection the card says how many it leaves, so the way on from
+      // a narrowed page shows the narrowing before it is followed (phase 29).
+      count: selection
+        ? { n: watchPlays.length, noun: `of ${list.length} ways to beat it match` }
+        : { n: list.length, noun: 'ways to beat it' },
+    } : undefined);
   /*
    * MOVE 4 GETS THE LEAD IT NEVER HAD. The other three each open with one; this
    * one opened with a twelve-row table, which is why its panel measured 919px
@@ -931,6 +959,7 @@ function ReportView({ detail, offline, linkTo, onChanged, route, onTitle }: Repo
       onSelect={setSelection}
       mechanismIds={mechanismIds}
       linkTo={link}
+      seeAll={seeRanked}
     />);
   /*
    * THE MACHINE'S FIGURES, WHERE A READER ASKING ABOUT THE MACHINE LOOKS. They
@@ -1738,6 +1767,8 @@ function ReportView({ detail, offline, linkTo, onChanged, route, onTitle }: Repo
    */
   const banner = selection ? (
     <SelectionBanner
+      bar
+      count={{ n: watchPlays.length, total: list.length }}
       selection={selection}
       onClear={() => {
         setSelection(null);

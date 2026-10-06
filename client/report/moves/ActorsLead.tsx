@@ -6,6 +6,7 @@ import { BandKey, Bar } from '../Metrics';
 import { PressureMatrix } from '../PressureMatrix';
 import { cleanBodies, kindCounts, pressureBoard, pressurePlays, targetLookup, type PressureBody } from '../pressure';
 import { filterPlays, type Selection } from '../selection';
+import { SelectionAnswer } from './SelectionAnswer';
 import { BodyPageLink } from '../body-pages';
 
 /**
@@ -56,7 +57,7 @@ function partOfName(actor: Artefact): string | null {
  * which is the same reduction with no cap. See that file for the measurements.
  */
 
-export function ActorsLead({ artefacts = [], plays = [], interplay, personas, selection, onSelect, mechanismIds, linkTo }: {
+export function ActorsLead({ artefacts = [], plays = [], interplay, personas, selection, onSelect, mechanismIds, linkTo, seeAll }: {
   /**
    * OPTIONAL, LIKE `linkTo`, AND FOR THE SAME KIND OF REASON.
    *
@@ -83,6 +84,8 @@ export function ActorsLead({ artefacts = [], plays = [], interplay, personas, se
   /** So a target that is a mechanism can be verified before it is offered as one. */
   mechanismIds?: Set<string>;
   linkTo?: (artefact: Artefact, label?: string) => ReactNode;
+  /** A link on to the ranked ways to beat it, carrying the selection (phase 29). */
+  seeAll?: ReactNode;
 }) {
   const name = (artefact: Artefact | null, fallback: string) => {
     if (!artefact) return fallback;
@@ -126,7 +129,7 @@ export function ActorsLead({ artefacts = [], plays = [], interplay, personas, se
     ? board.bodies.find((body) => body.id === selection.id) ?? null
     : null;
   /*
-   * WHAT A SELECTED BODY IS POSITIONED TO RUN, under the table that selected it.
+   * WHAT A SELECTED BODY IS POSITIONED TO RUN, under the row that selected it.
    *
    * Without this the control has no consequence anywhere in the panel:
    * `Report` builds this move's plays with `narrowExcept(…, 'actor')`, so
@@ -138,6 +141,20 @@ export function ActorsLead({ artefacts = [], plays = [], interplay, personas, se
   const running = selectedBody && mechanismIds
     ? filterPlays(plays, selection ?? null, mechanismIds)
     : [];
+
+  /*
+   * THE ANSWER GOES UNDER THE ROW THAT WAS PRESSED (phase 29). It used to sit
+   * below the whole body table — at 24 bodies, a screen and more from the row
+   * a reader had just pressed — and a part pressed in the table above had no
+   * answer on this page at all. Both tables now open a row under the pressed
+   * one, which follows it through a sort.
+   */
+  const targetRow = selection?.kind === 'mechanism'
+    ? interplay.targets.findIndex((target) => target.id === selection.id)
+    : -1;
+  const answer = (picked: Play[]) => (onSelect ? (
+    <SelectionAnswer selection={selection ?? null} plays={picked} linkTo={linkTo} seeAll={seeAll} onClear={() => onSelect(null)} />
+  ) : null);
 
   if (!interplay.links.length && !personas.length) return null;
 
@@ -223,6 +240,9 @@ export function ActorsLead({ artefacts = [], plays = [], interplay, personas, se
               { header: 'Ways to beat it aimed at it', numeric: true, width: '9rem' },
               { header: 'Pressure (scores added up)', numeric: true, width: '14rem' },
             ]}
+            expanded={targetRow >= 0 && mechanismIds
+              ? { row: targetRow, content: answer(filterPlays(plays, selection ?? null, mechanismIds)) }
+              : undefined}
             rows={interplay.targets.map((target) => [
               targetCell(target),
               String(target.incoming),
@@ -317,6 +337,7 @@ export function ActorsLead({ artefacts = [], plays = [], interplay, personas, se
                     { header: 'Legality', width: '13rem' },
                   ]}
                   sortKeys={board.bodies.map((body) => [body.label, body.entityType, body.reach, body.plays, body.worst, 0])}
+                  expanded={selectedBody ? { row: board.bodies.indexOf(selectedBody), content: answer(running) } : undefined}
                   rows={board.bodies.map((body) => [
                     bodyCell(body),
                     body.entityType || '—',
@@ -342,29 +363,9 @@ export function ActorsLead({ artefacts = [], plays = [], interplay, personas, se
 
             {onSelect ? (
               <p className="govuk-body">
-                Select a body to carry it into the other sections. Selecting one leaves every row
-                here — this table is how a body is chosen, so it never narrows itself.
+                Select a body to see what it could do, straight under its row. The table keeps every
+                row; the choice carries into the rest of the report until you clear it.
               </p>
-            ) : null}
-
-            {selectedBody && running.length ? (
-              /* `.prt-mech` AND NOT A SECOND VOCABULARY. It is the block
-                 `CausalityLead` puts under its mechanism picker, for the same
-                 reason: the answer to a press has to look like an answer and not
-                 like the next section. */
-              <div className="prt-mech" id="positioned">
-                <h3 className="govuk-heading-m govuk-!-margin-bottom-1">
-                  What {selectedBody.label} could do
-                </h3>
-                <ol className="govuk-list govuk-list--spaced">
-                  {running.map((play) => (
-                    <li key={play.artefact.id}>
-                      <span className={`prt-band prt-band--${play.band}`}>{BAND_LABEL[play.band]}</span>{' '}
-                      {linkTo ? linkTo(play.artefact) : play.artefact.label}
-                    </li>
-                  ))}
-                </ol>
-              </div>
             ) : null}
 
             {/* WHAT KIND OF THING EACH BODY IS, said once under the column that
