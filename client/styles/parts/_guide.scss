@@ -872,3 +872,50 @@ $story-hot: var(--band-significant);
     margin-bottom: govuk.govuk-spacing(4);
   }
 }
+
+// ── The front page's before-and-after, and the reading choice (phase 28) ───
+
+.prt-teaser {
+  margin: govuk.govuk-spacing(4) 0 govuk.govuk-spacing(6);
+
+  &__toggle {
+    display: flex;
+    flex-wrap: wrap;
+    gap: govuk.govuk-spacing(2);
+    margin-bottom: govuk.govuk-spacing(3);
+  }
+
+  &__button {
+    margin-bottom: 0;
+
+    // Pressed reads as pressed without colour alone: inked, and the label bold.
+    &.is-pressed {
+      background: $guide-ink;
+      color: govuk.govuk-colour("white");
+      box-shadow: 0 2px 0 govuk.govuk-colour("black");
+    }
+  }
+
+  &__picture {
+    border: 1px solid $guide-rule;
+    padding: govuk.govuk-spacing(3);
+
+    .prt-story__svg { max-height: none; }
+  }
+
+  &__caption {
+    margin-top: govuk.govuk-spacing(3);
+    min-height: 3em;
+  }
+}
+
+.prt-story__detail {
+  border-left: 4px solid $guide-rule;
+  padding-left: govuk.govuk-spacing(2);
+}
+
+.prt-readingchoice {
+  margin: govuk.govuk-spacing(6) 0;
+  padding-top: govuk.govuk-spacing(4);
+  border-top: 1px solid $guide-rule;
+}

@@ -1734,7 +1734,36 @@ try {
     await page.goto(base, { waitUntil: 'networkidle' });
     await page.getByRole('heading', { name: 'The report at a glance' }).waitFor({ timeout: 20000 });
     if (await page.getByRole('region', { name: 'New to these reports?' }).count()) failures.push('guide: the banner came back on a report page after it was hidden');
-    note('the guide: banner, header link and "?" lead in; six chapters by keyboard; slider, switch and banner memory work');
+
+    // Phase 28: the front page's before-and-after, the way back to the welcome
+    // message, and the reading choice reaching a report.
+    await page.goto(`http://127.0.0.1:${PORT}/guide`, { waitUntil: 'networkidle' });
+    const school = page.getByRole('button', { name: 'As the school reads it' });
+    await school.focus();
+    await page.keyboard.press('Enter');
+    if ((await school.getAttribute('aria-pressed')) !== 'true') failures.push('guide front: "As the school reads it" is not pressed after pressing it');
+    if (!/12 are paid for and 8 are eaten/.test(await page.locator('.prt-teaser__caption').innerText())) failures.push('guide front: the caption did not change with the view');
+    await page.getByRole('button', { name: 'Show it again' }).click();
+    if (!/will show again/.test(await page.locator('.prt-guidepage, main').first().innerText())) failures.push('guide front: "Show it again" said nothing');
+    await page.goto(`http://127.0.0.1:${PORT}/`, { waitUntil: 'networkidle' });
+    const again = page.getByRole('region', { name: 'New to these reports?' });
+    if (!(await again.isVisible())) failures.push('guide front: "Show it again" did not bring the banner back');
+    else await again.getByRole('button', { name: 'Hide this message' }).click();
+
+    await page.goto(`http://127.0.0.1:${PORT}/guide`, { waitUntil: 'networkidle' });
+    await page.getByLabel('With the detail').check();
+    await page.goto(`http://127.0.0.1:${PORT}/guide/2`, { waitUntil: 'networkidle' });
+    if (!(await page.getByRole('heading', { name: 'In the report’s own terms' }).isVisible())) failures.push('guide: choosing the detail did not add the report’s own terms to a chapter');
+    await page.goto(`${base}/threats/weights`, { waitUntil: 'networkidle' });
+    await page.locator('.prt-play').first().waitFor({ timeout: 20000 });
+    if (!(await page.locator('.prt-play__closing details').first().evaluate((d) => d.open))) failures.push('report: choosing the detail did not open a way to beat it’s workings');
+    await page.goto(`http://127.0.0.1:${PORT}/guide`, { waitUntil: 'networkidle' });
+    await page.getByLabel('In plain English').check();
+    await page.goto(`${base}/threats/weights`, { waitUntil: 'networkidle' });
+    await page.locator('.prt-play').first().waitFor({ timeout: 20000 });
+    if (await page.locator('.prt-play__closing details').first().evaluate((d) => d.open)) failures.push('report: plain English left a way to beat it’s workings open');
+
+    note('the guide: banner, header link and "?" lead in; six chapters by keyboard; slider, switch and banner memory work; before-and-after, welcome again, and the reading choice reach a report');
   }
 
   /*

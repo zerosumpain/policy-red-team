@@ -54,3 +54,50 @@ The words are `STORY` in `client/guide/content.ts`; the component is
 - Walk: chapter 1 opens on beat 1, scrolling to the last beat moves the picture
   to it with exactly one current step; under reduced motion it still steps and
   nothing travels. The old pause-control assertions are gone with the loop.
+
+## Part 2 — the rest of the onboarding plan
+
+Three follow-ups the owner asked for after seeing chapter 1.
+
+**The whole idea in one picture, on `/guide`.** `StoryTeaser.tsx` draws the
+story's picture (`StoryPicture`, now its own component) at two beats as a
+before-and-after: *As the paper means it* (beat 3: eight children, eight paid
+for, the council's sample) and *As the school reads it* (beat 6: twelve paid
+for, eight eaten, everyone satisfied). This is the Data Spine's counterfactual
+toggle: the same picture with its state swapped. Two buttons with
+`aria-pressed`; the picture is hidden from screen readers and a polite caption
+says what it shows.
+
+**How should things be explained? (`reading.ts`, `ReadingChoice.tsx`).** This is
+the policy engine's closing question. It is asked at the end of chapter 1 and
+kept on the guide's front page. GOV.UK radios, applied on choosing, announced
+politely. Stored as `prt-reading-level`, wrapped the way the banner's memory is.
+A read that fails is plain; a write that fails holds for the visit. Plain is the
+default and never hides anything. **With the detail**:
+
+- every chapter adds `detail` paragraphs, the same idea in the report's own
+  terms (stage names, the exposure rule exactly, what the stress test can and
+  cannot see), in an inset after the plain paragraphs;
+- each story beat adds an "In the report:" line naming what the report calls it;
+- in a report, `PlayList` opens each way to beat it's workings ("How it would be
+  run", and costs, signs and counters), which plain leaves one press away.
+
+The offline pack prints the plain takeaways only. Its reader made no choice.
+
+**Show the welcome message again.** "Hide this message" used to be permanent,
+with nothing in the service to undo it. The guide's front page now tells a reader
+who hid it so and offers "Show it again" (`forgetDismissed()` in `remember.ts`).
+
+| fork | chosen | why |
+|---|---|---|
+| What "detail" changes in a report | open the play card disclosures, nothing more | the report already puts plain first and detail behind a disclosure, so the choice maps onto a structure that exists, and plain loses nothing |
+| Where the hook sits in `PlayList` | above the empty-list early return | rules of hooks |
+| Apply on choose, no Save button | yes | one question on the form; a Save button is one more thing to miss |
+| Toggle as buttons, not radios | `aria-pressed` buttons | they change what is shown, not a value anything submits |
+
+Tests: `reading.test.ts` (3), `remember.test.ts` +1, `content.test.ts` +2
+(every chapter has detail that differs from its plain words; every beat but the
+last names its report term). The walk covers the toggle and its caption,
+"Show it again" bringing the banner back, the detail choice adding a chapter's
+inset, and opening a report's play workings, then plain shutting them again.
+`test:all` green.

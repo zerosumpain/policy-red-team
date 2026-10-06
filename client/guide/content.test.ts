@@ -177,3 +177,16 @@ describe('chapter 1: the story of one weak point', () => {
     }
   });
 });
+
+describe('the detail a reader can choose (phase 28)', () => {
+  it('gives every chapter its own terms, and says something the plain version does not', () => {
+    for (const chapter of CHAPTERS) {
+      expect(chapter.detail.length, `chapter ${chapter.n}`).toBeGreaterThan(0);
+      for (const paragraph of chapter.detail) expect(chapter.takeaway).not.toContain(paragraph);
+    }
+  });
+
+  it('names what the report calls each beat of the story before the last', () => {
+    for (const beat of STORY.slice(0, -1)) expect(beat.detail, beat.title).toBeTruthy();
+  });
+});
