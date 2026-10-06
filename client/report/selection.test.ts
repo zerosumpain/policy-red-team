@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { artefact } from '$lib/policy-analysis/contracts';
 import {
+  answerHeading,
   describeSelection, filterPlays, isEmptyUnder, mechanismIdsOf, mechanismOf, mechanismsOf,
   narrowExcept, nothingUnder, parseSelection, selectionParam,
 } from './selection';
@@ -228,5 +229,17 @@ describe('a kind of way to beat it, from the pattern grid (phase 19)', () => {
   it('is left alone by the grid that sets it, and narrows every other picker', () => {
     expect(narrowExcept(plays, row, ids, 'pattern')).toBe(plays);
     expect(narrowExcept(plays, row, ids, 'band')).toHaveLength(2);
+  });
+});
+
+describe('the answer under a picker says what was picked and how many it leaves', () => {
+  it('counts in words, one way and many', () => {
+    expect(answerHeading({ kind: 'actor', id: 'a', label: 'Providers' }, 1)).toBe('What Providers could do: 1 way to beat it');
+    expect(answerHeading({ kind: 'pattern', id: 'measure_gaming', label: 'Gaming a measure' }, 3)).toBe('“Gaming a measure”: 3 ways to beat it');
+    expect(answerHeading({ kind: 'pattern', id: 'measure_gaming', label: 'Gaming a measure', mechanism: { id: 'm', label: 'The payment' } }, 2))
+      .toBe('“Gaming a measure” aimed at “The payment”: 2 ways to beat it');
+    expect(answerHeading({ kind: 'mechanism', id: 'm', label: 'The payment' }, 0)).toBe('Aimed at “The payment”: 0 ways to beat it');
+    expect(answerHeading({ kind: 'band', id: 'severe' }, 2)).toBe('Severe: 2 ways to beat it');
+    expect(answerHeading(null, 4)).toBe('');
   });
 });

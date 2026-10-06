@@ -1,0 +1,58 @@
+@use "../govuk" as govuk;
+
+// ── The answer to a press, where it was made (phase 29) ────────────────────
+//
+// `SelectionAnswer` is a `.prt-mech` block (a rule on the left, the look the
+// Causes page already answers its bars with); this adds its list and its two
+// ways on, and the table row it opens under a pressed body or part.
+
+.prt-answer {
+  margin-top: govuk.govuk-spacing(4);
+
+  &__list {
+    margin-bottom: govuk.govuk-spacing(2);
+
+    li { margin-bottom: govuk.govuk-spacing(1); }
+  }
+
+  &__actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: govuk.govuk-spacing(1) govuk.govuk-spacing(4);
+    align-items: baseline;
+
+    .prt-linkbutton { @include govuk.govuk-font($size: 16); }
+  }
+}
+
+// The pressed row and the row it opens read as one: the same wash, and no
+// rule between them.
+.prt-table__row--expanded > th,
+.prt-table__row--expanded > td {
+  background: govuk.govuk-colour("blue", $variant: "tint-95");
+  border-bottom: 0;
+}
+
+.prt-table__expansion > td {
+  background: govuk.govuk-colour("blue", $variant: "tint-95");
+  padding-top: 0;
+
+  // THE ANSWER STAYS ON SCREEN INSIDE A TABLE THAT SCROLLS SIDEWAYS. The row
+  // spans the whole table, which on a phone is three screens wide, so its
+  // lines ran off the right edge. Parked against the scroll box's left edge
+  // (`.prt-scroll` is the scroll container) and no wider than the window, it
+  // reads in full wherever the table has been scrolled to.
+  .prt-answer {
+    position: sticky;
+    left: 0;
+    margin: 0 0 govuk.govuk-spacing(2);
+    max-width: min(40rem, calc(100vw - #{govuk.govuk-spacing(9)}));
+    white-space: normal;
+  }
+}
+
+// The body table parks its names on a white ground; the pressed one takes the
+// row's wash, or it reads as a hole in the highlight.
+.prt-actors__bodies .prt-table__row--expanded > th[scope="row"] {
+  background: govuk.govuk-colour("blue", $variant: "tint-95");
+}

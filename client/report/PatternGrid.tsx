@@ -203,7 +203,7 @@ export function PatternGrid({ artefacts, selection, onSelect, linkTo }: {
     <section aria-labelledby="patterns">
       <h2 className="govuk-heading-l" id="patterns">The same few ideas, aimed at the same parts</h2>
       <p className="govuk-body prt-pgrid__lede">
-        {lede(grid)} Select a square, a row or a column number to narrow the whole report to it.
+        {lede(grid)} Select a square, a row or a column number to list those ways to beat it under the grid. The choice carries into the rest of the report until you clear it.
       </p>
       {/* THE GRID ON A PHONE TOO. It is HTML, not an SVG, so it scrolls in its
           own box with the row names pinned; the table view it would otherwise

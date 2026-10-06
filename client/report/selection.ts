@@ -49,6 +49,29 @@ export function describeSelection(selection: Selection): string {
 }
 
 /**
+ * THE HEADING OF THE ANSWER UNDER A PICKER (phase 29): what was picked and how
+ * many ways to beat it it leaves, in the banner's own verbs.
+ *
+ * A press used to be answered only by the banner at the top of a long page
+ * and by lists on OTHER pages, so on Threats and Who is involved a reader
+ * pressed, saw nothing change where they were looking, and took the page for
+ * broken. `SelectionAnswer` puts the narrowed list where the press was made,
+ * and this is its first line.
+ */
+export function answerHeading(selection: Selection, n: number): string {
+  if (!selection) return '';
+  const ways = `${n} ${n === 1 ? 'way' : 'ways'} to beat it`;
+  if (selection.kind === 'band') return `${BAND_LABEL[selection.id]}: ${ways}`;
+  if (selection.kind === 'mechanism') return `Aimed at “${selection.label}”: ${ways}`;
+  if (selection.kind === 'pattern') {
+    return selection.mechanism
+      ? `“${selection.label}” aimed at “${selection.mechanism.label}”: ${ways}`
+      : `“${selection.label}”: ${ways}`;
+  }
+  return `What ${selection.label} could do: ${ways}`;
+}
+
+/**
  * The same subject, in the negative, for a list the selection emptied.
  *
  * A blank where a list was is the one state that reads as a broken page rather

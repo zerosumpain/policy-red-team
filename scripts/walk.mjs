@@ -370,8 +370,43 @@ try {
     const said = await page.locator('.prt-selection').innerText();
     if (!/aimed at/.test(said)) failures.push(`grid: pressing a square said "${said}"`);
     if ((await square.getAttribute('aria-pressed')) !== 'true') failures.push('grid: the pressed square is not marked pressed');
-    await page.getByRole('button', { name: /Clear the selection/i }).first().click();
-    note('a square of the pattern grid narrows the report and says so');
+    // Phase 29: answered where it was pressed, with a way on to the ranked list.
+    const answer = page.locator('.prt-view .prt-answer');
+    if (!(await answer.count())) failures.push('grid: pressing a square left nothing under the grid');
+    else if (!/to beat it/.test(await answer.locator('h3').innerText())) failures.push('grid: the answer under the grid does not say how many ways it leaves');
+    if (!/of \d+ ways? to beat it/.test(said)) failures.push(`grid: the selection bar does not count what is left ("${said}")`);
+    const ranked = answer.getByRole('link', { name: /ranked, with what would stop/ });
+    if (await ranked.count()) {
+      await ranked.click();
+      await page.waitForURL((url) => url.pathname.endsWith('/threats/weights') && url.searchParams.has('sel'), { timeout: 10000 })
+        .catch(() => failures.push(`grid: "See … ranked" opened ${page.url()}, not the ranked list with the selection`));
+      await settle();
+      await openView('Threats');
+    } else failures.push('grid: the answer under the grid has no way on to the ranked list');
+    await page.locator('.prt-selection').getByRole('button', { name: /Clear the selection/i }).click();
+    note('a square of the pattern grid narrows the report, answers under the grid, and says so');
+
+    /*
+     * WHO IS INVOLVED ANSWERS UNDER THE PRESSED ROW (phase 29): the body
+     * table used to keep its answer below the whole table, and pressing must
+     * not move the page under the pointer.
+     */
+    await openView('Who is involved');
+    const bodyToggle = page.locator('.prt-actors__bodies th[scope="row"] button[aria-pressed]').first();
+    if (await bodyToggle.count()) {
+      await bodyToggle.scrollIntoViewIfNeeded();
+      const before = await bodyToggle.evaluate((el) => el.getBoundingClientRect().top);
+      await bodyToggle.click();
+      await page.waitForTimeout(300);
+      const moved = Math.abs((await bodyToggle.evaluate((el) => el.getBoundingClientRect().top)) - before);
+      if (moved > 2) failures.push(`who: pressing a body moved it ${moved}px under the pointer`);
+      const next = await bodyToggle.evaluate((el) => el.closest('tr')?.nextElementSibling?.className ?? '');
+      if (!/prt-table__expansion/.test(next)) failures.push('who: the answer to a pressed body is not straight under its row');
+      await page.locator('.prt-selection').getByRole('button', { name: /Clear the selection/i }).click();
+      if (await page.locator('.prt-table__expansion').count()) failures.push('who: clearing left the answer row open');
+      note('a pressed body is answered under its own row, and the page does not move');
+    } else failures.push('who: no body to press');
+    await openView('Threats');
   } else {
     failures.push('grid: no square to press');
   }
@@ -411,7 +446,7 @@ try {
 
     // And it is clearable from a page other than the one that set it.
     await openView('Who is involved');
-    await page.getByRole('button', { name: /Clear the selection/i }).click();
+    await page.locator('.prt-selection').getByRole('button', { name: /Clear the selection/i }).click();
     await page.waitForTimeout(200);
     if (await page.locator('.prt-selection').count()) failures.push('report: the selection could not be cleared from another view');
     if (new URL(page.url()).searchParams.get('sel')) failures.push('report: clearing the selection left it in the address');

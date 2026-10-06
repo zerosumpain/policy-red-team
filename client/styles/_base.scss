@@ -227,6 +227,36 @@
     top: 0;
     z-index: 10;
   }
+
+  &__count { font-weight: 700; white-space: nowrap; }
+}
+
+// THE SERVICE'S BAR, fixed along the foot of the window from tablet up
+// (phase 29): it arrives without moving the page, and stays in view however
+// long the page is. See `SelectionBanner`.
+@include govuk.govuk-media-query($from: tablet) {
+  .prt-selection--bar {
+    position: fixed;
+    top: auto;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    z-index: 20;
+    margin: 0 !important;
+    border-left: 0;
+    border-top: 5px solid govuk.govuk-colour("blue");
+    padding: govuk.govuk-spacing(2) govuk.govuk-spacing(6);
+    box-shadow: 0 -2px 8px rgba(11, 12, 12, 0.15);
+  }
+
+  // The page keeps room for the bar, so the footer and the last line of a
+  // long page are never under it.
+  .prt-has-selectionbar body { padding-bottom: 5rem; }
+
+  // AND FOCUS IS NEVER UNDER IT (WCAG 2.2, 2.4.11). Scrolling a focused or
+  // linked-to element into view respects scroll padding, so the browser stops
+  // short of the bar instead of parking the element behind it.
+  .prt-has-selectionbar { scroll-padding-bottom: 6rem; }
 }
 
 // Mechanisms by the plays they generate. The bar is a COUNT, with the bands
