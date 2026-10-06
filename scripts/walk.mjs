@@ -1659,10 +1659,14 @@ try {
         break;
       }
       if (i === 0) {
-        const pause = page.getByRole('button', { name: 'Pause the animation' });
-        await pause.focus();
-        await page.keyboard.press('Enter');
-        if (!(await page.getByRole('button', { name: 'Play the animation' }).isVisible())) failures.push('guide 1: the animation has no working pause control');
+        // The story is driven by scrolling: the picture shows the beat whose top
+        // has crossed the reading line, and the last beat pins all four ways.
+        if ((await page.locator('.prt-story').getAttribute('data-beat')) !== '0') failures.push('guide 1: the story does not open on its first beat');
+        await page.locator('.prt-story__beat').last().scrollIntoViewIfNeeded();
+        await page.waitForFunction(() => document.querySelector('.prt-story')?.getAttribute('data-beat') === '6', null, { timeout: 3000 }).catch(() => {});
+        if ((await page.locator('.prt-story').getAttribute('data-beat')) !== '6') failures.push('guide 1: scrolling to the last beat did not move the picture to it');
+        if ((await page.locator('.prt-story__beat[aria-current="step"]').count()) !== 1) failures.push('guide 1: the beat on screen is not marked as the current step');
+        await page.evaluate(() => window.scrollTo(0, 0));
       }
       if (i === 1) {
         await page.getByRole('button', { name: 'Read the first sentence' }).focus();
@@ -1707,12 +1711,14 @@ try {
       }
     }
 
-    // Reduced motion: the machine is drawn still, and offers no control that would do nothing.
+    // Reduced motion: the story still steps, and nothing travels along the arrows.
     await page.emulateMedia({ reducedMotion: 'reduce' });
     await page.goto(`http://127.0.0.1:${PORT}/guide/1`, { waitUntil: 'networkidle' });
     await page.getByRole('heading', { level: 1, name: 'What a red team does' }).waitFor({ timeout: 10000 });
-    if (await page.locator('.prt-machine.is-playing').count()) failures.push('guide 1: the loop plays under reduced motion');
-    if (await page.getByRole('button', { name: /the animation/ }).count()) failures.push('guide 1: reduced motion still offers a play/pause control');
+    await page.locator('.prt-story__beat').nth(4).scrollIntoViewIfNeeded();
+    await page.waitForFunction(() => Number(document.querySelector('.prt-story')?.getAttribute('data-beat')) >= 4, null, { timeout: 3000 }).catch(() => {});
+    if (Number(await page.locator('.prt-story').getAttribute('data-beat')) < 4) failures.push('guide 1: under reduced motion the story does not step');
+    if (await page.locator('.prt-story__travel').count()) failures.push('guide 1: coins travel under reduced motion');
     await page.emulateMedia({ reducedMotion: 'no-preference' });
 
     // The banner, hidden for good.
@@ -1728,7 +1734,36 @@ try {
     await page.goto(base, { waitUntil: 'networkidle' });
     await page.getByRole('heading', { name: 'The report at a glance' }).waitFor({ timeout: 20000 });
     if (await page.getByRole('region', { name: 'New to these reports?' }).count()) failures.push('guide: the banner came back on a report page after it was hidden');
-    note('the guide: banner, header link and "?" lead in; six chapters by keyboard; slider, switch and banner memory work');
+
+    // Phase 28: the front page's before-and-after, the way back to the welcome
+    // message, and the reading choice reaching a report.
+    await page.goto(`http://127.0.0.1:${PORT}/guide`, { waitUntil: 'networkidle' });
+    const school = page.getByRole('button', { name: 'As the school reads it' });
+    await school.focus();
+    await page.keyboard.press('Enter');
+    if ((await school.getAttribute('aria-pressed')) !== 'true') failures.push('guide front: "As the school reads it" is not pressed after pressing it');
+    if (!/12 are paid for and 8 are eaten/.test(await page.locator('.prt-teaser__caption').innerText())) failures.push('guide front: the caption did not change with the view');
+    await page.getByRole('button', { name: 'Show it again' }).click();
+    if (!/will show again/.test(await page.locator('.prt-guidepage, main').first().innerText())) failures.push('guide front: "Show it again" said nothing');
+    await page.goto(`http://127.0.0.1:${PORT}/`, { waitUntil: 'networkidle' });
+    const again = page.getByRole('region', { name: 'New to these reports?' });
+    if (!(await again.isVisible())) failures.push('guide front: "Show it again" did not bring the banner back');
+    else await again.getByRole('button', { name: 'Hide this message' }).click();
+
+    await page.goto(`http://127.0.0.1:${PORT}/guide`, { waitUntil: 'networkidle' });
+    await page.getByLabel('With the detail').check();
+    await page.goto(`http://127.0.0.1:${PORT}/guide/2`, { waitUntil: 'networkidle' });
+    if (!(await page.getByRole('heading', { name: 'In the report’s own terms' }).isVisible())) failures.push('guide: choosing the detail did not add the report’s own terms to a chapter');
+    await page.goto(`${base}/threats/weights`, { waitUntil: 'networkidle' });
+    await page.locator('.prt-play').first().waitFor({ timeout: 20000 });
+    if (!(await page.locator('.prt-play__closing details').first().evaluate((d) => d.open))) failures.push('report: choosing the detail did not open a way to beat it’s workings');
+    await page.goto(`http://127.0.0.1:${PORT}/guide`, { waitUntil: 'networkidle' });
+    await page.getByLabel('In plain English').check();
+    await page.goto(`${base}/threats/weights`, { waitUntil: 'networkidle' });
+    await page.locator('.prt-play').first().waitFor({ timeout: 20000 });
+    if (await page.locator('.prt-play__closing details').first().evaluate((d) => d.open)) failures.push('report: plain English left a way to beat it’s workings open');
+
+    note('the guide: banner, header link and "?" lead in; six chapters by keyboard; slider, switch and banner memory work; before-and-after, welcome again, and the reading choice reach a report');
   }
 
   /*

@@ -6,6 +6,7 @@ import { Bar } from './Metrics';
 import { BodyPageLink } from './body-pages';
 import { plainRows } from '$lib/policy-analysis/plain';
 import { PlainBlock } from './Plain';
+import { useReadingLevel } from '../guide/reading';
 import { TermName } from './Term';
 
 /**
@@ -106,6 +107,10 @@ export function PlayList({ plays, linkTo, rank, trailing, exposureMax, rankValue
    */
   countersOpen?: boolean;
 }) {
+  // A reader who chose "with the detail" (the guide's question, phase 28) gets
+  // each card's workings open; plain leaves them one press away. The print
+  // block opens every disclosure regardless.
+  const detail = useReadingLevel() === 'detail';
   if (!plays.length) return null;
 
   /*
@@ -173,7 +178,7 @@ export function PlayList({ plays, linkTo, rank, trailing, exposureMax, rankValue
           <PlainBlock artefact={play.artefact} className="prt-play__plain" />
           {!counters && plainRows(play.artefact).length && typeof play.artefact.data.play === 'string' ? (
             <div className="prt-play__closing">
-              <Details summary="How it would be run">
+              <Details summary="How it would be run" open={detail}>
                 <p className="govuk-body-s prt-play__closing-line">{play.artefact.data.play}</p>
               </Details>
             </div>
@@ -187,7 +192,7 @@ export function PlayList({ plays, linkTo, rank, trailing, exposureMax, rankValue
               fields on every play with no rule of their own.
             */
             <div className="prt-play__closing">
-              <Details summary={plainRows(play.artefact).length ? 'How it runs, what it would cost, how you would spot it, what would close it' : 'What it would cost, how you would spot it, what would close it'} open={countersOpen}>
+              <Details summary={plainRows(play.artefact).length ? 'How it runs, what it would cost, how you would spot it, what would close it' : 'What it would cost, how you would spot it, what would close it'} open={countersOpen || detail}>
                 {/* With the plain block above, the detail starts with the play
                     itself, which the card otherwise never printed. */}
                 {(plainRows(play.artefact).length ? [['play', 'How it runs'] as [string, string], ...CLOSING_FIELDS] : CLOSING_FIELDS).map(([key, label]) => {

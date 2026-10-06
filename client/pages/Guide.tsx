@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react';
+import { useState, type ReactNode } from 'react';
 import { Link } from 'react-router';
 import { GLOSSARY } from '$lib/plain-words';
 import { Details, InsetText, Pagination } from '../govuk';
@@ -8,10 +8,14 @@ import { GUIDE } from '../places';
 import { BodiesClash } from '../guide/BodiesClash';
 import { BuildBand } from '../guide/BuildBand';
 import { CHAPTERS, chapterByNumber, chapterPath, MINI_POLICY, type Chapter } from '../guide/content';
-import { Machine } from '../guide/Machine';
 import { MiniStress } from '../guide/MiniStress';
 import { PaperToParts } from '../guide/PaperToParts';
 import { PlainPlay } from '../guide/PlainPlay';
+import { ReadingChoice } from '../guide/ReadingChoice';
+import { useReadingLevel } from '../guide/reading';
+import { bannerDismissed, forgetDismissed } from '../guide/remember';
+import { StoryOpening } from '../guide/StoryOpening';
+import { StoryTeaser } from '../guide/StoryTeaser';
 
 /**
  * "HOW TO READ A RED-TEAM REPORT" (phase 26) — six chapters, one screen and
@@ -40,7 +44,7 @@ const GUIDE_TITLE = 'How to read a red-team report';
 
 /** The interactive idea each chapter is built around. */
 const FIGURE: Record<number, () => ReactNode> = {
-  1: () => <Machine />,
+  1: () => <StoryOpening />,
   2: () => <PaperToParts />,
   3: () => <PlainPlay />,
   4: () => <BuildBand />,
@@ -50,7 +54,7 @@ const FIGURE: Record<number, () => ReactNode> = {
 
 /** One line before each figure: what to do with it. */
 const PROMPT: Record<number, string> = {
-  1: 'Watch the figure walk round the policy. You can pause it.',
+  1: 'Scroll through the story. The picture follows the words.',
   2: 'Read the paper one sentence at a time and watch what each gives up.',
   3: 'This is how the report shows one way to beat the made-up policy.',
   4: 'Move the sliders. They start on the way to beat it from the last chapter.',
@@ -98,6 +102,12 @@ export function Guide() {
           Six short chapters, each with one thing to try. Together they show how to read what a report
           says and how far to trust it.
         </p>
+        <h2 className="govuk-heading-m">The whole idea in one picture</h2>
+        <p className="govuk-body">
+          A red team reads a policy twice: once the way the paper means it, and once the way someone it
+          gives a job to could read it. Switch between the two.
+        </p>
+        <StoryTeaser />
         <InsetText>
           Every example uses one made-up policy, <strong>{MINI_POLICY.title}</strong>:{' '}
           {MINI_POLICY.blurb} It is not from any real paper or assessment.
@@ -120,6 +130,9 @@ export function Guide() {
             <path fill="currentColor" d="M0 0h13l20 20-20 20H0l20-20z" />
           </svg>
         </Link>
+
+        <ReadingChoice />
+        <WelcomeAgain />
 
         <h2 className="govuk-heading-m">The short version</h2>
         <Details summary="The sections of a report, and the question each answers">
@@ -152,6 +165,7 @@ export function GuideChapter({ n }: { n: number }) {
   usePageTitle(`${chapter.title} — ${GUIDE_TITLE}`);
   const previous = chapterByNumber(n - 1);
   const next = chapterByNumber(n + 1);
+  const level = useReadingLevel();
   return (
     <div className="prt-guidepage">
       <span className="govuk-caption-l">{GUIDE_TITLE} · {n} of {CHAPTERS.length}</span>
@@ -162,8 +176,19 @@ export function GuideChapter({ n }: { n: number }) {
           {chapter.takeaway.map((paragraph, i) => (
             <p key={i} className={i === 0 ? 'govuk-body-l' : 'govuk-body'}>{paragraph}</p>
           ))}
+          {level === 'detail' ? (
+            <InsetText>
+              <h2 className="govuk-heading-s">In the report’s own terms</h2>
+              {chapter.detail.map((paragraph, i) => (
+                <p key={i} className="govuk-body">{paragraph}</p>
+              ))}
+            </InsetText>
+          ) : null}
           <p className="govuk-body prt-guidepage__prompt"><strong>Try it.</strong> {PROMPT[n]}</p>
           <div className="prt-guidepage__figure">{FIGURE[n]()}</div>
+          {/* The first chapter ends on the policy engine's question: how should
+              the rest be pitched? Asked once here, kept on the front page. */}
+          {n === 1 ? <ReadingChoice /> : null}
           <Pagination
             label="Previous and next chapter"
             previous={previous ? { href: chapterPath(previous), title: 'Previous', label: previous.title } : { href: GUIDE, title: 'Previous', label: 'About this guide' }}
@@ -173,5 +198,37 @@ export function GuideChapter({ n }: { n: number }) {
         </div>
       </div>
     </div>
+  );
+}
+
+/**
+ * THE WAY BACK TO THE WELCOME MESSAGE (phase 28). "Hide this message" used to
+ * be for good, with no control anywhere to undo it — the owner asked how to
+ * get it back. Shown only to a reader who hid it; pressing it forgets the
+ * dismissal and says where the message will be.
+ */
+function WelcomeAgain() {
+  const [hidden, setHidden] = useState(() => bannerDismissed());
+  const [said, setSaid] = useState('');
+  return (
+    <>
+      {hidden ? (
+        <p className="govuk-body">
+          You hid the “New to these reports?” message.{' '}
+          <button
+            type="button"
+            className="prt-linkbutton"
+            onClick={() => {
+              const done = forgetDismissed();
+              setHidden(false);
+              setSaid(done ? 'The message will show again on the assessments page and on reports.' : 'This browser would not change the setting.');
+            }}
+          >
+            Show it again
+          </button>
+        </p>
+      ) : null}
+      <p className={`govuk-body${said ? '' : ' govuk-!-margin-bottom-0'}`} aria-live="polite">{said}</p>
+    </>
   );
 }

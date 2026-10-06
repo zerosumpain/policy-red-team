@@ -266,6 +266,97 @@ export const MINI_ASSESSMENT: readonly Artefact[] = [...ASSUMPTIONS, ...ACTORS, 
 
 export const leadPlay = (): Artefact => PLAYS.find((a) => a.id === LEAD_PLAY_ID)!;
 
+// ── Chapter 1: the story of one weak point ───────────────────────────────────
+
+/**
+ * CHAPTER 1 IS A STORY, NOT A DIAGRAM (phase 28). The first version drew the
+ * policy as a box of three "levers" with a figure walking round it, and nothing
+ * in the box ever moved — a reader could not tell what a lever was, who pulled
+ * it or what went wrong. This tells the lead play (`LEAD_PLAY_ID`) as seven
+ * beats over ONE persistent picture, the way the Data Spine's opening does:
+ * the policy working as promised, where its money comes from, who keeps the
+ * count, the same facts read as the school would, the lever pulled, nobody
+ * noticing, and finally what the report writes down.
+ *
+ * The numbers are the picture's: eight children come for breakfast, four more
+ * arrive early, and the payment is the paper's £1.20. Each beat's words carry
+ * everything the picture shows, so the picture can be hidden from a screen
+ * reader without losing anything (`StoryOpening.tsx`).
+ */
+export const STORY_PAY = 1.2;
+export const STORY_EATEN = 8;
+export const STORY_EARLY = 4;
+
+/** `detail`: the beat in the report's terms, shown to a reader who chose the detail. */
+export type StoryBeat = { title: string; body: readonly string[]; detail?: string };
+
+export const STORY: readonly StoryBeat[] = [
+  {
+    title: 'The promise',
+    body: [
+      `${MINI_POLICY.title}: every primary school runs a free breakfast club before lessons, and the Department pays for it.`,
+      'Eight children come for breakfast. So far everything works the way the paper says it will.',
+    ],
+    detail: 'In a report, the paper’s aims are what every finding is measured against: the theory of change sets out how the policy expects to get from money to fed children.',
+  },
+  {
+    title: 'Follow the money',
+    body: [
+      'The Department pays the school £1.20 for every pupil who attends, whatever the club costs to run.',
+      'So the whole payment rests on one number: how many came. Eight children, £9.60 a day.',
+    ],
+    detail: 'The payment per pupil is a part of the policy — something the paper sets up to deliver its aims. Decomposition pulls it out of the sentence that creates it.',
+  },
+  {
+    title: 'Who keeps the count?',
+    body: [
+      'The school counts who comes and sends the number in every month. The only check is the council’s: a sample of returns, once a year.',
+      'Whoever keeps the count decides the payment.',
+    ],
+    detail: 'The schools and the council are bodies. The knowledge graph records who reports to whom, and the yearly sample is an assumption: that a light check is enough.',
+  },
+  {
+    title: 'Read it as the school would',
+    body: [
+      'This is where a red team starts. It stops asking “does the policy work?” and asks “who could make it work for them?”',
+      'To the school, every name on the return is £1.20. And four more children are in the building early every morning, waiting for the bell.',
+    ],
+    detail: 'This is the actor and incentive profile: what the body wants, and whether it is better off if the policy fails at its aim.',
+  },
+  {
+    title: 'Pull the lever',
+    body: [
+      'So the school counts every child who arrives before the bell. Nothing on the return is false: twelve children were there. It just does not say who ate.',
+      'The Department now pays for twelve breakfasts a day. Eight are eaten.',
+    ],
+    detail: 'This is a way to beat the policy (in the pipeline, an exploitation play). Its legality is grey: nothing on the return is false.',
+  },
+  {
+    title: 'Nobody notices',
+    body: [
+      'The figures say the policy is working: more children every month.',
+      'The council’s sample checks that the children on the return were in school, and they were. The gap never shows where anyone looks.',
+    ],
+    detail: 'Concealment is one of the four factors in the score. Here it is high: the check the paper relies on looks at the wrong thing.',
+  },
+  {
+    title: 'What the report writes down',
+    body: [
+      'That is one way to beat the policy, and a report writes it down like this.',
+    ],
+  },
+];
+
+/**
+ * The other ways to beat the made-up policy, pinned on the picture at the
+ * last beat: the same plays chapters 3 to 5 use, each at the part it pulls on.
+ */
+export const STORY_PINS: readonly { playId: string; where: 'money' | 'children' | 'count' }[] = [
+  { playId: 'guide_play_lapse', where: 'money' },
+  { playId: 'guide_play_childcare', where: 'children' },
+  { playId: 'guide_play_ghost', where: 'count' },
+];
+
 // ── Chapter 4: the four factors ──────────────────────────────────────────────
 
 export type FactorKey = 'ease' | 'concealment' | 'incentive' | 'impact';
@@ -353,6 +444,14 @@ export type Chapter = {
    * must make sense without anything to press.
    */
   takeaway: readonly string[];
+  /**
+   * THE SAME CHAPTER IN THE REPORT'S OWN TERMS (phase 28), for a reader who
+   * chose "with the detail": which steps of a run do this, what they are
+   * called on the page, and the rule exactly. Shown after the takeaway, never
+   * instead of it, and not printed in the pack — the pack's reader made no
+   * choice, so it gets the plain version every reader gets.
+   */
+  detail: readonly string[];
 };
 
 export const CHAPTERS: readonly Chapter[] = [
@@ -363,6 +462,10 @@ export const CHAPTERS: readonly Chapter[] = [
       'A red team reads a policy the way someone trying to get round it would. It treats the policy as a machine with levers — money, rules, counts, checks — and asks who could pull them for their own ends.',
       'It finds weak points; it is not a prediction. A report full of ways to beat a policy does not say anyone will use them, and a short report does not say the policy is safe.',
     ],
+    detail: [
+      'In a run the red team is the step called Exploitation playbook. It works from profiles written earlier — what each body wants, and who is better off if the policy fails — and for each body writes the ways it could serve itself at the policy’s expense. Each one names the parts of the policy it pulls on and the assumptions it needs, and is scored on four factors.',
+      'The report you read is the second draft. An independent challenge attacks the first, and the assured version answers every challenge and leads with up to five key judgements.',
+    ],
   },
   {
     n: 2, title: 'From paper to parts',
@@ -370,6 +473,10 @@ export const CHAPTERS: readonly Chapter[] = [
     takeaway: [
       'The first steps of a run read the paper sentence by sentence and pull out three kinds of thing: parts of the policy (what it sets up), assumptions (what it takes for granted) and bodies (who it gives a job to).',
       'Everything later in the report is built from these, and every item can be traced back to the sentence it came from.',
+    ],
+    detail: [
+      'These are the first four steps of a run. Document ingestion splits the paper into passages that can be cited. Document decomposition reads each passage for claims, parts of the policy, assumptions and names. Entity resolution decides which names are the same body — and records the ones it refuses to merge. The policy knowledge graph states every relationship the paper asserts between them.',
+      'Every item keeps the quote, page and section it came from, so anything later in the report can be walked back to the paper’s own words.',
     ],
   },
   {
@@ -379,6 +486,9 @@ export const CHAPTERS: readonly Chapter[] = [
       'Each way to beat the policy opens with five short lines: who, what they do, what goes wrong and for whom, what it is like, and why it matters.',
       'The detail sits underneath: how it would be run, what it would cost the policy, how you would spot it and what would close it. Many ways to beat a policy break no rule — "inside the rules" is often the most important thing on the card.',
     ],
+    detail: [
+      'The five plain lines are written with the card, not summarised from it afterwards. Under them the card carries its legality (inside the rules, a grey area, or a breach), the parts of the policy it targets, the assumptions it needs, an early warning sign, a counter-measure and, where one is known, a precedent — marked as not checked when it comes only from the model’s recall.',
+    ],
   },
   {
     n: 4, title: 'How exposed? Build the band yourself',
@@ -386,6 +496,10 @@ export const CHAPTERS: readonly Chapter[] = [
     takeaway: [
       'Every way to beat the policy is scored on four things, each from 0 to 1: how easy it is, how hard it is to spot, how much the body gains and how much it hurts the policy.',
       'The score is the geometric mean of the four, so one very low factor pulls the whole score down: nobody runs a move with nothing in it for them. Being easy to spot never takes a move off the table — an open move still counts. The score then falls into one of four bands: severe from 0.7, significant from 0.5, moderate from 0.3, and limited below that.',
+    ],
+    detail: [
+      'Exposure is the geometric mean of incentive, ease, impact and concealment, each from 0 to 1. A zero in incentive, ease or impact takes the move off the table. Concealment has a floor of 0.15, because an open move — lobbying, a public veto, visible non-compliance — is still a threat.',
+      'The model judges the four factors; the score and the band are worked out by the service, so two runs over the same judgements rank the same way, and the arithmetic can be shown on the page.',
     ],
   },
   {
@@ -395,6 +509,10 @@ export const CHAPTERS: readonly Chapter[] = [
       'Every way to beat the policy names what has to be true for it to work, and every conclusion names what it rests on. Switch an assumption off and the report works out what changes, from links it already made — no new guess is involved.',
       'The two directions are opposite. A way to beat it that needed the assumption is taken off the table, which is good news for the policy. A conclusion that rested on it loses its footing, which means it is no longer supported, not that it is wrong.',
     ],
+    detail: [
+      'The stress test calls no model. Each way to beat the policy lists its preconditions, and each finding lists the assumptions it rests on, by id; switching an assumption off follows those links and nothing else.',
+      'So it can only be as complete as the links the run made. An assumption nothing points at changes nothing when it is switched off, and the page says so rather than implying the conclusions are safe.',
+    ],
   },
   {
     n: 6, title: 'Bodies across policies',
@@ -402,6 +520,10 @@ export const CHAPTERS: readonly Chapter[] = [
     takeaway: [
       'The same body — a council, a regulator, a department — is often given jobs by several policies. Seen side by side, those jobs can clash: asked to check something in one paper and to run it in another.',
       'Bodies are kept on one list with two kinds of link: part of (a team is part of a council) and kind of (a county council is a kind of local council). What other papers say about a body is context, never evidence about the paper in front of you.',
+    ],
+    detail: [
+      'Entity resolution matches each paper’s wording to one master list of actors, so “early years workforce” and “early years educators” can be one body across papers. Part-of and kind-of links let a team roll up to its council and a county council count as a local council.',
+      'Cross-policy exposure compares a paper with your other assessments for failures that only exist because several policies are in force at once. What another paper says about a body is shown as context and is never cited as evidence for this one.',
     ],
   },
 ];

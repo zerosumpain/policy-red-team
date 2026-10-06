@@ -1,7 +1,7 @@
 // The banner's memory (phase 26): remembered where storage works, harmless
 // where it throws or is missing.
 import { describe, expect, it } from 'vitest';
-import { bannerDismissed, GUIDE_BANNER_KEY, rememberDismissed } from './remember';
+import { bannerDismissed, forgetDismissed, GUIDE_BANNER_KEY, rememberDismissed } from './remember';
 
 const memory = () => {
   const store = new Map<string, string>();
@@ -26,5 +26,15 @@ describe('remembering the dismissed banner', () => {
   it('copes with no storage at all', () => {
     expect(bannerDismissed(null)).toBe(false);
     expect(rememberDismissed(null)).toBe(false);
+  });
+
+  it('shows the banner again once forgotten, and does not throw when storage refuses', () => {
+    const store = new Map<string, string>();
+    const storage = { getItem: (k: string) => store.get(k) ?? null, setItem: (k: string, v: string) => { store.set(k, v); }, removeItem: (k: string) => { store.delete(k); } };
+    rememberDismissed(storage);
+    expect(forgetDismissed(storage)).toBe(true);
+    expect(bannerDismissed(storage)).toBe(false);
+    expect(forgetDismissed({ removeItem: () => { throw new Error('SecurityError'); } })).toBe(false);
+    expect(forgetDismissed(null)).toBe(false);
   });
 });

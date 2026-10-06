@@ -16,7 +16,7 @@ export const GUIDE_BANNER_KEY = 'prt-guide-banner-dismissed';
 
 type StorageLike = Pick<Storage, 'getItem' | 'setItem'>;
 
-function defaultStorage(): StorageLike | null {
+function defaultStorage(): Storage | null {
   try {
     return typeof window === 'undefined' ? null : window.localStorage;
   } catch {
@@ -37,6 +37,20 @@ export function rememberDismissed(storage: StorageLike | null = defaultStorage()
   try {
     if (!storage) return false;
     storage.setItem(GUIDE_BANNER_KEY, '1');
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Undo "Hide this message" (phase 28), from the guide's front page: the banner
+ * shows again on the landing page and on report pages. True when it worked.
+ */
+export function forgetDismissed(storage: Pick<Storage, 'removeItem'> | null = defaultStorage()): boolean {
+  try {
+    if (!storage) return false;
+    storage.removeItem(GUIDE_BANNER_KEY);
     return true;
   } catch {
     return false;

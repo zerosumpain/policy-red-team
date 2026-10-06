@@ -9,6 +9,7 @@ import { plainRows } from '$lib/policy-analysis/plain';
 import {
   ASSUMPTIONS, bandFor, bandStretches, CHAPTERS, chapterPath, FACTORS, factorWords, HELP_FOR_SECTION,
   leadFactors, leadPlay, MINI_ASSESSMENT, MINI_PAPERS, PAPER, piecesSoFar, PLAYS, sentenceYield, asksOf, CLASH_BODY,
+  LEAD_PLAY_ID, STORY, STORY_EARLY, STORY_EATEN, STORY_PAY, STORY_PINS,
 } from './content';
 import { GUIDE } from '../places';
 
@@ -147,5 +148,45 @@ describe('chapter 6 and the chapters', () => {
     expect(words).not.toMatch(/\b(play|plays|artefact|mechanism|persona|exploit)\b/i);
     expect(words).toMatch(/way to beat/);
     expect(words).toMatch(/part of the policy|parts of the policy/);
+  });
+});
+
+describe('chapter 1: the story of one weak point', () => {
+  it('pays what the paper says, and its sums are the sums the picture draws', () => {
+    expect(PAPER.some((s) => s.text.includes(`£${STORY_PAY.toFixed(2)}`))).toBe(true);
+    const words = STORY.flatMap((b) => b.body).join(' ');
+    expect(words).toContain(`£${(STORY_EATEN * STORY_PAY).toFixed(2)} a day`);
+    expect(words).toMatch(/Eight children/);
+    expect(words).toMatch(/four more children/);
+    expect(words).toMatch(/twelve breakfasts a day\. Eight are eaten/);
+    expect(STORY_EATEN + STORY_EARLY).toBe(12);
+  });
+
+  it('tells the lead play, and pins every other play exactly once', () => {
+    expect(leadPlay().label).toBe('Count every early arrival as a breakfast');
+    const pinned = STORY_PINS.map((p) => p.playId);
+    expect(new Set(pinned).size).toBe(pinned.length);
+    expect(pinned).not.toContain(LEAD_PLAY_ID);
+    expect([...pinned, LEAD_PLAY_ID].sort()).toEqual(PLAYS.map((p) => p.id).sort());
+  });
+
+  it('has a title and words for every beat', () => {
+    for (const beat of STORY) {
+      expect(beat.title.length).toBeGreaterThan(0);
+      expect(beat.body.length).toBeGreaterThan(0);
+    }
+  });
+});
+
+describe('the detail a reader can choose (phase 28)', () => {
+  it('gives every chapter its own terms, and says something the plain version does not', () => {
+    for (const chapter of CHAPTERS) {
+      expect(chapter.detail.length, `chapter ${chapter.n}`).toBeGreaterThan(0);
+      for (const paragraph of chapter.detail) expect(chapter.takeaway).not.toContain(paragraph);
+    }
+  });
+
+  it('names what the report calls each beat of the story before the last', () => {
+    for (const beat of STORY.slice(0, -1)) expect(beat.detail, beat.title).toBeTruthy();
   });
 });

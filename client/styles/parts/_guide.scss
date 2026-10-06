@@ -123,7 +123,6 @@ $guide-blue: govuk.govuk-colour("blue");
     color: govuk.govuk-colour("black", $variant: "tint-25");
   }
 
-  &__control { margin-bottom: 0; }
 }
 
 // ── The "?" beside a report figure ─────────────────────────────────────────
@@ -161,50 +160,244 @@ $guide-blue: govuk.govuk-colour("blue");
   }
 }
 
-// ── Chapter 1: the machine ─────────────────────────────────────────────────
+// ── Chapter 1: one weak point, as a story (phase 28) ───────────────────────
+//
+// A sticky picture beside beats that scroll (`StoryOpening.tsx`). Everything in
+// the picture is drawn once and changes STATE: `.is-on` fades a thing in,
+// `.is-hot` marks what the current beat is about. With no beat reached the
+// first beat's picture shows, and reduced motion collapses every transition, so
+// the picture steps instead of easing — it is never half-drawn.
 
-.prt-machine {
-  text { @include govuk.govuk-font($size: 16); font-size: 13px; fill: $guide-ink; }
+$story-hot: var(--band-significant);
 
-  &__io { font-weight: 700; }
-  &__name { font-weight: 700; }
+.prt-story {
+  @include govuk.govuk-media-query($from: tablet) {
+    display: grid;
+    grid-template-columns: minmax(0, 5fr) minmax(0, 6fr);
+    gap: govuk.govuk-spacing(6);
+    align-items: start;
+  }
 
-  &__body { fill: govuk.govuk-colour("white"); stroke: $guide-ink; stroke-width: 3; }
-  &__lever { fill: $guide-wash; stroke: $guide-rule; stroke-width: 1; }
-  &__knob { fill: $guide-ink; }
+  // The picture: pinned above the beats on a phone, beside them from tablet.
+  &__stage {
+    position: sticky;
+    top: 0;
+    z-index: 1;
+    background: govuk.govuk-colour("white");
+    padding: govuk.govuk-spacing(2) 0;
+    border-bottom: 1px solid $guide-rule;
 
-  // The weak point, at rest LIT — the end state. Only the playing figure
-  // hides it until the walker arrives.
-  &__gap {
+    @include govuk.govuk-media-query($from: tablet) {
+      order: 2;
+      top: govuk.govuk-spacing(4);
+      border-bottom: 0;
+    }
+  }
+
+  &__svg {
+    display: block;
+    width: 100%;
+    max-width: 30rem;
+    // On a phone the picture must leave room for the words under it.
+    max-height: 42vh;
+    margin: 0 auto;
+
+    @include govuk.govuk-media-query($from: tablet) { max-height: none; }
+
+    text { @include govuk.govuk-font($size: 16); font-size: 12px; fill: $guide-ink; }
+
+    // Inside the picture, so they outrank the plain text rule above.
+    .prt-story__small { font-size: 11px; }
+    .prt-story__gaplabel { font-weight: 700; fill: #55163a; }
+    .prt-story__fooled { font-weight: 700; fill: govuk.govuk-colour("green"); }
+  }
+
+  &__where {
+    @include govuk.govuk-font($size: 16, $weight: bold);
+    margin: 0 0 govuk.govuk-spacing(1);
+  }
+
+  &__n {
+    display: inline-block;
+    min-width: 1.6em;
+    padding: 0 0.3em;
+    border: 2px solid currentColor;
+    border-radius: 1em;
+    text-align: center;
+    font-weight: 700;
+    white-space: nowrap;
+  }
+
+  &__strong { font-weight: 700; }
+
+  &__box { fill: govuk.govuk-colour("white"); stroke: $guide-ink; stroke-width: 2.5; }
+  &__box--quiet { stroke-width: 1.5; stroke-dasharray: 4 3; }
+
+  &__flow { stroke: $guide-ink; stroke-width: 3; }
+
+  &__check {
     fill: none;
-    stroke: var(--band-significant);
-    stroke-width: 4;
-    stroke-dasharray: 8 5;
+    stroke: $guide-ink;
+    stroke-width: 1.5;
+    stroke-dasharray: 3 4;
   }
 
-  // At rest the walker stands at the gap, lens raised: the end of the walk.
-  &__walker { transform: translate(338px, 188px); }
+  &__bracket { fill: none; stroke: $guide-ink; stroke-width: 1.5; }
 
-  &.is-playing &__walker {
-    animation: prt-machine-walk 10s var(--motion-ease-standard) infinite;
+  &__bar { fill: $guide-blue; }
+
+
+  // What the beat is about.
+  &__box,
+  &__flow,
+  &__check {
+    transition:
+      stroke var(--motion-duration-medium) var(--motion-ease-standard),
+      stroke-width var(--motion-duration-medium) var(--motion-ease-standard);
   }
 
-  &.is-playing &__gap {
-    animation: prt-machine-gap 10s linear infinite;
+  &__box.is-hot,
+  &__flow.is-hot,
+  &__check.is-hot { stroke: $story-hot; stroke-width: 4; }
+
+  &__bar,
+  &__svg rect[fill^="url"] {
+    transition: width var(--motion-duration-long) var(--motion-ease-standard);
   }
+
+  // A thing that is not yet in the story.
+  &__el,
+  &__swap {
+    opacity: 0;
+    transition: opacity var(--motion-duration-long) var(--motion-ease-enter);
+  }
+
+  &__el.is-on,
+  &__swap.is-on { opacity: 1; }
+
+  // Children. The eight who eat are filled; the four who arrive early are
+  // outlined, and drawn in the beat's colour once they are counted.
+  &__kid {
+    circle, path { fill: $guide-blue; stroke: $guide-blue; stroke-width: 1.5; }
+    opacity: 0;
+    transition: opacity var(--motion-duration-long) var(--motion-ease-enter);
+
+    &.is-on { opacity: 1; }
+  }
+
+  &__kid--early {
+    circle, path {
+      fill: govuk.govuk-colour("white");
+      stroke: $guide-ink;
+      transition: stroke var(--motion-duration-medium) var(--motion-ease-standard);
+    }
+
+    &.is-counted circle,
+    &.is-counted path { stroke: $story-hot; stroke-width: 2.5; stroke-dasharray: 3 2; }
+  }
+
+  // Coins down the money, a return up the count: once per beat, and gone
+  // entirely under reduced motion (the component does not draw them either).
+  &__coin {
+    fill: govuk.govuk-colour("yellow");
+    stroke: $guide-ink;
+    stroke-width: 1.5;
+    opacity: 0;
+    animation: prt-story-coin 1100ms var(--motion-ease-standard) forwards;
+  }
+
+  &__return {
+    fill: govuk.govuk-colour("white");
+    stroke: $story-hot;
+    stroke-width: 2;
+    opacity: 0;
+    animation: prt-story-return 1100ms var(--motion-ease-standard) 200ms forwards;
+  }
+
+  // The beats.
+  &__beats {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+
+    @include govuk.govuk-media-query($from: tablet) { order: 1; }
+  }
+
+  // On a phone a beat is its words and a gap: a tall beat would leave its
+  // words scrolled up under the picture while it was still the current one.
+  // Beside the picture, each beat holds the screen for most of a window.
+  &__beat {
+    padding: govuk.govuk-spacing(4) 0 30vh govuk.govuk-spacing(3);
+    border-left: 5px solid transparent;
+    transition: border-color var(--motion-duration-medium) var(--motion-ease-standard);
+
+    @include govuk.govuk-media-query($from: tablet) {
+      min-height: 70vh;
+      padding-bottom: govuk.govuk-spacing(4);
+    }
+
+    &:first-child { padding-top: govuk.govuk-spacing(2); }
+    &:last-child { min-height: 0; padding-bottom: govuk.govuk-spacing(4); }
+
+    &.is-current { border-left-color: $guide-blue; }
+  }
+
+  &__title { margin-bottom: govuk.govuk-spacing(2); }
+
+  &__card {
+    background: $guide-wash;
+    border-left: 8px solid;
+    padding: govuk.govuk-spacing(3);
+    margin-bottom: govuk.govuk-spacing(4);
+  }
+
+  &__plain {
+    @include govuk.govuk-font($size: 16);
+    margin: 0;
+
+    dt { font-weight: 700; margin-top: govuk.govuk-spacing(2); }
+    dd { margin: 0; }
+  }
+
+  &__pin,
+  &__band {
+    display: inline-block;
+    border: 1px solid $guide-ink;
+    font-weight: 700;
+    line-height: 1.4;
+  }
+
+  &__pin {
+    min-width: 1.5em;
+    border-radius: 1em;
+    text-align: center;
+  }
+
+  &__band {
+    @include govuk.govuk-font($size: 16, $weight: bold);
+    padding: 0 0.4em;
+    vertical-align: middle;
+  }
+
+  &__others li { margin-bottom: govuk.govuk-spacing(2); }
 }
 
-@keyframes prt-machine-walk {
-  0% { transform: translate(52px, 236px); }
-  20% { transform: translate(52px, 40px); }
-  45% { transform: translate(338px, 40px); }
-  60%, 100% { transform: translate(338px, 188px); }
+@keyframes prt-story-coin {
+  0% { opacity: 0; transform: translateY(58px); }
+  15% { opacity: 1; }
+  85% { opacity: 1; }
+  100% { opacity: 0; transform: translateY(138px); }
 }
 
-@keyframes prt-machine-gap {
-  0%, 58% { opacity: 0; }
-  64%, 96% { opacity: 1; }
-  100% { opacity: 0; }
+@keyframes prt-story-return {
+  0% { opacity: 0; transform: translateY(138px); }
+  15% { opacity: 1; }
+  85% { opacity: 1; }
+  100% { opacity: 0; transform: translateY(62px); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .prt-story__travel { display: none; }
 }
 
 // ── Chapter 2: from paper to parts ─────────────────────────────────────────
@@ -678,4 +871,51 @@ $guide-blue: govuk.govuk-colour("blue");
     break-inside: avoid;
     margin-bottom: govuk.govuk-spacing(4);
   }
+}
+
+// ── The front page's before-and-after, and the reading choice (phase 28) ───
+
+.prt-teaser {
+  margin: govuk.govuk-spacing(4) 0 govuk.govuk-spacing(6);
+
+  &__toggle {
+    display: flex;
+    flex-wrap: wrap;
+    gap: govuk.govuk-spacing(2);
+    margin-bottom: govuk.govuk-spacing(3);
+  }
+
+  &__button {
+    margin-bottom: 0;
+
+    // Pressed reads as pressed without colour alone: inked, and the label bold.
+    &.is-pressed {
+      background: $guide-ink;
+      color: govuk.govuk-colour("white");
+      box-shadow: 0 2px 0 govuk.govuk-colour("black");
+    }
+  }
+
+  &__picture {
+    border: 1px solid $guide-rule;
+    padding: govuk.govuk-spacing(3);
+
+    .prt-story__svg { max-height: none; }
+  }
+
+  &__caption {
+    margin-top: govuk.govuk-spacing(3);
+    min-height: 3em;
+  }
+}
+
+.prt-story__detail {
+  border-left: 4px solid $guide-rule;
+  padding-left: govuk.govuk-spacing(2);
+}
+
+.prt-readingchoice {
+  margin: govuk.govuk-spacing(6) 0;
+  padding-top: govuk.govuk-spacing(4);
+  border-top: 1px solid $guide-rule;
 }
