@@ -8,10 +8,10 @@ import { GUIDE } from '../places';
 import { BodiesClash } from '../guide/BodiesClash';
 import { BuildBand } from '../guide/BuildBand';
 import { CHAPTERS, chapterByNumber, chapterPath, MINI_POLICY, type Chapter } from '../guide/content';
-import { Machine } from '../guide/Machine';
 import { MiniStress } from '../guide/MiniStress';
 import { PaperToParts } from '../guide/PaperToParts';
 import { PlainPlay } from '../guide/PlainPlay';
+import { StoryOpening } from '../guide/StoryOpening';
 
 /**
  * "HOW TO READ A RED-TEAM REPORT" (phase 26) — six chapters, one screen and
@@ -40,7 +40,7 @@ const GUIDE_TITLE = 'How to read a red-team report';
 
 /** The interactive idea each chapter is built around. */
 const FIGURE: Record<number, () => ReactNode> = {
-  1: () => <Machine />,
+  1: () => <StoryOpening />,
   2: () => <PaperToParts />,
   3: () => <PlainPlay />,
   4: () => <BuildBand />,
@@ -50,7 +50,7 @@ const FIGURE: Record<number, () => ReactNode> = {
 
 /** One line before each figure: what to do with it. */
 const PROMPT: Record<number, string> = {
-  1: 'Watch the figure walk round the policy. You can pause it.',
+  1: 'Scroll through the story. The picture follows the words.',
   2: 'Read the paper one sentence at a time and watch what each gives up.',
   3: 'This is how the report shows one way to beat the made-up policy.',
   4: 'Move the sliders. They start on the way to beat it from the last chapter.',

@@ -1659,10 +1659,14 @@ try {
         break;
       }
       if (i === 0) {
-        const pause = page.getByRole('button', { name: 'Pause the animation' });
-        await pause.focus();
-        await page.keyboard.press('Enter');
-        if (!(await page.getByRole('button', { name: 'Play the animation' }).isVisible())) failures.push('guide 1: the animation has no working pause control');
+        // The story is driven by scrolling: the picture shows the beat whose top
+        // has crossed the reading line, and the last beat pins all four ways.
+        if ((await page.locator('.prt-story').getAttribute('data-beat')) !== '0') failures.push('guide 1: the story does not open on its first beat');
+        await page.locator('.prt-story__beat').last().scrollIntoViewIfNeeded();
+        await page.waitForFunction(() => document.querySelector('.prt-story')?.getAttribute('data-beat') === '6', null, { timeout: 3000 }).catch(() => {});
+        if ((await page.locator('.prt-story').getAttribute('data-beat')) !== '6') failures.push('guide 1: scrolling to the last beat did not move the picture to it');
+        if ((await page.locator('.prt-story__beat[aria-current="step"]').count()) !== 1) failures.push('guide 1: the beat on screen is not marked as the current step');
+        await page.evaluate(() => window.scrollTo(0, 0));
       }
       if (i === 1) {
         await page.getByRole('button', { name: 'Read the first sentence' }).focus();
@@ -1707,12 +1711,14 @@ try {
       }
     }
 
-    // Reduced motion: the machine is drawn still, and offers no control that would do nothing.
+    // Reduced motion: the story still steps, and nothing travels along the arrows.
     await page.emulateMedia({ reducedMotion: 'reduce' });
     await page.goto(`http://127.0.0.1:${PORT}/guide/1`, { waitUntil: 'networkidle' });
     await page.getByRole('heading', { level: 1, name: 'What a red team does' }).waitFor({ timeout: 10000 });
-    if (await page.locator('.prt-machine.is-playing').count()) failures.push('guide 1: the loop plays under reduced motion');
-    if (await page.getByRole('button', { name: /the animation/ }).count()) failures.push('guide 1: reduced motion still offers a play/pause control');
+    await page.locator('.prt-story__beat').nth(4).scrollIntoViewIfNeeded();
+    await page.waitForFunction(() => Number(document.querySelector('.prt-story')?.getAttribute('data-beat')) >= 4, null, { timeout: 3000 }).catch(() => {});
+    if (Number(await page.locator('.prt-story').getAttribute('data-beat')) < 4) failures.push('guide 1: under reduced motion the story does not step');
+    if (await page.locator('.prt-story__travel').count()) failures.push('guide 1: coins travel under reduced motion');
     await page.emulateMedia({ reducedMotion: 'no-preference' });
 
     // The banner, hidden for good.

@@ -266,6 +266,90 @@ export const MINI_ASSESSMENT: readonly Artefact[] = [...ASSUMPTIONS, ...ACTORS, 
 
 export const leadPlay = (): Artefact => PLAYS.find((a) => a.id === LEAD_PLAY_ID)!;
 
+// ── Chapter 1: the story of one weak point ───────────────────────────────────
+
+/**
+ * CHAPTER 1 IS A STORY, NOT A DIAGRAM (phase 28). The first version drew the
+ * policy as a box of three "levers" with a figure walking round it, and nothing
+ * in the box ever moved — a reader could not tell what a lever was, who pulled
+ * it or what went wrong. This tells the lead play (`LEAD_PLAY_ID`) as seven
+ * beats over ONE persistent picture, the way the Data Spine's opening does:
+ * the policy working as promised, where its money comes from, who keeps the
+ * count, the same facts read as the school would, the lever pulled, nobody
+ * noticing, and finally what the report writes down.
+ *
+ * The numbers are the picture's: eight children come for breakfast, four more
+ * arrive early, and the payment is the paper's £1.20. Each beat's words carry
+ * everything the picture shows, so the picture can be hidden from a screen
+ * reader without losing anything (`StoryOpening.tsx`).
+ */
+export const STORY_PAY = 1.2;
+export const STORY_EATEN = 8;
+export const STORY_EARLY = 4;
+
+export type StoryBeat = { title: string; body: readonly string[] };
+
+export const STORY: readonly StoryBeat[] = [
+  {
+    title: 'The promise',
+    body: [
+      `${MINI_POLICY.title}: every primary school runs a free breakfast club before lessons, and the Department pays for it.`,
+      'Eight children come for breakfast. So far everything works the way the paper says it will.',
+    ],
+  },
+  {
+    title: 'Follow the money',
+    body: [
+      'The Department pays the school £1.20 for every pupil who attends, whatever the club costs to run.',
+      'So the whole payment rests on one number: how many came. Eight children, £9.60 a day.',
+    ],
+  },
+  {
+    title: 'Who keeps the count?',
+    body: [
+      'The school counts who comes and sends the number in every month. The only check is the council’s: a sample of returns, once a year.',
+      'Whoever keeps the count decides the payment.',
+    ],
+  },
+  {
+    title: 'Read it as the school would',
+    body: [
+      'This is where a red team starts. It stops asking “does the policy work?” and asks “who could make it work for them?”',
+      'To the school, every name on the return is £1.20. And four more children are in the building early every morning, waiting for the bell.',
+    ],
+  },
+  {
+    title: 'Pull the lever',
+    body: [
+      'So the school counts every child who arrives before the bell. Nothing on the return is false: twelve children were there. It just does not say who ate.',
+      'The Department now pays for twelve breakfasts a day. Eight are eaten.',
+    ],
+  },
+  {
+    title: 'Nobody notices',
+    body: [
+      'The figures say the policy is working: more children every month.',
+      'The council’s sample checks that the children on the return were in school, and they were. The gap never shows where anyone looks.',
+    ],
+  },
+  {
+    title: 'What the report writes down',
+    body: [
+      'That is one way to beat the policy, and a report writes it down like this.',
+    ],
+  },
+];
+
+/**
+ * The other ways to beat the made-up policy, pinned on the picture at the
+ * last beat: the same plays chapters 3 to 5 use, each at the part it pulls on.
+ */
+export const STORY_PINS: readonly { playId: string; where: 'money' | 'children' | 'count' }[] = [
+  { playId: 'guide_play_lapse', where: 'money' },
+  { playId: 'guide_play_childcare', where: 'children' },
+  { playId: 'guide_play_ghost', where: 'count' },
+];
+
 // ── Chapter 4: the four factors ──────────────────────────────────────────────
 
 export type FactorKey = 'ease' | 'concealment' | 'incentive' | 'impact';
